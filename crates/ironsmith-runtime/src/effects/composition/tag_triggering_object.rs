@@ -55,8 +55,16 @@ impl EffectExecutor for TagTriggeringObjectEffect {
                     set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
                     return Ok(EffectOutcome::count(1));
                 }
-                set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
-                return Ok(EffectOutcome::count(0));
+                // A battlefield-departure trigger is allowed to use the
+                // event's last-known information even when the destination
+                // object is no longer available (for example, a token that
+                // ceased to exist before the triggered ability resolved).
+                // Keep the old object id in that case: characteristic values
+                // and ownership are still authoritative, while effects that
+                // require the new destination object will fail their normal
+                // live-object lookup.
+                set_triggering_object_tags(ctx, self.tag.as_str(), vec![snapshot.clone()]);
+                return Ok(EffectOutcome::count(1));
             }
 
             let tagged = game
@@ -391,6 +399,56 @@ mod tests {
     }
 
     #[test]
+    fn test_tag_triggering_object_keeps_battlefield_lki_without_destination_object() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let creature_id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(creature_id.0 as u32), "Vanished Victim")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 2))
+            .build();
+        game.add_object(Object::from_card(
+            creature_id,
+            &card,
+            alice,
+            Zone::Battlefield,
+        ));
+        let snapshot = ObjectSnapshot::from_object(
+            game.object(creature_id).expect("creature should exist"),
+            &game,
+        );
+
+        // The event is authoritative even if its destination object is not
+        // present in this resolution state.
+        let trigger_event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_cause(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_sba(),
+                Some(snapshot.clone()),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.triggering_event = Some(trigger_event);
+
+        let outcome = TagTriggeringObjectEffect::new("triggering")
+            .execute(&mut game, &mut ctx)
+            .expect("LKI tag should resolve");
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
+        let tagged = ctx
+            .get_tagged("triggering")
+            .expect("battlefield LKI should be tagged");
+        assert_eq!(tagged.object_id, creature_id);
+        assert_eq!(tagged.owner, alice);
+        assert_eq!(tagged.power, Some(4));
+        assert_eq!(tagged.zone, Zone::Battlefield);
+    }
+
+    #[test]
     fn test_tag_triggering_object_for_sacrifice_requires_card_still_in_graveyard() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -487,6 +545,7 @@ mod tests {
                     x_value: None,
                     cast_order_this_turn: None,
                     mana_spent_to_cast: crate::player::ManaPool::default(),
+                    mana_sources_spent_to_cast: Vec::new(),
                     counters: std::collections::HashMap::new(),
                     is_token: false,
                     tapped: false,

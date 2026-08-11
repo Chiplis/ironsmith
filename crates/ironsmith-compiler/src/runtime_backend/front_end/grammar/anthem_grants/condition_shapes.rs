@@ -13,13 +13,14 @@ use super::condition_quantities::parse_condition_quantity_prefix;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FixedStaticConditionKind {
-    SourceIsEquipped,
+    SourceEquipmentAttachedToCreature,
     SourceSpellWasKicked,
     OpponentLostLifeThisTurn,
     YouDidNotCastSpellThisTurn,
     YouCastSpellThisTurn,
     NoCardsInYourLibrary,
     SourceIsOnBattlefield,
+    SourceIsNotOnBattlefield,
     SourceDevouredCreature,
     SourceIsSoulbondPaired,
     SourceAttackedThisTurn,
@@ -105,6 +106,7 @@ pub(crate) struct EnteredCountConditionShape<'a> {
 pub(crate) struct SourceCounterConditionShape {
     pub(crate) comparison: Comparison,
     pub(crate) counter_type: Option<CounterType>,
+    pub(crate) pronoun: Option<ironsmith_core::SourceCounterPronounSurface>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -341,14 +343,9 @@ pub(crate) fn parse_source_counter_condition(
         return Err(SourceCounterConditionError::MissingCounterPhrase);
     };
 
-    let counter_type = if counter_token > 0 {
-        let descriptor = TokenWordView::new(&quantity.rest[..counter_token]);
-        descriptor
-            .get(descriptor.len().saturating_sub(1))
-            .and_then(filters::parse_counter_type_word)
-    } else {
-        None
-    };
+    let counter_type = (counter_token > 0)
+        .then(|| filters::parse_counter_type_from_tokens(&quantity.rest[..counter_token]))
+        .flatten();
     if primitives::parse_prefix(
         tail,
         primitives::any_phrase(&[
@@ -362,10 +359,17 @@ pub(crate) fn parse_source_counter_condition(
     {
         return Err(SourceCounterConditionError::UnsupportedTail);
     }
+    let tail_words = TokenWordView::new(tail).to_word_refs();
+    let pronoun = match tail_words.as_slice() {
+        ["on", "him"] => Some(ironsmith_core::SourceCounterPronounSurface::Him),
+        ["on", "her"] => Some(ironsmith_core::SourceCounterPronounSurface::Her),
+        _ => None,
+    };
 
     Ok(Some(SourceCounterConditionShape {
         comparison: quantity.comparison,
         counter_type,
+        pronoun,
     }))
 }
 
@@ -386,7 +390,7 @@ fn parse_fixed_group_one(input: &mut LexStream<'_>) -> WResult<FixedStaticCondit
             &["this", "equipment", "is", "attached", "to", "a", "creature"],
             &["this", "equipment", "attached", "to", "a", "creature"],
         ])
-        .value(FixedStaticConditionKind::SourceIsEquipped),
+        .value(FixedStaticConditionKind::SourceEquipmentAttachedToCreature),
         primitives::any_phrase(&[
             &["this", "spell", "was", "kicked"],
             &["it", "was", "kicked"],
@@ -420,6 +424,24 @@ fn parse_fixed_group_one(input: &mut LexStream<'_>) -> WResult<FixedStaticCondit
             &["it", "is", "on", "the", "battlefield"],
         ])
         .value(FixedStaticConditionKind::SourceIsOnBattlefield),
+        primitives::any_phrase(&[
+            &["this", "creature", "isn't", "on", "the", "battlefield"],
+            &["this", "permanent", "isn't", "on", "the", "battlefield"],
+            &["this", "card", "isn't", "on", "the", "battlefield"],
+            &["this", "isn't", "on", "the", "battlefield"],
+            &["it", "isn't", "on", "the", "battlefield"],
+            &["this", "creature", "isnt", "on", "the", "battlefield"],
+            &["this", "permanent", "isnt", "on", "the", "battlefield"],
+            &["this", "card", "isnt", "on", "the", "battlefield"],
+            &["this", "isnt", "on", "the", "battlefield"],
+            &["it", "isnt", "on", "the", "battlefield"],
+            &["this", "creature", "is", "not", "on", "the", "battlefield"],
+            &["this", "permanent", "is", "not", "on", "the", "battlefield"],
+            &["this", "card", "is", "not", "on", "the", "battlefield"],
+            &["this", "is", "not", "on", "the", "battlefield"],
+            &["it", "is", "not", "on", "the", "battlefield"],
+        ])
+        .value(FixedStaticConditionKind::SourceIsNotOnBattlefield),
     ))
     .parse_next(input)
 }
@@ -779,6 +801,16 @@ mod tests {
             parse_fixed_static_condition_kind(&kicked),
             Some(FixedStaticConditionKind::SourceSpellWasKicked)
         );
+        let outside_battlefield = lex("This isn't on the battlefield.");
+        assert_eq!(
+            parse_fixed_static_condition_kind(&outside_battlefield),
+            Some(FixedStaticConditionKind::SourceIsNotOnBattlefield)
+        );
+        let equipment_attached = lex("This Equipment is attached to a creature.");
+        assert_eq!(
+            parse_fixed_static_condition_kind(&equipment_attached),
+            Some(FixedStaticConditionKind::SourceEquipmentAttachedToCreature)
+        );
     }
 
     #[test]
@@ -854,6 +886,17 @@ mod tests {
             Ok(Some(SourceCounterConditionShape {
                 comparison: Comparison::GreaterThanOrEqual(3),
                 counter_type: Some(CounterType::Charge),
+                pronoun: None,
+            }))
+        );
+
+        let named_masculine = lex("This creature has a conqueror counter on him.");
+        assert_eq!(
+            parse_source_counter_condition(&named_masculine),
+            Ok(Some(SourceCounterConditionShape {
+                comparison: Comparison::GreaterThanOrEqual(1),
+                counter_type: Some(CounterType::Named("conqueror")),
+                pronoun: Some(ironsmith_core::SourceCounterPronounSurface::Him),
             }))
         );
 

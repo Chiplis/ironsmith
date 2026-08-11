@@ -10,7 +10,7 @@ use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter,
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::object::Object;
+use crate::object::{CounterType, Object};
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbility;
 use crate::target::ChooseSpec;
@@ -49,7 +49,10 @@ pub type CopyAttackTargetMode = ironsmith_core::CopyAttackTargetMode;
 pub type TokenCopyReferenceSurface = ironsmith_core::TokenCopyReferenceSurface;
 pub type CreateTokenCopyEffect = ironsmith_core::CreateTokenCopyEffect<StaticAbility>;
 
-fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<AttackTarget> {
+pub(super) fn attack_targets_for_player(
+    game: &GameState,
+    player_id: PlayerId,
+) -> Vec<AttackTarget> {
     let mut targets = Vec::new();
     if game
         .player(player_id)
@@ -75,7 +78,7 @@ fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<Attac
     targets
 }
 
-fn choose_attack_target(
+pub(super) fn choose_attack_target(
     game: &GameState,
     ctx: &mut ExecutionContext,
     player_id: PlayerId,
@@ -153,6 +156,7 @@ fn build_token_copy_object(
     resolved_target_id: ObjectId,
     half_power: i32,
     half_toughness: i32,
+    resolved_base_power_toughness: Option<(i32, i32)>,
     static_abilities_to_grant: &[StaticAbility],
 ) -> Result<Object, ExecutionError> {
     let mut token = if let Some(snapshot) = copy_snapshot {
@@ -166,9 +170,14 @@ fn build_token_copy_object(
         token.base_power = Some(PtValue::Fixed(half_power));
         token.base_toughness = Some(PtValue::Fixed(half_toughness));
     }
-    if let Some((power, toughness)) = effect.set_base_power_toughness {
+    if let Some((power, toughness)) = resolved_base_power_toughness {
         token.base_power = Some(PtValue::Fixed(power));
         token.base_toughness = Some(PtValue::Fixed(toughness));
+    }
+    if let Some(loyalty) = effect.starting_loyalty {
+        token.base_loyalty = Some(loyalty);
+        token.counters.remove(&CounterType::Loyalty);
+        token.add_counters(CounterType::Loyalty, loyalty);
     }
     if let Some(colors) = effect.set_colors {
         token.color_override = Some(colors);
@@ -354,6 +363,15 @@ impl EffectExecutor for CreateTokenCopyEffect {
             }
             None => (0, 0),
         };
+        let resolved_base_power_toughness =
+            if let Some((power, toughness)) = &self.set_base_power_toughness_value {
+                Some((
+                    resolve_value(game, power, ctx)?,
+                    resolve_value(game, toughness, ctx)?,
+                ))
+            } else {
+                self.set_base_power_toughness
+            };
 
         let token_preview = build_token_copy_object(
             self,
@@ -364,6 +382,7 @@ impl EffectExecutor for CreateTokenCopyEffect {
             resolved_target_id,
             half_power,
             half_toughness,
+            resolved_base_power_toughness,
             &static_abilities_to_grant,
         )?;
         let replacement = crate::events::processing::process_token_creation_for_token_with_event(
@@ -390,6 +409,7 @@ impl EffectExecutor for CreateTokenCopyEffect {
                 resolved_target_id,
                 half_power,
                 half_toughness,
+                resolved_base_power_toughness,
                 &static_abilities_to_grant,
             )?;
             token.zone = Zone::Command;
@@ -1305,6 +1325,29 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn explicit_starting_loyalty_replaces_copied_loyalty_and_counters() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Copied Walker", alice);
+        let walker = game.object_mut(source).expect("source exists");
+        walker.card_types = vec![CardType::Planeswalker].into();
+        walker.base_loyalty = Some(4);
+        walker.counters.insert(CounterType::Loyalty, 4);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = CreateTokenCopyEffect::one(ChooseSpec::Source)
+            .starting_loyalty(1)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("expected copied token ids");
+        };
+        let token = game.object(ids[0]).expect("token exists");
+        assert_eq!(token.base_loyalty, Some(1));
+        assert_eq!(token.counters.get(&CounterType::Loyalty), Some(&1));
     }
 
     #[test]

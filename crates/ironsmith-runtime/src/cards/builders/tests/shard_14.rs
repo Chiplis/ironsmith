@@ -1817,12 +1817,7 @@ pub(super) fn chandras_regulator_drive_activation<D: crate::decision::DecisionMa
                     })
                     .or_else(|| ctx.options.iter().find(|option| option.legal))
                     .unwrap_or_else(|| panic!("expected a legal activation option, got {ctx:?}"));
-                let description = ctx.description.to_ascii_lowercase();
-                let response = if description.contains("mana payment") {
-                    crate::game_loop::PriorityResponse::ManaPayment(option.index)
-                } else {
-                    crate::game_loop::PriorityResponse::NextCostChoice(option.index)
-                };
+                let response = crate::game_loop::PriorityResponse::NextCostChoice(option.index);
                 crate::game_loop::apply_priority_response_with_dm(
                     game,
                     trigger_queue,
@@ -1832,6 +1827,21 @@ pub(super) fn chandras_regulator_drive_activation<D: crate::decision::DecisionMa
                 )
                 .expect("activation option should apply")
             }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::ManaPayment(ctx),
+            ) => crate::game_loop::apply_priority_response_with_dm(
+                game,
+                trigger_queue,
+                state,
+                &crate::game_loop::PriorityResponse::ManaPaymentPlan(
+                    crate::mana_payment::ManaPaymentResponse::Confirm {
+                        plan_id: ctx.plan.id,
+                        request_hash: ctx.plan.request_hash,
+                    },
+                ),
+                decision_maker,
+            )
+            .expect("activation mana plan should apply"),
             crate::decision::GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectObjects(_),
             ) => crate::game_loop::apply_priority_response_with_dm(
@@ -2655,6 +2665,721 @@ pub(super) fn parse_draw_second_card_each_turn_trigger_is_not_custom() {
             || abilities_debug.contains("draws their second card each turn"),
         "expected nth-card draw trigger matcher, got {abilities_debug}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn trouble_in_pairs_keeps_all_three_shared_opponent_trigger_events() {
+    let oracle = "If an opponent would begin an extra turn, that player skips that turn instead.\nWhenever an opponent attacks you with two or more creatures, draws their second card each turn, or casts their second spell each turn, you draw a card.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Trouble in Pairs")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("Trouble in Pairs should parse both abilities");
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        oracle.lines().collect::<Vec<_>>()
+    );
+    assert!(
+        def.spell_effect.is_none(),
+        "static turn replacement must not lower as a one-shot spell effect"
+    );
+    assert!(def.abilities.iter().any(|ability| matches!(
+        &ability.kind,
+        AbilityKind::Static(static_ability)
+            if static_ability.id() == StaticAbilityId::PlayersSkipExtraTurns
+    )));
+    let any_of = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .trigger
+                .downcast_ref::<crate::triggers::AnyOfTrigger>(),
+            _ => None,
+        })
+        .next()
+        .expect("the second ability should remain a typed event union");
+    assert_eq!(any_of.branches.len(), 3);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn trouble_in_pairs_skips_only_opponent_extra_turns_while_source_is_active() {
+    let oracle = "If an opponent would begin an extra turn, that player skips that turn instead.\nWhenever an opponent attacks you with two or more creatures, draws their second card each turn, or casts their second spell each turn, you draw a card.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Extra-Turn Skip Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("typed extra-turn replacement should parse");
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    game.turn_store.extra_turns.push(bob);
+    game.next_turn();
+    assert_eq!(game.turn.active_player, bob);
+    assert!(
+        !game.turn_store.current_turn_is_extra,
+        "Bob's queued extra turn should be skipped; only his normal turn should begin"
+    );
+
+    game.turn_store.extra_turns.push(alice);
+    game.next_turn();
+    assert_eq!(game.turn.active_player, alice);
+    assert!(
+        game.turn_store.current_turn_is_extra,
+        "the source controller is not their own opponent"
+    );
+
+    game.remove_object(source);
+    game.turn_store.extra_turns.push(bob);
+    game.next_turn();
+    assert_eq!(game.turn.active_player, bob);
+    assert!(
+        game.turn_store.current_turn_is_extra,
+        "removing the static source must restore later opponent extra turns"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn amalia_keeps_its_post_explore_source_power_destruction_gate() {
+    let oracle = "Ward—Pay 3 life.\nWhenever you gain life, Amalia Benavides Aguirre explores. Then destroy all other creatures if its power is exactly 20.";
+    let def = super::shard_16::parse_oracle_card_definition("Amalia Benavides Aguirre");
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        oracle.lines().collect::<Vec<_>>()
+    );
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Amalia should retain her life-gain trigger");
+    assert!(
+        format!("{:#?}", triggered.effects).contains("ConditionalEffect"),
+        "the destroy instruction must remain conditionally executable: {:#?}",
+        triggered.effects
+    );
+    let [explore_segment, destroy_segment] = triggered.effects.segments.as_slice() else {
+        panic!(
+            "the authored explore and trailing destruction must remain separate segments: {:#?}",
+            triggered.effects
+        );
+    };
+    let [explore_root] = explore_segment.default_effects.as_slice() else {
+        panic!("expected one explore effect: {explore_segment:#?}");
+    };
+    let explore_root = explore_root
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| &tagged.effect)
+        .map_or(explore_root, |effect| effect);
+    let explore = explore_root
+        .downcast_ref::<crate::effects::ExploreEffect>()
+        .expect("the first segment must remain an executable explore");
+    assert_eq!(
+        explore.target.source_reference_surface(),
+        Some(&crate::target::SourceReferenceSurface::FullName(
+            "Amalia Benavides Aguirre".to_string()
+        )),
+        "the named source subject must survive public lowering"
+    );
+    let [destroy_root] = destroy_segment.default_effects.as_slice() else {
+        panic!("expected one trailing destruction sequence: {destroy_segment:#?}");
+    };
+    let sequence = destroy_root
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("the trailing sentence should retain its sequence surface");
+    let [conditional_root] = sequence.effects.as_slice() else {
+        panic!("expected one trailing conditional: {sequence:#?}");
+    };
+    let conditional = conditional_root
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("the destruction must remain conditional");
+    let crate::effect::Condition::ValueComparison { right, .. } = &conditional.condition else {
+        panic!("expected a typed power comparison: {conditional:#?}");
+    };
+    assert!(
+        right.has_surface_hint(ironsmith_core::ValueSurfaceHint::ExactComparison),
+        "the authored exact-comparison surface must survive public lowering: {right:#?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn named_explore_equal_to_near_miss_does_not_gain_exactly_surface() {
+    let oracle = "Whenever you gain life, Named Explorer explores. Then destroy all other creatures if its power is equal to 20.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Named Explorer")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("the named source explore near miss should parse");
+
+    assert_eq!(compiled_text_lines(&def), vec![oracle]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn contextual_it_explores_does_not_gain_a_proper_name_surface() {
+    let oracle = "Whenever you gain life, it explores.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Explore Pronoun Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("the contextual explore pronoun should parse");
+
+    assert_eq!(compiled_text_lines(&def), vec![oracle]);
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("the probe should retain its life-gain trigger");
+    let explore = triggered
+        .effects
+        .flattened_default_effects()
+        .into_iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ExploreEffect>())
+        .expect("the probe should retain an executable ExploreEffect");
+    assert_eq!(
+        explore.target.source_reference_surface(),
+        Some(&crate::target::SourceReferenceSurface::ThisPermanentType(
+            "it".to_string()
+        )),
+        "only grammar-proven proper-name subjects may gain a named source surface"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn seraph_links_the_returned_creature_to_its_control_loss_sacrifice() {
+    let oracle = "Flying\nWhenever a creature dealt damage by this creature this turn dies, put that card onto the battlefield under your control at the beginning of the next end step. Sacrifice the creature when you lose control of this creature.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Seraph")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Seraph's delayed return and control-loss sacrifice should parse");
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        oracle.lines().collect::<Vec<_>>()
+    );
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Seraph should retain its dies-after-damage trigger");
+    let debug = format!("{:#?}", triggered.effects);
+    assert!(debug.contains("returned_control_loss"), "{debug}");
+    assert!(debug.contains("SourceControllerLosesControl"), "{debug}");
+    assert!(debug.contains("watch_ability_source: true"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn elephant_resurgence_links_each_created_token_to_its_own_controller_graveyard() {
+    let oracle = "Each player creates a green Elephant creature token. Those creatures have \"This token's power and toughness are each equal to the number of creature cards in its controller's graveyard.\"";
+    let def = parse_oracle_card_definition("Elephant Resurgence");
+
+    assert_eq!(compiled_text_lines(&def), vec![oracle]);
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Elephant Resurgence should retain its spell effect");
+    assert!(
+        program
+            .segments
+            .iter()
+            .all(|segment| segment.self_replacements.is_empty())
+    );
+    let effects = program.flattened_default_effects();
+    let [create_for_players, grant_to_created] = effects else {
+        panic!("expected token creation followed by one set grant: {program:#?}");
+    };
+    let for_players = create_for_players
+        .downcast_ref::<crate::effects::ForPlayersEffect>()
+        .expect("the first effect must create once for each player");
+    assert_eq!(for_players.filter, crate::target::PlayerFilter::Any);
+    let [created_tagged] = for_players.effects.as_slice() else {
+        panic!("expected one tagged create per player: {for_players:#?}");
+    };
+    let created_tagged = created_tagged
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .expect("the created set must retain its correlation tag");
+    let create = created_tagged
+        .effect
+        .downcast_ref::<crate::effects::CreateTokenEffect>()
+        .expect("the per-player effect must create a token");
+    assert!(
+        create.token.abilities.is_empty(),
+        "the later `Those creatures have` grant must not be duplicated into the token blueprint: {create:#?}"
+    );
+
+    let granted_tagged = grant_to_created
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .expect("the set grant should retain its result tag");
+    let grant = granted_tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .expect("the second effect must grant the characteristic ability");
+    assert!(matches!(
+        &grant.modification,
+        Some(crate::continuous::Modification::AddAbility(_))
+    ));
+    assert!(
+        format!("{grant:#?}").contains(created_tagged.tag.as_str()),
+        "the grant must target exactly the tokens created by the first effect: {grant:#?}"
+    );
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Graveyard Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_definition(&creature, alice, Zone::Graveyard);
+    game.create_object_from_definition(&creature, bob, Zone::Graveyard);
+    game.create_object_from_definition(&creature, bob, Zone::Graveyard);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut decisions = crate::decision::AutoPassDecisionMaker;
+    let mut context = crate::effects::ExecutionContext::new(source, alice, &mut decisions);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut context,
+        alice,
+        source,
+        program,
+        None,
+        &[],
+    )
+    .expect("Elephant Resurgence should resolve");
+
+    let elephants = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.kind == crate::object::ObjectKind::Token
+                    && object.subtypes.contains(&Subtype::Elephant)
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(elephants.len(), 2, "{elephants:#?}");
+    for elephant in elephants {
+        let controller = game
+            .controller_of_id(elephant)
+            .expect("Elephant token has a controller");
+        let expected = if controller == alice { 1 } else { 2 };
+        assert_eq!(
+            game.calculated_power(elephant),
+            Some(expected),
+            "each token's CDA must count its own controller's graveyard"
+        );
+        assert_eq!(game.calculated_toughness(elephant), Some(expected));
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn thousand_faced_shadow_keeps_present_attacking_gate_and_entry_sentence() {
+    let oracle = "Ninjutsu {2}{U}{U}\nFlying\nWhen this creature enters from your hand, if it's attacking, create a token that's a copy of another target attacking creature. The token enters tapped and attacking.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Thousand-Faced Shadow")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Thousand-Faced Shadow should parse its attacking token-copy trigger");
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        oracle.lines().collect::<Vec<_>>()
+    );
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("the hand-entry token-copy trigger should remain typed");
+    let debug = format!("{triggered:#?}");
+    assert!(debug.contains("TaggedObjectMatches"), "{debug}");
+    assert!(debug.contains("attacking: true"), "{debug}");
+    assert!(debug.contains("CreateTokenCopyEffect"), "{debug}");
+    assert!(debug.contains("enters_tapped: true"), "{debug}");
+    assert!(debug.contains("enters_attacking: true"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn quantified_opponents_create_tokens_with_rules_scoped_to_each_token_controller() {
+    let oracle = "When this creature enters, each opponent creates a 1/1 red Pirate creature token with \"This token can't block\" and \"Creatures you control attack each combat if able.\"\nSpells your opponents cast that target this creature cost {3} more to cast.";
+    let card_info = oracle_card_info_by_name()
+        .get("Pursued Whale")
+        .expect("Pursued Whale should be present in cards.json");
+    assert_eq!(card_info.oracle_text, oracle);
+    let type_line = card_info
+        .type_line
+        .as_deref()
+        .expect("Pursued Whale should retain its cards.json type line");
+    let parse_input = format!("Type: {type_line}\n{}", card_info.oracle_text);
+    let def = CardDefinitionBuilder::new(CardId::new(), "Pursued Whale")
+        .parse_text(parse_input)
+        .expect("the metadata-backed cards.json payload should parse");
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        oracle.lines().collect::<Vec<_>>()
+    );
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("the enters ability should remain triggered");
+    let effects_debug = format!("{:#?}", triggered.effects);
+    assert!(
+        effects_debug.contains("ForPlayersEffect"),
+        "{effects_debug}"
+    );
+    assert!(
+        effects_debug.contains("CreateTokenEffect"),
+        "{effects_debug}"
+    );
+    assert!(effects_debug.contains("CantBlock"), "{effects_debug}");
+    assert!(effects_debug.contains("MustAttack"), "{effects_debug}");
+    assert!(
+        !effects_debug.contains("MustBlockSpecificAttacker"),
+        "{effects_debug}"
+    );
+
+    let mut game = crate::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let vanilla = CardDefinitionBuilder::new(CardId::new(), "Vanilla Pirate Companion")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let alice_creature = game.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let bob_creature = game.create_object_from_definition(&vanilla, bob, Zone::Battlefield);
+    let charlie_creature = game.create_object_from_definition(&vanilla, charlie, Zone::Battlefield);
+
+    let mut decisions = crate::decision::AutoPassDecisionMaker;
+    let mut context = crate::effects::ExecutionContext::new(source, alice, &mut decisions);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut context,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("the opponent token-creation trigger should resolve");
+
+    let pirate_tokens = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.kind == crate::object::ObjectKind::Token
+                    && object.name == "Pirate"
+                    && object.subtypes.contains(&Subtype::Pirate)
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(pirate_tokens.len(), 2, "{pirate_tokens:#?}");
+    assert_eq!(
+        pirate_tokens
+            .iter()
+            .filter(|id| game.controller_of(game.object(**id).expect("Pirate token exists")) == bob)
+            .count(),
+        1
+    );
+    assert_eq!(
+        pirate_tokens
+            .iter()
+            .filter(|id| {
+                game.controller_of(game.object(**id).expect("Pirate token exists")) == charlie
+            })
+            .count(),
+        1
+    );
+    assert!(pirate_tokens.iter().all(|id| {
+        !crate::rules::combat::can_block(
+            game.object(alice_creature)
+                .expect("Alice's attacking creature exists"),
+            game.object(*id).expect("Pirate token exists"),
+            &game,
+        )
+    }));
+    assert!(crate::rules::combat::must_attack_with_game(
+        game.object(bob_creature).expect("Bob's creature exists"),
+        &game
+    ));
+    assert!(crate::rules::combat::must_attack_with_game(
+        game.object(charlie_creature)
+            .expect("Charlie's creature exists"),
+        &game
+    ));
+    assert!(
+        !crate::rules::combat::must_attack_with_game(
+            game.object(alice_creature)
+                .expect("Alice's creature exists"),
+            &game
+        ),
+        "each quoted grant must remain scoped to the token's own controller"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn each_players_physical_coin_face_controls_only_that_players_sacrifice() {
+    let oracle = "Whenever this creature or another Goblin enters, each player flips a coin. Each player whose coin comes up tails sacrifices a creature of their choice.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Coin Face Correlation Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Goblin, Subtype::Assassin])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(oracle)
+        .expect("the each-player physical coin-face sequence should parse");
+    assert_eq!(compiled_text_lines(&def), vec![oracle]);
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("the Goblin entry trigger should remain typed");
+    let debug = format!("{:#?}", triggered.effects);
+    assert!(debug.contains("FaceOnly"), "{debug}");
+    assert!(debug.contains("DidNotHappen"), "{debug}");
+    assert!(debug.contains("IteratedPlayer"), "{debug}");
+    assert!(debug.contains("per_player_result: true"), "{debug}");
+
+    for (face, expected_alice_creatures, expected_bob_creatures) in [
+        (ironsmith_core::CoinFace::Heads, 2, 1),
+        (ironsmith_core::CoinFace::Tails, 1, 0),
+    ] {
+        let mut program = triggered.effects.clone();
+        let [segment] = program.segments.as_mut_slice() else {
+            panic!("the correlated pair should share one resolution segment");
+        };
+        let flip_result = segment.default_effects[0]
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .expect("the per-player flips should retain a result ID")
+            .clone();
+        let mut flip_players = flip_result
+            .effect
+            .downcast_ref::<crate::effects::ForPlayersEffect>()
+            .expect("the physical flip should execute once per player")
+            .clone();
+        let mut flip = flip_players.effects[0]
+            .downcast_ref::<crate::effects::FlipCoinEffect>()
+            .expect("the player-loop child should be a coin flip")
+            .clone();
+        flip.forced_face = Some(face);
+        flip_players.effects = vec![Effect::new(flip)];
+        segment.default_effects[0] = Effect::with_id(flip_result.id.0, Effect::new(flip_players));
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+        let creature = CardDefinitionBuilder::new(CardId::new(), "Sacrifice Choice Probe")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+
+        let mut decisions = crate::decision::SelectFirstDecisionMaker;
+        let mut context = crate::effects::ExecutionContext::new(source, alice, &mut decisions);
+        crate::game_loop::execute_resolution_program(
+            &mut game,
+            &mut context,
+            alice,
+            source,
+            &program,
+            None,
+            &[],
+        )
+        .expect("the correlated physical flips and sacrifices should resolve");
+
+        let creature_count = |player| {
+            game.objects_in_zone(Zone::Battlefield)
+                .into_iter()
+                .filter(|id| {
+                    game.object(*id).is_some_and(|object| {
+                        game.controller_of(object) == player
+                            && object.card_types.contains(&CardType::Creature)
+                    })
+                })
+                .count()
+        };
+        assert_eq!(creature_count(alice), expected_alice_creatures);
+        assert_eq!(creature_count(bob), expected_bob_creatures);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn shared_target_gain_and_mana_value_pump_use_one_target_until_end_of_turn() {
+    let oracle = "As an additional cost to cast this spell, discard a red or green card.\nTarget creature gains trample and gets +X/+0 until end of turn, where X is that creature's mana value.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Shared Target Strength Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("the colored discard cost and shared-target pump should parse");
+    assert_eq!(
+        compiled_text_lines(&def),
+        oracle.lines().collect::<Vec<_>>()
+    );
+
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("the shared-target strength probe should have a spell program");
+    let debug = format!("{spell:#?}");
+    assert_eq!(debug.matches("until: EndOfTurn").count(), 2, "{debug}");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Four-Mana Target")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        spell,
+        alice,
+        Some(source),
+        None,
+    );
+    assert_eq!(
+        requirements.len(),
+        1,
+        "the gain and pump must reuse one declared target: {requirements:#?}"
+    );
+    let assignments = super::shard_17::target_assignments_for_requirements(
+        &requirements,
+        &[crate::game_state::Target::Object(target)],
+    );
+    let mut decisions = crate::decision::SelectFirstDecisionMaker;
+    let mut context = crate::effects::ExecutionContext::new(source, alice, &mut decisions)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(assignments.clone());
+    context.snapshot_targets(&game);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut context,
+        alice,
+        source,
+        spell,
+        None,
+        &assignments,
+    )
+    .expect("the linked gain and mana-value pump should resolve");
+
+    assert_eq!(game.current_power(target), Some(6));
+    assert!(game.current_has_static_ability_id(target, StaticAbilityId::Trample));
+    assert!(!game.current_has_static_ability_id(source, StaticAbilityId::Trample));
+
+    crate::turn::execute_cleanup_step(&mut game);
+    assert_eq!(game.current_power(target), Some(2));
+    assert!(!game.current_has_static_ability_id(target, StaticAbilityId::Trample));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn mirror_mad_phantasm_keeps_owner_actor_and_revealed_partition_linked() {
+    let oracle = "Flying\n{1}{U}: This creature's owner shuffles it into their library. If that player does, they reveal cards from the top of that library until a card named Mirror-Mad Phantasm is revealed. The player puts that card onto the battlefield and all other cards revealed this way into their graveyard.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mirror-Mad Phantasm")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Mirror-Mad Phantasm should parse its linked owner consult partition");
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        oracle.lines().collect::<Vec<_>>()
+    );
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("the owner-shuffle ability should remain activated");
+    let debug = format!("{:#?}", activated.effects);
+    assert!(debug.contains("ShuffleObjectsIntoLibraryEffect"), "{debug}");
+    assert!(debug.contains("OwnerOf(Target)"), "{debug}");
+    assert!(debug.contains("AliasedOwnerOf(Target)"), "{debug}");
+    assert!(debug.contains("ConsultTopOfLibraryEffect"), "{debug}");
+    assert!(
+        debug.contains("Mirror-Mad Phantasm") || debug.contains("mirror mad phantasm"),
+        "{debug}"
+    );
+    assert!(debug.contains("prior_effect_action: Some"), "{debug}");
+    assert!(debug.contains("Revealed"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn goblin_flotilla_keeps_combat_payment_and_repeating_delayed_trigger() {
+    let oracle = "Islandwalk (This creature can't be blocked as long as defending player controls an Island.)\nAt the beginning of each combat, unless you pay {R}, whenever this creature blocks or becomes blocked by a creature this combat, that creature gains first strike until end of turn.";
+    let def = parse_oracle_card_definition("Goblin Flotilla");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        oracle.lines().collect::<Vec<_>>(),
+        "the typed Islandwalk representation and combat trigger must round-trip exactly: {abilities_debug}"
+    );
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("the beginning-of-combat trigger should remain typed");
+    let debug = format!("{triggered:#?}");
+    assert!(debug.contains("BeginningOfCombatTrigger"), "{debug}");
+    assert!(debug.contains("UnlessPaysEffect"), "{debug}");
+    assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
+    assert!(debug.contains("until_end_of_combat: true"), "{debug}");
+    assert!(debug.contains("one_shot: false"), "{debug}");
+    assert!(debug.contains("ThisBlocksObjectTrigger"), "{debug}");
+    assert!(
+        debug.contains("ThisBecomesBlockedByObjectTrigger"),
+        "{debug}"
+    );
+    assert!(debug.contains("TagOtherBlockParticipantEffect"), "{debug}");
+    assert!(debug.contains("FirstStrike"), "{debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3502,4 +4227,39 @@ pub(super) fn parse_return_target_of_creature_type_of_choice_uses_shared_choice_
         !spell_debug.contains("chosen_creature_type_ref"),
         "expected no tagged-creature scaffolding after cleanup, got {spell_debug}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn attachment_color_choice_keeps_authored_subject_and_last_choice_reference() {
+    let text = "As this Equipment becomes attached to a creature, choose a color.\nEquipped creature gets +2/+0 and has protection from the last chosen color.\nEquip {3}";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attachment Color Choice Probe")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(text)
+        .expect("attachment color choice should parse");
+
+    assert!(def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::ChooseColorAsBecomesAttached
+        )
+    }));
+    assert_eq!(compiled_text_lines(&def), text.lines().collect::<Vec<_>>());
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn destroy_then_source_combat_assignment_keeps_both_actions() {
+    let text = "Whenever this creature attacks and isn't blocked, you may pay {R}. If you do, destroy target artifact defending player controls and this creature assigns no combat damage this turn.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Combat Damage Bargain Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(text)
+        .expect("conditional destroy and combat assignment should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(debug.matches("DestroyEffect").count(), 1, "{debug}");
+    assert!(debug.contains("AssignNoCombatDamageEffect"), "{debug}");
+    assert_eq!(compiled_text_lines(&def), vec![text]);
 }

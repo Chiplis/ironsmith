@@ -695,6 +695,65 @@ impl StaticAbilityKind for AddCountersPlacementReplacement {
     }
 }
 
+/// Replacement for "if you would get one or more [kind] counters ... you
+/// can't get additional [kind] counters this turn." The allowance is scoped
+/// to the affected player and resets with turn history.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerCounterPerTurnLimitReplacement {
+    pub player_filter: PlayerFilter,
+    pub counter_type: CounterType,
+    pub maximum: u32,
+    pub display: String,
+}
+
+impl PlayerCounterPerTurnLimitReplacement {
+    pub fn new(
+        player_filter: PlayerFilter,
+        counter_type: CounterType,
+        maximum: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            player_filter,
+            counter_type,
+            maximum,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for PlayerCounterPerTurnLimitReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PlayerCounterPerTurnLimitReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldPutCountersOrEnterWithCountersMatcher {
+                ability_source: source,
+                controller,
+                filter: ObjectFilter::default(),
+                player_filter: Some(self.player_filter.clone()),
+                counter_type: Some(self.counter_type),
+            },
+            ReplacementAction::SetPlayerCountersAndLockForTurn {
+                counter_type: self.counter_type,
+                amount: self.maximum,
+            },
+        ))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoubleTokenCreationReplacement {
     pub controller: PlayerFilter,
@@ -1947,6 +2006,7 @@ impl StaticAbilityKind for DrawReplacementRevealTopMatchingToHandRestBottom {
 pub struct KeywordActionReplacement {
     pub action: crate::events::KeywordActionKind,
     pub source_filter: ObjectFilter,
+    pub performer_filter: Option<PlayerFilter>,
     pub replacement_effects: Vec<Effect>,
     pub display: String,
 }
@@ -1955,12 +2015,14 @@ impl KeywordActionReplacement {
     pub fn new(
         action: crate::events::KeywordActionKind,
         source_filter: ObjectFilter,
+        performer_filter: Option<PlayerFilter>,
         replacement_effects: Vec<Effect>,
         display: impl Into<String>,
     ) -> Self {
         Self {
             action,
             source_filter,
+            performer_filter,
             replacement_effects,
             display: display.into(),
         }
@@ -1987,7 +2049,8 @@ impl StaticAbilityKind for KeywordActionReplacement {
             crate::events::other::WouldKeywordActionMatcher::new(
                 self.action,
                 self.source_filter.clone(),
-            ),
+            )
+            .with_performer_filter(self.performer_filter.clone()),
             ReplacementAction::Instead(self.replacement_effects.clone()),
         ))
     }
@@ -2425,6 +2488,65 @@ impl StaticAbilityKind for DiscardOrRedirectReplacement {
             ThisWouldEnterBattlefieldMatcher,
             ReplacementAction::InteractiveDiscardOrRedirect {
                 filter: self.filter.clone(),
+                redirect_zone: self.redirect_zone,
+            },
+        ))
+    }
+}
+
+/// "Sacrifice [count] permanents matching [filter], or put this into [zone]."
+///
+/// Used by the family of lands whose entry is replaced by sacrificing
+/// untapped lands (Scorched Ruins, Lotus Vale, and related cards).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SacrificeOrRedirectReplacement {
+    pub filter: ObjectFilter,
+    pub count: u32,
+    pub redirect_zone: Zone,
+}
+
+impl SacrificeOrRedirectReplacement {
+    pub fn new(filter: ObjectFilter, count: u32, redirect_zone: Zone) -> Self {
+        Self {
+            filter,
+            count,
+            redirect_zone,
+        }
+    }
+}
+
+impl StaticAbilityKind for SacrificeOrRedirectReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SacrificeOrRedirectReplacement
+    }
+
+    fn display(&self) -> String {
+        let count =
+            ironsmith_core::cardinal_word(self.count).unwrap_or_else(|| self.count.to_string());
+        let sacrifice_subject = if self.count == 1 {
+            self.filter.description()
+        } else {
+            pluralize_filter_description(&self.filter.description())
+        };
+        let redirect_phrase = describe_redirect_zone_phrase(self.redirect_zone);
+        format!(
+            "If this land would enter, sacrifice {} {} instead. If you do, put this land onto the battlefield. If you don't, put it into {}.",
+            count, sacrifice_subject, redirect_phrase
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            ThisWouldEnterBattlefieldMatcher,
+            ReplacementAction::InteractiveSacrificeOrRedirect {
+                filter: self.filter.clone(),
+                count: self.count,
                 redirect_zone: self.redirect_zone,
             },
         ))
@@ -2899,6 +3021,20 @@ impl StaticAbilityKind for KeywordMarker {
     }
 
     fn display(&self) -> String {
+        const MORE_THAN_MEETS_THE_EYE: &str = "more than meets the eye";
+        let trimmed = self.marker.trim();
+        if let Some(prefix) = trimmed.get(..MORE_THAN_MEETS_THE_EYE.len())
+            && prefix.eq_ignore_ascii_case(MORE_THAN_MEETS_THE_EYE)
+            && trimmed[MORE_THAN_MEETS_THE_EYE.len()..]
+                .chars()
+                .next()
+                .is_none_or(char::is_whitespace)
+        {
+            return format!(
+                "More Than Meets the Eye{}",
+                &trimmed[MORE_THAN_MEETS_THE_EYE.len()..]
+            );
+        }
         self.marker.clone()
     }
 }

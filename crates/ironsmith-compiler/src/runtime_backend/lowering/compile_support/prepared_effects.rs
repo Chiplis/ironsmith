@@ -4,6 +4,9 @@ use crate::cards::builders::{
 };
 use crate::effect::{ChoiceCount, Condition, Effect, EffectPredicate, SearchSelectionMode, Value};
 use crate::filter::ObjectRef;
+use crate::runtime_backend::effect_ast_traversal::{
+    for_each_nested_effects, for_each_nested_effects_mut,
+};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 
 use super::{
@@ -40,7 +43,8 @@ pub(crate) fn compile_statement_effects_with_imports(
 pub(crate) fn materialize_prepared_statement_effects(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
-    if let Some(lowered) = materialize_trailing_self_replacement(prepared)? {
+    if let Some(mut lowered) = materialize_trailing_self_replacement(prepared)? {
+        dedupe_adjacent_target_only_effects(&mut lowered);
         return Ok(lowered);
     }
 
@@ -49,23 +53,27 @@ pub(crate) fn materialize_prepared_statement_effects(
     ctx.apply_reference_env(&prepared.initial_env);
     if let Some((effects, choices)) = materialize_source_sentence_segments(prepared, &mut ctx)? {
         let final_env = ctx.reference_env();
-        return Ok(LoweredEffects {
+        let mut lowered = LoweredEffects {
             effects,
             choices,
             exports: ReferenceExports::from_env(&final_env),
-        });
+        };
+        dedupe_adjacent_target_only_effects(&mut lowered);
+        return Ok(lowered);
     }
     let (compiled, _) = compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
     let compiled = normalize_compiled_effects(compiled);
     let final_env = ctx.reference_env();
-    Ok(LoweredEffects {
+    let mut lowered = LoweredEffects {
         effects: crate::resolution::ResolutionProgram::from_effects(prepend_effect_prelude(
             compiled,
             compile_effect_prelude_tags(&prepared.prelude),
         )),
         choices: Vec::new(),
         exports: ReferenceExports::from_env(&final_env),
-    })
+    };
+    dedupe_adjacent_target_only_effects(&mut lowered);
+    Ok(lowered)
 }
 
 pub(crate) fn materialize_prepared_effects_with_trigger_context(
@@ -509,7 +517,7 @@ fn fold_cross_segment_counter_rewrites(segments: &mut Vec<crate::resolution::Res
         if !matches!(&replacement.target, ChooseSpec::Tagged(tag) if tag == producer_tag)
             || replacement.from_zone != Some(crate::zone::Zone::Stack)
             || replacement.to_zone != Some(crate::zone::Zone::Graveyard)
-            || replacement.mode != crate::effects::ReplacementApplyMode::OneShot
+            || replacement.mode != crate::effects::ReplacementApplyMode::UntilEndOfTurn
             || replacement.optional
             || replacement.choice_description.is_some()
             || !replacement.counters.is_empty()
@@ -1172,6 +1180,83 @@ fn target_has_explicit_declaration_span(target: &TargetAst) -> bool {
     }
 }
 
+fn primary_put_counters_target(effects: &[EffectAst]) -> Option<TargetAst> {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::PutCounters { target, .. } = &subject_verb.action
+        {
+            return Some(target.clone());
+        }
+        let mut nested_target = None;
+        for_each_nested_effects(effect, true, |nested| {
+            if nested_target.is_none() {
+                nested_target = primary_put_counters_target(nested);
+            }
+        });
+        if nested_target.is_some() {
+            return nested_target;
+        }
+    }
+    None
+}
+
+fn primary_double_counters_target(effects: &[EffectAst]) -> Option<TargetAst> {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::DoubleCountersOnTarget { target, .. } =
+                &subject_verb.action
+        {
+            return Some(target.clone());
+        }
+        let mut nested_target = None;
+        for_each_nested_effects(effect, true, |nested| {
+            if nested_target.is_none() {
+                nested_target = primary_double_counters_target(nested);
+            }
+        });
+        if nested_target.is_some() {
+            return nested_target;
+        }
+    }
+    None
+}
+
+/// A counter self-replacement can refer to the default action's target from a
+/// condition that does not itself mention that target (for example, an
+/// ability-resolution count). In that case ordinary reference preparation
+/// has no reason to expose a TargetOnly prelude. Identical declaration spans
+/// prove the replacement target was copied from the default action rather
+/// than authored as a second equal-looking target.
+fn shared_counter_self_replacement_target(
+    if_false: &[EffectAst],
+    if_true: &[EffectAst],
+) -> Option<TargetAst> {
+    let default_target = primary_put_counters_target(if_false)?;
+    let replacement_target = primary_double_counters_target(if_true)?;
+    (target_has_explicit_declaration_span(&default_target) && default_target == replacement_target)
+        .then_some(default_target)
+}
+
+fn bind_shared_counter_target_to_it(effects: &mut [EffectAst], shared_target: &TargetAst) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(subject_verb) = effect {
+            let counter_target = match &mut subject_verb.action {
+                SubjectVerbActionAst::PutCounters { target, .. }
+                | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. } => Some(target),
+                _ => None,
+            };
+            if let Some(target) = counter_target
+                && target == shared_target
+            {
+                *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+            }
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            bind_shared_counter_target_to_it(nested, shared_target);
+        });
+    }
+}
+
 /// A self-replacement may repeat an earlier target anaphorically ("that
 /// artifact") even though both branch actions carry a concrete `TargetAst`
 /// after parsing. `replace_it_target_in_effects` deliberately copies the
@@ -1222,6 +1307,17 @@ fn materialize_trailing_self_replacement(
             .iter()
             .all(|effect| !matches!(effect, EffectAst::SelfReplacement { .. }))
     {
+        let shared_counter_target = shared_counter_self_replacement_target(if_false, if_true);
+        let mut effective_if_false = if_false.to_vec();
+        let mut effective_if_true = if_true.to_vec();
+        if let Some(target) = shared_counter_target.as_ref() {
+            bind_shared_counter_target_to_it(&mut effective_if_false, target);
+            bind_shared_counter_target_to_it(&mut effective_if_true, target);
+            effective_if_false.insert(
+                0,
+                EffectAst::subject_verb_explicit_target_only(target.clone()),
+            );
+        }
         let prefix_lowered =
             compile_statement_effects_with_imports(prefix_effects, &prepared.imports)?;
         let mut condition_env = if prefix_effects.is_empty() {
@@ -1237,18 +1333,19 @@ fn materialize_trailing_self_replacement(
         // (for example, "target player's library ... instead ... that
         // player's library").
         let branch_imports = ReferenceExports::from_env(&condition_env).to_imports();
-        let default_lowered = compile_statement_effects_with_imports(if_false, &branch_imports)?;
-        let shared_target_prelude =
-            self_replacement_branches_share_explicit_target(if_false, if_true)
-                .then(|| {
-                    default_lowered
-                        .effects
-                        .flattened_default_effects()
-                        .first()
-                        .and_then(tagged_target_only)
-                        .map(|(tag, target)| (tag.clone(), target.clone()))
-                })
-                .flatten();
+        let default_lowered =
+            compile_statement_effects_with_imports(&effective_if_false, &branch_imports)?;
+        let shared_target_prelude = (shared_counter_target.is_some()
+            || self_replacement_branches_share_explicit_target(if_false, if_true))
+        .then(|| {
+            default_lowered
+                .effects
+                .flattened_default_effects()
+                .first()
+                .and_then(tagged_target_only)
+                .map(|(tag, target)| (tag.clone(), target.clone()))
+        })
+        .flatten();
         let mut replacement_imports = branch_imports.clone();
         if let Some((tag, _)) = shared_target_prelude.as_ref() {
             // The declaration is an unconditional prelude of the default arm,
@@ -1260,7 +1357,7 @@ fn materialize_trailing_self_replacement(
                 default_lowered.exports.last_it_choice_is_set;
         }
         let replacement_lowered =
-            compile_statement_effects_with_imports(if_true, &replacement_imports)?;
+            compile_statement_effects_with_imports(&effective_if_true, &replacement_imports)?;
         let mut default_effects = prefix_lowered.effects.flattened_default_effects().to_vec();
         default_effects.extend(default_lowered.effects.flattened_default_effects().to_vec());
         let implicit_condition_tag = if condition_env.known_last_object_tag().is_none()
@@ -1273,6 +1370,9 @@ fn materialize_trailing_self_replacement(
         let has_default_action_target = default_effects.iter().rev().any(|effect| {
             crate::runtime_backend::lower::extract_previous_replacement_target(effect).is_some()
         });
+        let has_resolution_target = default_effects
+            .iter()
+            .any(|effect| effect.target_spec().is_some());
         if condition_env.known_last_object_tag().is_none()
             && implicit_condition_tag.is_none()
             && predicate_uses_implicit_object_reference(predicate)
@@ -1281,9 +1381,19 @@ fn materialize_trailing_self_replacement(
             condition_env.source_object_antecedent = true;
         }
         let condition_imports = ReferenceExports::from_env(&condition_env).to_imports();
-        let condition_tag = implicit_condition_tag
-            .as_ref()
-            .or(condition_imports.last_object_tag.as_ref());
+        // `TargetMatches` is the parser's explicit marker that a conditional
+        // self-replacement tests the target shared by both branches. A
+        // triggered ability may also seed `last_object_tag` with its trigger
+        // subject; allowing that ambient tag to win here makes "that
+        // creature" test the attacker rather than the declared copy source.
+        let condition_tag =
+            if has_resolution_target && matches!(predicate, PredicateAst::TargetMatches(_)) {
+                None
+            } else {
+                implicit_condition_tag
+                    .as_ref()
+                    .or(condition_imports.last_object_tag.as_ref())
+            };
         let condition = compile_condition_from_predicate_ast_with_env(
             predicate,
             &condition_env,
@@ -1485,6 +1595,70 @@ fn retarget_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, cond
 }
 
 fn dedupe_adjacent_target_only_effects(lowered: &mut LoweredEffects) {
+    fn same_target_domain(left: &ChooseSpec, right: &ChooseSpec) -> bool {
+        if left == right {
+            return true;
+        }
+        matches!(
+            (left, right),
+            (plain, ChooseSpec::WithCount(counted, _))
+                | (ChooseSpec::WithCount(counted, _), plain)
+                if counted.as_ref() == plain
+        )
+    }
+
+    fn dedupe_synthetic_targets_in_sequence(effect: &Effect) -> Effect {
+        let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() else {
+            return effect.clone();
+        };
+        let synthetic_targets = sequence
+            .effects
+            .iter()
+            .filter_map(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                    .filter(|target| !target.explicit_declaration)
+            })
+            .collect::<Vec<_>>();
+        let Some(first) = synthetic_targets.first() else {
+            return effect.clone();
+        };
+        if synthetic_targets.len() < 2
+            || synthetic_targets
+                .iter()
+                .any(|target| target.target != first.target || target.chooser != first.chooser)
+        {
+            return effect.clone();
+        }
+        let mut retained_target = false;
+        let mut rewritten = sequence.clone();
+        rewritten.effects.retain(|effect| {
+            let Some(target) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() else {
+                return true;
+            };
+            if target.explicit_declaration
+                || target.target != first.target
+                || target.chooser != first.chooser
+            {
+                return true;
+            }
+            if retained_target {
+                false
+            } else {
+                retained_target = true;
+                true
+            }
+        });
+        Effect::new(rewritten)
+    }
+
+    for segment in &mut lowered.effects.segments {
+        for effect in &mut segment.default_effects {
+            *effect = dedupe_synthetic_targets_in_sequence(effect);
+        }
+    }
+    lowered.effects = crate::resolution::ResolutionProgram::new(lowered.effects.segments.clone());
+
     let flattened = lowered.effects.flattened_default_effects();
     if flattened.len() < 2 {
         return;
@@ -1495,7 +1669,7 @@ fn dedupe_adjacent_target_only_effects(lowered: &mut LoweredEffects) {
         let duplicate_target_only = rewritten.last().and_then(|previous: &Effect| {
             let previous_target = previous.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
             let current_target = effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-            (previous_target.target == current_target.target).then_some((
+            same_target_domain(&previous_target.target, &current_target.target).then_some((
                 previous_target.explicit_declaration,
                 current_target.explicit_declaration,
             ))
@@ -2277,8 +2451,14 @@ pub(crate) fn compile_effect_prelude_tags(prelude: &[EffectPreludeTag]) -> Vec<E
         .map(|tag| match tag {
             EffectPreludeTag::AttachedSource(tag) => Effect::tag_attached_to_source(tag.as_str()),
             EffectPreludeTag::TriggeringObject(tag) => Effect::tag_triggering_object(tag.as_str()),
+            EffectPreludeTag::TriggeringAttacker(tag, filter) => {
+                Effect::tag_triggering_attacker(tag.as_str(), Some(filter.clone()))
+            }
             EffectPreludeTag::TriggeringBlockers(tag, filter) => {
                 Effect::tag_triggering_blockers(tag.as_str(), Some(filter.clone()))
+            }
+            EffectPreludeTag::OtherBlockParticipant(tag, filter) => {
+                Effect::tag_other_block_participant(tag.as_str(), Some(filter.clone()))
             }
             EffectPreludeTag::TriggeringSource(tag) => Effect::tag_triggering_source(tag.as_str()),
             EffectPreludeTag::TriggeringDamageTarget(tag) => {

@@ -64,6 +64,10 @@ pub(crate) enum StaticRestrictionConditionShape {
         condition: ActivationWordSpan,
         remainder_first: usize,
     },
+    ExtraTurn {
+        remainder_first: usize,
+        remainder_end: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,11 +204,13 @@ pub(crate) fn parse_static_restriction_condition_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticRestrictionConditionShape> {
     for parser in [
+        parse_during_extra_turns_prefix_lexed,
         parse_during_your_turn_prefix_lexed,
         parse_if_condition_prefix_lexed,
         parse_during_combat_prefix_lexed,
         parse_during_your_turn_suffix_lexed,
         parse_during_combat_suffix_lexed,
+        parse_during_extra_turns_suffix_lexed,
         parse_as_long_as_condition_prefix_lexed,
     ] {
         if let Ok(shape) = primitives::parse_all(tokens, parser, "static-restriction-condition") {
@@ -212,6 +218,22 @@ pub(crate) fn parse_static_restriction_condition_shape_tokens(
         }
     }
     None
+}
+
+fn parse_during_extra_turns_prefix_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<StaticRestrictionConditionShape> {
+    let initial_len = input.len();
+    primitives::phrase(&["during", "extra", "turns"]).parse_next(input)?;
+    while input.peek_token().is_some_and(|token| token.is_comma()) {
+        any.parse_next(input)?;
+    }
+    let remainder_first = initial_len.saturating_sub(input.len());
+    let _: Vec<&OwnedLexToken> = winnow::combinator::repeat(0.., any).parse_next(input)?;
+    Ok(StaticRestrictionConditionShape::ExtraTurn {
+        remainder_first,
+        remainder_end: initial_len,
+    })
 }
 
 pub(crate) fn parse_source_attached_to_creature_condition_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -383,6 +405,35 @@ fn parse_during_combat_suffix_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<StaticRestrictionConditionShape> {
     parse_timing_suffix_lexed(input, &["during", "combat"], ActivationTiming::DuringCombat)
+}
+
+fn parse_during_extra_turns_suffix_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<StaticRestrictionConditionShape> {
+    let initial_len = input.len();
+    loop {
+        let remainder_end = initial_len.saturating_sub(input.len());
+        let mut suffix = input.clone();
+        if primitives::phrase(&["during", "extra", "turns"])
+            .parse_next(&mut suffix)
+            .is_ok()
+        {
+            while suffix
+                .peek_token()
+                .is_some_and(|token| token.is_comma() || token.is_period())
+            {
+                any.parse_next(&mut suffix)?;
+            }
+            if suffix.peek_token().is_none() {
+                *input = suffix;
+                return Ok(StaticRestrictionConditionShape::ExtraTurn {
+                    remainder_first: 0,
+                    remainder_end,
+                });
+            }
+        }
+        any.parse_next(input)?;
+    }
 }
 
 fn parse_timing_suffix_lexed<'a>(

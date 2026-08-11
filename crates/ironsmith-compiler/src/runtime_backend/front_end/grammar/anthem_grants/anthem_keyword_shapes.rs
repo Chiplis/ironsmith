@@ -48,6 +48,7 @@ pub(crate) struct AnthemKeywordCompoundSplit {
 pub(crate) struct AnthemKeywordTrailingCondition<'a> {
     pub(crate) ability_tokens: &'a [OwnedLexToken],
     pub(crate) condition_tokens: &'a [OwnedLexToken],
+    pub(crate) trailing_if_surface: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,10 +215,15 @@ pub(crate) fn split_anthem_keyword_trailing_condition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AnthemKeywordTrailingCondition<'_>>, AnthemKeywordTrailingConditionError> {
     let tokens = trim_edge_punctuation(tokens);
-    let Some((as_token, condition_start)) = first_phrase(tokens, parse_as_long_as) else {
-        return Ok(None);
-    };
-    let ability_tokens = trim_edge_punctuation(&tokens[..as_token]);
+    let (marker_token, condition_start, trailing_if_surface) =
+        if let Some((marker_token, condition_start)) = first_phrase(tokens, parse_as_long_as) {
+            (marker_token, condition_start, false)
+        } else if let Some((marker_token, condition_start)) = first_phrase(tokens, parse_if_word) {
+            (marker_token, condition_start, true)
+        } else {
+            return Ok(None);
+        };
+    let ability_tokens = trim_edge_punctuation(&tokens[..marker_token]);
     if ability_tokens.is_empty() {
         return Err(AnthemKeywordTrailingConditionError::MissingAbility);
     }
@@ -228,6 +234,7 @@ pub(crate) fn split_anthem_keyword_trailing_condition(
     Ok(Some(AnthemKeywordTrailingCondition {
         ability_tokens,
         condition_tokens,
+        trailing_if_surface,
     }))
 }
 
@@ -441,6 +448,10 @@ fn parse_is_word(input: &mut LexStream<'_>) -> WResult<()> {
     primitives::kw("is").void().parse_next(input)
 }
 
+fn parse_if_word(input: &mut LexStream<'_>) -> WResult<()> {
+    primitives::kw("if").void().parse_next(input)
+}
+
 fn parse_as_long_as(input: &mut LexStream<'_>) -> WResult<()> {
     primitives::phrase(&["as", "long", "as"])
         .void()
@@ -533,6 +544,30 @@ mod tests {
             .unwrap();
         assert_eq!(split.ability_tokens.len(), 1);
         assert!(!split.condition_tokens.is_empty());
+        assert!(!split.trailing_if_surface);
+
+        let tokens = lex_line(
+            "split second if mana from an artifact was spent to cast it",
+            0,
+        )
+        .unwrap();
+        let split = split_anthem_keyword_trailing_condition(&tokens)
+            .unwrap()
+            .unwrap();
+        assert_eq!(split.ability_tokens.len(), 2);
+        assert!(split.trailing_if_surface);
+        assert_eq!(
+            crate::runtime_backend::lexer::parser_token_word_refs(split.condition_tokens),
+            [
+                "mana", "from", "an", "artifact", "was", "spent", "to", "cast", "it"
+            ]
+        );
+
+        let tokens = lex_line("if mana from an artifact was spent", 0).unwrap();
+        assert_eq!(
+            split_anthem_keyword_trailing_condition(&tokens),
+            Err(AnthemKeywordTrailingConditionError::MissingAbility)
+        );
 
         let tokens = lex_line("flying and is red", 0).unwrap();
         assert!(split_anthem_keyword_and_is(&tokens).is_some());

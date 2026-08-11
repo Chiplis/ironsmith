@@ -1102,6 +1102,95 @@ fn modal_modes_with_different_spells_cast_values_do_not_invent_shared_x() {
 }
 
 #[test]
+fn modal_common_return_suffix_renders_once_before_target_modes() {
+    let return_mode = |card_type, source_text| {
+        let mut filter = ObjectFilter::default();
+        filter.zone = Some(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+        filter.card_types = vec![card_type];
+        filter.set_explicit_card_noun(true);
+        let returned = crate::effects::ReturnFromGraveyardToHandEffect::new(
+            ChooseSpec::target(ChooseSpec::Object(filter)),
+            false,
+        )
+        .with_graveyard_player_surface(PlayerFilter::You)
+        .with_destination_player_surface(PlayerFilter::You);
+        ironsmith_core::EffectMode::new(source_text, vec![Effect::new(returned)])
+    };
+    let choose = ironsmith_core::ChooseModeEffect::choose_up_to(
+        2,
+        0,
+        vec![
+            return_mode(CardType::Artifact, "Target artifact card."),
+            return_mode(CardType::Creature, "Target creature card."),
+            return_mode(CardType::Enchantment, "Target enchantment card."),
+            return_mode(CardType::Land, "Target land card."),
+        ],
+    )
+    .with_common_suffix_effect_count(1);
+
+    assert_eq!(
+        describe_effect(&Effect::new(choose)),
+        "Choose up to two. Return those cards from your graveyard to your hand.\n\
+• Target artifact card.\n\
+• Target creature card.\n\
+• Target enchantment card.\n\
+• Target land card."
+    );
+}
+
+#[test]
+fn repeated_modal_choices_keep_each_mode_on_a_bullet_line() {
+    let choose = ironsmith_core::ChooseModeEffect::choose_exactly(
+        Value::Fixed(4),
+        vec![
+            ironsmith_core::EffectMode::new("Draw a card.", vec![Effect::draw(Value::Fixed(1))]),
+            ironsmith_core::EffectMode::new(
+                "You gain 1 life.",
+                vec![Effect::gain_life(Value::Fixed(1))],
+            ),
+        ],
+    )
+    .with_repeated_modes();
+
+    assert_eq!(
+        describe_effect(&Effect::new(choose)),
+        "Choose four. You may choose the same mode more than once.\n\
+         • Draw a card.\n\
+         • You gain 1 life."
+    );
+}
+
+#[test]
+fn modal_common_prefix_renders_once_in_the_header() {
+    let choose = ironsmith_core::ChooseModeEffect::choose_one(vec![
+        ironsmith_core::EffectMode::new("Draw a card.", vec![Effect::draw(Value::Fixed(1))]),
+        ironsmith_core::EffectMode::new(
+            "You gain 1 life.",
+            vec![Effect::gain_life(Value::Fixed(1))],
+        ),
+    ])
+    .with_common_prefix_effects(vec![Effect::gain_life(Value::Fixed(3))]);
+
+    assert_eq!(
+        describe_effect(&Effect::new(choose)),
+        "Choose one and you gain 3 life.\n• Draw a card.\n• You gain 1 life."
+    );
+
+    let ordinary = ironsmith_core::ChooseModeEffect::choose_one(vec![
+        ironsmith_core::EffectMode::new("Draw a card.", vec![Effect::draw(Value::Fixed(1))]),
+        ironsmith_core::EffectMode::new(
+            "You gain 1 life.",
+            vec![Effect::gain_life(Value::Fixed(1))],
+        ),
+    ]);
+    assert_eq!(
+        describe_effect(&Effect::new(ordinary)),
+        "Choose one —\n• Draw a card.\n• You gain 1 life."
+    );
+}
+
+#[test]
 fn inline_named_token_creation_choice_renders_as_authored_or_instruction() {
     let named_artifact_token = |name, subtype| {
         crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)

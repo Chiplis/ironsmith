@@ -181,6 +181,7 @@ pub(crate) enum MetadataLineKind {
     ManaCost,
     TypeLine,
     FirstPrintedSet,
+    AttractionLights,
     PowerToughness,
     Loyalty,
     Defense,
@@ -301,6 +302,13 @@ pub(crate) fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<Meta
                 tokens,
                 &["first", "printed", "set"],
                 MetadataLineKind::FirstPrintedSet,
+            )
+        })
+        .or_else(|| {
+            match_metadata_prefix(
+                tokens,
+                &["attraction", "lights"],
+                MetadataLineKind::AttractionLights,
             )
         })
         .or_else(|| {
@@ -690,6 +698,36 @@ fn contains_characteristic_equal_to_shape(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    fn life_relation_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+        use crate::runtime_backend::grammar::conditions::PlayerLifeRelationAst;
+
+        let relation =
+            crate::runtime_backend::grammar::conditions::parse_player_life_relation_condition(
+                tokens,
+            )?;
+        let player = match relation.player {
+            PlayerFilter::You => PlayerAst::You,
+            PlayerFilter::Opponent => PlayerAst::Opponent,
+            PlayerFilter::Any => PlayerAst::Any,
+            PlayerFilter::IteratedPlayer => PlayerAst::That,
+            _ => return None,
+        };
+        match relation.relation {
+            PlayerLifeRelationAst::HasMoreLifeThanYou => {
+                Some(PredicateAst::PlayerHasMoreLifeThanYou { player })
+            }
+            PlayerLifeRelationAst::HasLessLifeThanYou => {
+                Some(PredicateAst::PlayerHasLessLifeThanYou { player })
+            }
+            PlayerLifeRelationAst::HasNoOpponentWithMoreLifeThan => {
+                Some(PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player })
+            }
+            PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer => {
+                Some(PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player })
+            }
+        }
+    }
+
     // Intervening-if clauses may list several complete predicates separated by
     // commas, with the final item introduced by "and". Preserve those clauses
     // as one conjunction instead of parsing only the final predicate fragment.
@@ -712,7 +750,9 @@ fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         parts.push(tail);
     }
     if parts.len() < 2 {
-        return parse_predicate_with_grammar_entrypoint_lexed(tokens).ok();
+        return parse_predicate_with_grammar_entrypoint_lexed(tokens)
+            .ok()
+            .or_else(|| life_relation_predicate(tokens));
     }
 
     let mut predicates = Vec::with_capacity(parts.len());
@@ -724,7 +764,9 @@ fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
             part = trim_lexed_commas(&part[1..]);
         }
         let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(&part) else {
-            return parse_predicate_with_grammar_entrypoint_lexed(tokens).ok();
+            return parse_predicate_with_grammar_entrypoint_lexed(tokens)
+                .ok()
+                .or_else(|| life_relation_predicate(tokens));
         };
         predicates.push(predicate);
     }
@@ -988,6 +1030,33 @@ pub(crate) fn split_leading_result_prefix_lexed<'a>(
         predicate,
         trailing_tokens,
     })
+}
+
+#[cfg(test)]
+mod leading_result_prefix_regressions {
+    use super::*;
+
+    #[test]
+    fn ordinary_control_condition_is_not_a_prior_result_prefix() {
+        let ordinary = crate::runtime_backend::lexer::lex_line(
+            "If you don't control a Human, you lose life equal to that creature's toughness.",
+            0,
+        )
+        .expect("lex ordinary state condition");
+        assert!(split_leading_result_prefix_lexed(&ordinary).is_none());
+
+        let prior_result =
+            crate::runtime_backend::lexer::lex_line("If you don't, you lose 3 life.", 0)
+                .expect("lex prior-result condition");
+        assert!(matches!(
+            split_leading_result_prefix_lexed(&prior_result),
+            Some(LeadingResultPrefixSpec {
+                kind: LeadingResultPrefixKind::If,
+                predicate: IfResultPredicate::DidNot,
+                ..
+            })
+        ));
+    }
 }
 
 fn split_leading_numeric_result_prefix_lexed<'a>(
@@ -1454,6 +1523,28 @@ pub(crate) fn parse_conditional_predicate_tail_lexed(
         return None;
     }
 
+    // A repeated conditional introducer joins peer predicates rather than
+    // nesting the second gate around the first one. Keeping this boundary
+    // explicit is especially important when the left predicate refers to the
+    // chosen target ("it's a creature") and the right predicate refers to
+    // how the spell was cast.
+    if let Some(or_idx) = (0..trimmed.len().saturating_sub(1)).find(|idx| {
+        structure_token_is(&trimmed[*idx], "or") && structure_token_is(&trimmed[*idx + 1], "if")
+    }) {
+        let left_tokens = trim_lexed_commas(&trimmed[..or_idx]);
+        let right_tokens = trim_lexed_commas(&trimmed[or_idx + 2..]);
+        if !left_tokens.is_empty()
+            && !right_tokens.is_empty()
+            && let Ok(left) = parse_predicate_with_grammar_entrypoint_lexed(left_tokens)
+            && let Ok(right) = parse_predicate_with_grammar_entrypoint_lexed(right_tokens)
+        {
+            return Some(ConditionalPredicateTailSpec::Plain(PredicateAst::Or(
+                Box::new(left),
+                Box::new(right),
+            )));
+        }
+    }
+
     let mut instead_if_idx = None;
     let mut idx = 0usize;
     while idx < trimmed.len() {
@@ -1623,6 +1714,28 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
         comma_indices.push(comma_idx);
     }
 
+    // An ordinal triggering-spell condition may itself be a comma-separated
+    // union ("the first instant spell, the first sorcery spell, or ...").
+    // Its grammar consumes the complete `cast this turn` suffix, so it gives
+    // us an exact predicate/effect boundary before the permissive general
+    // predicate splitter examines an individually valid first member.
+    for &comma_idx in comma_indices.iter().rev() {
+        let predicate_tokens = trim_lexed_commas(&after_if[..comma_idx]);
+        let effects_tokens = trim_lexed_commas(&after_if[comma_idx + 1..]);
+        if predicate_tokens.is_empty() || effects_tokens.is_empty() {
+            continue;
+        }
+        if let Some(predicate) =
+            super::filters::parse_triggering_spell_ordinal_predicate(predicate_tokens)
+        {
+            return Some(TriggeredConditionalClauseSpec {
+                trigger_tokens,
+                predicate,
+                effects_tokens,
+            });
+        }
+    }
+
     // The first comma after `if` is normally the predicate/effect boundary;
     // later commas belong to the coordinated effect body.  Prefer that
     // boundary so an effect such as `copy ..., you may ..., and ...` cannot be
@@ -1690,6 +1803,7 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
                     next_fragment = trim_lexed_commas(&next_fragment[1..]);
                 }
                 if !next_fragment.is_empty()
+                    && !contains_token_kind(next_fragment, TokenKind::Period)
                     && !predicate_candidate_contains_damage_action(next_fragment)
                     && parse_modeled_predicate(next_fragment).is_some()
                 {

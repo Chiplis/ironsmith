@@ -836,6 +836,19 @@ impl Effect {
         Self::new(crate::effects::ForEachTaggedEffect {
             tag: _tag.into(),
             effects: _effects,
+            controller_at_last_blocked_by: None,
+        })
+    }
+
+    pub fn for_each_tagged_with_controller_at_last_blocked_by(
+        tag: impl Into<crate::tag::TagKey>,
+        effects: Vec<Effect>,
+        blocker_tag: impl Into<crate::tag::TagKey>,
+    ) -> Self {
+        Self::new(crate::effects::ForEachTaggedEffect {
+            tag: tag.into(),
+            effects,
+            controller_at_last_blocked_by: Some(blocker_tag.into()),
         })
     }
 
@@ -1052,6 +1065,7 @@ impl Effect {
             effects,
             cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
             leading_surface: false,
+            before_delayed_step: false,
         })
     }
 
@@ -1065,6 +1079,7 @@ impl Effect {
             effects,
             cost,
             leading_surface: false,
+            before_delayed_step: false,
         })
     }
 
@@ -1178,6 +1193,10 @@ impl Effect {
 
     pub fn open_attraction() -> Self {
         Self::new(crate::effects::OpenAttractionEffect::new())
+    }
+
+    pub fn open_attraction_with_reminder(reminder: bool) -> Self {
+        Self::new(crate::effects::OpenAttractionEffect::new().with_reminder(reminder))
     }
 
     pub fn manifest_top_card_of_library(player: crate::target::PlayerFilter) -> Self {
@@ -1442,6 +1461,7 @@ impl Effect {
             effects: vec![Self::counter(target)],
             cost,
             leading_surface: false,
+            before_delayed_step: false,
         })
     }
 
@@ -1831,6 +1851,15 @@ impl Effect {
         ))
     }
 
+    pub fn choose_subtype_type(
+        player: crate::target::PlayerFilter,
+        family: crate::types::SubtypeFamily,
+    ) -> Self {
+        Self::new(crate::effects::ChooseCreatureTypeEffect::for_family(
+            player, family,
+        ))
+    }
+
     pub fn choose_land_type(player: crate::target::PlayerFilter, exclude_basic: bool) -> Self {
         Self::new(crate::effects::ChooseLandTypeEffect::new(
             player,
@@ -2138,16 +2167,22 @@ impl Effect {
         player: crate::target::PlayerFilter,
         allow_land: bool,
         as_copy: bool,
+        copy_cast_reminder_surface: bool,
         without_paying_mana_cost: bool,
+        additional_mana_cost: Option<crate::mana::ManaCost>,
         cost_reduction: Option<crate::mana::ManaCost>,
+        mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
     ) -> Self {
         Self::new(crate::effects::CastTaggedEffect {
             tag,
             player,
             allow_land,
             as_copy,
+            copy_cast_reminder_surface,
             without_paying_mana_cost,
+            additional_mana_cost,
             cost_reduction,
+            mana_spend_mode,
         })
     }
 
@@ -2413,6 +2448,7 @@ impl Effect {
             effects,
             cost,
             leading_surface: false,
+            before_delayed_step: false,
         })
     }
 
@@ -2441,6 +2477,24 @@ impl Effect {
         filter: Option<crate::target::ObjectFilter>,
     ) -> Self {
         Self::new(crate::effects::TagTriggeringBlockersEffect::new(
+            tag, filter,
+        ))
+    }
+
+    pub fn tag_triggering_attacker(
+        tag: impl Into<crate::tag::TagKey>,
+        filter: Option<crate::target::ObjectFilter>,
+    ) -> Self {
+        Self::new(crate::effects::TagTriggeringAttackerEffect::new(
+            tag, filter,
+        ))
+    }
+
+    pub fn tag_other_block_participant(
+        tag: impl Into<crate::tag::TagKey>,
+        filter: Option<crate::target::ObjectFilter>,
+    ) -> Self {
+        Self::new(crate::effects::TagOtherBlockParticipantEffect::new(
             tag, filter,
         ))
     }

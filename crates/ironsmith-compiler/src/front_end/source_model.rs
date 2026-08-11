@@ -4,6 +4,7 @@ pub enum MetadataLine {
     ManaCost(String),
     TypeLine(String),
     FirstPrintedSet(String),
+    AttractionLights(String),
     PowerToughness(String),
     Loyalty(String),
     Defense(String),
@@ -20,6 +21,9 @@ impl From<crate::runtime_backend::shared_types::MetadataLine> for MetadataLine {
             }
             crate::runtime_backend::shared_types::MetadataLine::FirstPrintedSet(text) => {
                 Self::FirstPrintedSet(text)
+            }
+            crate::runtime_backend::shared_types::MetadataLine::AttractionLights(text) => {
+                Self::AttractionLights(text)
             }
             crate::runtime_backend::shared_types::MetadataLine::PowerToughness(text) => {
                 Self::PowerToughness(text)

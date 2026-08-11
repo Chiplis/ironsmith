@@ -106,6 +106,19 @@ pub(super) fn spell_history_floor_cards_compile_to_turn_totals_and_trigger_bound
         rionya_debug.contains("Instant") && rionya_debug.contains("Sorcery"),
         "{rionya_debug}"
     );
+    assert!(
+        rionya_debug.contains("CreateTokenCopyEffect"),
+        "Rionya must create token copies rather than copy a spell: {rionya_debug}"
+    );
+    assert!(
+        rionya_debug.contains("has_haste: true")
+            && rionya_debug.contains("exile_at_next_end_step: true"),
+        "Rionya's follow-up sentences must remain attached to the created set: {rionya_debug}"
+    );
+    assert!(
+        !rionya_debug.contains("CopySpellEffect"),
+        "a battlefield creature is not a spell on the stack: {rionya_debug}"
+    );
 
     let thunder = CardDefinitionBuilder::new(CardId::new(), "Thunder Salvo")
         .card_types(vec![CardType::Instant])

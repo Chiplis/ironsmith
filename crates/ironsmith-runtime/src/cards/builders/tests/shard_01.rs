@@ -1660,10 +1660,11 @@ pub(super) fn alacrian_armory_strict_parser_and_compiled_text_regression() {
         "expected structural Mount/Vehicle conditional become effects, got {debug}"
     );
     assert!(
-        rendered.contains("If it's a Mount, that permanent becomes saddled until end of turn")
-            && rendered
-                .contains("if it's a Vehicle, it becomes an artifact creature until end of turn"),
-        "expected Alacrian Armory conditional become text to render oracle-like, got {rendered}"
+        rendered.contains(concat!(
+            "At the beginning of combat on your turn, choose up to one target Mount or Vehicle you control. ",
+            "Until end of turn, that permanent becomes saddled if it's a Mount and becomes an artifact creature if it's a Vehicle."
+        )),
+        "expected Alacrian Armory conditional become text to rejoin the authored shared duration, got {rendered}; program: {debug}"
     );
 }
 
@@ -2893,6 +2894,10 @@ pub(super) fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {
         panic!("expected Day of the Moon to goad all matching creatures, got {goad:#?}");
     };
     assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert_eq!(
+        filter.chosen_name_source_surface(),
+        Some(ironsmith_core::ChosenNameSourceSurface::Enchantment)
+    );
     assert!(
         filter.tagged_constraints.iter().any(|constraint| {
             constraint.tag.as_str() == "__chosen_name__"
@@ -2902,6 +2907,12 @@ pub(super) fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {
                 )
         }),
         "goad target should match the just-chosen name, got {filter:#?}"
+    );
+
+    assert!(
+        canonical_compiled_lines(&def).iter().any(|line| line
+            == "I, II, III — Choose a creature card name, then goad all creatures with a name chosen for this enchantment."),
+        "expected the chosen-name source noun in Day of the Moon's chapter text"
     );
 }
 

@@ -54,6 +54,18 @@ pub(crate) enum TargetUnionShape {
     PermanentOrPlayer,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TrailingPlayerTargetKind {
+    Any,
+    Opponent,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ObjectOrPlayerUnionTarget<'a> {
+    pub(crate) object_tokens: &'a [OwnedLexToken],
+    pub(crate) player_kind: TrailingPlayerTargetKind,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct TargetForEachSuffix<'a> {
     pub(crate) object_tokens: &'a [OwnedLexToken],
@@ -168,6 +180,38 @@ pub(crate) fn parse_target_union_shape(words: &[&str]) -> Option<TargetUnionShap
     .iter()
     .any(|phrase| exact_phrase(words, phrase))
     .then_some(TargetUnionShape::PermanentOrPlayer)
+}
+
+/// Splits an object-filter/player-domain union whose player arm is last.
+///
+/// Unlike [`parse_target_union_shape`], this preserves an arbitrarily rich
+/// object-filter arm. That matters for phrases such as "artifact, creature,
+/// planeswalker, or opponent", where collapsing the phrase to a fixed union
+/// shape would discard two of the legal permanent types.
+pub(crate) fn parse_object_or_player_union_target(
+    tokens: &[OwnedLexToken],
+) -> Option<ObjectOrPlayerUnionTarget<'_>> {
+    let view = TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    let (&player_word, before_player) = words.split_last()?;
+    let player_kind = match player_word {
+        "player" | "players" => TrailingPlayerTargetKind::Any,
+        "opponent" | "opponents" => TrailingPlayerTargetKind::Opponent,
+        _ => return None,
+    };
+    let connector_start = match before_player {
+        [object_words @ .., "or"] | [object_words @ .., "and/or"] if !object_words.is_empty() => {
+            object_words.len()
+        }
+        [object_words @ .., "and", "or"] if !object_words.is_empty() => object_words.len(),
+        _ => return None,
+    };
+    let connector_token = view.token_boundary_for_word(connector_start)?;
+    let object_tokens = trim_comma_edges(tokens.get(..connector_token)?);
+    (!object_tokens.is_empty()).then_some(ObjectOrPlayerUnionTarget {
+        object_tokens,
+        player_kind,
+    })
 }
 
 fn exact_phrase(words: &[&str], expected: &[&str]) -> bool {
@@ -297,6 +341,17 @@ mod tests {
         assert_eq!(
             parse_target_union_shape(&["permanent", "or", "player"]),
             Some(TargetUnionShape::PermanentOrPlayer)
+        );
+    }
+
+    #[test]
+    fn object_player_union_preserves_the_complete_object_arm() {
+        let tokens = lex_line("artifact, creature, planeswalker, or opponent", 0).unwrap();
+        let parsed = parse_object_or_player_union_target(&tokens).unwrap();
+        assert_eq!(parsed.player_kind, TrailingPlayerTargetKind::Opponent);
+        assert_eq!(
+            TokenWordView::new(parsed.object_tokens).to_word_refs(),
+            ["artifact", "creature", "planeswalker"]
         );
     }
 

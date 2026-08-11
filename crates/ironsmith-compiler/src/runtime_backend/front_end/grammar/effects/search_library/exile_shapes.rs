@@ -258,7 +258,24 @@ pub(crate) fn parse_search_for_each_way_shape_lexed(
     let sacrificed_marker = primitives::find_prefix(after_for_each, || {
         primitives::phrase(&["sacrificed", "this", "way"])
     });
-    let kind = if marker_present(head, &["exiled", "this", "way"])
+    let exiled_marker = primitives::find_prefix(after_for_each, || {
+        primitives::phrase(&["exiled", "this", "way"])
+    });
+    let destroyed_or_died_marker = primitives::find_prefix(after_for_each, || {
+        alt((
+            primitives::phrase(&["destroyed", "this", "way"]),
+            primitives::phrase(&["died", "this", "way"]),
+        ))
+    });
+    let put_into_graveyard_marker = primitives::find_prefix(after_for_each, || {
+        alt((
+            primitives::phrase(&["put", "into", "a", "graveyard", "this", "way"]),
+            primitives::phrase(&["put", "into", "graveyard", "this", "way"]),
+            primitives::phrase(&["put", "into", "their", "graveyard", "this", "way"]),
+            primitives::phrase(&["put", "into", "its", "graveyard", "this", "way"]),
+        ))
+    });
+    let kind = if exiled_marker.is_some()
         || primitives::parse_prefix(
             head,
             primitives::phrase(&["for", "each", "of", "those", "creatures"]),
@@ -266,23 +283,22 @@ pub(crate) fn parse_search_for_each_way_shape_lexed(
         .is_some()
     {
         SearchForEachWayKind::Exiled
-    } else if marker_present(head, &["destroyed", "this", "way"])
-        || marker_present(head, &["died", "this", "way"])
-    {
+    } else if destroyed_or_died_marker.is_some() {
         SearchForEachWayKind::DestroyedOrDied
-    } else if marker_present(head, &["put", "into", "a", "graveyard", "this", "way"])
-        || marker_present(head, &["put", "into", "graveyard", "this", "way"])
-        || marker_present(head, &["put", "into", "their", "graveyard", "this", "way"])
-        || marker_present(head, &["put", "into", "its", "graveyard", "this", "way"])
-    {
+    } else if put_into_graveyard_marker.is_some() {
         SearchForEachWayKind::PutIntoGraveyard
     } else if sacrificed_marker.is_some() {
         SearchForEachWayKind::Sacrificed
     } else {
         return None;
     };
-    let iterated_filter_tokens = sacrificed_marker
-        .map(|(marker_idx, _, _)| trim_lexed_commas(&after_for_each[..marker_idx]));
+    let iterated_filter_tokens = match kind {
+        SearchForEachWayKind::DestroyedOrDied => destroyed_or_died_marker,
+        SearchForEachWayKind::Sacrificed => sacrificed_marker,
+        SearchForEachWayKind::Exiled => exiled_marker,
+        SearchForEachWayKind::PutIntoGraveyard => put_into_graveyard_marker,
+    }
+    .map(|(marker_idx, _, _)| trim_lexed_commas(&after_for_each[..marker_idx]));
     let permanent_card_type_consult = kind == SearchForEachWayKind::Exiled
         && primitives::parse_prefix(
             head,
@@ -380,7 +396,32 @@ mod tests {
         .unwrap();
         let shape = parse_search_for_each_way_shape_lexed(&tokens).unwrap();
         assert_eq!(shape.kind, SearchForEachWayKind::DestroyedOrDied);
+        assert_eq!(
+            parser_token_word_refs(shape.iterated_filter_tokens.unwrap()),
+            vec!["permanent"]
+        );
         assert!(!shape.effect_tokens.unwrap().is_empty());
+
+        let tokens = lex_line(
+            "For each nontoken creature destroyed this way, you create a Treasure token",
+            0,
+        )
+        .unwrap();
+        let shape = parse_search_for_each_way_shape_lexed(&tokens).unwrap();
+        assert_eq!(shape.kind, SearchForEachWayKind::DestroyedOrDied);
+        assert_eq!(
+            parser_token_word_refs(shape.iterated_filter_tokens.unwrap()),
+            vec!["nontoken", "creature"]
+        );
+
+        let tokens =
+            lex_line("For each creature card exiled this way, you gain 1 life", 0).unwrap();
+        let shape = parse_search_for_each_way_shape_lexed(&tokens).unwrap();
+        assert_eq!(shape.kind, SearchForEachWayKind::Exiled);
+        assert_eq!(
+            parser_token_word_refs(shape.iterated_filter_tokens.unwrap()),
+            vec!["creature", "card"]
+        );
 
         let tokens = lex_line(
             "For each land sacrificed this way, its controller may search their library",
@@ -392,6 +433,18 @@ mod tests {
         assert_eq!(
             parser_token_word_refs(shape.iterated_filter_tokens.unwrap()),
             vec!["land"]
+        );
+
+        let tokens = lex_line(
+            "For each creature card put into a graveyard this way, you create a Zombie token",
+            0,
+        )
+        .unwrap();
+        let shape = parse_search_for_each_way_shape_lexed(&tokens).unwrap();
+        assert_eq!(shape.kind, SearchForEachWayKind::PutIntoGraveyard);
+        assert_eq!(
+            parser_token_word_refs(shape.iterated_filter_tokens.unwrap()),
+            vec!["creature", "card"]
         );
     }
 }

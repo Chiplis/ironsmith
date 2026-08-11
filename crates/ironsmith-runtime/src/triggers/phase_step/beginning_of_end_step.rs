@@ -57,6 +57,15 @@ impl BeginningOfEndStepTrigger {
             surface: EndStepSurface::Definite,
         }
     }
+
+    /// Create an end-step trigger qualified by the monarch designation at the
+    /// time the event occurs. This is deliberately not an intervening-if.
+    pub fn monarch_end_step() -> Self {
+        Self {
+            player: PlayerFilter::Any,
+            surface: EndStepSurface::Monarch,
+        }
+    }
 }
 
 impl TriggerMatcher for BeginningOfEndStepTrigger {
@@ -67,6 +76,9 @@ impl TriggerMatcher for BeginningOfEndStepTrigger {
         let Some(player) = event.player() else {
             return false;
         };
+        if self.surface == EndStepSurface::Monarch && ctx.game.monarch != Some(player) {
+            return false;
+        }
         player_filter_matches(&self.player, player, ctx)
     }
 
@@ -75,6 +87,9 @@ impl TriggerMatcher for BeginningOfEndStepTrigger {
             PlayerFilter::You => "At the beginning of your end step".to_string(),
             PlayerFilter::Any if self.surface == EndStepSurface::Definite => {
                 "At the beginning of the end step".to_string()
+            }
+            PlayerFilter::Any if self.surface == EndStepSurface::Monarch => {
+                "At the beginning of the monarch's end step".to_string()
             }
             PlayerFilter::Any => "At the beginning of each player's end step".to_string(),
             PlayerFilter::Opponent => "At the beginning of each opponent's end step".to_string(),
@@ -228,6 +243,29 @@ mod tests {
             assert!(trigger.matches(&event, &ctx));
         }
         assert_eq!(trigger.display(), "At the beginning of the end step");
+    }
+
+    #[test]
+    fn monarch_surface_matches_only_the_current_monarchs_end_step() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.monarch = Some(bob);
+        let trigger = BeginningOfEndStepTrigger::monarch_end_step();
+        let source_id = ObjectId::from_raw(1);
+
+        for (active_player, expected) in [(alice, false), (bob, true)] {
+            let event = TriggerEvent::new_with_provenance(
+                BeginningOfEndStepEvent::new(active_player),
+                crate::provenance::ProvNodeId::default(),
+            );
+            let ctx = TriggerContext::for_source(source_id, alice, &game);
+            assert_eq!(trigger.matches(&event, &ctx), expected);
+        }
+        assert_eq!(
+            trigger.display(),
+            "At the beginning of the monarch's end step"
+        );
     }
 
     #[test]

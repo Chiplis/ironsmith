@@ -18,6 +18,11 @@ pub(crate) struct RegistryNextEndStepShape<'a> {
     pub(crate) action: RegistryDelayedAction,
     pub(crate) object_tokens: &'a [OwnedLexToken],
     pub(crate) your_end_step: bool,
+    /// A condition that is evaluated when the delayed instruction resolves,
+    /// such as "if it has mana value 3 or less". Keeping this separate from
+    /// the object phrase prevents the registry route from silently consuming
+    /// and discarding a behavior-bearing suffix.
+    pub(crate) trailing_tokens: &'a [OwnedLexToken],
 }
 
 fn delayed_action<'a>(input: &mut LexStream<'a>) -> WResult<RegistryDelayedAction> {
@@ -45,14 +50,16 @@ fn next_end_step<'a>(input: &mut LexStream<'a>) -> WResult<RegistryNextEndStepSh
     )))
     .parse_next(input)?;
     primitives::phrase(&["next", "end", "step"]).parse_next(input)?;
-    repeat_till(0.., any.void(), peek(primitives::sentence_end()))
+    let trailing_tokens = repeat_till(0.., any.void(), peek(primitives::sentence_end()))
         .map(|((), ())| ())
+        .take()
         .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(RegistryNextEndStepShape {
         action,
         object_tokens: trim_edge_punctuation_tokens(object_tokens),
         your_end_step: owner == Some(true),
+        trailing_tokens: trim_edge_punctuation_tokens(trailing_tokens),
     })
 }
 
@@ -108,6 +115,23 @@ mod tests {
         assert_eq!(shape.action, RegistryDelayedAction::Sacrifice);
         assert!(shape.your_end_step);
         assert!(is_tagged_delayed_object(shape.object_tokens));
+        assert!(shape.trailing_tokens.is_empty());
+
+        let conditional = lex_line(
+            "Sacrifice it at the beginning of the next end step if it has mana value 3 or less.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_registry_next_end_step_shape(&conditional).unwrap();
+        assert!(is_tagged_delayed_object(shape.object_tokens));
+        assert_eq!(
+            shape
+                .trailing_tokens
+                .iter()
+                .filter_map(OwnedLexToken::as_word)
+                .collect::<Vec<_>>(),
+            vec!["if", "it", "has", "mana", "value", "3", "or", "less"]
+        );
 
         let remain = lex_line("If that card remains exiled, draw a card.", 0).unwrap();
         assert!(parse_remain_exiled_tail(&remain).is_some());

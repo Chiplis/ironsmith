@@ -39,9 +39,26 @@ impl crate::effects::SimultaneousEffectProposal for WithIdProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let outcome = self.inner.commit(game, ctx)?;
-        ctx.store_outcome(self.id, outcome.clone());
-        Ok(outcome)
+        let previous = ctx.effect_outcomes.remove(&self.id);
+        match self.inner.commit(game, ctx) {
+            Ok(outcome) => {
+                // A nested effect may intentionally share this result id so a
+                // later branch can inspect that specific instruction rather
+                // than a transparent outer wrapper's terminal outcome. Keep
+                // the nested result when it was produced during this commit.
+                ctx.effect_outcomes
+                    .entry(self.id)
+                    .or_insert_with(|| outcome.clone());
+                Ok(outcome)
+            }
+            Err(error) => {
+                ctx.effect_outcomes.remove(&self.id);
+                if let Some(previous) = previous {
+                    ctx.store_outcome(self.id, previous);
+                }
+                Err(error)
+            }
+        }
     }
 }
 
@@ -90,9 +107,26 @@ impl EffectExecutor for WithIdEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let outcome = execute_effect(game, &self.effect, ctx)?;
-        ctx.store_outcome(self.id, outcome.clone());
-        Ok(outcome)
+        let previous = ctx.effect_outcomes.remove(&self.id);
+        match execute_effect(game, &self.effect, ctx) {
+            Ok(outcome) => {
+                // Preserve a same-id descendant outcome produced while the
+                // child ran. This is required when an outer conditional is
+                // result-tagged for presentation but its successful action is
+                // independently tagged for an exact "if you don't" branch.
+                ctx.effect_outcomes
+                    .entry(self.id)
+                    .or_insert_with(|| outcome.clone());
+                Ok(outcome)
+            }
+            Err(error) => {
+                ctx.effect_outcomes.remove(&self.id);
+                if let Some(previous) = previous {
+                    ctx.store_outcome(self.id, previous);
+                }
+                Err(error)
+            }
+        }
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
@@ -214,6 +248,54 @@ mod tests {
         assert_eq!(
             ctx.get_outcome(EffectId(0)).unwrap().value,
             crate::effect::OutcomeValue::Count(7)
+        );
+    }
+
+    #[test]
+    fn outer_same_id_wrapper_preserves_descendant_result() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let id = EffectId(7);
+
+        // The terminal coordinated child returns Count(0), while the first
+        // child records the successful instruction under the same id. The
+        // outer wrapper must not erase that more-specific result.
+        let inner = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+            Effect::with_id(id.0, Effect::gain_life(5)),
+            Effect::conditional_only(
+                crate::effect::Condition::LifeTotalOrLess(-1),
+                vec![Effect::draw(1)],
+            ),
+        ]));
+        let outer = WithIdEffect::new(id, inner);
+
+        let outer_outcome = outer
+            .execute(&mut game, &mut ctx)
+            .expect("outer wrapper should resolve");
+        assert_eq!(outer_outcome.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(
+            ctx.get_outcome(id).map(|outcome| &outcome.value),
+            Some(&crate::effect::OutcomeValue::Count(5))
+        );
+    }
+
+    #[test]
+    fn outer_wrapper_stores_its_result_without_same_id_descendant() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let id = EffectId(7);
+
+        WithIdEffect::new(id, Effect::gain_life(5))
+            .execute(&mut game, &mut ctx)
+            .expect("wrapper should resolve");
+
+        assert_eq!(
+            ctx.get_outcome(id).map(|outcome| &outcome.value),
+            Some(&crate::effect::OutcomeValue::Count(5))
         );
     }
 

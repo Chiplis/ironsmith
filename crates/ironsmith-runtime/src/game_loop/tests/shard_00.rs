@@ -106,6 +106,10 @@ pub(super) fn targeted_cast_refreshes_after_proposal_metadata_before_wide_target
             .was_paid_label("CastDuringYourMainPhase"),
         "proposal metadata should be initialized before its single continuous-state refresh"
     );
+    assert!(
+        pending.optional_costs_paid.was_cast_at_sorcery_timing(),
+        "an active-player main-phase cast with an empty stack should retain exact sorcery-timing provenance"
+    );
     assert!(game.continuous_state_is_clean());
     assert!(
         after.characteristics_full_recomputes <= before.characteristics_full_recomputes + 2,
@@ -118,6 +122,63 @@ pub(super) fn targeted_cast_refreshes_after_proposal_metadata_before_wide_target
     assert!(
         after.dependency_pairs_probed <= before.dependency_pairs_probed + 64,
         "cast-time dependency probes should scale with effects, not battlefield width: before={before:?}, after={after:?}"
+    );
+}
+
+#[test]
+pub(super) fn cast_at_sorcery_timing_provenance_requires_an_empty_stack() {
+    fn probe_definition() -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::from_raw(991_002), "Cast Timing Probe")
+            .card_types(vec![CardType::Enchantment])
+            .build()
+    }
+
+    let alice = PlayerId::from_index(0);
+    let mut empty_stack_game = setup_game();
+    empty_stack_game.turn.active_player = alice;
+    empty_stack_game.turn.phase = Phase::FirstMain;
+    let spell =
+        empty_stack_game.create_object_from_definition(&probe_definition(), alice, Zone::Hand);
+    let proposed = super::priority_mana::propose_spell_cast(
+        &mut empty_stack_game,
+        spell,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+    )
+    .expect("empty-stack main-phase spell should be proposed");
+    assert!(
+        empty_stack_game
+            .object(proposed)
+            .expect("proposed spell should exist")
+            .optional_costs_paid
+            .was_cast_at_sorcery_timing()
+    );
+
+    let mut occupied_stack_game = setup_game();
+    occupied_stack_game.turn.active_player = alice;
+    occupied_stack_game.turn.phase = Phase::FirstMain;
+    let stack_object =
+        occupied_stack_game.create_object_from_definition(&probe_definition(), alice, Zone::Stack);
+    occupied_stack_game.push_to_stack(StackEntry::new(stack_object, alice));
+    let response =
+        occupied_stack_game.create_object_from_definition(&probe_definition(), alice, Zone::Hand);
+    let proposed_response = super::priority_mana::propose_spell_cast(
+        &mut occupied_stack_game,
+        response,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+    )
+    .expect("a flash-speed response should be proposed");
+    let paid = &occupied_stack_game
+        .object(proposed_response)
+        .expect("proposed response should exist")
+        .optional_costs_paid;
+    assert!(paid.was_paid_label("CastDuringYourMainPhase"));
+    assert!(
+        !paid.was_cast_at_sorcery_timing(),
+        "being in a main phase must not masquerade as sorcery timing while the stack is occupied"
     );
 }
 

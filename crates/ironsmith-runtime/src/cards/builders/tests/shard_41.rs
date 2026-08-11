@@ -173,7 +173,7 @@ pub(super) fn explicit_card_nouns_survive_zone_erasure_and_linked_set_rendering(
         ("Knowledge Exploitation", "instant or sorcery card"),
         ("Malanthrope", "creature card exiled this way"),
         ("Mastermind Plum", "artifact card was exiled this way"),
-        ("Narset Transcendent", "noncreature nonland card"),
+        ("Narset Transcendent", "noncreature, nonland card"),
         ("Seasoned Pyromancer", "nonland card discarded this way"),
         ("Worldly Tutor", "put the card on top"),
     ] {

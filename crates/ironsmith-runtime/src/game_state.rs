@@ -41,6 +41,7 @@ use crate::zone::Zone;
 
 mod alternating_teams;
 mod attack_direction;
+mod attractions;
 mod commander_draft;
 mod conspiracy;
 mod emperor;
@@ -61,6 +62,7 @@ mod vanguard;
 mod zones_and_characteristics;
 pub use alternating_teams::AlternatingTeamsState;
 pub use attack_direction::AttackDirection;
+pub use attractions::AttractionVisitProfile;
 pub use commander_draft::{CommanderDraftBooster, CommanderDraftProduct, CommanderDraftState};
 pub use conspiracy::{
     ConspiracyDraftState, DraftCard, DraftCardView, DraftSelection, DraftVisibility,
@@ -149,6 +151,26 @@ pub struct ArchenemyState {
     pub scheme_decks: HashMap<PlayerId, Vec<ObjectId>>,
     /// Currently face-up schemes in the command zone.
     pub face_up: Vec<ObjectId>,
+}
+
+/// Deck-construction profile for an Attraction deck (CR 717.2a-b).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AttractionDeckFormat {
+    Constructed,
+    Limited,
+}
+
+/// Per-player Attraction supplementary decks and printing-specific light data.
+#[derive(Debug, Clone)]
+pub struct AttractionState {
+    /// Attraction decks stored bottom-to-top (top is the last element).
+    pub decks: HashMap<PlayerId, Vec<ObjectId>>,
+    /// Attraction permanents opened from these decks and still tracked face up.
+    pub face_up: Vec<ObjectId>,
+    /// Printed lit numbers keyed by the physical card's stable identity.
+    pub lights: HashMap<StableId, Vec<u8>>,
+    /// Visit ability programs keyed by the physical card's stable identity.
+    pub visit_programs: HashMap<StableId, crate::resolution::ResolutionProgram>,
 }
 
 /// Conspiracy command-zone and secret linked-choice state.
@@ -484,6 +506,9 @@ struct ExileTracking {
     exiled_with_source_return_zones: HashMap<ObjectId, HashMap<ObjectId, Zone>>,
     /// Sources whose linked exiled cards return when the source leaves.
     return_exiled_when_source_leaves: HashSet<ObjectId>,
+    /// Linked exile groups that return when a player who is an opponent of
+    /// the effect controller becomes the monarch.
+    return_exiled_when_opponent_becomes_monarch: HashMap<u64, PlayerId>,
     /// Linked exile groups keyed by generated runtime ID.
     linked_exile_groups: HashMap<u64, LinkedExileGroup>,
     /// Monotonic ID generator for linked exile groups.
@@ -530,6 +555,13 @@ struct AuxiliaryTrackingState {
     combat_choice_control_timestamp: u64,
     /// Highest pregame draft-note number recorded by a player for a named card.
     draft_noted_highest_numbers: HashMap<(PlayerId, String), u32>,
+    /// Colors selected during draft instructions, grouped by player and the
+    /// named card family whose constructed-deck copies share those choices.
+    draft_chosen_colors: HashMap<(PlayerId, String), crate::color::ColorSet>,
+    /// Public cards a player removed from the draft, grouped by the card name
+    /// they were placed with. Stored object identities retain complete printed
+    /// characteristics and abilities for ordinary `ObjectFilter` matching.
+    draft_removed_cards: HashMap<(PlayerId, String), HashSet<ObjectId>>,
     /// Cryptographic hidden-card slots that have not been opened on this peer.
     hidden_cards: HashMap<ObjectId, HiddenCardInfo>,
     /// Noncopiable alpha/beta/gamma designations on battlefield permanents.
@@ -619,6 +651,12 @@ pub struct DepartedPlayerHistory {
 #[derive(Debug, Clone, Default)]
 pub struct TurnStore {
     pub turn_order: Vec<PlayerId>,
+    /// Whether the active turn was created as an extra turn.
+    ///
+    /// This is authoritative turn provenance, not a prediction based on the
+    /// remaining `extra_turns` queue: the queue no longer contains the active
+    /// turn after it has been selected.
+    pub current_turn_is_extra: bool,
     /// Extra turns queued up (Time Walk, etc.).
     /// Players take these turns in order after the current turn ends.
     pub extra_turns: Vec<PlayerId>,
@@ -675,6 +713,13 @@ pub struct TurnStore {
     /// Committed event/action records retained for the full game and indexed
     /// by every player whose action or result the record describes.
     action_history_by_player: HashMap<PlayerId, Vec<TurnEventRecord>>,
+    /// Persistent combat-history timestamps used by "since your last upkeep"
+    /// predicates. Stable identity survives ordinary zone/object-id churn.
+    creature_last_attacked_turn: HashMap<StableId, u32>,
+    creature_last_blocked_turn: HashMap<StableId, u32>,
+    creature_last_became_blocked_turn: HashMap<StableId, u32>,
+    current_upkeep_turn_by_player: HashMap<PlayerId, u32>,
+    previous_upkeep_turn_by_player: HashMap<PlayerId, u32>,
     /// Frozen LKI and bounded "last turn" windows for departed players.
     departed_player_history: HashMap<PlayerId, DepartedPlayerHistory>,
     /// Hand sizes captured as the current turn began, before the untap step.
@@ -743,6 +788,8 @@ pub struct EffectStore {
     pub temporary_spell_cost_reductions: Vec<TemporarySpellCostReductionEffectInstance>,
     /// Temporary spell-ability grants waiting for the next matching spell this turn.
     pub temporary_spell_ability_grants: Vec<TemporarySpellAbilityGrantEffectInstance>,
+    /// Repeatable priority special actions granted by resolving effects this turn.
+    pub repeatable_mana_payment_actions: Vec<RepeatableManaPaymentAction>,
     /// Active restriction effects (spell/ability-based "can't" effects).
     pub restriction_effects: Vec<RestrictionEffectInstance>,
     /// Active goad effects (a creature attacks each combat and attacks a player
@@ -768,6 +815,7 @@ impl Default for EffectStore {
             granted_mana_abilities: Vec::new(),
             temporary_spell_cost_reductions: Vec::new(),
             temporary_spell_ability_grants: Vec::new(),
+            repeatable_mana_payment_actions: Vec::new(),
             restriction_effects: Vec::new(),
             goad_effects: Vec::new(),
         }
@@ -788,10 +836,18 @@ pub struct ChoiceStore {
     pub chosen_land_types: HashMap<ObjectId, crate::types::Subtype>,
     /// Chosen creature types for permanents ("as this enters, choose a creature type").
     pub chosen_creature_types: HashMap<ObjectId, crate::types::Subtype>,
+    /// All subtype choices made for one source. This supplements the ordinary
+    /// singular chosen subtype for instructions where multiple players each
+    /// choose a type during the same resolution.
+    pub chosen_creature_type_sets: HashMap<ObjectId, HashSet<crate::types::Subtype>>,
     /// Chosen card types for spells and abilities that ask a player to choose a card type.
     pub chosen_card_types: HashMap<ObjectId, crate::types::CardType>,
     /// Chosen players for permanents ("as this enters, choose a player").
     pub chosen_players: HashMap<ObjectId, PlayerId>,
+    /// Singular objects chosen by a source and referenced by a later ability.
+    /// Snapshots retain stable identity and last-known characteristics when the
+    /// chosen object changes zones.
+    pub chosen_objects: HashMap<ObjectId, crate::snapshot::ObjectSnapshot>,
     /// Chosen named options for permanents ("as this enters, choose A or B").
     pub chosen_named_options: HashMap<ObjectId, String>,
 }
@@ -1629,6 +1685,26 @@ pub struct TemporarySpellAbilityGrantEffectInstance {
     pub ability: crate::ability::Ability,
     pub remaining_uses: u32,
     pub expires_end_of_turn: u32,
+}
+
+/// A repeatable special action available at instant timing through end of turn.
+#[derive(Debug, Clone)]
+pub struct RepeatableManaPaymentAction {
+    pub player: PlayerId,
+    pub source: ObjectId,
+    pub controller: PlayerId,
+    pub cost: crate::mana::ManaCost,
+    pub effects: Vec<crate::effect::Effect>,
+    pub targets: Vec<crate::effects::ResolvedTarget>,
+    pub tagged_objects: HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    pub tagged_players: HashMap<crate::tag::TagKey, Vec<PlayerId>>,
+    pub expires_end_of_turn: u32,
+}
+
+impl RepeatableManaPaymentAction {
+    pub fn is_expired(&self, current_turn: u32) -> bool {
+        current_turn > self.expires_end_of_turn
+    }
 }
 
 impl TemporarySpellAbilityGrantEffectInstance {
@@ -3045,6 +3121,8 @@ pub struct GameState {
     pub vanguard: Option<VanguardState>,
     /// Present only when an Archenemy variant is active.
     pub archenemy: Option<ArchenemyState>,
+    /// Present when one or more players brought an Attraction deck.
+    pub attractions: Option<AttractionState>,
     /// Present only when a Conspiracy Draft game is active.
     pub conspiracy: Option<ConspiracyState>,
     /// Present only when the CR 806 Free-for-All profile is active.
@@ -3327,6 +3405,7 @@ impl GameState {
             planechase: None,
             vanguard: None,
             archenemy: None,
+            attractions: None,
             conspiracy: None,
             free_for_all: None,
             grand_melee: None,
@@ -3401,6 +3480,82 @@ impl GameState {
             .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
             .copied()
             .unwrap_or(0)
+    }
+
+    pub fn set_draft_chosen_colors(
+        &mut self,
+        player: PlayerId,
+        card_name: impl AsRef<str>,
+        colors: crate::color::ColorSet,
+    ) {
+        self.auxiliary_tracking_mut().draft_chosen_colors.insert(
+            (player, normalize_draft_note_card_name(card_name.as_ref())),
+            colors,
+        );
+        self.bump_mutation_revision();
+    }
+
+    pub fn draft_chosen_colors(
+        &self,
+        player: PlayerId,
+        card_name: impl AsRef<str>,
+    ) -> crate::color::ColorSet {
+        self.auxiliary_tracking
+            .draft_chosen_colors
+            .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Record a public pregame card as removed from the draft with cards of a
+    /// given name. The object may live outside the game; its printed
+    /// characteristics remain available to draft-dependent static abilities.
+    pub fn record_card_removed_from_draft(
+        &mut self,
+        player: PlayerId,
+        card: ObjectId,
+        with_cards_named: impl AsRef<str>,
+    ) -> bool {
+        if self.object(card).is_none() {
+            return false;
+        }
+        let key = (
+            player,
+            normalize_draft_note_card_name(with_cards_named.as_ref()),
+        );
+        if !self
+            .auxiliary_tracking_mut()
+            .draft_removed_cards
+            .entry(key)
+            .or_default()
+            .insert(card)
+        {
+            return false;
+        }
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+        true
+    }
+
+    pub(crate) fn removed_from_draft_card_matches(
+        &self,
+        player: PlayerId,
+        with_cards_named: impl AsRef<str>,
+        filter: &crate::target::ObjectFilter,
+        source: Option<ObjectId>,
+    ) -> bool {
+        let key = (
+            player,
+            normalize_draft_note_card_name(with_cards_named.as_ref()),
+        );
+        let Some(cards) = self.auxiliary_tracking.draft_removed_cards.get(&key) else {
+            return false;
+        };
+        let filter_ctx = self.filter_context_for(player, source);
+        cards.iter().any(|card| {
+            self.object(*card)
+                .is_some_and(|object| filter.matches(object, &filter_ctx, self))
+        })
     }
 
     pub fn note_life_total_for_source(
@@ -3753,6 +3908,7 @@ impl GameState {
             crate::effect::Value::Count(filter)
             | crate::effect::Value::CountScaled(filter, _)
             | crate::effect::Value::GreatestCount(filter)
+            | crate::effect::Value::GreatestSharedCreatureTypeCount(filter)
             | crate::effect::Value::TotalPower(filter)
             | crate::effect::Value::TotalToughness(filter)
             | crate::effect::Value::TotalManaValue(filter)
@@ -3785,6 +3941,7 @@ impl GameState {
             | crate::effect::Value::LifeGainedThisTurn(_)
             | crate::effect::Value::LifeLostThisTurn(_)
             | crate::effect::Value::CardsDiscardedThisTurn(_)
+            | crate::effect::Value::AttractionsVisitedThisTurn(_)
             | crate::effect::Value::DamageDealtToPlayersThisTurn(_)
             | crate::effect::Value::NoncombatDamageDealtToPlayersThisTurn(_)
             | crate::effect::Value::NoncombatDamageDealtBySourcesControlledThisTurn { .. }
@@ -3794,6 +3951,7 @@ impl GameState {
             | crate::effect::Value::SpellsCastThisTurn(_)
             | crate::effect::Value::SpellsCastBeforeThisTurn(_)
             | crate::effect::Value::SpellsCastThisTurnMatching { .. }
+            | crate::effect::Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
             | crate::effect::Value::CommanderCastCount(_)
             | crate::effect::Value::ThisAbilityResolvedThisTurnCount
             | crate::effect::Value::SourceRegeneratedThisTurnCount
@@ -3826,9 +3984,11 @@ impl GameState {
     fn object_filter_is_turn_context_sensitive(filter: &crate::target::ObjectFilter) -> bool {
         filter.cast_this_turn
             || filter.first_spell_cast_each_turn
+            || filter.mana_from_source_spent_to_cast.is_some()
             || filter.attacking
             || filter.attacked_this_turn
             || filter.didnt_attack_this_turn
+            || filter.could_have_attacked_this_turn
             || filter.nonattacking
             || filter.enlist_eligible
             || filter.blocking
@@ -3838,16 +3998,21 @@ impl GameState {
             || filter.blocked_by_source
             || filter.blocked_or_was_blocked_by_this_turn.is_some()
             || filter.unblocked
+            || filter.is_target_object
             || filter.in_combat_with_source
+            || filter.in_combat_with.is_some()
             || filter.entered_since_your_last_turn_ended
             || filter.didnt_enter_battlefield_this_turn
             || filter.entered_battlefield_this_turn
             || filter.entered_graveyard_this_turn
             || filter.entered_graveyard_from_battlefield_this_turn
+            || filter.entered_graveyard_from_library_this_turn
             || filter.surveilled_this_turn
+            || filter.counters_put_on_this_turn.is_some()
             || filter.was_dealt_damage_this_turn
             || filter.dealt_damage_this_turn
             || filter.dealt_damage_by_source_this_turn.is_some()
+            || filter.was_dealt_damage_by_source_this_game
             || filter.drawn_this_turn
             || Self::player_filter_option_is_turn_context_sensitive(filter.controller.as_ref())
             || Self::player_filter_option_is_turn_context_sensitive(filter.cast_by.as_ref())
@@ -3861,6 +4026,7 @@ impl GameState {
                     .attacking_player_or_planeswalker_controlled_by
                     .as_ref(),
             )
+            || Self::player_filter_option_is_turn_context_sensitive(filter.protected_by.as_ref())
             || Self::player_filter_option_is_turn_context_sensitive(
                 filter.attached_to_player.as_ref(),
             )
@@ -3875,6 +4041,14 @@ impl GameState {
             || Self::player_filter_option_is_turn_context_sensitive(
                 filter.entered_battlefield_controller.as_ref(),
             )
+            || filter
+                .counters_put_on_this_turn
+                .as_ref()
+                .is_some_and(|constraint| {
+                    Self::player_filter_option_is_turn_context_sensitive(Some(
+                        &constraint.source_controller,
+                    ))
+                })
             || Self::player_filter_option_is_turn_context_sensitive(
                 filter.discarded_or_cycled_this_turn_by.as_ref(),
             )
@@ -3914,7 +4088,13 @@ impl GameState {
             crate::target::PlayerFilter::Active
             | crate::target::PlayerFilter::Attacking
             | crate::target::PlayerFilter::Defending
-            | crate::target::PlayerFilter::CastCardTypeThisTurn(_) => true,
+            | crate::target::PlayerFilter::CastCardTypeThisTurn(_)
+            | crate::target::PlayerFilter::AttackedBySourceThisTurn => true,
+            crate::target::PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+            | crate::target::PlayerFilter::LostLifeThisTurn { .. } => true,
+            crate::target::PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+                ..
+            } => true,
             crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
             | crate::target::PlayerFilter::HasMoreLifeThanYou { base }
             | crate::target::PlayerFilter::MaxSpeed { base, .. }
@@ -4573,6 +4753,30 @@ impl GameState {
         generic_reduction: crate::effect::Value,
         duration: crate::effect::Until,
     ) {
+        self.add_temporary_generic_spell_cost_reduction_until(
+            player,
+            source,
+            duration_controller,
+            filter,
+            generic_reduction,
+            u32::MAX,
+            true,
+            duration,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_temporary_generic_spell_cost_reduction_until(
+        &mut self,
+        player: PlayerId,
+        source: ObjectId,
+        duration_controller: PlayerId,
+        filter: crate::target::ObjectFilter,
+        generic_reduction: crate::effect::Value,
+        remaining_uses: u32,
+        applies_to_all_matching_this_turn: bool,
+        duration: crate::effect::Until,
+    ) {
         self.effect_store.temporary_spell_cost_reductions.push(
             TemporarySpellCostReductionEffectInstance {
                 player,
@@ -4581,9 +4785,9 @@ impl GameState {
                 filter,
                 reduction: crate::mana::ManaCost::new(),
                 generic_reduction: Some(generic_reduction),
-                applies_to_all_matching_this_turn: true,
+                applies_to_all_matching_this_turn,
                 duration,
-                remaining_uses: u32::MAX,
+                remaining_uses,
                 expires_end_of_turn: self.turn.turn_number,
             },
         );
@@ -4909,6 +5113,13 @@ impl GameState {
         self.effect_store
             .temporary_spell_ability_grants
             .retain(|effect| !effect.is_expired(current_turn));
+    }
+
+    pub fn cleanup_repeatable_mana_payment_actions_end_of_turn(&mut self) {
+        let current_turn = self.turn.turn_number;
+        self.effect_store
+            .repeatable_mana_payment_actions
+            .retain(|action| action.expires_end_of_turn > current_turn);
     }
 
     pub fn cleanup_temporary_object_static_ability_grants_end_of_turn(&mut self) {

@@ -1570,6 +1570,47 @@ pub(super) fn parse_total_power_mana_activation_condition() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn parse_source_characteristic_mana_activation_condition() {
+    let text = "{T}: Add one mana of any color. Activate only if this permanent is a creature.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Conditional Vehicle Mana Variant")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![crate::types::Subtype::Vehicle])
+        .parse_text(text)
+        .expect("a source-characteristic mana activation condition should parse");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "{T}: Add one mana of any color. Activate only if this Vehicle is a creature."
+                .to_string()
+        ],
+        "the typed source condition may use the card's more specific source noun"
+    );
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("SourceMatches"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn per_player_optional_spell_copy_keeps_its_loop_and_surface() {
+    let text = "Enchant player\nWhenever enchanted player casts an instant or sorcery spell, each other player may copy that spell and may choose new targets for the copy they control.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Other Player Copy Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(text)
+        .expect("per-player optional spell copying should parse as an executable loop");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        text.lines().map(str::to_string).collect::<Vec<_>>()
+    );
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(debug.contains("MayEffect"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_inline_whenever_clause_keeps_its_controller_subject() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Noxious Assault Variant")
         .card_types(vec![CardType::Sorcery])
@@ -1629,6 +1670,62 @@ pub(super) fn parse_until_end_of_turn_whenever_clause_as_temporary_grant() {
         rendered.contains("until end of turn, whenever you cast a black spell")
             && rendered.contains("put a +1/+1 counter on this creature"),
         "expected temporary delayed-trigger surface, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn gaze_of_pain_keeps_duration_optional_damage_and_combat_assignment_fallback() {
+    let oracle = "Until end of turn, whenever a creature you control attacks and isn't blocked, you may choose to have it deal damage equal to its power to a target creature. If you do, it assigns no combat damage this turn.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Duration Damage Offer Variant")
+        .parse_text(oracle)
+        .expect("duration-scoped optional damage trigger should parse");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("spell should have effects");
+    let schedule = spell
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>())
+        .expect("spell should register a delayed trigger");
+
+    assert!(schedule.until_end_of_turn, "{schedule:#?}");
+    assert!(schedule.leading_duration_surface, "{schedule:#?}");
+    assert!(
+        schedule
+            .trigger
+            .downcast_ref::<crate::triggers::combat::AttacksAndIsntBlockedTrigger>()
+            .is_some(),
+        "{schedule:#?}"
+    );
+    let delayed_debug = format!("{:#?}", schedule.effects);
+    assert!(delayed_debug.contains("MayEffect"), "{delayed_debug}");
+    assert!(
+        delayed_debug.contains("DealDamageEqualToPowerEffect"),
+        "{delayed_debug}"
+    );
+    assert!(delayed_debug.contains("IfEffect"), "{delayed_debug}");
+    assert!(
+        delayed_debug.contains("AssignNoCombatDamageEffect"),
+        "{delayed_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Until end of turn, whenever a creature you control attacks and isn't blocked"
+        ),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("you may")
+            && rendered.contains("deal damage equal to its power to a target creature"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("If you do, it assigns no combat damage this turn"),
+        "{rendered}"
     );
 }
 
@@ -2236,6 +2333,58 @@ pub(super) fn parse_destroyed_land_controller_may_search_their_library_keeps_con
             && !rendered.contains("search your library"),
         "destroyed-land controller search should not default to you, got {rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn from_the_ashes_keeps_land_lki_guard_and_exact_controller_search_surface() {
+    let oracle = "Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ashes Variant")
+        .parse_text(oracle)
+        .expect("destroyed-land LKI search sequence should parse");
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("expected a spell resolution program");
+    let effects = program.flattened_default_effects();
+    let search_with_id = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::WithIdEffect>())
+        .expect("expected the per-destroyed-land search result to carry an effect ID");
+    let destroyed_loop = search_with_id
+        .effect
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+        .expect("expected an exact destroyed-object iteration");
+    let [guard_effect] = destroyed_loop.effects.as_slice() else {
+        panic!("expected one LKI guard around the search loop");
+    };
+    let guard = guard_effect
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("expected the destroyed object type to be tested through LKI");
+    let Condition::TaggedObjectMatchedLastKnown(iterated_tag, filter) = &guard.condition else {
+        panic!(
+            "expected a tagged-object LKI predicate, got {:?}",
+            guard.condition
+        );
+    };
+    assert_eq!(iterated_tag.as_str(), "__it__");
+    let mut expected_land_lki = ObjectFilter::land();
+    expected_land_lki.zone = None;
+    assert_eq!(filter, &expected_land_lki);
+    assert!(guard.if_false.is_empty());
+    let [may_effect] = guard.if_true.as_slice() else {
+        panic!("expected one optional search inside the LKI guard");
+    };
+    let may = may_effect
+        .downcast_ref::<crate::effects::MayEffect>()
+        .expect("expected the destroyed land's controller to decide whether to search");
+    assert!(matches!(
+        may.decider.as_ref(),
+        Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag)))
+            if tag == iterated_tag
+    ));
+
+    assert_eq!(unprocessed_compiled_lines(&def).join("\n"), oracle);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -2912,6 +3061,71 @@ pub(super) fn parse_landfall_instead_followup_preserves_default_branch() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn parse_optional_landfall_return_replacement_tests_the_triggering_land() {
+    fn object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+        match spec {
+            ChooseSpec::SurfaceHinted { spec, .. }
+            | ChooseSpec::Target(spec)
+            | ChooseSpec::WithCount(spec, _)
+            | ChooseSpec::WithCountValue(spec, _, _) => object_filter(spec),
+            ChooseSpec::Object(filter)
+            | ChooseSpec::All(filter)
+            | ChooseSpec::ObjectOrPlayer(filter, _) => Some(filter),
+            _ => None,
+        }
+    }
+
+    fn find_target_filter(effect: &crate::effect::Effect) -> Option<ObjectFilter> {
+        if let Some(filter) = effect.0.get_target_spec().and_then(object_filter) {
+            return Some(filter.clone());
+        }
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = find_target_filter(child);
+            }
+        });
+        found
+    }
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Emeria Shepherd Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Landfall — Whenever a land you control enters, you may return target nonland permanent card from your graveyard to your hand. If that land is a Plains, you may return that card to the battlefield instead.",
+        )
+        .expect("optional landfall return replacement should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    let target_filter = ability.effects.segments[0]
+        .default_effects
+        .iter()
+        .find_map(find_target_filter)
+        .expect("expected a nonland permanent target");
+    assert!(target_filter.card_types.contains(&CardType::Land));
+    assert!(target_filter.excluded_card_types.contains(&CardType::Land));
+
+    let branch = ability
+        .effects
+        .segments
+        .iter()
+        .find_map(|segment| segment.self_replacements.first())
+        .expect("expected a return self-replacement");
+    assert!(matches!(
+        branch.condition,
+        Condition::TaggedObjectMatches(ref tag, ref filter)
+            if tag.as_str() == "triggering" && filter.subtypes.contains(&Subtype::Plains)
+    ));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_triggered_instead_followup_with_toxic_condition_preserves_default_branch() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Porcelain Zealot Variant")
         .card_types(vec![CardType::Creature])
@@ -3055,6 +3269,21 @@ pub(super) fn parse_damage_to_that_creatures_controller_targets_player() {
             || rendered.contains("that permanent's controller"),
         "expected controller-target damage wording, got {rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn target_controller_count_damage_keeps_filter_and_target_relationship() {
+    let oracle = "Weight of Spires deals damage to target creature equal to the number of nonbasic lands that creature's controller controls.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Weight of Spires")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("target-controller land count should parse");
+
+    assert_eq!(unprocessed_compiled_lines(&def), vec![oracle.to_string()]);
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(debug.contains("ControllerOf(Target)"), "{debug}");
+    assert!(debug.contains("Land"), "{debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

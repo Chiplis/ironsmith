@@ -36,7 +36,8 @@ use crate::ability::Ability;
 use crate::cards::builders::{
     COPIED_STACK_OBJECT_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG,
     IfResultPredicate, KeywordAction, LineAst, ParsedAbility, PlayerAst, PredicateAst,
-    ReferenceImports, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TextSpan,
+    ReferenceImports, StaticAbilityAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey,
+    TargetAst, TextSpan,
 };
 use crate::effect::{Until, Value};
 use crate::mana::ManaCost;
@@ -975,6 +976,27 @@ pub(crate) fn parse_granted_abilities_for_token_definition(
                 return Ok(vec![ability]);
             }
 
+            // A complete quoted static rule with an explicit filtered subject
+            // (for example, `Creatures you control attack each combat if
+            // able`) is an ability of the token, not a list of abilities the
+            // subject itself "has". Preserve the ordinary typed static-line
+            // parse as one granted carrier before the gain-list grammar can
+            // reduce the trailing restriction to an intrinsic token keyword.
+            if let Some(static_abilities) = parse_static_ability_ast_line_lexed(ability_tokens)?
+                && !static_abilities.is_empty()
+                && static_abilities
+                    .iter()
+                    .all(|ability| matches!(ability, StaticAbilityAst::GrantStaticAbility { .. }))
+            {
+                return static_abilities
+                    .into_iter()
+                    .map(|ability| {
+                        rewrite_lower_static_ability_ast(ability)
+                            .map(GrantedAbilityAst::StaticAbility)
+                    })
+                    .collect();
+            }
+
             let (abilities, is_choice) =
                 parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?;
             Ok(if is_choice { Vec::new() } else { abilities })
@@ -1221,6 +1243,13 @@ fn trim_trailing_also(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 
 fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
     let subject_words = GainAbilityWordView::new(tokens).to_word_refs();
+    // A source name can itself be a typed subtype phrase (for example,
+    // "Time Lord"). Once the authored subject has explicit target grammar,
+    // let the ordinary target parser own it rather than treating that subtype
+    // surface as a reference to this source.
+    if subject_words.first() == Some(&"target") && parse_target_phrase(tokens).is_ok() {
+        return None;
+    }
     if matches!(
         subject_words.as_slice(),
         ["the" | "that", "copy"] | ["the" | "those", "copies"]
@@ -1700,7 +1729,7 @@ fn parse_gain_ability_sentence_with_subject(
         } else {
             parse_ability_duration_with_condition(after_gain_tokens, after_gain)
         };
-    let duration = duration_phrase
+    let mut duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
         .or_else(|| {
@@ -1746,6 +1775,13 @@ fn parse_gain_ability_sentence_with_subject(
     };
     if shared_get_tail_word_idx.is_some() && following_pump_effect.is_none() {
         return Ok(None);
+    }
+    if !has_explicit_duration && let Some((_, _, _, pump_duration, _, _)) = &following_pump_effect {
+        // In "gains ... and gets ... until end of turn", the trailing
+        // duration scopes both predicates. The pump parser owns that tail,
+        // so carry its typed duration back to the preceding ability grant.
+        // An explicit duration attached to the gain always wins.
+        duration = pump_duration.clone();
     }
     let following_base_pt_effect = if let Some(shared_idx) = shared_has_tail_word_idx {
         let has_word_idx = gain_idx + 1 + shared_idx + 1;
@@ -2122,16 +2158,26 @@ fn parse_gain_ability_sentence_with_subject(
     // (for example, "other than this creature" or "with a sticker on it").
     if real_subject_shape.target && !target_word_qualifies_controller {
         let has_preceding_target_effect = pump_effect.is_some() || leading_become_effect.is_some();
+        let declares_shared_target =
+            !has_preceding_target_effect && following_pump_effect.is_some();
         let target = parse_target_phrase(&real_subject_tokens)?;
+        if declares_shared_target {
+            // A gain-then-get clause has one authored target shared by both
+            // continuous actions. Declare that target once, then compile both
+            // consumers through the target prelude's durable `it` alias.
+            // Repeating the explicit TargetAst on each child creates two
+            // independently assignable target slots at cast time.
+            effects.push(EffectAst::subject_verb_target_only(target.clone()));
+        }
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
         append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
-        let grant_target = if has_preceding_target_effect {
+        let grant_target = if has_preceding_target_effect || declares_shared_target {
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens))
         } else {
-            target
+            target.clone()
         };
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
@@ -2164,8 +2210,12 @@ fn parse_gain_ability_sentence_with_subject(
             &following_grant,
             &duration,
         );
-        let following_pump_target =
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens));
+        let following_pump_target = if has_preceding_target_effect || declares_shared_target {
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens))
+        } else {
+            // A single-action target grant keeps its ordinary direct target.
+            target
+        };
         append_shared_subject_pump_to_target(
             &mut effects,
             &following_pump_target,
@@ -2564,6 +2614,10 @@ fn apply_gain_clause_duration_to_leading_effect(effect: &mut EffectAst, duration
                     duration: effect_duration,
                     ..
                 }
+                | SubjectVerbActionAst::RemoveSubtypes {
+                    duration: effect_duration,
+                    ..
+                }
                 | SubjectVerbActionAst::AddColors {
                     duration: effect_duration,
                     ..
@@ -2703,7 +2757,7 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
     // colon to the full token stream. The leading grammatical shape owns the
     // outer ability kind; only use a colon to select activation when the
     // ability itself does not begin with a trigger.
-    let parsed_ability = if looks_like_trigger {
+    let mut parsed_ability = if looks_like_trigger {
         if let Some(parsed) =
             parse_granted_trigger_with_nested_token_rule(&semantic_tokens, &display)?
         {
@@ -2747,6 +2801,28 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
         };
         parsed
     };
+
+    // A generic quoted token ability can use the token's authored name as its
+    // trigger subject (`When Ember dies, ...`). That route parses a complete
+    // typed zone-change trigger, but unlike the ordinary triggered-line CST
+    // handoff it can arrive without the leading trigger presentation. Carry
+    // only the explicit first-word intro onto that already-typed trigger;
+    // this keeps `When` distinct from `Whenever` without inferring frequency
+    // from the matched event.
+    if let crate::ability::AbilityKind::Triggered(triggered) = parsed_ability.kind_mut()
+        && triggered.trigger.intro_surface.is_none()
+        && let Some(intro_surface) =
+            ability_tokens
+                .first()
+                .and_then(|token| match token.parser_text() {
+                    "when" => Some(crate::triggers::TriggerIntroSurface::When),
+                    "whenever" => Some(crate::triggers::TriggerIntroSurface::Whenever),
+                    "at" => Some(crate::triggers::TriggerIntroSurface::At),
+                    _ => None,
+                })
+    {
+        triggered.trigger.intro_surface = Some(intro_surface);
+    }
 
     Ok(Some(GrantedAbilityAst::ParsedObjectAbility {
         ability: parsed_ability,
@@ -2915,9 +2991,31 @@ mod tests {
     use super::super::super::lexer::lex_line;
     use super::super::super::util::tokenize_line;
     use super::*;
-    use crate::CardId;
     use crate::ability::AbilityKind;
     use crate::cards::builders::CardDefinitionBuilder;
+    use crate::{CardId, ChoiceCount};
+
+    #[test]
+    fn quoted_filtered_static_rule_remains_an_ability_of_the_token() {
+        let definition = crate::runtime_backend::front_end::grammar::token_definitions::
+            parse_token_definition_shape_text("1/1 red Pirate creature token")
+            .expect("Pirate token definition");
+        let tokens = lex_line("Creatures you control attack each combat if able.", 0)
+            .expect("filtered quoted rule should lex");
+        let parsed = parse_granted_abilities_for_token_definition(&definition, &tokens)
+            .expect("filtered quoted rule should parse under the token identity");
+        let [GrantedAbilityAst::StaticAbility(ability)] = parsed.as_slice() else {
+            panic!("expected one filtered static carrier: {parsed:#?}");
+        };
+        let crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
+            &ability.payload
+        else {
+            panic!("expected a filtered object-ability grant: {ability:#?}");
+        };
+        assert_eq!(grant.filter.card_types, [CardType::Creature]);
+        assert_eq!(grant.filter.controller, Some(PlayerFilter::You));
+        assert!(format!("{:#?}", grant.ability).contains("MustAttack"));
+    }
 
     #[test]
     fn triggered_grant_display_keeps_fixed_numbers_out_of_mana_braces() {
@@ -2956,6 +3054,36 @@ mod tests {
             matches!(ability.kind(), AbilityKind::Triggered(_)),
             "the nested activation must not become the outer ability: {ability:#?}"
         );
+    }
+
+    #[test]
+    fn named_quoted_token_death_trigger_keeps_authored_when_surface() {
+        for (intro, expected) in [
+            ("When", crate::triggers::TriggerIntroSurface::When),
+            ("Whenever", crate::triggers::TriggerIntroSurface::Whenever),
+        ] {
+            let tokens = lex_line(
+                &format!("{intro} Ember dies, create fourteen Treasure tokens."),
+                0,
+            )
+            .expect("named token death trigger should lex");
+            let words = crate::runtime_backend::token_word_refs(&tokens);
+            let parsed = crate::runtime_backend::util::with_token_source_reference_context(
+                "Ember",
+                &[crate::types::CardType::Creature],
+                &[crate::types::Subtype::Dragon],
+                || parse_granted_activated_or_triggered_ability_for_gain(&tokens, &words),
+            )
+            .expect("named token death trigger should parse")
+            .expect("named token death trigger should produce an ability");
+            let GrantedAbilityAst::ParsedObjectAbility { ability, .. } = parsed else {
+                panic!("expected a parsed object ability");
+            };
+            let AbilityKind::Triggered(triggered) = ability.kind() else {
+                panic!("expected a triggered token ability: {ability:#?}");
+            };
+            assert_eq!(triggered.trigger.intro_surface, Some(expected));
+        }
     }
 
     #[test]
@@ -3344,6 +3472,60 @@ mod tests {
     }
 
     #[test]
+    fn leading_duration_pump_and_keyword_chain_preserves_optional_target_count() {
+        let tokens = tokenize_line(
+            "Until end of turn, up to one target creature gets +2/+2 and gains vigilance and haste.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("optional-target pump-and-grant sentence should parse")
+            .expect("optional-target pump-and-grant sentence should produce effects");
+
+        let [
+            EffectAst::Coordinated {
+                effects: coordinated,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one coordinated pump-and-grant clause: {effects:#?}");
+        };
+        let parsed_count = coordinated.iter().find_map(|effect| match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Pump {
+                        target: TargetAst::WithCount(_, count),
+                        ..
+                    },
+                ..
+            }) => Some(*count),
+            _ => None,
+        });
+        assert_eq!(parsed_count, Some(ChoiceCount::up_to(1)), "{effects:#?}");
+
+        let compiled = compile_statement_effects(&effects)
+            .expect("optional-target pump-and-grant sentence should lower");
+
+        fn contains_optional_target(effect: &crate::effect::Effect) -> bool {
+            if effect
+                .target_spec()
+                .is_some_and(|target| target.count() == ChoiceCount::up_to(1))
+            {
+                return true;
+            }
+            let mut found = false;
+            effect.visit_child_effects(&mut |child| {
+                found |= contains_optional_target(child);
+            });
+            found
+        }
+        assert!(
+            compiled.iter().any(contains_optional_target),
+            "the authored optional target must survive lowering: {compiled:#?}"
+        );
+    }
+
+    #[test]
     fn pump_then_gain_is_preserved_as_one_coordinated_typed_clause() {
         let tokens = tokenize_line(
             "This creature gets +2/+2 and gains trample until end of turn.",
@@ -3453,7 +3635,7 @@ mod tests {
         );
         assert!(
             string_contains(&debug, "Landwalk(Subtype { subtype: Forest, snow: false })")
-                && string_contains(&debug, "YourNextTurn"),
+                && string_contains(&debug, "YourNextUpkeep"),
             "expected forestwalk grant to keep next-upkeep duration, got {debug}"
         );
     }
@@ -3479,7 +3661,7 @@ mod tests {
         );
         assert!(
             string_contains(&debug, "Landwalk(Subtype { subtype: Forest, snow: false })")
-                && string_contains(&debug, "YourNextTurn"),
+                && string_contains(&debug, "YourNextUpkeep"),
             "expected forestwalk grant to keep next-upkeep duration, got {debug}"
         );
     }
@@ -4113,5 +4295,41 @@ mod tests {
             Some(ironsmith_core::SetQuantifierSurface::They)
         );
         assert_eq!(simple_surface("It gains haste until end of turn."), None);
+    }
+
+    #[test]
+    fn this_creature_keyword_grant_targets_only_the_ability_source() {
+        let tokens = tokenize_line("This creature gains indestructible until end of turn.", 0);
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("source keyword grant should parse")
+            .expect("source keyword grant should produce an effect");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantAbilitiesToTarget {
+                        target: TargetAst::Object(source_filter, None, None),
+                        abilities,
+                        duration: Until::EndOfTurn,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("source grant must not widen to an unscoped object filter: {effects:#?}");
+        };
+        assert!(source_filter.source, "{source_filter:#?}");
+        assert_eq!(
+            source_filter.source_surface,
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "this creature".to_string()
+            ))
+        );
+        assert_eq!(
+            abilities,
+            &[GrantedAbilityAst::KeywordAction(
+                KeywordAction::Indestructible
+            )]
+        );
     }
 }

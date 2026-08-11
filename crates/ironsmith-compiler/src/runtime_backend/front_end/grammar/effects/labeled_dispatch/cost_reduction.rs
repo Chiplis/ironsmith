@@ -17,6 +17,7 @@ pub(crate) struct MatchingSpellCostReductionShape<'a> {
     pub(crate) reduction: Value,
     pub(crate) where_value_tokens: Option<&'a [OwnedLexToken]>,
     pub(crate) duration: Until,
+    pub(crate) next_spell: bool,
     pub(crate) next_spell_mana_reduction: Option<ManaCost>,
 }
 
@@ -63,9 +64,14 @@ pub(crate) fn parse_matching_spell_cost_reduction_shape(
     } else {
         0
     };
+    // The spell noun does not necessarily end the authored restriction. In
+    // `spells you cast this turn that are black and/or red`, the relative
+    // color clause is still part of the candidate-spell filter. Keep the
+    // complete subject up to `cost(s)`; the spell-filter grammar deliberately
+    // ignores duration words while retaining typed characteristics.
     let subject_tokens =
         crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(
-            &tokens[subject_start_token_idx..=spell_token_idx],
+            &tokens[subject_start_token_idx..cost_token_idx],
         );
     let reduction_tokens =
         crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(
@@ -110,7 +116,8 @@ pub(crate) fn parse_matching_spell_cost_reduction_shape(
         filter.owner = Some(PlayerFilter::You);
     }
 
-    let next_spell_mana_reduction = if common::prefix(&words, &["the", "next"]) {
+    let next_spell = common::prefix(&words, &["the", "next"]);
+    let next_spell_mana_reduction = if next_spell {
         leaf::parse_leaf_fixed_mana_cost_prefix_tokens(reduction_tokens)
             .filter(|parsed| parsed.consumed == reduction_tokens.len())
             .map(|parsed| parsed.cost)
@@ -127,12 +134,14 @@ pub(crate) fn parse_matching_spell_cost_reduction_shape(
         } else {
             Until::EndOfTurn
         },
+        next_spell,
         next_spell_mana_reduction,
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::color::ColorSet;
     use crate::runtime_backend::front_end::lexer::lex_line;
 
     use super::*;
@@ -161,6 +170,32 @@ mod tests {
         );
         let shape = parse_matching_spell_cost_reduction_shape(&tokens).expect("reduction shape");
         assert_eq!(shape.reduction, Value::X);
+        assert!(shape.where_value_tokens.is_some());
+    }
+
+    #[test]
+    fn preserves_relative_color_restriction_after_spell_noun() {
+        let tokens = lex(
+            "Spells you cast this turn that are black and/or red cost {X} less to cast, where X is the amount of life you lost this turn.",
+        );
+        let shape = parse_matching_spell_cost_reduction_shape(&tokens).expect("reduction shape");
+        assert_eq!(shape.player, PlayerAst::You);
+        assert_eq!(
+            shape.filter.colors,
+            Some(ColorSet::BLACK.union(ColorSet::RED))
+        );
+        assert_eq!(shape.filter.cast_by, Some(PlayerFilter::You));
+        assert!(shape.where_value_tokens.is_some());
+    }
+
+    #[test]
+    fn preserves_dynamic_next_spell_and_resolution_time_value_tail() {
+        let tokens = lex(
+            "The next instant or sorcery spell you cast this turn costs {X} less to cast, where X is this creature's power as this ability resolves.",
+        );
+        let shape = parse_matching_spell_cost_reduction_shape(&tokens).expect("reduction shape");
+        assert!(shape.next_spell);
+        assert!(shape.next_spell_mana_reduction.is_none());
         assert!(shape.where_value_tokens.is_some());
     }
 }

@@ -69,15 +69,27 @@ impl AddManaOfColorsAmongEffect {
 pub struct AddOneManaOfAnyColorAmongEffect {
     pub filter: ObjectFilter,
     pub player: PlayerFilter,
+    /// Preserve the authored two-step surface "Choose a color of ... Add one
+    /// mana of that color" while executing the same restricted color choice.
+    pub choose_color_of_object_surface: bool,
 }
 
 impl AddOneManaOfAnyColorAmongEffect {
     pub fn new(filter: ObjectFilter, player: PlayerFilter) -> Self {
-        Self { filter, player }
+        Self {
+            filter,
+            player,
+            choose_color_of_object_surface: false,
+        }
     }
 
     pub fn you(filter: ObjectFilter) -> Self {
         Self::new(filter, PlayerFilter::You)
+    }
+
+    pub fn with_choose_color_of_object_surface(mut self, enabled: bool) -> Self {
+        self.choose_color_of_object_surface = enabled;
+        self
     }
 }
 
@@ -192,6 +204,7 @@ impl DestroyEffect {
 pub struct DestroyNoRegenerationEffect {
     pub filter: Option<ObjectFilter>,
     pub target: Option<ChooseSpec>,
+    pub creature_destroyed_this_way_surface: bool,
 }
 
 impl DestroyNoRegenerationEffect {
@@ -199,6 +212,7 @@ impl DestroyNoRegenerationEffect {
         Self {
             filter: Some(filter),
             target: None,
+            creature_destroyed_this_way_surface: false,
         }
     }
 
@@ -206,7 +220,13 @@ impl DestroyNoRegenerationEffect {
         Self {
             filter: None,
             target: Some(target),
+            creature_destroyed_this_way_surface: false,
         }
+    }
+
+    pub fn with_creature_destroyed_this_way_surface(mut self, present: bool) -> Self {
+        self.creature_destroyed_this_way_surface = present;
+        self
     }
 }
 
@@ -275,12 +295,22 @@ pub struct RemoveAnyCountersFromSourceEffect {
     pub remove_all: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DamageDistributionMode {
+    /// The casting player assigns the total among the announced targets.
+    #[default]
+    Chosen,
+    /// Every announced target receives the same rounded-down share.
+    EvenRoundedDown,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DealDistributedDamageEffect {
     pub amount: Value,
     pub target: ChooseSpec,
     pub source: ChooseSpec,
     pub chooser: PlayerFilter,
+    pub distribution: DamageDistributionMode,
 }
 
 impl DealDistributedDamageEffect {
@@ -290,6 +320,7 @@ impl DealDistributedDamageEffect {
             target,
             source: ChooseSpec::Source,
             chooser: PlayerFilter::You,
+            distribution: DamageDistributionMode::Chosen,
         }
     }
 
@@ -300,6 +331,11 @@ impl DealDistributedDamageEffect {
 
     pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
         self.chooser = chooser;
+        self
+    }
+
+    pub fn with_distribution(mut self, distribution: DamageDistributionMode) -> Self {
+        self.distribution = distribution;
         self
     }
 }
@@ -577,6 +613,23 @@ impl<E> PreventNextTimeDamageEffect<E> {
     }
 }
 
+/// Register a one-shot replacement that performs typed effects instead of the
+/// next damage event to the chosen target this turn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplaceNextDamageToTargetEffect<E> {
+    pub target: ChooseSpec,
+    pub replacement_effects: Vec<E>,
+}
+
+impl<E> ReplaceNextDamageToTargetEffect<E> {
+    pub fn new(target: ChooseSpec, replacement_effects: Vec<E>) -> Self {
+        Self {
+            target,
+            replacement_effects,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum RedirectNextDamageDestination {
     Controller,
@@ -714,6 +767,10 @@ pub struct GrantPlayTaggedEffect {
     /// "cast spells from among those exiled cards" wording over the singular
     /// "cast that card this turn". Purely cosmetic; resolution is unaffected.
     pub cast_pool_is_plural: bool,
+    /// Total number of plays shared by the tagged collection. `None` grants
+    /// each tagged card independently; `Some(1)` models "play one of those
+    /// cards" while deferring the choice until a card is actually played.
+    pub max_plays: Option<u32>,
 }
 
 impl GrantPlayTaggedEffect {
@@ -739,11 +796,17 @@ impl GrantPlayTaggedEffect {
             spell_cost_increase: None,
             lands_enter_tapped: false,
             cast_pool_is_plural: false,
+            max_plays: None,
         }
     }
 
     pub fn cast_pool_is_plural(mut self, plural: bool) -> Self {
         self.cast_pool_is_plural = plural;
+        self
+    }
+
+    pub fn with_max_plays(mut self, max_plays: Option<u32>) -> Self {
+        self.max_plays = max_plays;
         self
     }
 
@@ -793,6 +856,15 @@ pub enum ZoneReplacementLibraryPlacement {
     TopOrBottom,
 }
 
+/// A follow-up that is created only when a concrete zone replacement actually
+/// exiles its watched object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkedExileFollowUp {
+    /// Return that exact exiled object to its owner's hand at the beginning of
+    /// the next end step.
+    ReturnToHandAtNextEndStep,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterZoneReplacementEffect {
     pub target: ChooseSpec,
@@ -804,6 +876,7 @@ pub struct RegisterZoneReplacementEffect {
     pub optional: bool,
     pub choice_description: Option<String>,
     pub counters: Vec<(CounterType, u32)>,
+    pub linked_exile_follow_up: Option<LinkedExileFollowUp>,
 }
 
 impl RegisterZoneReplacementEffect {
@@ -824,6 +897,7 @@ impl RegisterZoneReplacementEffect {
             optional: false,
             choice_description: None,
             counters: Vec::new(),
+            linked_exile_follow_up: None,
         }
     }
 
@@ -840,6 +914,11 @@ impl RegisterZoneReplacementEffect {
 
     pub fn with_library_placement(mut self, placement: ZoneReplacementLibraryPlacement) -> Self {
         self.library_placement = Some(placement);
+        self
+    }
+
+    pub fn with_linked_exile_follow_up(mut self, follow_up: LinkedExileFollowUp) -> Self {
+        self.linked_exile_follow_up = Some(follow_up);
         self
     }
 }
@@ -883,6 +962,44 @@ pub struct RegisterDamagedBySourceZoneReplacementEffect {
 pub struct RegisterEnterUnderControlReplacementEffect {
     pub filter: crate::filter_model::ObjectFilter,
     pub mode: ReplacementApplyMode,
+}
+
+/// Registers a temporary replacement that makes matching permanents enter tapped.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegisterEnterTappedReplacementEffect {
+    pub filter: crate::filter_model::ObjectFilter,
+    pub mode: ReplacementApplyMode,
+}
+
+/// Registers a turn-scoped replacement for the next simultaneous batch in
+/// which one or more matching permanents would enter. Every matching member
+/// of that batch enters with the additional counters, then the replacement is
+/// consumed. If no matching batch occurs, it expires during cleanup.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegisterNextBatchEnterWithCountersEffect {
+    pub filter: crate::filter_model::ObjectFilter,
+    pub counter_type: CounterType,
+    pub count: Value,
+}
+
+impl RegisterNextBatchEnterWithCountersEffect {
+    pub fn new(
+        filter: crate::filter_model::ObjectFilter,
+        counter_type: CounterType,
+        count: Value,
+    ) -> Self {
+        Self {
+            filter,
+            counter_type,
+            count,
+        }
+    }
+}
+
+impl RegisterEnterTappedReplacementEffect {
+    pub fn new(filter: crate::filter_model::ObjectFilter, mode: ReplacementApplyMode) -> Self {
+        Self { filter, mode }
+    }
 }
 
 impl RegisterEnterUnderControlReplacementEffect {
@@ -1360,6 +1477,7 @@ impl ChooseLandTypeEffect {
 pub struct ChooseCreatureTypeEffect {
     pub chooser: PlayerFilter,
     pub excluded_subtypes: Vec<Subtype>,
+    pub family: crate::types::SubtypeFamily,
 }
 
 impl ChooseCreatureTypeEffect {
@@ -1367,6 +1485,15 @@ impl ChooseCreatureTypeEffect {
         Self {
             chooser,
             excluded_subtypes,
+            family: crate::types::SubtypeFamily::Creature,
+        }
+    }
+
+    pub fn for_family(chooser: PlayerFilter, family: crate::types::SubtypeFamily) -> Self {
+        Self {
+            chooser,
+            excluded_subtypes: Vec::new(),
+            family,
         }
     }
 }
@@ -1533,6 +1660,20 @@ impl RestartGameEffect {
     pub fn with_source_surface(mut self, source_surface: SourceReferenceSurface) -> Self {
         self.source_surface = Some(source_surface);
         self
+    }
+}
+
+/// Reverses the game's normal turn order without changing the active player.
+///
+/// Turn advancement and priority ordering derive from the shared turn-order
+/// sequence, so this single state transition applies to multiplayer games and
+/// remains a no-op in practice for one- and two-player games.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ReverseTurnOrderEffect;
+
+impl ReverseTurnOrderEffect {
+    pub const fn new() -> Self {
+        Self
     }
 }
 
@@ -2061,6 +2202,47 @@ pub struct TagTriggeringBlockersEffect {
 }
 
 impl TagTriggeringBlockersEffect {
+    pub fn new(tag: impl Into<TagKey>, filter: Option<ObjectFilter>) -> Self {
+        Self {
+            tag: tag.into(),
+            filter,
+        }
+    }
+}
+
+/// Tag the attacking creature from the block event that caused a trigger.
+///
+/// This is the attacking-participant counterpart to
+/// [`TagTriggeringBlockersEffect`]. It preserves the exact event identity even
+/// when combat state changes before the triggered ability resolves.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagTriggeringAttackerEffect {
+    pub tag: TagKey,
+    pub filter: Option<ObjectFilter>,
+}
+
+impl TagTriggeringAttackerEffect {
+    pub fn new(tag: impl Into<TagKey>, filter: Option<ObjectFilter>) -> Self {
+        Self {
+            tag: tag.into(),
+            filter,
+        }
+    }
+}
+
+/// Tag the combat participant on the other side of the source's block event.
+///
+/// When the source is blocking, this tags the attacker. When the source is
+/// attacking, this tags the blocker or blockers. This gives an `Either`
+/// trigger such as "this creature blocks or becomes blocked" one stable
+/// referent for its shared "that creature" body.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagOtherBlockParticipantEffect {
+    pub tag: TagKey,
+    pub filter: Option<ObjectFilter>,
+}
+
+impl TagOtherBlockParticipantEffect {
     pub fn new(tag: impl Into<TagKey>, filter: Option<ObjectFilter>) -> Self {
         Self {
             tag: tag.into(),
@@ -3154,6 +3336,20 @@ pub struct ReturnFromGraveyardToBattlefieldEffect {
     pub enters_with_counters: Vec<BattlefieldEntryCounterSpec>,
 }
 
+/// Return the resolving ability's source from either its owner's graveyard or
+/// exile to the battlefield. This is intentionally source-only: the two-zone
+/// origin is what makes the ability functional outside the battlefield.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnFromGraveyardOrExileToBattlefieldEffect {
+    pub tapped: bool,
+}
+
+impl ReturnFromGraveyardOrExileToBattlefieldEffect {
+    pub fn new(tapped: bool) -> Self {
+        Self { tapped }
+    }
+}
+
 impl ReturnFromGraveyardToBattlefieldEffect {
     pub fn new(target: ChooseSpec, tapped: bool) -> Self {
         Self {
@@ -3260,6 +3456,8 @@ pub struct PutOntoBattlefieldEffect {
     pub target: ChooseSpec,
     pub tapped: bool,
     pub controller: PlayerFilter,
+    /// Counters that are part of this object's battlefield-entry event.
+    pub enters_with_counters: Vec<BattlefieldEntryCounterSpec>,
 }
 
 impl PutOntoBattlefieldEffect {
@@ -3268,7 +3466,13 @@ impl PutOntoBattlefieldEffect {
             target,
             tapped,
             controller,
+            enters_with_counters: Vec::new(),
         }
+    }
+
+    pub fn with_entry_counter(mut self, counter: BattlefieldEntryCounterSpec) -> Self {
+        self.enters_with_counters.push(counter);
+        self
     }
 
     pub fn you_control(target: ChooseSpec, tapped: bool) -> Self {
@@ -3354,6 +3558,30 @@ impl LookAtTopCardsEffect {
     }
 }
 
+/// Look at the top `count` cards of a planar deck and choose exactly one of
+/// them to move to that planar deck's bottom. The other cards keep their
+/// relative order on top.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReorderTopPlanarDeckEffect {
+    pub player: PlayerFilter,
+    pub chooser: PlayerFilter,
+    pub count: u32,
+}
+
+impl ReorderTopPlanarDeckEffect {
+    pub fn new(player: PlayerFilter, chooser: PlayerFilter, count: u32) -> Self {
+        Self {
+            player,
+            chooser,
+            count,
+        }
+    }
+
+    pub fn you(count: u32) -> Self {
+        Self::new(PlayerFilter::You, PlayerFilter::You, count)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MonstrosityEffect {
     pub n: Value,
@@ -3402,14 +3630,36 @@ impl TransformEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct CastTaggedEffect {
     pub tag: TagKey,
     pub player: PlayerFilter,
     pub allow_land: bool,
     pub as_copy: bool,
+    /// The authored cast-copy instruction carried the standard reminder that
+    /// ordinary costs are still paid and permanent-spell copies become
+    /// tokens. This is presentation metadata; `as_copy` owns the executable
+    /// semantics.
+    pub copy_cast_reminder_surface: bool,
     pub without_paying_mana_cost: bool,
+    /// A mandatory mana cost imposed by the resolving instruction in
+    /// addition to the spell's ordinary costs.
+    pub additional_mana_cost: Option<ManaCost>,
     pub cost_reduction: Option<ManaCost>,
+    pub mana_spend_mode: crate::value_model::ManaSpendMode,
+}
+
+impl PartialEq for CastTaggedEffect {
+    fn eq(&self, other: &Self) -> bool {
+        self.tag == other.tag
+            && self.player == other.player
+            && self.allow_land == other.allow_land
+            && self.as_copy == other.as_copy
+            && self.without_paying_mana_cost == other.without_paying_mana_cost
+            && self.additional_mana_cost == other.additional_mana_cost
+            && self.cost_reduction == other.cost_reduction
+            && self.mana_spend_mode == other.mana_spend_mode
+    }
 }
 
 impl CastTaggedEffect {
@@ -3419,8 +3669,11 @@ impl CastTaggedEffect {
             player,
             allow_land: false,
             as_copy: false,
+            copy_cast_reminder_surface: false,
             without_paying_mana_cost: false,
+            additional_mana_cost: None,
             cost_reduction: None,
+            mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
         }
     }
 
@@ -3434,13 +3687,28 @@ impl CastTaggedEffect {
         self
     }
 
+    pub fn with_copy_cast_reminder_surface(mut self) -> Self {
+        self.copy_cast_reminder_surface = true;
+        self
+    }
+
     pub fn without_paying_mana_cost(mut self) -> Self {
         self.without_paying_mana_cost = true;
         self
     }
 
+    pub fn additional_mana_cost(mut self, cost: ManaCost) -> Self {
+        self.additional_mana_cost = Some(cost);
+        self
+    }
+
     pub fn cost_reduction(mut self, reduction: ManaCost) -> Self {
         self.cost_reduction = Some(reduction);
+        self
+    }
+
+    pub fn mana_spend_mode(mut self, mode: crate::value_model::ManaSpendMode) -> Self {
+        self.mana_spend_mode = mode;
         self
     }
 }
@@ -3699,6 +3967,24 @@ pub struct RepeatProcessEffect<E> {
     pub predicate: EffectPredicate,
 }
 
+/// Grants a repeatable mana-payment special action through end of turn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GrantRepeatableManaPaymentActionUntilEndOfTurnEffect<E> {
+    pub player: PlayerFilter,
+    pub cost: ManaCost,
+    pub effects: Vec<E>,
+}
+
+impl<E> GrantRepeatableManaPaymentActionUntilEndOfTurnEffect<E> {
+    pub fn new(player: PlayerFilter, cost: ManaCost, effects: Vec<E>) -> Self {
+        Self {
+            player,
+            cost,
+            effects,
+        }
+    }
+}
+
 impl<E> RepeatProcessEffect<E> {
     pub fn new(effects: Vec<E>, condition: EffectId, predicate: EffectPredicate) -> Self {
         Self {
@@ -3870,6 +4156,8 @@ impl SequenceSurface {
 pub struct SequenceEffect<E> {
     pub effects: Vec<E>,
     pub surface: SequenceSurface,
+    /// Optional authored label on a numeric result-table row.
+    pub result_label: Option<String>,
 }
 
 impl<E> SequenceEffect<E> {
@@ -3877,6 +4165,7 @@ impl<E> SequenceEffect<E> {
         Self {
             effects,
             surface: SequenceSurface::Sequential,
+            result_label: None,
         }
     }
 
@@ -3884,6 +4173,7 @@ impl<E> SequenceEffect<E> {
         Self {
             effects,
             surface: SequenceSurface::SentenceLeadingThen,
+            result_label: None,
         }
     }
 
@@ -3891,6 +4181,7 @@ impl<E> SequenceEffect<E> {
         Self {
             effects,
             surface: SequenceSurface::CommaThen,
+            result_label: None,
         }
     }
 
@@ -3898,6 +4189,7 @@ impl<E> SequenceEffect<E> {
         Self {
             effects,
             surface: SequenceSurface::Coordinated,
+            result_label: None,
         }
     }
 
@@ -3905,6 +4197,7 @@ impl<E> SequenceEffect<E> {
         Self {
             effects,
             surface: SequenceSurface::CoordinatedLeadingDuration,
+            result_label: None,
         }
     }
 
@@ -3912,6 +4205,15 @@ impl<E> SequenceEffect<E> {
         Self {
             effects,
             surface: SequenceSurface::ResultConjunction { leading_duration },
+            result_label: None,
+        }
+    }
+
+    pub fn result_labeled(effects: Vec<E>, label: impl Into<String>) -> Self {
+        Self {
+            effects,
+            surface: SequenceSurface::Sequential,
+            result_label: Some(label.into()),
         }
     }
 }
@@ -3975,6 +4277,9 @@ pub struct UnlessPaysEffect<E> {
     /// "unless you sacrifice ..., sacrifice this creature" instead of the
     /// ordinary trailing "sacrifice this creature unless ..." surface.
     pub leading_surface: bool,
+    /// The payment is available before a surrounding delayed step rather than
+    /// when this wrapper would resolve.
+    pub before_delayed_step: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -4013,6 +4318,11 @@ pub struct ForPlayersEffect<E> {
 pub struct ForEachTaggedEffect<E> {
     pub tag: crate::tag::TagKey,
     pub effects: Vec<E>,
+    /// When present, bind the iterated player to the controller recorded by
+    /// the latest block event in which the iterated creature was blocked by
+    /// an object from this tagged set. This is distinct from the controller
+    /// captured when the outer effect later tagged the creature.
+    pub controller_at_last_blocked_by: Option<crate::tag::TagKey>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

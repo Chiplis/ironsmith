@@ -11,8 +11,8 @@ use crate::effects::cards::search_overrides::{
     finish_opposition_agent_search_control, offer_library_search_casts, opposition_agent_search,
 };
 use crate::effects::helpers::{
-    normalize_chosen_one_per_card_type, resolve_player_filter_to_list, resolve_value,
-    view_hidden_candidate_objects,
+    normalize_chosen_distinct_mana_values, normalize_chosen_one_per_card_type,
+    resolve_player_filter_to_list, resolve_value, view_hidden_candidate_objects,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::SearchLibraryEvent;
@@ -65,9 +65,17 @@ fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
             .as_ref()
             .is_some_and(PlayerFilter::mentions_iterated_player)
         || filter
+            .protected_by
+            .as_ref()
+            .is_some_and(PlayerFilter::mentions_iterated_player)
+        || filter
             .entered_battlefield_controller
             .as_ref()
             .is_some_and(PlayerFilter::mentions_iterated_player)
+        || filter
+            .counters_put_on_this_turn
+            .as_ref()
+            .is_some_and(|constraint| constraint.source_controller.mentions_iterated_player())
         || filter
             .targets_object
             .as_deref()
@@ -104,6 +112,8 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::HalfRoundedDown(inner) => value_mentions_iterated_player(inner),
         crate::effect::Value::Count(filter)
         | crate::effect::Value::CountScaled(filter, _)
+        | crate::effect::Value::GreatestCount(filter)
+        | crate::effect::Value::GreatestSharedCreatureTypeCount(filter)
         | crate::effect::Value::TotalPower(filter)
         | crate::effect::Value::TotalToughness(filter)
         | crate::effect::Value::TotalManaValue(filter)
@@ -138,6 +148,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::DevotionToChosenColor(player)
         | crate::effect::Value::LifeGainedThisTurn(player)
         | crate::effect::Value::LifeLostThisTurn(player)
+        | crate::effect::Value::AttractionsVisitedThisTurn(player)
         | crate::effect::Value::DamageDealtToPlayersThisTurn(player)
         | crate::effect::Value::NoncombatDamageDealtToPlayersThisTurn(player)
         | crate::effect::Value::MaxCardsDrawnThisTurn(player)
@@ -152,9 +163,10 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
             player, ..
         } => player.mentions_iterated_player(),
         crate::effect::Value::Devotion { player, .. } => player.mentions_iterated_player(),
-        crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. } => {
-            player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
-        }
+        crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. }
+        | crate::effect::Value::TotalManaValueOfSpellsCastThisTurnMatching {
+            player, filter, ..
+        } => player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter),
         crate::effect::Value::CommanderCastCount(player) => player.mentions_iterated_player(),
         crate::effect::Value::ThisAbilityResolvedThisTurnCount => false,
         _ => false,
@@ -815,30 +827,6 @@ fn normalize_chosen_distinct_creature_types(
     normalized
 }
 
-fn aggregate_choice_value(
-    game: &GameState,
-    id: ObjectId,
-    metric: crate::effect::ChoiceAggregateMetric,
-) -> i32 {
-    let Some(object) = game.object(id) else {
-        return 0;
-    };
-    match metric {
-        crate::effect::ChoiceAggregateMetric::Power => game
-            .calculated_power(id)
-            .or_else(|| object.power())
-            .unwrap_or(0),
-        crate::effect::ChoiceAggregateMetric::Toughness => game
-            .calculated_toughness(id)
-            .or_else(|| object.toughness())
-            .unwrap_or(0),
-        crate::effect::ChoiceAggregateMetric::ManaValue => object
-            .mana_cost
-            .as_ref()
-            .map_or(0, |cost| cost.mana_value() as i32),
-    }
-}
-
 fn normalize_chosen_aggregate_constraint(
     game: &GameState,
     chosen: Vec<ObjectId>,
@@ -852,11 +840,16 @@ fn normalize_chosen_aggregate_constraint(
         crate::effect::Value::Fixed(maximum) => *maximum,
         _ => return chosen,
     };
+    let minimum = match constraint.minimum.as_ref().map(|value| value.unhinted()) {
+        Some(crate::effect::Value::Fixed(minimum)) => *minimum,
+        Some(_) => return chosen,
+        None => i32::MIN,
+    };
     let chosen_total: i32 = chosen
         .iter()
-        .map(|id| aggregate_choice_value(game, *id, constraint.metric))
+        .map(|id| crate::targeting::aggregate_object_value(game, *id, constraint.metric))
         .sum();
-    if chosen_total <= maximum {
+    if chosen_total >= minimum && chosen_total <= maximum {
         return chosen;
     }
 
@@ -864,34 +857,76 @@ fn normalize_chosen_aggregate_constraint(
     // with cardinality normalization above, keep malformed responses safe and
     // deterministic. Sorting by contribution also preserves valid choices
     // such as a positive-power creature offset by a negative-power creature.
-    let mut ranked = chosen
-        .into_iter()
-        .map(|id| (aggregate_choice_value(game, id, constraint.metric), id))
-        .collect::<Vec<_>>();
-    ranked.sort_by_key(|(value, id)| (*value, *id));
+    let (mut total, mut normalized) = if chosen_total <= maximum {
+        (chosen_total, chosen)
+    } else {
+        let mut ranked = chosen
+            .into_iter()
+            .map(|id| {
+                (
+                    crate::targeting::aggregate_object_value(game, id, constraint.metric),
+                    id,
+                )
+            })
+            .collect::<Vec<_>>();
+        ranked.sort_by_key(|(value, id)| (*value, *id));
 
-    let mut total = 0i32;
-    let mut normalized = Vec::new();
-    for (value, id) in ranked {
-        if normalized.len() >= max {
-            break;
+        let mut total = 0i32;
+        let mut normalized = Vec::new();
+        for (value, id) in ranked {
+            if normalized.len() >= max {
+                break;
+            }
+            if total.saturating_add(value) <= maximum {
+                total = total.saturating_add(value);
+                normalized.push(id);
+            }
         }
-        if total.saturating_add(value) <= maximum {
-            total = total.saturating_add(value);
-            normalized.push(id);
-        }
-    }
+        (total, normalized)
+    };
 
     if fill_to_min && normalized.len() < min {
         let mut remaining = candidates
             .iter()
             .copied()
             .filter(|id| !normalized.contains(id))
-            .map(|id| (aggregate_choice_value(game, id, constraint.metric), id))
+            .map(|id| {
+                (
+                    crate::targeting::aggregate_object_value(game, id, constraint.metric),
+                    id,
+                )
+            })
             .collect::<Vec<_>>();
         remaining.sort_by_key(|(value, id)| (*value, *id));
         for (value, id) in remaining {
             if normalized.len() >= min || normalized.len() >= max {
+                break;
+            }
+            if total.saturating_add(value) <= maximum {
+                total = total.saturating_add(value);
+                normalized.push(id);
+            }
+        }
+    }
+
+    if total < minimum && normalized.len() < max {
+        let mut remaining = candidates
+            .iter()
+            .copied()
+            .filter(|id| !normalized.contains(id))
+            .map(|id| {
+                (
+                    crate::targeting::aggregate_object_value(game, id, constraint.metric),
+                    id,
+                )
+            })
+            .collect::<Vec<_>>();
+        // Reach a lower aggregate bound with the fewest deterministic
+        // additions. A decision maker's already-legal selection is preserved
+        // by the early return above.
+        remaining.sort_by_key(|(value, id)| (std::cmp::Reverse(*value), *id));
+        for (value, id) in remaining {
+            if normalized.len() >= max || total >= minimum {
                 break;
             }
             if total.saturating_add(value) <= maximum {
@@ -1272,10 +1307,15 @@ pub(crate) fn run_choose_objects(
             .as_ref()
             .map(|constraint| {
                 let maximum = resolve_value(game, &constraint.maximum, ctx)?;
-                Ok::<_, ExecutionError>(crate::effect::ChoiceAggregateConstraint::at_most(
-                    constraint.metric,
-                    maximum,
-                ))
+                let minimum = constraint
+                    .minimum
+                    .as_ref()
+                    .map(|minimum| resolve_value(game, minimum, ctx))
+                    .transpose()?;
+                let mut resolved =
+                    crate::effect::ChoiceAggregateConstraint::at_most(constraint.metric, maximum);
+                resolved.minimum = minimum.map(crate::effect::Value::Fixed);
+                Ok::<_, ExecutionError>(resolved)
             })
             .transpose()?;
         let chosen: Vec<ObjectId> = if effect.count.is_random() {
@@ -1343,6 +1383,18 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
+        let chosen = if effect.filter.distinct_mana_values {
+            normalize_chosen_distinct_mana_values(
+                game,
+                chosen,
+                &candidates,
+                min,
+                max,
+                !allow_hidden_partial,
+            )
+        } else {
+            chosen
+        };
         let chosen = if effect.filter.distinct_powers {
             normalize_chosen_distinct_powers(
                 game,
@@ -1379,7 +1431,7 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
-        let chosen = if let Some(constraint) = aggregate_constraint {
+        let chosen = if let Some(constraint) = aggregate_constraint.clone() {
             normalize_chosen_aggregate_constraint(
                 game,
                 chosen,
@@ -1392,6 +1444,20 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
+        if let Some(constraint) = aggregate_constraint.as_ref()
+            && let Some(crate::effect::Value::Fixed(minimum)) =
+                constraint.minimum.as_ref().map(|value| value.unhinted())
+        {
+            let chosen_total = chosen
+                .iter()
+                .map(|id| crate::targeting::aggregate_object_value(game, *id, constraint.metric))
+                .sum::<i32>();
+            if chosen_total < *minimum {
+                return Err(ExecutionError::Impossible(format!(
+                    "chosen objects have aggregate value {chosen_total}, below required minimum {minimum}"
+                )));
+            }
+        }
         if effect.reveal && !chosen.is_empty() {
             view_hidden_candidate_objects(
                 game,
@@ -1420,6 +1486,11 @@ pub(crate) fn run_choose_objects(
         };
 
         let snapshots = snapshot_chosen_objects(game, &objects_for_tags);
+        if effect.remember_as_chosen_object
+            && let [chosen] = snapshots.as_slice()
+        {
+            game.set_chosen_object(ctx.source, chosen.clone());
+        }
         if !snapshots.is_empty() {
             if effect.replace_tagged_objects
                 || (is_implicit_object_tag(effect.tag.as_str())
@@ -1457,10 +1528,11 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::decision::DecisionMaker;
     use crate::effect::ExecutionFact;
-    use crate::effects::{EffectExecutor, ExecutionContext};
+    use crate::effects::{EffectExecutor, ExecutionContext, MoveToZoneEffect};
     use crate::filter::ObjectFilter;
     use crate::ids::{CardId, PlayerId};
-    use crate::target::PlayerFilter;
+    use crate::tag::TagKey;
+    use crate::target::{ChooseSpec, PlayerFilter};
     use crate::types::CardType;
 
     fn setup_game() -> GameState {
@@ -1479,6 +1551,13 @@ mod tests {
             .card_types(vec![CardType::Creature])
             .build();
         game.create_object_from_card(&card, owner, Zone::Library)
+    }
+
+    fn create_exiled_card(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Exile)
     }
 
     fn create_sideboard_card(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
@@ -2691,5 +2770,61 @@ mod tests {
                 .execution_facts()
                 .contains(&ExecutionFact::ChosenObjects(vec![chosen_card]))
         );
+    }
+
+    #[test]
+    fn random_source_exiled_choice_selects_only_linked_card_and_returns_it_to_owner_hand() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let library_card = create_library_card(&mut game, "Linked Card", alice);
+        let unrelated_exiled = create_exiled_card(&mut game, "Unrelated Exiled Card", alice);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let linked_exiled =
+            MoveToZoneEffect::new(ChooseSpec::SpecificObject(library_card), Zone::Exile, false)
+                .execute(&mut game, &mut ctx)
+                .expect("source should exile the selected library card")
+                .affected_objects()
+                .and_then(|objects| objects.first().copied())
+                .expect("exile move should report the new identity");
+        assert_eq!(
+            game.get_exiled_with_source_links(source),
+            &[linked_exiled],
+            "the exile move must retain exact source provenance"
+        );
+
+        let mut count = ChoiceCount::exactly(1);
+        count.random = true;
+        let choose = ChooseObjectsEffect::new(
+            ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
+            count,
+            PlayerFilter::You,
+            "chosen_linked_card",
+        )
+        .in_zone(Zone::Exile);
+        let outcome = run_choose_objects(&choose, &mut game, &mut ctx)
+            .expect("random source-linked choice should resolve");
+        assert_eq!(
+            outcome.objects(),
+            Some([linked_exiled].as_slice()),
+            "an unrelated card in exile must not enter the random selection pool"
+        );
+
+        let returned = MoveToZoneEffect::new(
+            ChooseSpec::Tagged(TagKey::from("chosen_linked_card")),
+            Zone::Hand,
+            false,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("the chosen linked card should move to its owner's hand")
+        .affected_objects()
+        .and_then(|objects| objects.first().copied())
+        .expect("hand move should report the new identity");
+        assert!(
+            game.player(alice)
+                .is_some_and(|player| player.hand.contains(&returned))
+        );
+        assert!(game.exile.contains(&unrelated_exiled));
     }
 }

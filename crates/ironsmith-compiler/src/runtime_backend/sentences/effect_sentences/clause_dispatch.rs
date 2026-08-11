@@ -10,7 +10,9 @@ use super::super::activation_and_restrictions::{
     parse_you_choose_objects_clause_with_count_value, parse_you_choose_player_clause,
     starts_with_target_indicator,
 };
-use super::super::grammar::choices::parse_choice_land_type_phrase_words;
+use super::super::grammar::choices::{
+    parse_choice_land_type_phrase_words, parse_choice_subtype_family_phrase_words,
+};
 use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::effects::clause_dispatch_shapes as clause_grammar;
 use super::super::grammar::effects::followup_shapes as followup_grammar;
@@ -101,7 +103,12 @@ fn player_filter_mentions_source_object(filter: &PlayerFilter) -> bool {
         }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
-        | PlayerFilter::MaxSpeed { base, .. } => player_filter_mentions_source_object(base),
+        | PlayerFilter::MaxSpeed { base, .. }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base }
+        | PlayerFilter::LostLifeThisTurn { base }
+        | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, .. } => {
+            player_filter_mentions_source_object(base)
+        }
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_mentions_source_object(base)
                 || player_filter_mentions_source_object(excluded)
@@ -122,15 +129,16 @@ fn target_player_mentions_source_object(target: &TargetAst) -> bool {
     }
 }
 
-/// Preserve an explicitly targeted object as the source of the damage it
+/// Preserve an explicit grammatical object as the source of the damage it
 /// deals.
 ///
 /// The ordinary player/action dispatcher intentionally reduces most subjects
 /// to `SubjectAst`, which has no object-target variant. That is correct for
 /// "you/that player" actions, but it used to discard the target in sentences
-/// such as "target enchantment deals ...". Lower these clauses through the
-/// existing explicit-source damage action so targeting, source-relative
-/// values, controller references, and later pronouns all share one object.
+/// such as "target enchantment deals ..." and the antecedent in "it deals ...
+/// to each creature blocking it". Lower these clauses through the existing
+/// explicit-source damage action so targeting, source-relative values,
+/// controller references, and recipient relations all share one object.
 fn bind_explicit_damage_subject_characteristics_to_source(value: &mut Value) {
     match value {
         Value::SurfaceHinted { value, .. }
@@ -163,20 +171,12 @@ fn parse_explicit_target_object_damage_source(
     subject_tokens: &[OwnedLexToken],
     action_tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if !subject_tokens
+    let explicitly_targeted = subject_tokens
         .first()
-        .is_some_and(|token| token.is_word(TARGET_WORD))
-    {
-        return Ok(None);
-    }
-    let source = parse_target_phrase(subject_tokens)?;
-    if !matches!(
-        &source,
-        TargetAst::Object(_, _, _)
-            | TargetAst::ObjectOrPlayer(_, _, _)
-            | TargetAst::WithCount(_, _)
-            | TargetAst::WithCountValue(_, _, _)
-    ) {
+        .is_some_and(|token| token.is_word(TARGET_WORD));
+    let anaphoric_object =
+        crate::runtime_backend::token_word_refs(subject_tokens).as_slice() == ["it"];
+    if !explicitly_targeted && !anaphoric_object {
         return Ok(None);
     }
 
@@ -184,13 +184,41 @@ fn parse_explicit_target_object_damage_source(
     let EffectAst::SubjectVerb(parsed) = parsed else {
         return Ok(None);
     };
-    let SubjectVerbActionAst::DealDamage {
-        mut amount,
-        target,
-        unpreventable,
-    } = parsed.action
-    else {
-        return Ok(None);
+    let source = if explicitly_targeted {
+        let source = parse_target_phrase(subject_tokens)?;
+        if !matches!(
+            &source,
+            TargetAst::Object(_, _, _)
+                | TargetAst::ObjectOrPlayer(_, _, _)
+                | TargetAst::WithCount(_, _)
+                | TargetAst::WithCountValue(_, _, _)
+        ) {
+            return Ok(None);
+        }
+        source
+    } else {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
+    };
+
+    let (mut amount, target, unpreventable) = match parsed.action {
+        SubjectVerbActionAst::DealDamage {
+            amount,
+            target,
+            unpreventable,
+        } if explicitly_targeted => (amount, target, unpreventable),
+        SubjectVerbActionAst::DealDamageEach { amount, mut filter } => {
+            // The ordinary each-target damage AST carries set semantics in
+            // its variant. This explicit-source form uses a TargetAst, so
+            // retain the same fact as presentation metadata for mass-damage
+            // lowering without turning it into a target choice.
+            filter.set_plural_object_noun_surface(true);
+            (
+                amount,
+                TargetAst::Object(filter, None, span_from_tokens(action_tokens)),
+                false,
+            )
+        }
+        _ => return Ok(None),
     };
     // Within an explicit damage-source clause, "its" names the grammatical
     // subject, not an older object in reference memory. Preserve that
@@ -1074,9 +1102,11 @@ fn parse_get_pump_clause(
                     let Ok(filter) = parse_object_filter(filter_tokens, false) else {
                         return Ok(None);
                     };
+                    let directional_combat_relation =
+                        filter.blocking && filter.in_combat_with_source;
                     if filter == ObjectFilter::default()
-                        || (mentions_this && !filter.other)
-                        || (disallowed_pronoun && !filter.other)
+                        || (mentions_this && !filter.other && !directional_combat_relation)
+                        || (disallowed_pronoun && !filter.other && !directional_combat_relation)
                     {
                         return Ok(None);
                     }
@@ -1206,9 +1236,10 @@ fn parse_get_pump_clause(
             let Ok(filter) = parse_object_filter(filter_tokens, false) else {
                 return Ok(None);
             };
+            let directional_combat_relation = filter.blocking && filter.in_combat_with_source;
             if filter == ObjectFilter::default()
-                || (mentions_this && !filter.other)
-                || (disallowed_pronoun && !filter.other)
+                || (mentions_this && !filter.other && !directional_combat_relation)
+                || (disallowed_pronoun && !filter.other && !directional_combat_relation)
             {
                 return Ok(None);
             }
@@ -1387,9 +1418,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     })
 }
 
-fn parse_effect_clause_unstacked(
-    tokens: &[OwnedLexToken],
-) -> Result<EffectAst, CardTextError> {
+fn parse_effect_clause_unstacked(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
     }
@@ -1811,6 +1840,15 @@ fn parse_effect_clause_unstacked(
         ));
     }
 
+    if let Some(parsed) = parse_choice_subtype_family_phrase_words(&choice_words)
+        && parsed.consumed == choice_words.len()
+    {
+        return Ok(EffectAst::subject_verb_choose_subtype_type(
+            crate::cards::builders::PlayerAst::Implicit,
+            parsed.family,
+        ));
+    }
+
     if let Some((consumed, options)) = parse_choose_card_type_phrase_words(&choice_words)?
         && consumed == choice_words.len()
     {
@@ -2039,8 +2077,11 @@ fn parse_effect_clause_unstacked(
                     player: PlayerAst::Implicit,
                     allow_land: false,
                     as_copy: false,
+                    copy_cast_reminder_surface: false,
                     without_paying_mana_cost: true,
+                    additional_mana_cost: None,
                     cost_reduction: None,
+                    mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
                 },
             },
         ));
@@ -2291,11 +2332,37 @@ fn parse_effect_clause_unstacked(
         return Ok(effect);
     }
     let for_each_subject_filter = parse_for_each_object_subject(subject_tokens)?;
-    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
+    let subject_words = crate::runtime_backend::lexer::parser_token_word_refs(subject_tokens);
     let each_other_player = matches!(
         subject_words.as_slice(),
         ["each", "other", "player"] | ["each", "other", "players"]
     );
+    let another_target_player = matches!(subject_words.as_slice(), ["another", "target", "player"]);
+    let optional_target_player = if matches!(
+        subject_words.as_slice(),
+        ["up", "to", "one", "target", "player"] | ["up", "to", "one", "target", "players"]
+    ) {
+        Some(TargetAst::WithCount(
+            Box::new(TargetAst::Player(
+                PlayerFilter::Any,
+                span_from_tokens(subject_tokens),
+            )),
+            ChoiceCount::up_to(1),
+        ))
+    } else if subject_words.starts_with(&["up", "to"]) {
+        parse_target_phrase(subject_tokens).ok().and_then(|target| {
+            let is_optional_player = matches!(
+                &target,
+                TargetAst::WithCount(inner, count)
+                    if matches!(inner.as_ref(), TargetAst::Player(_, _))
+                        && count.min == 0
+                        && count.max == Some(1)
+            );
+            is_optional_player.then_some(target)
+        })
+    } else {
+        None
+    };
     if matches!(verb, Verb::Return)
         && clause_grammar::is_return_tagged_reference_shape(subject_tokens)
     {
@@ -2329,7 +2396,21 @@ fn parse_effect_clause_unstacked(
     } else {
         None
     };
-    let mut effect = if let Some(target) = relative_player_subject {
+    let mut effect = if let Some(target) = optional_target_player {
+        let action = parse_effect_with_verb(verb, Some(SubjectAst::Player(PlayerAst::That)), rest)?;
+        EffectAst::Sequence {
+            effects: vec![EffectAst::subject_verb_target_only(target), action],
+        }
+    } else if another_target_player {
+        let target = TargetAst::Player(
+            PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::target_player()),
+            span_from_tokens(subject_tokens),
+        );
+        let action = parse_effect_with_verb(verb, Some(SubjectAst::Player(PlayerAst::That)), rest)?;
+        EffectAst::Sequence {
+            effects: vec![EffectAst::subject_verb_target_only(target), action],
+        }
+    } else if let Some(target) = relative_player_subject {
         let source_relative_target = target_player_mentions_source_object(&target);
         let mut gain_control =
             parse_effect_with_verb(verb, Some(SubjectAst::Player(PlayerAst::That)), rest)?;
@@ -2783,6 +2864,50 @@ mod tests {
             ),
             "explicit attach actor and counted destination must survive parsing: {effect:#?}"
         );
+    }
+
+    #[test]
+    fn optional_target_player_subject_declares_and_reuses_the_player_target() {
+        let tokens = lex_line(
+            "Up to one target player mills cards equal to this creature's power.",
+            0,
+        )
+        .expect("lex optional target-player mill clause");
+        let subject_shape = clause_grammar::parse_clause_subject_verb_shape(&tokens)
+            .expect("split optional target-player subject from mill verb");
+        assert_eq!(
+            crate::runtime_backend::lexer::parser_token_word_refs(subject_shape.subject_tokens),
+            ["up", "to", "one", "target", "player"]
+        );
+        let effect =
+            parse_effect_clause(&tokens).expect("parse optional target-player mill clause");
+        let EffectAst::Sequence { effects } = effect else {
+            panic!("expected target declaration followed by mill: {effect:#?}");
+        };
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::TargetOnly { target, .. },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject:
+                    crate::runtime_backend::ast::SubjectVerbSubjectAst {
+                        player: PlayerAst::That,
+                        ..
+                    },
+                action: SubjectVerbActionAst::Mill { .. },
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected correlated optional player target and mill: {effects:#?}");
+        };
+        assert!(matches!(
+            target,
+            TargetAst::WithCount(inner, count)
+                if matches!(inner.as_ref(), TargetAst::Player(_, _))
+                    && count.min == 0
+                    && count.max == Some(1)
+        ));
     }
 
     #[test]

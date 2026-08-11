@@ -46,8 +46,9 @@ pub enum PriorityResponse {
     Modes(Vec<usize>),
     SpliceCards(Vec<ObjectId>),
     OptionalCosts(Vec<(usize, u32)>),
-    ManaPayment(usize),
-    ManaPipPayment(usize),
+    AssistChoice(usize),
+    /// Respond to the authoritative mana-payment planner.
+    ManaPaymentPlan(crate::mana_payment::ManaPaymentResponse),
     NextCostChoice(usize),
     SacrificeTarget(ObjectId),
     CardCostChoice(ObjectId),

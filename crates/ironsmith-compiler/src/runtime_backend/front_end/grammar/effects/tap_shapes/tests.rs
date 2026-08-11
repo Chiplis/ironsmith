@@ -45,6 +45,17 @@ fn captures_type_choice_qualifier() {
 }
 
 #[test]
+fn captures_inline_creature_type_choice_without_claiming_back_references() {
+    let tokens = lex_line("all creatures of the creature type of your choice", 0).unwrap();
+    let shape = parse_inline_creature_type_choice_tokens(&tokens).unwrap();
+    assert_eq!(render_token_slice(shape.before_tokens), "all creatures");
+    assert_eq!(render_token_slice(shape.after_tokens), "");
+
+    let back_reference = lex_line("all creatures of the chosen type", 0).unwrap();
+    assert!(parse_inline_creature_type_choice_tokens(&back_reference).is_none());
+}
+
+#[test]
 fn captures_coordinated_tap_operands_before_then_followup() {
     let tokens = lex_line(
         "Tap this creature and all creatures named Kobolds of Kher Keep, then an opponent gains control of them.",

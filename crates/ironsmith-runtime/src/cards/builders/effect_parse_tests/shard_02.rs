@@ -1911,30 +1911,39 @@ fn parse_conditional_cycling_zero_cost_static_line() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_activated_ability_cost_increase_static_line() {
+    let oracle = "Activated abilities of nontoken Rebels cost an additional \"Sacrifice a land\" to activate.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Brutal Suppression Variant")
-            .card_types(vec![CardType::Enchantment])
-            .parse_text(
-                "Activated abilities of nontoken Rebels cost an additional \"Sacrifice a land\" to activate.",
-            )
-            .expect("activated-ability cost increase static line should parse");
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("activated-ability cost increase static line should parse");
 
     assert!(
         def.spell_effect.is_none(),
         "expected static activated-ability tax to stay out of spell effects"
     );
 
-    let static_ids: Vec<_> = def
+    let increases = def
         .abilities
         .iter()
-        .filter_map(|ability| match &ability.kind {
-            AbilityKind::Static(static_ability) => Some(static_ability.id()),
-            _ => None,
+        .filter_map(|ability| {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            static_ability.activated_ability_cost_increase()
         })
-        .collect();
-    assert!(
-        static_ids
-            .contains(&crate::static_abilities::StaticAbilityId::ActivatedAbilityCostIncrease),
-        "expected activated-ability cost increase static ability, got {static_ids:?}"
+        .collect::<Vec<_>>();
+    let [increase] = increases.as_slice() else {
+        panic!("expected exactly one activated-ability cost increase, got {increases:#?}");
+    };
+    assert_eq!(
+        increase.increase.costs().len(),
+        1,
+        "the selected land and its sacrifice are one executable cost, not two independent costs"
+    );
+    assert_eq!(increase.increase.display(), "Sacrifice a land");
+    assert_eq!(
+        crate::compiled_text::unprocessed_compiled_lines(&def),
+        vec![oracle.to_string()]
     );
 }
 

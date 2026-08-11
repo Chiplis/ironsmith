@@ -3,7 +3,7 @@
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{EffectExecutor, SimultaneousEffectProposal};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
-use crate::filter::PlayerFilterExt;
+use crate::filter::player_filter_matches_game;
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::target::PlayerFilter;
@@ -258,6 +258,60 @@ fn merge_tagged_object_sets(
     }
 }
 
+fn capture_player_tagged_object_deltas(
+    baseline: &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    current: &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    player_tags: &mut std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<crate::snapshot::ObjectSnapshot>,
+    >,
+    loop_local_tags: &mut std::collections::HashSet<crate::tag::TagKey>,
+) {
+    for (tag, snapshots) in current {
+        let prior = baseline.get(tag);
+        let additions = snapshots.iter().filter(|snapshot| {
+            !prior.is_some_and(|prior| {
+                prior
+                    .iter()
+                    .any(|existing| existing.stable_id == snapshot.stable_id)
+            })
+        });
+        let destination = player_tags.entry(tag.clone()).or_default();
+        let mut changed = false;
+        for snapshot in additions {
+            if !destination
+                .iter()
+                .any(|existing| existing.stable_id == snapshot.stable_id)
+            {
+                destination.push(snapshot.clone());
+                changed = true;
+            }
+        }
+        if changed {
+            loop_local_tags.insert(tag.clone());
+        }
+    }
+}
+
+fn apply_player_tagged_object_partition(
+    tagged_objects: &mut std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<crate::snapshot::ObjectSnapshot>,
+    >,
+    player_tags: &std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<crate::snapshot::ObjectSnapshot>,
+    >,
+    loop_local_tags: &std::collections::HashSet<crate::tag::TagKey>,
+) {
+    for tag in loop_local_tags {
+        tagged_objects.remove(tag);
+        if let Some(snapshots) = player_tags.get(tag) {
+            tagged_objects.insert(tag.clone(), snapshots.clone());
+        }
+    }
+}
+
 impl EffectExecutor for ForPlayersEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -281,7 +335,7 @@ impl EffectExecutor for ForPlayersEffect {
             .players
             .iter()
             .filter(|p| p.is_in_game())
-            .filter(|p| self.filter.matches_player(p.id, &filter_ctx))
+            .filter(|p| player_filter_matches_game(&self.filter, p.id, game, &filter_ctx))
             .map(|p| p.id)
             .collect();
 
@@ -389,6 +443,15 @@ impl EffectExecutor for ForPlayersEffect {
                 units.push(current);
             }
 
+            let mut tagged_objects_by_player = vec![
+                std::collections::HashMap::<
+                    crate::tag::TagKey,
+                    Vec<crate::snapshot::ObjectSnapshot>,
+                >::new();
+                players.len()
+            ];
+            let mut loop_local_tags = std::collections::HashSet::<crate::tag::TagKey>::new();
+
             for unit in units {
                 let mut prepared: Vec<(
                     usize,
@@ -428,7 +491,13 @@ impl EffectExecutor for ForPlayersEffect {
                         .expect("acting player is in the iteration set");
                     if unit_has_mutating_effect {
                         ctx.tagged_objects = pre_unit_tagged_objects.clone();
+                        apply_player_tagged_object_partition(
+                            &mut ctx.tagged_objects,
+                            &tagged_objects_by_player[player_index],
+                            &loop_local_tags,
+                        );
                     }
+                    let pre_player_tagged_objects = ctx.tagged_objects.clone();
                     ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                         for &effect_index in &unit {
                             let effect = &simultaneous_effects[effect_index];
@@ -454,6 +523,14 @@ impl EffectExecutor for ForPlayersEffect {
                         }
                         Ok::<(), ExecutionError>(())
                     })?;
+                    if unit_has_mutating_effect {
+                        capture_player_tagged_object_deltas(
+                            &pre_player_tagged_objects,
+                            &ctx.tagged_objects,
+                            &mut tagged_objects_by_player[player_index],
+                            &mut loop_local_tags,
+                        );
+                    }
                 }
                 if unit_has_mutating_effect {
                     ctx.tagged_objects = pre_unit_tagged_objects.clone();
@@ -471,11 +548,20 @@ impl EffectExecutor for ForPlayersEffect {
                                 &ctx.tagged_objects,
                             );
                         }
-                        ctx.tagged_objects = prepared_tagged_objects;
+                        ctx.tagged_objects = prepared_tagged_objects.clone();
                         active_commit_player = Some(player_index);
                     }
+                    let proposal_baseline = prepared_tagged_objects.clone();
                     match proposal.commit(game, ctx) {
-                        Ok(outcome) => batch_outcomes.push((player_index, outcome)),
+                        Ok(outcome) => {
+                            capture_player_tagged_object_deltas(
+                                &proposal_baseline,
+                                &ctx.tagged_objects,
+                                &mut tagged_objects_by_player[player_index],
+                                &mut loop_local_tags,
+                            );
+                            batch_outcomes.push((player_index, outcome));
+                        }
                         Err(error) => {
                             *game = game_checkpoint;
                             ctx.tagged_objects = pre_unit_tagged_objects;
@@ -1167,6 +1253,56 @@ mod tests {
                         .is_some_and(|object| object.name == name)),
                 "{name} should remain bound to its player's deferred zone-move proposal"
             );
+        }
+    }
+
+    #[test]
+    fn tagged_results_from_an_earlier_action_stay_partitioned_for_later_player_actions() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        for (owner, raw_id, name) in [
+            (alice, 3601, "Alice Returning Creature"),
+            (bob, 3602, "Bob Returning Creature"),
+        ] {
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(raw_id), name)
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+            game.create_object_from_card(&card, owner, crate::zone::Zone::Graveyard);
+        }
+
+        let exiled_tag = crate::tag::TagKey::from("__each_player_exiled");
+        let graveyard_creatures = crate::filter::ObjectFilter::creature()
+            .in_zone(crate::zone::Zone::Graveyard)
+            .owned_by(PlayerFilter::IteratedPlayer);
+        let exile = Effect::exile_all(graveyard_creatures).tag(exiled_tag.clone());
+        let return_own = Effect::put_onto_battlefield(
+            crate::target::ChooseSpec::Tagged(exiled_tag),
+            false,
+            PlayerFilter::IteratedPlayer,
+        );
+        let sequence = Effect::new(crate::effects::SequenceEffect::new(vec![exile, return_own]));
+        let effect = ForPlayersEffect::new(PlayerFilter::Any, vec![sequence]);
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("each player's tagged set should return under that player's control");
+
+        for (name, expected_controller) in [
+            ("Alice Returning Creature", alice),
+            ("Bob Returning Creature", bob),
+        ] {
+            let object_id = game
+                .objects_in_zone(crate::zone::Zone::Battlefield)
+                .into_iter()
+                .find(|object_id| {
+                    game.object(*object_id)
+                        .is_some_and(|object| object.name == name)
+                })
+                .unwrap_or_else(|| panic!("{name} should return"));
+            assert_eq!(game.controller_of_id(object_id), Some(expected_controller));
         }
     }
 

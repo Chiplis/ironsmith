@@ -14,6 +14,7 @@ fn trailing_they_pay_keeps_the_each_player_ast_and_payer_reference() {
             effects,
             player,
             cost,
+            ..
         },
     ] = parsed.as_slice()
     else {

@@ -50,6 +50,49 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::PreventDamageByRemovingSourceCounters { counter_type } => {
+            let Some(damage) =
+                crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
+            else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            let counters_to_remove = damage
+                .amount
+                .min(game.counter_count(effect.source, *counter_type));
+            if counters_to_remove == 0 {
+                return TraitApplyResult::Unchanged(event);
+            }
+            let prevented = if damage.is_unpreventable {
+                0
+            } else {
+                counters_to_remove
+            };
+            if prevented > 0 {
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+            }
+            game.effect_store.prevention_effects.queue_follow_up(
+                crate::prevention::PreventionFollowUp {
+                    source: effect.source,
+                    controller: effect.controller,
+                    prevented,
+                    effects: vec![crate::effect::Effect::remove_counters(
+                        *counter_type,
+                        crate::effect::Value::Fixed(counters_to_remove as i32),
+                        crate::target::ChooseSpec::Source,
+                    )],
+                    targets: Vec::new(),
+                    target_assignments: Vec::new(),
+                },
+                damage.with_amount(prevented),
+                event.provenance(),
+            );
+            if prevented > 0 {
+                TraitApplyResult::Modified(event.rewrap(damage.reduced(prevented)))
+            } else {
+                TraitApplyResult::Unchanged(event)
+            }
+        }
+
         ReplacementAction::PreventDamageThen(effects) => {
             let Some(damage) =
                 crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
@@ -157,6 +200,22 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::SetPlayerCountersAndLockForTurn {
+            counter_type,
+            amount,
+        } => {
+            let modified = apply_trait_set_player_counters_and_lock_for_turn(
+                game,
+                &event,
+                *counter_type,
+                *amount,
+            );
+            match modified {
+                Some(e) => TraitApplyResult::Modified(e),
+                None => TraitApplyResult::Unchanged(event),
+            }
+        }
+
         ReplacementAction::ChangeDestination(new_zone) => {
             let modified = apply_trait_change_destination(&event, *new_zone);
             match modified {
@@ -204,11 +263,13 @@ pub(super) fn apply_trait_replacement(
         ReplacementAction::EnterWithCounters {
             counter_type,
             count,
+            count_condition,
+            otherwise_count,
             added_subtypes,
             added_abilities,
         } => {
-            let value_source = if etb_value_uses_entering_object(count) {
-                // The enter replacement can arrive as either event shape.
+            // The enter replacement can arrive as either event shape.
+            let entering_object =
                 crate::events::downcast_event::<crate::events::ZoneChangeEvent>(event.inner())
                     .filter(|zone_change| zone_change.to == Zone::Battlefield)
                     .and_then(|zone_change| zone_change.objects.first().copied())
@@ -217,12 +278,38 @@ pub(super) fn apply_trait_replacement(
                             event.inner(),
                         )
                         .map(|etb| etb.object)
-                    })
-                    .unwrap_or(effect.source)
+                    });
+            let condition_source = entering_object.unwrap_or(effect.source);
+            let selected_count = match (count_condition, otherwise_count) {
+                (Some(condition), Some(otherwise_count)) => {
+                    let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+                        controller: effect.controller,
+                        source: condition_source,
+                        defending_player: None,
+                        attacking_player: None,
+                        filter_source: Some(condition_source),
+                        iterated_player: None,
+                        triggering_event: None,
+                        trigger_identity: None,
+                        ability_index: None,
+                        options: Default::default(),
+                    };
+                    if crate::condition_eval::evaluate_condition_external(
+                        game, condition, &eval_ctx,
+                    ) {
+                        count
+                    } else {
+                        otherwise_count
+                    }
+                }
+                _ => count,
+            };
+            let value_source = if etb_value_uses_entering_object(selected_count) {
+                condition_source
             } else {
                 effect.source
             };
-            let resolved_count = resolve_value_for_etb(count, game, value_source);
+            let resolved_count = resolve_value_for_etb(selected_count, game, value_source);
             let modified = apply_trait_enter_with_counters(
                 &event,
                 *counter_type,
@@ -251,6 +338,7 @@ pub(super) fn apply_trait_replacement(
                 effect_id: effect.id,
                 object_id: effect.source,
                 filter: None,
+                sacrifice_count: None,
                 destinations: None,
             }
         }
@@ -276,6 +364,7 @@ pub(super) fn apply_trait_replacement(
                 effect_id: effect.id,
                 object_id: effect.source,
                 filter: None,
+                sacrifice_count: None,
                 destinations: None,
             }
         }
@@ -456,6 +545,64 @@ pub(super) fn apply_trait_replacement(
                     effect_id: effect.id,
                     object_id: effect.source,
                     filter: Some(filter.clone()),
+                    sacrifice_count: None,
+                    destinations: None,
+                }
+            }
+        }
+
+        ReplacementAction::InteractiveSacrificeOrRedirect {
+            filter,
+            count,
+            redirect_zone,
+        } => {
+            let controller = effect.controller;
+            let matching_permanents =
+                find_matching_sacrificable_permanents(game, controller, effect.source, filter);
+            if *count == 0 {
+                TraitApplyResult::Unchanged(event)
+            } else if matching_permanents.len() < *count as usize {
+                apply_trait_change_destination(&event, *redirect_zone)
+                    .map(TraitApplyResult::Modified)
+                    .unwrap_or(TraitApplyResult::Unchanged(event))
+            } else {
+                let candidates = matching_permanents
+                    .into_iter()
+                    .map(|id| {
+                        let name = game
+                            .object(id)
+                            .map(|object| object.name.to_string())
+                            .unwrap_or_else(|| "Unknown".to_string());
+                        crate::decisions::context::SelectableObject::new(id, name)
+                    })
+                    .collect();
+                let source_name = game
+                    .object(effect.source)
+                    .map(|object| object.name.to_string())
+                    .unwrap_or_else(|| "permanent".to_string());
+                let decision_ctx = crate::decisions::context::DecisionContext::SelectObjects(
+                    crate::decisions::context::SelectObjectsContext::new(
+                        controller,
+                        Some(effect.source),
+                        format!(
+                            "Sacrifice {} {} to put {} onto the battlefield, or it goes to {}",
+                            count,
+                            filter.description(),
+                            source_name,
+                            describe_redirect_zone_phrase(*redirect_zone),
+                        ),
+                        candidates,
+                        *count as usize,
+                        Some(*count as usize),
+                    ),
+                );
+                TraitApplyResult::NeedsInteraction {
+                    decision_ctx,
+                    redirect_zone: *redirect_zone,
+                    effect_id: effect.id,
+                    object_id: effect.source,
+                    filter: Some(filter.clone()),
+                    sacrifice_count: Some(*count),
                     destinations: None,
                 }
             }
@@ -491,6 +638,7 @@ pub(super) fn apply_trait_replacement(
                     effect_id: effect.id,
                     object_id: effect.source,
                     filter: None,
+                    sacrifice_count: None,
                     destinations: None,
                 }
             }
@@ -539,6 +687,7 @@ pub(super) fn apply_trait_replacement(
                 effect_id: effect.id,
                 object_id: effect.source,
                 filter: None,
+                sacrifice_count: None,
                 destinations: Some(destinations.clone()),
             }
         }
@@ -674,6 +823,28 @@ pub(super) fn find_matching_cards_in_hand(
                 .collect()
         })
         .unwrap_or_default()
+}
+
+pub(super) fn find_matching_sacrificable_permanents(
+    game: &GameState,
+    controller: crate::ids::PlayerId,
+    source: crate::ids::ObjectId,
+    filter: &crate::target::ObjectFilter,
+) -> Vec<crate::ids::ObjectId> {
+    use crate::target::FilterContext;
+
+    let filter_ctx = FilterContext::new(controller).with_source(source);
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                game.controller_of(object) == controller
+                    && game.can_be_sacrificed(*id)
+                    && filter.matches(object, &filter_ctx, game)
+            })
+        })
+        .collect()
 }
 
 fn apply_trait_add_tokens(
@@ -901,6 +1072,31 @@ fn apply_trait_add_counters_to_placement(
         }
         _ => None,
     }
+}
+
+fn apply_trait_set_player_counters_and_lock_for_turn(
+    game: &mut GameState,
+    event: &Event,
+    counter_type: CounterType,
+    amount: u32,
+) -> Option<Event> {
+    use crate::events::{PutCountersEvent, downcast_event};
+
+    if event.kind() != EventKind::PutCounters {
+        return None;
+    }
+    let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
+    let crate::game_state::Target::Player(player) = put_counters.target else {
+        return None;
+    };
+    if put_counters.counter_type != counter_type || put_counters.count == 0 {
+        return None;
+    }
+
+    game.turn_store
+        .turn_history
+        .lock_player_counter_for_turn(player, counter_type);
+    Some(event.rewrap(put_counters.with_count_limit(amount, amount)))
 }
 
 fn apply_trait_change_destination(event: &Event, new_zone: Zone) -> Option<Event> {

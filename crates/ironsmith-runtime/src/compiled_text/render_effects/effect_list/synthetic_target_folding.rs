@@ -37,12 +37,16 @@ fn player_filter_references_identity(
         | PlayerFilter::AliasedTarget(inner)
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
+        | PlayerFilter::LostLifeThisTurn { base: inner }
         | PlayerFilter::MaxSpeed { base: inner, .. } => {
             player_filter_references_identity(inner, identity)
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } => {
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
+        }
+        PlayerFilter::ControlsMost { filter } => {
+            object_filter_references_identity(filter, identity)
         }
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_references_identity(base, identity)
@@ -91,6 +95,12 @@ fn object_filter_references_identity(
             .entered_battlefield_controller
             .as_ref()
             .is_some_and(|player| player_filter_references_identity(player, identity))
+        || filter
+            .counters_put_on_this_turn
+            .as_ref()
+            .is_some_and(|constraint| {
+                player_filter_references_identity(&constraint.source_controller, identity)
+            })
         || filter
             .attached_to_object
             .as_deref()
@@ -152,6 +162,7 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -189,6 +200,7 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         | Value::LifeGainedThisTurn(player)
         | Value::LifeLostThisTurn(player)
         | Value::CardsDiscardedThisTurn(player)
+        | Value::AttractionsVisitedThisTurn(player)
         | Value::DamageDealtToPlayersThisTurn(player)
         | Value::NoncombatDamageDealtToPlayersThisTurn(player)
         | Value::MaxCardsDrawnThisTurn(player)
@@ -204,7 +216,8 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         }
         Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, .. }
         | Value::Devotion { player, .. } => player_filter_references_identity(player, identity),
-        Value::SpellsCastThisTurnMatching { player, filter, .. } => {
+        Value::SpellsCastThisTurnMatching { player, filter, .. }
+        | Value::TotalManaValueOfSpellsCastThisTurnMatching { player, filter, .. } => {
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
         }
@@ -329,6 +342,10 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
     if let Some(exile_top) = effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>() {
         return value_references_identity(&exile_top.count, identity)
             || player_filter_references_identity(&exile_top.player, identity);
+    }
+    if let Some(create) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
+        return value_references_identity(&create.count, identity)
+            || player_filter_references_identity(&create.controller, identity);
     }
     if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>() {
         return identity.tag.is_some_and(|tag| grant.tag == *tag)
@@ -698,6 +715,30 @@ fn replace_tagged_source_subject(
         .then(|| rendered.replacen(reference, &target, 1))
 }
 
+fn describe_target_player_token_creation(
+    identity: &SyntheticTargetIdentity<'_>,
+    consumer: &Effect,
+) -> Option<String> {
+    let create = structural_unwrap_render_wrappers(consumer)
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    let PlayerFilter::AliasedTarget(actor_filter) = &create.controller else {
+        return None;
+    };
+    let PlayerFilter::Target(target_filter) = choose_spec_player_filter(identity.target)? else {
+        return None;
+    };
+    if actor_filter != &target_filter {
+        return None;
+    }
+
+    let rendered = describe_effect(consumer);
+    let token_text = rendered.strip_prefix("That player creates ")?;
+    Some(format!(
+        "{} creates {token_text}",
+        capitalize_first(&describe_choose_spec(identity.target))
+    ))
+}
+
 /// Fold a lowering-only target declaration into its sole consumer.
 ///
 /// The runtime target producer remains untouched. Rendering elides it only
@@ -728,6 +769,12 @@ pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect])
     if effects.len() == 2
         && let Some(rendered) =
             describe_target_controller_characteristic_damage(&identity, consumer)
+    {
+        return Some(rendered);
+    }
+
+    if effects.len() == 2
+        && let Some(rendered) = describe_target_player_token_creation(&identity, consumer)
     {
         return Some(rendered);
     }
@@ -801,6 +848,40 @@ mod tests {
         assert_eq!(
             describe_effect_list(&[tagged, cant]),
             "Target creature can't be blocked this turn except by artifact creatures and/or red creatures"
+        );
+    }
+
+    #[test]
+    fn relative_player_target_folds_into_its_token_creation_actor() {
+        let relative_player =
+            PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::target_player());
+        let target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::target(
+            ChooseSpec::Player(relative_player.clone()),
+        )));
+        let create = Effect::new(crate::effects::CreateTokenEffect::new(
+            crate::cards::tokens::treasure_token_definition(),
+            1,
+            PlayerFilter::AliasedTarget(Box::new(relative_player)),
+        ));
+
+        assert_eq!(
+            describe_effect_list(&[target, create]),
+            "Another target player creates a Treasure token"
+        );
+    }
+
+    #[test]
+    fn targeted_player_history_value_folds_the_declaration_into_the_draw_count() {
+        let target = Effect::new(crate::effects::TargetOnlyEffect::new(
+            ChooseSpec::target_opponent(),
+        ));
+        let draw = Effect::new(crate::effects::DrawCardsEffect::you(
+            Value::CardsDiscardedThisTurn(PlayerFilter::target_opponent()),
+        ));
+
+        assert_eq!(
+            describe_effect_list(&[target, draw]),
+            "Draw cards equal to the number of cards target opponent discarded this turn"
         );
     }
 }

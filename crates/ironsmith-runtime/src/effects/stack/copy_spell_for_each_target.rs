@@ -71,13 +71,24 @@ fn extract_requirements(
         );
         let legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, spec, &legal_targets);
+        let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
+            game,
+            spec,
+            entry.controller,
+            Some(entry.object_id),
+            &legal_targets,
+        );
         let has_enough = crate::targeting::has_enough_legal_targets_for_spec(
             game,
             spec,
             &legal_targets,
             count.min,
         );
-        if !has_enough {
+        if !has_enough
+            || aggregate_constraint
+                .as_ref()
+                .is_some_and(|constraint| !constraint.supports_minimum(count.min))
+        {
             return None;
         }
 
@@ -85,6 +96,7 @@ fn extract_requirements(
             description: effect.0.target_description().to_string(),
             legal_targets,
             legal_target_sets,
+            aggregate_constraint,
             min_targets: count.min,
             max_targets: count.max,
             distinct_player_group: None,

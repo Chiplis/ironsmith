@@ -1267,18 +1267,10 @@ pub(super) fn parse_source_pronoun_transformed_return_uses_object_motion_not_pla
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("At the beginning of your second main phase")
-            && rendered.contains("if you gained 3 or more life this turn")
-            && (rendered.contains(
-                "exile this creature, then return it to the battlefield transformed under its owner's control"
-            ) || rendered.contains(
-                "exile Sorin, then return it to the battlefield transformed under its owner's control"
-            ) || rendered.contains(
-                "Exile this. Return it to the battlefield transformed under its owner's control"
-            ) || rendered.contains(
-                "exile this. Return it to the battlefield transformed under its owner's control"
-            )),
-        "expected oracle-like transformed return wording, got {rendered}"
+        rendered.contains(
+            "At the beginning of each of your postcombat main phases, if you gained 3 or more life this turn, exile Sorin, then return him to the battlefield transformed under his owner's control"
+        ),
+        "expected the typed phase and source-pronoun surfaces, got {rendered}"
     );
     let debug = format!("{:?}", def.abilities);
     assert!(
@@ -3623,4 +3615,114 @@ pub(super) fn dai_li_indoctrination_compiled_text_keeps_discard_mode_targets() {
         rendered.contains("nonland permanent card") && rendered.contains("discards"),
         "expected nonland-permanent discard clause, got {rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn follow_the_lumarets_keeps_optional_one_or_two_partition_and_shared_remainder() {
+    let def = parse_oracle_card_definition("Follow the Lumarets");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Infusion — Look at the top four cards of your library. You may reveal a creature or land card from among them and put it into your hand. If you gained life this turn, you may instead reveal two creature and/or land cards from among them and put them into your hand. Put the rest on the bottom of your library in a random order."
+    );
+
+    let program = def.spell_effect.as_ref().expect("spell effect");
+    let [segment] = program.segments.as_slice() else {
+        panic!("expected one count-replacement segment: {program:#?}");
+    };
+    let [replacement] = segment.self_replacements.as_slice() else {
+        panic!("expected one count-replacement branch: {program:#?}");
+    };
+    assert!(matches!(
+        &replacement.condition,
+        crate::effect::Condition::PlayerGainedLifeThisTurnOrMore {
+            player: PlayerFilter::You,
+            count: 1,
+        }
+    ));
+    assert!(replacement.leading_instead_surface);
+
+    let assert_partition = |effects: &[crate::effect::Effect], count| {
+        let [look_effect, may_effect, remainder_effect] = effects else {
+            panic!("expected look/may/remainder partition: {effects:#?}");
+        };
+        let look = look_effect
+            .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            .expect("looked-card producer");
+        let may = may_effect
+            .downcast_ref::<crate::effects::MayEffect>()
+            .expect("optional exact-size reveal");
+        let [choose_effect, reveal_effect, move_effect] = may.effects.as_slice() else {
+            panic!("expected choose/reveal/move optional body: {may:#?}");
+        };
+        let choose = choose_effect
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .expect("typed selected subset");
+        assert_eq!(choose.count, ChoiceCount::exactly(count));
+        assert!(
+            reveal_effect
+                .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+                .is_some_and(|for_each| for_each.tag == choose.tag)
+        );
+        assert!(
+            move_effect
+                .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+                .is_some_and(|for_each| for_each.tag == choose.tag)
+        );
+        let remainder = remainder_effect
+            .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+            .expect("typed looked-minus-selected complement");
+        assert_eq!(remainder.tag, look.tag);
+        assert_eq!(remainder.keep_tagged.as_ref(), Some(&choose.tag));
+        assert_eq!(
+            remainder.order,
+            crate::effects::consult_helpers::LibraryBottomOrder::Random
+        );
+    };
+    assert_partition(&segment.default_effects, 1);
+    assert_partition(&replacement.replacement_effects, 2);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn kill_suit_cultist_registers_typed_one_shot_damage_replacement() {
+    let def = parse_oracle_card_definition("Kill-Suit Cultist");
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "This creature attacks each combat if able.".to_string(),
+            "{B}, Sacrifice this creature: The next time damage would be dealt to target creature this turn, destroy that creature instead.".to_string(),
+        ]
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Kill-Suit Cultist activated ability");
+    let [effect] = activated.effects.flattened_default_effects() else {
+        panic!("expected one replacement-registration effect: {activated:#?}");
+    };
+    let replacement = effect
+        .downcast_ref::<crate::effects::ReplaceNextDamageToTargetEffect>()
+        .expect("typed next-damage replacement");
+    assert!(matches!(
+        replacement.target.base(),
+        ChooseSpec::Object(filter) if filter.card_types.as_slice() == [CardType::Creature]
+    ));
+    let [tag_effect, destroy_effect] = replacement.replacement_effects.as_slice() else {
+        panic!("expected damaged-target tag and destroy action: {replacement:#?}");
+    };
+    let tag = &tag_effect
+        .downcast_ref::<crate::effects::TagTriggeringDamageTargetEffect>()
+        .expect("triggering damage target tag")
+        .tag;
+    let destroy = destroy_effect
+        .downcast_ref::<crate::effects::DestroyEffect>()
+        .expect("destroy replacement action");
+    assert!(matches!(destroy.spec.base(), ChooseSpec::Tagged(found) if found == tag));
 }

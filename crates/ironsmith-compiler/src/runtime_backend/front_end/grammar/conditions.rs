@@ -174,6 +174,67 @@ pub(crate) struct ObjectAttachedToObjectConditionAst {
     pub(crate) display: String,
 }
 
+/// A characteristic test against the public cards a player removed from a
+/// draft with a named card group.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RemovedFromDraftConditionAst {
+    pub(crate) player: PlayerFilter,
+    pub(crate) filter: ObjectFilter,
+    pub(crate) with_cards_named: String,
+}
+
+/// Parse `you removed <card filter> from the draft with cards named <name>`.
+///
+/// Keeping the removed card as an ordinary object filter lets conditional
+/// grants ask for any printed characteristic or ability without introducing a
+/// mechanic-specific flag for each one.
+pub(crate) fn parse_removed_from_draft_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<RemovedFromDraftConditionAst> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["you", "removed"]))?;
+    let separator =
+        primitives::find_phrase_start(rest, &["from", "the", "draft", "with", "cards", "named"])?;
+    let filter_tokens = trim_edge_punctuation_tokens(rest.get(..separator)?);
+    let (_, name_tokens) = primitives::parse_prefix(
+        rest.get(separator..)?,
+        primitives::phrase(&["from", "the", "draft", "with", "cards", "named"]),
+    )?;
+    let name_tokens = trim_edge_punctuation_tokens(name_tokens);
+    if filter_tokens.is_empty() || name_tokens.is_empty() {
+        return None;
+    }
+    let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+    let has_authored_zone = filter_words.iter().any(|word| {
+        crate::runtime_backend::front_end::shared::util::parse_zone_word(word).is_some()
+    });
+    let mut filter = parse_object_filter_with_grammar_entrypoint(filter_tokens, false)
+        .or_else(|_| parse_object_filter_words(&filter_words, false))
+        .ok()?;
+    if has_authored_zone {
+        return None;
+    }
+    // Draft provenance is carried by the condition itself, not by an object
+    // zone. The permissive word parser may default an otherwise zone-free
+    // card descriptor to the battlefield; remove only that unauthored default.
+    filter.zone = None;
+    let mut with_cards_named = crate::runtime_backend::token_word_refs(name_tokens).join(" ");
+    if let Some(source_name) =
+        crate::runtime_backend::front_end::shared::util::current_source_reference_name()
+        && source_name.eq_ignore_ascii_case(&with_cards_named)
+    {
+        with_cards_named = source_name;
+    }
+    if with_cards_named.is_empty() {
+        return None;
+    }
+    Some(RemovedFromDraftConditionAst {
+        player: PlayerFilter::You,
+        filter,
+        with_cards_named,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlayerStatusAst {
     Monarch,
@@ -307,6 +368,11 @@ pub(crate) enum PlayerSpellCastThisTurnConditionAst {
     },
     CountAtLeast {
         player: PlayerFilter,
+        count: u32,
+    },
+    MatchingFilterCountAtLeast {
+        player: PlayerFilter,
+        filter: ObjectFilter,
         count: u32,
     },
 }
@@ -1218,6 +1284,17 @@ pub(crate) fn parse_player_life_relation_condition(
 fn parse_player_life_relation_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeRelationConditionAst> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words
+        == [
+            "you", "have", "the", "most", "life", "or", "are", "tied", "for", "most", "life",
+        ]
+    {
+        return Some(PlayerLifeRelationConditionAst {
+            player: PlayerFilter::You,
+            relation: PlayerLifeRelationAst::HasNoOpponentWithMoreLifeThan,
+        });
+    }
     if let Some(condition) = parse_no_opponent_more_life_than_shape(tokens) {
         return Some(condition);
     }
@@ -1429,13 +1506,26 @@ fn parse_player_spell_cast_this_turn_shape(
         )
         .ok()
         .flatten()
-        && shape
+    {
+        if shape
             .object_tokens
             .get(used)
             .is_some_and(|token| token.is_word("spell") || token.is_word("spells"))
-        && used + 1 == shape.object_tokens.len()
-    {
-        return Some(PlayerSpellCastThisTurnConditionAst::CountAtLeast { player, count });
+            && used + 1 == shape.object_tokens.len()
+        {
+            return Some(PlayerSpellCastThisTurnConditionAst::CountAtLeast { player, count });
+        }
+        if let Some(filters) = parse_spell_cast_filter_tokens(&shape.object_tokens[used..])
+            && let [filter] = filters.as_slice()
+        {
+            return Some(
+                PlayerSpellCastThisTurnConditionAst::MatchingFilterCountAtLeast {
+                    player,
+                    filter: filter.clone(),
+                    count,
+                },
+            );
+        }
     }
     let filters = parse_spell_cast_filter_tokens(shape.object_tokens)?;
     if filters.is_empty() {
@@ -1846,6 +1936,48 @@ fn split_control_condition_filter_suffix_words<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_removed_from_draft_characteristic_condition_with_exact_group_name() {
+        let tokens = lex_line(
+            "you removed a creature card with flying from the draft with cards named Draft Mimic",
+            0,
+        )
+        .expect("lex removed-from-draft condition");
+        let parsed = parse_removed_from_draft_condition(&tokens)
+            .expect("typed removed-from-draft condition");
+
+        assert_eq!(parsed.player, PlayerFilter::You);
+        assert!(parsed.filter.card_types.contains(&CardType::Creature));
+        assert!(parsed.filter.has_explicit_card_noun());
+        assert_eq!(
+            parsed.filter.static_abilities,
+            vec![crate::static_abilities::StaticAbilityId::Flying]
+        );
+        assert_eq!(parsed.with_cards_named, "Draft Mimic");
+
+        let lowercase_source_name = lex_line(
+            "you removed a creature card with flying from the draft with cards named animus of predation",
+            0,
+        )
+        .expect("lex lowercase removed-from-draft condition");
+        let lowercase_source_name = parse_removed_from_draft_condition(&lowercase_source_name)
+            .expect("lowercase named group must remain characteristic data");
+        assert_eq!(lowercase_source_name.filter.zone, None);
+        assert!(
+            lowercase_source_name
+                .with_cards_named
+                .eq_ignore_ascii_case("animus of predation"),
+            "the named draft group may restore the current source's authored casing: {lowercase_source_name:#?}"
+        );
+
+        let near_miss = lex_line(
+            "you removed a creature card with flying from your graveyard with cards named Draft Mimic",
+            0,
+        )
+        .expect("lex near miss");
+        assert!(parse_removed_from_draft_condition(&near_miss).is_none());
+    }
     use crate::runtime_backend::front_end::lexer::lex_line;
 
     #[test]

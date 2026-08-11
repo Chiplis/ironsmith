@@ -441,6 +441,15 @@ pub(crate) fn move_to_battlefield_batch_with_options(
         prepared_entries[index] = Some((old_zone, prepared));
     }
 
+    // Every proposal in this simultaneous event has now been prepared against
+    // the same batch-scoped one-shot replacements. Consume the replacements
+    // that matched at least one member before committing the prepared entries,
+    // so a later independent ETB event cannot reuse them.
+    working
+        .effect_store
+        .replacement_effects
+        .consume_pending_batch_one_shot_effects();
+
     // Reverse removal order restores the original relative order even when
     // several reserved cards occupied adjacent slots in an ordered zone.
     for reservation in reservations.into_iter().rev() {

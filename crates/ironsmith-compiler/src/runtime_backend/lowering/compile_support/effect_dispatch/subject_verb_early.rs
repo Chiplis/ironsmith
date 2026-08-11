@@ -1,5 +1,14 @@
 use super::*;
 
+fn source_filter_needs_resolution_context(filter: &ObjectFilter) -> bool {
+    filter.is_target_object
+        || filter.in_combat_with.is_some()
+        || filter
+            .any_of
+            .iter()
+            .any(source_filter_needs_resolution_context)
+}
+
 pub(super) fn compile_subject_verb_early(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -70,6 +79,23 @@ pub(super) fn compile_subject_verb_early(
             Effect::gain_life,
             |value, filter| Effect::gain_life_player(value, ChooseSpec::Player(filter)),
         ),
+        SubjectVerbActionAst::CreateTokenChoice { options } => {
+            let mut modes = Vec::new();
+            let mut merged_choices = Vec::new();
+            for (display, option) in options {
+                let (effects, choices) =
+                    compile_effects(std::slice::from_ref(option.as_ref()), ctx)?;
+                merged_choices.extend(choices);
+                modes.push(crate::effect::EffectMode::new(display.clone(), effects));
+            }
+            Ok((
+                vec![Effect::new(
+                    crate::effects::ChooseModeEffect::choose_one(modes)
+                        .with_chooser(PlayerFilter::You),
+                )],
+                merged_choices,
+            ))
+        }
         SubjectVerbActionAst::RevealHand => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
@@ -397,7 +423,10 @@ pub(super) fn compile_subject_verb_early(
             )],
             Vec::new(),
         )),
-        SubjectVerbActionAst::OpenAttraction => Ok((vec![Effect::open_attraction()], Vec::new())),
+        SubjectVerbActionAst::OpenAttraction { reminder } => Ok((
+            vec![Effect::open_attraction_with_reminder(*reminder)],
+            Vec::new(),
+        )),
         SubjectVerbActionAst::ManifestTopCardOfLibrary
         | SubjectVerbActionAst::CloakTopCardOfLibrary => {
             let cloak = matches!(
@@ -506,6 +535,11 @@ pub(super) fn compile_subject_verb_early(
                 Effect::flip_coin(subject.into_player_filter())
             })
         }
+        SubjectVerbActionAst::FlipCoinFaceOnly => {
+            compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
+                Effect::flip_coin_for_face(subject.into_player_filter())
+            })
+        }
         SubjectVerbActionAst::RollDie { sides, die_text } => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 Effect::roll_die_with_die_text(
@@ -567,14 +601,17 @@ pub(super) fn compile_subject_verb_early(
                 Effect::choose_named_option(subject.into_player_filter(), options.clone())
             })
         }
-        SubjectVerbActionAst::ChooseCreatureType { excluded_subtypes } => {
-            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
-                Effect::choose_creature_type(
-                    subject.into_player_filter(),
-                    excluded_subtypes.clone(),
-                )
-            })
-        }
+        SubjectVerbActionAst::ChooseCreatureType {
+            excluded_subtypes,
+            family,
+        } => compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+            let mut effect = crate::effects::ChooseCreatureTypeEffect::for_family(
+                subject.into_player_filter(),
+                *family,
+            );
+            effect.excluded_subtypes = excluded_subtypes.clone();
+            Effect::new(effect)
+        }),
         SubjectVerbActionAst::ChooseLandType { exclude_basic } => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::choose_land_type(subject.into_player_filter(), *exclude_basic)
@@ -840,22 +877,31 @@ pub(super) fn compile_subject_verb_early(
                 },
             )
         }
-        SubjectVerbActionAst::AddOneManaAnyColorAmong { filter } => {
+        SubjectVerbActionAst::AddOneManaAnyColorAmong {
+            filter,
+            choose_color_of_object_surface,
+        } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             compile_player_effect_from_resolved_filter(
                 subject.clone_player_filter(),
                 subject.into_choices(),
                 || {
-                    Effect::new(crate::effects::mana::AddOneManaOfAnyColorAmongEffect::new(
-                        filter.clone(),
-                        PlayerFilter::You,
-                    ))
+                    Effect::new(
+                        crate::effects::mana::AddOneManaOfAnyColorAmongEffect::new(
+                            filter.clone(),
+                            PlayerFilter::You,
+                        )
+                        .with_choose_color_of_object_surface(*choose_color_of_object_surface),
+                    )
                 },
                 |player_filter| {
-                    Effect::new(crate::effects::mana::AddOneManaOfAnyColorAmongEffect::new(
-                        filter.clone(),
-                        player_filter,
-                    ))
+                    Effect::new(
+                        crate::effects::mana::AddOneManaOfAnyColorAmongEffect::new(
+                            filter.clone(),
+                            player_filter,
+                        )
+                        .with_choose_color_of_object_surface(*choose_color_of_object_surface),
+                    )
                 },
             )
         }
@@ -1044,6 +1090,7 @@ pub(super) fn compile_subject_verb_early(
             optional,
             choice_description,
             counters,
+            linked_exile_follow_up,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1068,6 +1115,9 @@ pub(super) fn compile_subject_verb_early(
             .with_counters(counters.clone());
             if let Some(placement) = library_placement {
                 replacement = replacement.with_library_placement(*placement);
+            }
+            if let Some(follow_up) = linked_exile_follow_up {
+                replacement = replacement.with_linked_exile_follow_up(*follow_up);
             }
             if *optional {
                 replacement.optional = true;
@@ -1208,6 +1258,38 @@ pub(super) fn compile_subject_verb_early(
             );
             Ok((vec![effect], Vec::new()))
         }
+        SubjectVerbActionAst::RegisterEnterTappedReplacement { filter, duration } => {
+            let mode = match duration {
+                crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
+                    crate::effects::ReplacementApplyMode::OneShot
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
+                    crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
+                    crate::effects::ReplacementApplyMode::Resolution
+                }
+            };
+            let effect = Effect::new(crate::effects::RegisterEnterTappedReplacementEffect::new(
+                filter.clone(),
+                mode,
+            ));
+            Ok((vec![effect], Vec::new()))
+        }
+        SubjectVerbActionAst::RegisterNextBatchEnterWithCounters {
+            filter,
+            counter_type,
+            count,
+        } => Ok((
+            vec![Effect::new(
+                crate::effects::RegisterNextBatchEnterWithCountersEffect::new(
+                    filter.clone(),
+                    *counter_type,
+                    count.clone(),
+                ),
+            )],
+            Vec::new(),
+        )),
         SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 Effect::exile_instead_of_graveyard_this_turn(subject.into_player_filter())
@@ -1717,6 +1799,21 @@ pub(super) fn compile_subject_verb_early(
             source_filter,
             excluded_source_target,
         } => {
+            // Target-relative filters cannot be kept as a dynamic damage
+            // filter: prevention shields are consulted after resolution, when
+            // the spell's target context is no longer available. Resolve the
+            // matching sources now and register identity-specific shields.
+            if excluded_source_target.is_none()
+                && source_filter_needs_resolution_context(source_filter)
+            {
+                return Ok(Some((
+                    vec![Effect::prevent_all_combat_damage_from(
+                        ChooseSpec::All(source_filter.clone()),
+                        duration.clone(),
+                    )],
+                    Vec::new(),
+                )));
+            }
             let mut damage_filter = ironsmith_core::DamageFilter::combat();
             damage_filter.from_source = Some(source_filter.clone());
             let mut effect = crate::effects::PreventAllDamageEffect::all_with_filter(
@@ -1816,6 +1913,33 @@ pub(super) fn compile_subject_verb_early(
             }
             choices.extend(follow_up_choices);
             Ok((vec![Effect::new(effect)], choices))
+        }
+        SubjectVerbActionAst::ReplaceNextDamageToTarget {
+            target,
+            damage_target_tag,
+            replacement_effects,
+        } => {
+            let (target, mut choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let mut replacement_ctx =
+                EffectLoweringContext::from_parts(ctx.id_gen_context(), ctx.lowering_frame());
+            let (mut replacement_effects, replacement_choices) =
+                compile_effects(replacement_effects, &mut replacement_ctx)?;
+            ctx.apply_id_gen_context(replacement_ctx.id_gen_context());
+            choices.extend(replacement_choices);
+            replacement_effects.insert(
+                0,
+                Effect::tag_triggering_damage_target(damage_target_tag.clone()),
+            );
+            Ok((
+                vec![Effect::new(
+                    crate::effects::ReplaceNextDamageToTargetEffect::new(
+                        target,
+                        replacement_effects,
+                    ),
+                )],
+                choices,
+            ))
         }
         SubjectVerbActionAst::PreventDamage {
             amount,

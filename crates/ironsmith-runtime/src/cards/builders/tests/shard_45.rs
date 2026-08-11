@@ -21,13 +21,11 @@ fn assert_named_inline_entry_counter(
         .count();
 
     assert_eq!(
-        matching_entry_counters,
-        1,
+        matching_entry_counters, 1,
         "{name} should encode its authored {counter_debug_name} counter as one battlefield-entry modifier: {debug}"
     );
     assert!(
-        debug.contains(&counter_marker)
-            && debug.contains("surface: Inline"),
+        debug.contains(&counter_marker) && debug.contains("surface: Inline"),
         "{name} should retain the counter kind and inline entry timing: {debug}"
     );
     assert!(

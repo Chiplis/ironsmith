@@ -33,7 +33,8 @@ fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
         TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
         }
-        TriggerSpec::PutIntoGraveyardFromZone { filter, .. } => {
+        TriggerSpec::PutIntoGraveyardFromZone { filter, .. }
+        | TriggerSpec::PutIntoGraveyardFromAnyExcept { filter, .. } => {
             filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
         }
         TriggerSpec::Either(left, right) => {
@@ -55,6 +56,7 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
             matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
         })
         || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
+        || matches!(&filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
         || filter
             .targets_object
             .as_deref()
@@ -86,6 +88,12 @@ fn replace_filter_tag(filter: &mut ObjectFilter, old_tag: &str, new_tag: &TagKey
         }
     }
     if let Some(crate::filter::ObjectRef::Tagged(tag)) = &mut filter.blocked_by
+        && tag.as_str() == old_tag
+    {
+        *tag = new_tag.clone();
+        replaced = true;
+    }
+    if let Some(crate::filter::ObjectRef::Tagged(tag)) = &mut filter.in_combat_with
         && tag.as_str() == old_tag
     {
         *tag = new_tag.clone();
@@ -275,10 +283,19 @@ fn rewrite_apply_pending_cipher_effect(
         return builder;
     }
 
-    builder
+    let program = builder
         .spell_effect
-        .get_or_insert_with(ResolutionProgram::default)
-        .push(crate::effect::Effect::cipher());
+        .get_or_insert_with(ResolutionProgram::default);
+    let cipher = crate::effect::Effect::cipher();
+    if program.segments.is_empty() {
+        program.push(cipher);
+    } else {
+        program.push_segment(crate::resolution::ResolutionSegment {
+            default_effects: vec![cipher],
+            self_replacements: Vec::new(),
+            starts_new_source_line: true,
+        });
+    }
     builder
 }
 
@@ -424,6 +441,173 @@ fn preserve_looked_collection_self_replacement_preludes(program: &mut Resolution
     }
 }
 
+/// Rebind the two ordered "revealed this way" partitions to the exact
+/// LookAtTopCards collection after reference lowering. The union capture is
+/// lowered first and advances ordinary last-object memory; only this exact
+/// typed six-member partition program may use its already-proved union arms
+/// to repair the two later standalone captures.
+fn normalize_ordered_revealed_partition_tags(program: &mut ResolutionProgram) {
+    fn collect_revealed_look_tags(effect: &crate::effect::Effect, tags: &mut Vec<TagKey>) {
+        if let Some(look) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && look.reveal
+        {
+            tags.push(look.tag.clone());
+        }
+        effect.visit_child_effects(&mut |child| collect_revealed_look_tags(child, tags));
+    }
+
+    fn membership_tag(filter: &ObjectFilter) -> Option<&TagKey> {
+        let [constraint] = filter.tagged_constraints.as_slice() else {
+            return None;
+        };
+        (constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+            .then_some(&constraint.tag)
+    }
+
+    fn same_filter_except_membership(left: &ObjectFilter, right: &ObjectFilter) -> bool {
+        if membership_tag(left).is_none() || membership_tag(right).is_none() {
+            return false;
+        }
+        let mut left = left.clone();
+        let mut right = right.clone();
+        left.tagged_constraints.clear();
+        right.tagged_constraints.clear();
+        left == right
+    }
+
+    fn rebind_membership(filter: &mut ObjectFilter, reveal_tag: &TagKey) -> bool {
+        let [constraint] = filter.tagged_constraints.as_mut_slice() else {
+            return false;
+        };
+        if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+            return false;
+        }
+        constraint.tag = reveal_tag.clone();
+        true
+    }
+
+    fn rewrite_partition_sequence(
+        effect: &crate::effect::Effect,
+        reveal_tag: &TagKey,
+    ) -> Option<crate::effect::Effect> {
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            let mut rewritten = with_id.clone();
+            rewritten.effect = Box::new(rewrite_partition_sequence(&with_id.effect, reveal_tag)?);
+            return Some(crate::effect::Effect::new(rewritten));
+        }
+        let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+        if sequence.surface != ironsmith_core::SequenceSurface::CommaThen
+            || sequence.result_label.is_some()
+        {
+            return None;
+        }
+        let [
+            first_candidate,
+            second_candidate,
+            first_loop,
+            second_effect,
+            second_loop,
+            remainder_effect,
+        ] = sequence.effects.as_slice()
+        else {
+            return None;
+        };
+        let first_candidate =
+            first_candidate.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+        let second_candidate =
+            second_candidate.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+        let (union_index, first_index, union, first) = if first_candidate.filter.any_of.len() == 2 {
+            (0, 1, first_candidate, second_candidate)
+        } else if second_candidate.filter.any_of.len() == 2 {
+            (1, 0, second_candidate, first_candidate)
+        } else {
+            return None;
+        };
+        let second = second_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+        let first_loop = first_loop
+            .downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()?;
+        let second_loop = second_loop
+            .downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()?;
+        let remainder = remainder_effect
+            .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+        let [first_union, second_union] = union.filter.any_of.as_slice() else {
+            return None;
+        };
+        let union_membership = membership_tag(first_union)?;
+        if membership_tag(second_union) != Some(union_membership) {
+            return None;
+        }
+        // Reference lowering visits these captures in order. The union capture
+        // advances ordinary object memory to `union.tag`; the first subgroup
+        // then advances it again to `first.tag`. An authored explicit reveal
+        // collection can therefore arrive here as the exact causal chain
+        // reveal -> union -> first subgroup. Accept only those intermediate
+        // producer tags, while the union arms themselves still prove the
+        // authoritative revealed collection.
+        let first_membership_is_proven = membership_tag(&first.filter)
+            .is_some_and(|tag| tag == reveal_tag || tag == &union.tag || tag == union_membership);
+        let second_membership_is_proven = membership_tag(&second.filter).is_some_and(|tag| {
+            tag == reveal_tag || tag == &union.tag || tag == &first.tag || tag == union_membership
+        });
+        if union.zone != Some(Zone::Library)
+            || !union.additional_zones.is_empty()
+            || !union.source_tags.is_empty()
+            || first.zone != Some(Zone::Library)
+            || second.zone != Some(Zone::Library)
+            || first_loop.tag != first.tag
+            || second_loop.tag != second.tag
+            || (remainder.tag != *reveal_tag && remainder.tag != union.tag)
+            || remainder.keep_tagged.as_ref() != Some(&union.tag)
+            || !first_membership_is_proven
+            || !second_membership_is_proven
+            || !same_filter_except_membership(&first.filter, first_union)
+            || !same_filter_except_membership(&second.filter, second_union)
+        {
+            return None;
+        }
+
+        let mut rewritten = sequence.clone();
+        let mut union = union.clone();
+        if !rebind_membership(&mut union.filter.any_of[0], reveal_tag)
+            || !rebind_membership(&mut union.filter.any_of[1], reveal_tag)
+        {
+            return None;
+        }
+        let mut first = first.clone();
+        first.filter = union.filter.any_of[0].clone();
+        let mut second = second.clone();
+        second.filter = union.filter.any_of[1].clone();
+        let mut remainder = remainder.clone();
+        remainder.tag = reveal_tag.clone();
+        rewritten.effects[union_index] = crate::effect::Effect::new(union);
+        rewritten.effects[first_index] = crate::effect::Effect::new(first);
+        rewritten.effects[3] = crate::effect::Effect::new(second);
+        rewritten.effects[5] = crate::effect::Effect::new(remainder);
+        Some(crate::effect::Effect::new(rewritten))
+    }
+
+    let [producer, disposition] = program.segments.as_mut_slice() else {
+        return;
+    };
+    if !producer.self_replacements.is_empty() || !disposition.self_replacements.is_empty() {
+        return;
+    }
+    let mut reveal_tags = Vec::new();
+    for effect in &producer.default_effects {
+        collect_revealed_look_tags(effect, &mut reveal_tags);
+    }
+    let [reveal_tag] = reveal_tags.as_slice() else {
+        return;
+    };
+    let [root] = disposition.default_effects.as_slice() else {
+        return;
+    };
+    let Some(rewritten) = rewrite_partition_sequence(root, reveal_tag) else {
+        return;
+    };
+    disposition.default_effects = vec![rewritten];
+}
+
 pub(super) fn rewrite_finalize_lowered_card(
     mut builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
@@ -432,6 +616,7 @@ pub(super) fn rewrite_finalize_lowered_card(
     builder = rewrite_apply_pending_backup_abilities(builder, state);
     builder = rewrite_apply_pending_cipher_effect(builder, state);
     if let Some(spell_effect) = &mut builder.spell_effect {
+        normalize_ordered_revealed_partition_tags(spell_effect);
         preserve_looked_collection_self_replacement_preludes(spell_effect);
     }
     for ability in &mut builder.abilities {

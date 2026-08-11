@@ -563,6 +563,9 @@ impl Modification {
             ironsmith_core::CompiledContinuousModification::AddSubtypes(subtypes) => {
                 Self::AddSubtypes(subtypes)
             }
+            ironsmith_core::CompiledContinuousModification::RemoveSubtypes(subtypes) => {
+                Self::RemoveSubtypes(subtypes)
+            }
             ironsmith_core::CompiledContinuousModification::AddAllSubtypesOfFamily(family) => {
                 Self::AddAllSubtypesOfFamily(family)
             }
@@ -1493,6 +1496,10 @@ fn retain_active_static_abilities(
         AbilityKind::Static(static_ability) => static_ability.is_active(game, source),
         _ => true,
     });
+    // Rebuild the static cache from this calculation's active ability list.
+    // Direct continuous restrictions are installed in both representations
+    // by `push_static_ability_once`; retaining a prior cache entry here loses
+    // its originating effect duration (for example, EOT unblockability).
     chars.static_abilities = extract_static_abilities(&chars.abilities).into();
 }
 
@@ -3270,15 +3277,20 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         | PlayerFilter::CastCardTypeThisTurn(_) => true,
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
-        | PlayerFilter::MaxSpeed { base, .. } => player_filter_source_independent(base),
+        | PlayerFilter::MaxSpeed { base, .. }
+        | PlayerFilter::LostLifeThisTurn { base } => player_filter_source_independent(base),
         // The comparison reads the current battlefield and may contain
         // source-relative object constraints, so it is never safe to share an
         // applicability cache entry across effects.
-        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+        | PlayerFilter::ControlsMost { .. } => false,
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_source_independent(base) && player_filter_source_independent(excluded)
         }
         PlayerFilter::DamagedPlayer
+        | PlayerFilter::AttackedBySourceThisTurn
+        | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
         | PlayerFilter::ChosenPlayer
         | PlayerFilter::TaggedPlayer(_)
         | PlayerFilter::IteratedPlayer
@@ -3567,6 +3579,11 @@ pub(crate) fn filter_matches_with_characteristics(
                     return false;
                 }
             }
+            crate::filter::PowerToughnessRelation::NotEqual => {
+                if power == toughness {
+                    return false;
+                }
+            }
         }
     }
 
@@ -3770,6 +3787,14 @@ fn filter_matches_layered_fast(
     {
         return Some(false);
     }
+    if filter.is_target_object
+        && !filter_ctx
+            .target_objects
+            .iter()
+            .any(|target| target.object_id == object.id || target.stable_id == object.stable_id)
+    {
+        return Some(false);
+    }
     let is_tapped = game.is_tapped(object.id);
     if filter.tapped && !is_tapped {
         return Some(false);
@@ -3820,6 +3845,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || !filter.characteristic_relations.is_empty()
         || filter.cast_this_turn
         || filter.first_spell_cast_each_turn
+        || filter.mana_from_source_spent_to_cast.is_some()
         || filter.single_graveyard
         || filter.targets_player.is_some()
         || filter.targets_object.is_some()
@@ -3829,6 +3855,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.target_count.is_some()
         || filter.target_set_same_controller
         || filter.target_set_different_controllers
+        || filter.target_set_aggregate_constraint.is_some()
         || filter.targets_only_player.is_some()
         || filter.targets_only_object.is_some()
         || filter.targets_only_any_of
@@ -3838,14 +3865,17 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.chosen_creature_type
         || filter.chosen_card_type
         || filter.excluded_chosen_creature_type
+        || filter.excluded_any_chosen_creature_type
         || filter.sticker.is_some()
         || filter.modified
         || filter.attacking
         || filter.attacked_this_turn
         || filter.didnt_attack_this_turn
+        || filter.could_have_attacked_this_turn
         || filter
             .attacking_player_or_planeswalker_controlled_by
             .is_some()
+        || filter.protected_by.is_some()
         || filter.nonattacking
         || filter.enlist_eligible
         || filter.blocking
@@ -3856,18 +3886,23 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.blocked_or_was_blocked_by_this_turn.is_some()
         || filter.attached_to_object.is_some()
         || filter.unblocked
+        || filter.is_target_object
         || filter.in_combat_with_source
+        || filter.in_combat_with.is_some()
         || filter.entered_since_your_last_turn_ended
         || filter.didnt_enter_battlefield_this_turn
         || filter.entered_battlefield_this_turn
         || filter.entered_battlefield_controller.is_some()
         || filter.entered_graveyard_this_turn
         || filter.entered_graveyard_from_battlefield_this_turn
+        || filter.entered_graveyard_from_library_this_turn
         || filter.surveilled_this_turn
+        || filter.counters_put_on_this_turn.is_some()
         || filter.discarded_or_cycled_this_turn_by.is_some()
         || filter.was_dealt_damage_this_turn
         || filter.dealt_damage_this_turn
         || filter.dealt_damage_by_source_this_turn.is_some()
+        || filter.was_dealt_damage_by_source_this_game
         || filter.dealt_damage_to_player_this_turn.is_some()
         || filter.drawn_this_turn
         || filter.power_parity.is_some()
@@ -3877,6 +3912,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.mana_value_eq_counters_on_source.is_some()
         || filter.total_counters_parity.is_some()
         || filter.distinct_names
+        || filter.distinct_mana_values
         || filter.distinct_powers
         || filter.distinct_creature_types
         || filter.one_per_card_type
@@ -4657,6 +4693,21 @@ fn apply_modification_to_chars(
             // These should have been handled by the sublayer-specific cases above
         }
 
+        // Direct restriction modifications materialize as static abilities in
+        // the ability layer, matching the single-object layer resolver.
+        Modification::CantBeBlocked => {
+            push_static_ability_once(chars, StaticAbility::unblockable());
+        }
+        Modification::CantAttack => {
+            push_static_ability_once(chars, StaticAbility::defender());
+        }
+        Modification::CantBlock => {
+            push_static_ability_once(chars, StaticAbility::cant_block());
+        }
+        Modification::DoesntUntap => {
+            push_static_ability_once(chars, StaticAbility::doesnt_untap());
+        }
+
         // Other modifications that don't affect characteristics calculation
         Modification::RemoveSupertypes(supertypes) => {
             chars.supertypes.retain(|st| !supertypes.contains(st));
@@ -4676,12 +4727,6 @@ fn apply_modification_to_chars(
         }
         Modification::MakeColorless => {
             chars.colors = ColorSet::new();
-        }
-        Modification::CantBeBlocked
-        | Modification::CantAttack
-        | Modification::CantBlock
-        | Modification::DoesntUntap => {
-            // Combat/untap restrictions, not characteristic changes
         }
     }
     enforce_ability_gain_prohibitions(chars, modification);

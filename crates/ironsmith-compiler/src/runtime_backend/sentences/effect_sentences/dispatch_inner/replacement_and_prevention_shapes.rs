@@ -90,8 +90,12 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     // state. The complete object-filter grammar preserves those branches and
     // their authored connective as one typed union. Prefer that result before
     // the legacy simple-list splitter parses each noun independently.
-    if let Ok(filter) = parse_object_filter(shape.body_tokens, false)
-        && filter.any_of.len() >= 2
+    if let Ok(filter) = parse_object_filter(shape.body_tokens, false).map(|filter| {
+        super::zone_handlers::scope_types_away_from_requantified_bare_card_domains(
+            shape.body_tokens,
+            filter,
+        )
+    }) && filter.any_of.len() >= 2
     {
         let effect = match shape.verb {
             replacement_grammar::SplitAllVerbShape::Destroy => {
@@ -397,7 +401,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
             player: PlayerAst::You,
             tag: chosen_tag.clone(),
         },
-        EffectAst::subject_verb_exile(TargetAst::Tagged(chosen_tag, None), false),
+        EffectAst::subject_verb_exile(TargetAst::Tagged(chosen_tag, None), shape.face_down),
     ]))
 }
 

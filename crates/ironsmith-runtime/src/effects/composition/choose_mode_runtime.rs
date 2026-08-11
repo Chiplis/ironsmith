@@ -167,7 +167,12 @@ pub(crate) fn run_choose_mode(
     }
 
     if effect.modes.is_empty() || max_modes == 0 {
-        return Ok(EffectOutcome::resolved());
+        let mut outcomes = Vec::new();
+        for common in &effect.common_prefix_effects {
+            outcomes.push(execute_effect(game, common, ctx)?);
+        }
+        return Ok(EffectOutcome::aggregate(outcomes)
+            .with_execution_fact(ExecutionFact::ChosenOptions(Vec::new())));
     }
 
     let source_ability_index = if effect.disallow_previously_chosen_modes {
@@ -313,6 +318,32 @@ pub(crate) fn run_choose_mode(
     let available_assignments = ctx.target_assignments.clone();
     let mut assignment_cursor = 0usize;
     let mut consumed_modal_selection = false;
+    let mut common_scope: Option<(Vec<crate::effects::ResolvedTarget>, Vec<TargetAssignment>)> =
+        None;
+    for common in &effect.common_prefix_effects {
+        let assignments = active_target_assignments_for_inner_effect(
+            game,
+            common,
+            ctx,
+            &mut consumed_modal_selection,
+            &available_assignments,
+            &mut assignment_cursor,
+        );
+        if !assignments.is_empty() {
+            let (targets, assignments) = rebase_target_scope(&ctx.targets, &assignments);
+            common_scope = Some((targets, assignments));
+        }
+        let outcome = if let Some((targets, assignments)) = &common_scope {
+            ctx.with_temp_targets(targets.clone(), |ctx| {
+                ctx.with_temp_target_assignments(assignments.clone(), |ctx| {
+                    execute_effect(game, common, ctx)
+                })
+            })
+        } else {
+            execute_effect(game, common, ctx)
+        }?;
+        outcomes.push(outcome);
+    }
     for &idx in &valid_chosen_indices {
         if let Some(mode) = effect.modes.get(idx) {
             let mut active_scope: Option<(
@@ -357,8 +388,9 @@ mod tests {
     use super::*;
     use crate::decision::DecisionMaker;
     use crate::decisions::SelectOptionsContext;
-    use crate::effect::{Effect, EffectMode};
+    use crate::effect::{Effect, EffectMode, Value};
     use crate::effects::ChooseModeEffect;
+    use crate::filter::ObjectFilterExt;
     use crate::game_state::TargetAssignment;
     use crate::ids::CardId;
     use crate::target::{ChooseSpec, PlayerFilter};
@@ -415,6 +447,41 @@ mod tests {
                 .contains(&ExecutionFact::ChosenOptions(vec![1]))
         );
         assert_eq!(game.player(alice).expect("alice").life, 22);
+    }
+
+    #[test]
+    fn modal_common_prefix_executes_once_for_zero_one_or_multiple_selected_modes() {
+        for chosen in [vec![], vec![0], vec![0, 1]] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let source = game.new_object_id();
+            let mut ctx =
+                ExecutionContext::new_default(source, alice).with_chosen_modes(Some(chosen));
+            let effect = ChooseModeEffect::new(
+                vec![
+                    EffectMode::new("Gain 1 life", vec![Effect::gain_life(1)]),
+                    EffectMode::new("Gain 2 life", vec![Effect::gain_life(2)]),
+                ],
+                Value::Fixed(0),
+                Value::Fixed(2),
+                false,
+            )
+            .with_common_prefix_effects(vec![Effect::gain_life(3)]);
+
+            run_choose_mode(&effect, &mut game, &mut ctx).expect("modal choice resolves");
+            let selected_life = match ctx.chosen_modes.as_deref().unwrap_or_default() {
+                [] => 0,
+                [0] => 1,
+                [0, 1] => 3,
+                other => panic!("unexpected fixture selection: {other:?}"),
+            };
+            assert_eq!(
+                game.player(alice).expect("alice").life,
+                23 + selected_life,
+                "the shared action must resolve once for selection {:?}",
+                ctx.chosen_modes
+            );
+        }
     }
 
     #[test]
@@ -521,6 +588,79 @@ mod tests {
 
         assert!(!game.battlefield.contains(&creature));
         assert!(!game.battlefield.contains(&land));
+    }
+
+    #[test]
+    fn common_suffix_return_modes_execute_against_their_own_targets() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+
+        let artifact_card =
+            crate::card::CardBuilder::new(CardId::from_raw(6_010), "Recovered Artifact")
+                .card_types(vec![CardType::Artifact])
+                .build();
+        let artifact = game.create_object_from_card(&artifact_card, alice, Zone::Graveyard);
+        let creature_card =
+            crate::card::CardBuilder::new(CardId::from_raw(6_011), "Recovered Creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .build();
+        let creature = game.create_object_from_card(&creature_card, alice, Zone::Graveyard);
+
+        let graveyard_target = |card_type| {
+            ChooseSpec::target(ChooseSpec::Object(
+                crate::filter::ObjectFilter::default()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You)
+                    .with_type(card_type),
+            ))
+        };
+        let artifact_target = graveyard_target(CardType::Artifact);
+        let creature_target = graveyard_target(CardType::Creature);
+        let return_effect = |target| {
+            Effect::new(
+                crate::effects::ReturnFromGraveyardToHandEffect::new(target, false)
+                    .with_graveyard_player_surface(PlayerFilter::You)
+                    .with_destination_player_surface(PlayerFilter::You),
+            )
+        };
+
+        let effect = ChooseModeEffect::choose_exactly(
+            2,
+            vec![
+                EffectMode::new(
+                    "Target artifact card.",
+                    vec![return_effect(artifact_target.clone())],
+                ),
+                EffectMode::new(
+                    "Target creature card.",
+                    vec![return_effect(creature_target.clone())],
+                ),
+            ],
+        )
+        .with_common_suffix_effect_count(1);
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_chosen_modes(Some(vec![0, 1]))
+            .with_targets(vec![
+                crate::effects::ResolvedTarget::Object(artifact),
+                crate::effects::ResolvedTarget::Object(creature),
+            ])
+            .with_target_assignments(vec![
+                TargetAssignment {
+                    spec: artifact_target,
+                    range: 0..1,
+                },
+                TargetAssignment {
+                    spec: creature_target,
+                    range: 1..2,
+                },
+            ]);
+
+        run_choose_mode(&effect, &mut game, &mut ctx).expect("common suffix modes resolve");
+
+        assert!(game.player(alice).expect("alice").graveyard.is_empty());
+        assert_eq!(game.player(alice).expect("alice").hand.len(), 2);
     }
 
     #[test]

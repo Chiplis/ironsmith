@@ -217,17 +217,20 @@ pub(crate) fn is_each_player_exiles_hand_face_down_and_draws_shape(
     )
 }
 
-fn power_reference_word_count(words: &[&str]) -> Option<usize> {
+fn characteristic_reference_word_count(words: &[&str]) -> Option<(usize, bool)> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let count = alt((
+    let (count, toughness) = alt((
         (
             alt((
                 primitives::word_slice_exact("its"),
                 primitives::word_slice_exact("that"),
             )),
-            primitives::word_slice_exact("power"),
+            alt((
+                primitives::word_slice_exact("power").value(false),
+                primitives::word_slice_exact("toughness").value(true),
+            )),
         )
-            .value(2),
+            .map(|(_, toughness)| (2, toughness)),
         (
             alt((
                 primitives::word_slice_exact("this"),
@@ -238,27 +241,85 @@ fn power_reference_word_count(words: &[&str]) -> Option<usize> {
                 primitives::word_slice_exact("creature"),
                 primitives::word_slice_exact("objects"),
             )),
-            primitives::word_slice_exact("power"),
+            alt((
+                primitives::word_slice_exact("power").value(false),
+                primitives::word_slice_exact("toughness").value(true),
+            )),
         )
-            .value(3),
+            .map(|(_, _, toughness)| (3, toughness)),
     ))
     .parse_next(&mut input)
     .ok()?;
-    Some(count)
+    Some((count, toughness))
 }
 
 pub(crate) fn is_it_reference_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_phrase(tokens, &["it"])
 }
 
-fn value_references_power(value: &Value) -> bool {
+fn value_references_power_or_toughness(value: &Value) -> bool {
     match value {
-        Value::SourcePower | Value::PowerOf(_) => true,
-        Value::Add(left, right) => value_references_power(left) || value_references_power(right),
+        Value::SourcePower | Value::SourceToughness | Value::PowerOf(_) | Value::ToughnessOf(_) => {
+            true
+        }
+        Value::Add(left, right) => {
+            value_references_power_or_toughness(left) || value_references_power_or_toughness(right)
+        }
         Value::Scaled(value, _) | Value::SurfaceHinted { value, .. } => {
-            value_references_power(value)
+            value_references_power_or_toughness(value)
         }
         _ => false,
+    }
+}
+
+/// Within a grammatical "A deals damage equal to its ..." clause, the
+/// possessive belongs to `A`, even when the amount is an arithmetic
+/// expression. The general value grammar intentionally leaves `its` as an
+/// antecedent tag; convert only characteristic leaves in this local clause
+/// while preserving their authored surface hints and all surrounding math.
+fn bind_damage_source_possessive_characteristic(value: Value) -> Value {
+    fn local_source_spec(spec: crate::target::ChooseSpec) -> crate::target::ChooseSpec {
+        if matches!(
+            spec.base(),
+            crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::cards::builders::IT_TAG
+        ) && matches!(
+            spec.source_reference_surface(),
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface))
+                if matches!(surface.as_str(), "it" | "its")
+        ) {
+            crate::target::ChooseSpec::Source.with_surface_hints(spec.surface_hints().to_vec())
+        } else {
+            spec
+        }
+    }
+
+    match value {
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_damage_source_possessive_characteristic(*value)),
+            hints,
+        },
+        Value::Add(left, right) => Value::Add(
+            Box::new(bind_damage_source_possessive_characteristic(*left)),
+            Box::new(bind_damage_source_possessive_characteristic(*right)),
+        ),
+        Value::Scaled(value, scale) => Value::Scaled(
+            Box::new(bind_damage_source_possessive_characteristic(*value)),
+            scale,
+        ),
+        Value::DividedRoundedDown(value, divisor) => Value::DividedRoundedDown(
+            Box::new(bind_damage_source_possessive_characteristic(*value)),
+            divisor,
+        ),
+        Value::HalfRoundedDown(value) => Value::HalfRoundedDown(Box::new(
+            bind_damage_source_possessive_characteristic(*value),
+        )),
+        Value::Min(left, right) => Value::Min(
+            Box::new(bind_damage_source_possessive_characteristic(*left)),
+            Box::new(bind_damage_source_possessive_characteristic(*right)),
+        ),
+        Value::PowerOf(spec) => Value::PowerOf(Box::new(local_source_spec(*spec))),
+        Value::ToughnessOf(spec) => Value::ToughnessOf(Box::new(local_source_spec(*spec))),
+        value => value,
     }
 }
 
@@ -327,26 +388,29 @@ pub(crate) fn parse_power_damage_shape(
     let after_equal = trim_shape_edges(after_equal);
     let power_words = TokenWordView::new(after_equal);
     let word_refs = power_words.to_word_refs();
-    let (amount, used_words) = if word_refs.starts_with(&["its", "power"]) {
-        // The possessive is local to this clause's grammatical damage
-        // source. Do not let the general value parser bind it to an ambient
-        // object/player antecedent left by an earlier sentence.
-        let source = crate::target::ChooseSpec::Source.with_surface_hint(
-            crate::target::ChooseSpecSurfaceHint::SourceReference(
-                crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
-            ),
-        );
-        (Value::PowerOf(Box::new(source)), 2)
+    let (amount, used_words) = if word_refs.starts_with(&["its", "power"])
+        || word_refs.starts_with(&["its", "toughness"])
+    {
+        let Some((value, used)) = crate::runtime_backend::util::parse_value_expr_words(&word_refs)
+        else {
+            return Ok(None);
+        };
+        if !value_references_power_or_toughness(&value) {
+            return Ok(None);
+        }
+        (bind_damage_source_possessive_characteristic(value), used)
     } else if let Some((value, used)) =
         crate::runtime_backend::util::parse_value_expr_words(&word_refs)
-        && value_references_power(&value)
+        && value_references_power_or_toughness(&value)
     {
         (value, used)
-    } else if let Some(used) = power_reference_word_count(&word_refs) {
-        (
-            Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)),
-            used,
-        )
+    } else if let Some((used, toughness)) = characteristic_reference_word_count(&word_refs) {
+        let value = if toughness {
+            Value::ToughnessOf(Box::new(crate::target::ChooseSpec::Source))
+        } else {
+            Value::PowerOf(Box::new(crate::target::ChooseSpec::Source))
+        };
+        (value, used)
     } else {
         return Ok(None);
     };

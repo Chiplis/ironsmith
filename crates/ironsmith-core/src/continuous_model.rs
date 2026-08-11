@@ -33,6 +33,7 @@ pub enum CompiledContinuousModification<StaticAbility, Ability> {
     RemoveSupertypes(Vec<Supertype>),
     SetCardTypes(Vec<CardType>),
     AddSubtypes(Vec<Subtype>),
+    RemoveSubtypes(Vec<Subtype>),
     AddAllSubtypesOfFamily(SubtypeFamily),
     RemoveAllSubtypesOfFamily(SubtypeFamily),
     AddColors(ColorSet),

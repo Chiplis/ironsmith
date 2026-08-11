@@ -116,6 +116,7 @@ pub(crate) struct SourceCounterCountClause<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FirstSpellEachTurnClause<'a> {
     pub(crate) filter_tokens: &'a [OwnedLexToken],
+    pub(crate) mana_source_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,6 +213,7 @@ pub(crate) struct MustAttackKeywordTail<'a> {
 pub(crate) enum GrantedKeywordTokenKind {
     Blitz,
     Emerge,
+    Scavenge,
     Exploit,
     IgnoredReminder,
     Other,
@@ -751,6 +753,21 @@ pub(crate) fn split_trailing_as_long_as_clause(
     }
 }
 
+/// Split a granted-keyword clause whose timing is authored as a trailing
+/// "during your turn" phrase, such as "This creature has first strike during
+/// your turn."  Keeping this structural avoids letting the keyword parser
+/// silently discard the timing suffix.
+pub(crate) fn split_trailing_during_your_turn_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    let tokens = trim_anthem_clause_tokens(tokens);
+    let (keyword_tokens, ()) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
+        primitives::phrase(&["during", "your", "turn"]).void()
+    })?;
+    let keyword_tokens = trim_lexed_commas(keyword_tokens);
+    (!keyword_tokens.is_empty()).then_some(keyword_tokens)
+}
+
 pub(crate) fn split_must_attack_keyword_tail(
     tokens: &[OwnedLexToken],
 ) -> Option<MustAttackKeywordTail<'_>> {
@@ -773,6 +790,8 @@ pub(crate) fn classify_granted_keyword_tokens(tokens: &[OwnedLexToken]) -> Grant
         GrantedKeywordTokenKind::Blitz
     } else if primitives::parse_word_sequence_complete(&words, &["emerge"]).is_some() {
         GrantedKeywordTokenKind::Emerge
+    } else if primitives::parse_word_sequence_complete(&words, &["scavenge"]).is_some() {
+        GrantedKeywordTokenKind::Scavenge
     } else if primitives::parse_word_sequence_complete(&words, &["exploit"]).is_some() {
         GrantedKeywordTokenKind::Exploit
     } else if primitives::parse_word_sequence_prefix(&words, &["unearth"]).is_some()
@@ -824,6 +843,20 @@ pub(crate) fn parse_granted_emerge_cost_equals_mana(tokens: &[OwnedLexToken]) ->
             ],
             &[
                 "its", "emerge", "cost", "is", "equal", "to", "its", "mana", "cost",
+            ],
+        ],
+    )
+}
+
+pub(crate) fn parse_granted_scavenge_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
+    token_any_phrase_complete(
+        tokens,
+        &[
+            &[
+                "the", "scavenge", "cost", "is", "equal", "to", "its", "mana", "cost",
+            ],
+            &[
+                "its", "scavenge", "cost", "is", "equal", "to", "its", "mana", "cost",
             ],
         ],
     )
@@ -1604,6 +1637,43 @@ fn parse_first_spell_each_turn_clause_lexed<'a>(
     let filter_tokens = take_until_phrase(input, &[&["each", "turn"]])?;
     primitives::phrase(&["each", "turn"]).parse_next(input)?;
     let filter_tokens = trim_lexed_commas(filter_tokens);
+    let trailing: &'a [OwnedLexToken] = rest.parse_next(input)?;
+    let trailing = trim_lexed_commas(trailing);
+    let mana_source_tokens = if trailing.is_empty() {
+        None
+    } else {
+        let (_, after_relative) =
+            primitives::parse_prefix(trailing, primitives::phrase(&["that", "mana", "from"]))
+                .ok_or_else(|| {
+                    primitives::backtrack_err(
+                        "first-spell-each-turn mana source",
+                        "'that mana from' after 'each turn'",
+                    )
+                })?;
+        let (source_end, _, after_suffix) = primitives::find_prefix(after_relative, || {
+            primitives::phrase(&["was", "spent", "to", "cast"])
+        })
+        .ok_or_else(|| {
+            primitives::backtrack_err(
+                "first-spell-each-turn mana source",
+                "a source followed by 'was spent to cast'",
+            )
+        })?;
+        if !trim_lexed_commas(after_suffix).is_empty() {
+            return Err(primitives::backtrack_err(
+                "first-spell-each-turn mana source",
+                "the end of the mana-source relative clause",
+            ));
+        }
+        let source_tokens = trim_lexed_commas(after_relative.get(..source_end).unwrap_or_default());
+        if source_tokens.is_empty() {
+            return Err(primitives::backtrack_err(
+                "first-spell-each-turn mana source",
+                "a nonempty mana source",
+            ));
+        }
+        Some(source_tokens)
+    };
     if !filter_tokens
         .windows(2)
         .any(|pair| pair[0].is_word("you") && pair[1].is_word("cast"))
@@ -1613,7 +1683,10 @@ fn parse_first_spell_each_turn_clause_lexed<'a>(
             "a spell subject followed by 'you cast'",
         ));
     }
-    Ok(FirstSpellEachTurnClause { filter_tokens })
+    Ok(FirstSpellEachTurnClause {
+        filter_tokens,
+        mana_source_tokens,
+    })
 }
 
 fn parse_cant_be_blocked_as_long_as_clause_lexed<'a>(
@@ -2079,10 +2152,39 @@ mod tests {
                 expected,
                 "{text}"
             );
+            assert!(parsed.mana_source_tokens.is_none(), "{text}");
         }
+
+        let mana_source = lex_line(
+            "The first spell you cast each turn that mana from a Treasure was spent to cast",
+            0,
+        )
+        .expect("mana-source first-spell fixture should lex");
+        let parsed = parse_first_spell_each_turn_clause(&mana_source)
+            .expect("mana-source first-spell clause should parse");
+        assert_eq!(
+            TokenWordView::new(parsed.filter_tokens).word_refs(),
+            ["spell", "you", "cast"]
+        );
+        assert_eq!(
+            TokenWordView::new(
+                parsed
+                    .mana_source_tokens
+                    .expect("relative source tokens should be preserved")
+            )
+            .word_refs(),
+            ["a", "Treasure"]
+        );
 
         let noncast = lex_line("The first spell revealed each turn", 0).unwrap();
         assert!(parse_first_spell_each_turn_clause(&noncast).is_none());
+
+        let malformed = lex_line(
+            "The first spell you cast each turn that mana from a Treasure was produced",
+            0,
+        )
+        .unwrap();
+        assert!(parse_first_spell_each_turn_clause(&malformed).is_none());
     }
 
     #[test]

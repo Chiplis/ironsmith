@@ -264,7 +264,7 @@ fn copy_exception_type_removal(input: &mut LexStream<'_>) -> WResult<usize> {
 }
 
 pub(crate) fn parse_animation_verbs(tokens: &[OwnedLexToken]) -> Option<AnimationVerbShape> {
-    let be = first_token_word(tokens, &["is", "are", "it's", "it’s", "its"])?;
+    let be = parse_animation_copula(tokens)?;
     let tail = &tokens[be.token + 1..];
     let relative_has = first_token_word(tail, &["have", "has"])?;
     Some(AnimationVerbShape {
@@ -273,6 +273,10 @@ pub(crate) fn parse_animation_verbs(tokens: &[OwnedLexToken]) -> Option<Animatio
             token: be.token + 1 + relative_has.token,
         },
     })
+}
+
+pub(crate) fn parse_animation_copula(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
+    first_token_word(tokens, &["is", "are", "it's", "it’s", "its"])
 }
 
 pub(crate) fn parse_animation_creature_word(words: &[&str]) -> Option<WordBoundary> {
@@ -467,6 +471,14 @@ mod tests {
                 be: TokenBoundary { token: 0 },
                 has: TokenBoundary { token: 12 },
             })
+        );
+        let no_grant = tokens(&[
+            "it's", "a", "1/1", "insect", "creature", "in", "addition", "to", "its", "other",
+            "types",
+        ]);
+        assert_eq!(
+            parse_animation_copula(&no_grant),
+            Some(TokenBoundary { token: 0 })
         );
     }
 

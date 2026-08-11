@@ -189,6 +189,13 @@ fn parse_effect_sentence_inner_lexed_unstacked(
     if let Some(effect) = parse_source_exiled_owner_library_bottom_subject_verb(tokens) {
         return Ok(vec![effect]);
     }
+    // A complete trailing no-combat-damage action must be separated before
+    // the prefix-tolerant subject/verb extension can absorb it into a broad
+    // destroy target. The helper independently grammar-proves and lowers both
+    // arms, so ordinary `and` lists remain on the normal path.
+    if let Some(effects) = parse_explicit_assign_no_combat_damage_followup(tokens)? {
+        return Ok(effects);
+    }
     if dispatch_shape.pre_extension_head
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
@@ -283,8 +290,11 @@ fn parse_effect_sentence_inner_lexed_unstacked(
                     player: PlayerAst::You,
                     allow_land: false,
                     as_copy: false,
+                    copy_cast_reminder_surface: false,
                     without_paying_mana_cost: true,
+                    additional_mana_cost: None,
                     cost_reduction: None,
+                    mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
                 },
             }),
         ]);
@@ -312,8 +322,11 @@ fn parse_effect_sentence_inner_lexed_unstacked(
                     player: PlayerAst::You,
                     allow_land: false,
                     as_copy: false,
+                    copy_cast_reminder_surface: false,
                     without_paying_mana_cost: true,
+                    additional_mana_cost: None,
                     cost_reduction: None,
+                    mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
                 },
             }),
         ]);
@@ -345,6 +358,14 @@ fn parse_effect_sentence_inner_lexed_unstacked(
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
+    }
+    if dispatch_shape.has_unless
+        && super::lex_chain_helpers::has_explicit_comma_then_boundary_lexed(tokens)
+    {
+        // The unless clause belongs only to the ordered tail. Split the
+        // grammar-proven `, then` boundary before the whole-sentence unless
+        // primitive can wrap the earlier action and drop the tail action.
+        return parse_effect_chain_lexed(tokens);
     }
     if dispatch_shape.has_unless
         && let Some(mut effects) =
@@ -490,6 +511,14 @@ fn lower_matching_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Opt
             shape.filter,
             mana_reduction,
         ))
+    } else if shape.next_spell {
+        (!matches!(reduction, Value::X)).then(|| {
+            EffectAst::subject_verb_reduce_next_spell_generic_cost_this_turn(
+                shape.player,
+                shape.filter,
+                reduction,
+            )
+        })
     } else {
         if shape.duration == Until::EndOfTurn {
             Some(

@@ -749,7 +749,7 @@ fn describe_observed_conditional(
         format!("If it's {condition}, {true_branch}")
     };
     if let Some(false_branch) = false_branch {
-        rendered.push_str(&format!(". Otherwise, {false_branch}"));
+        rendered.push_str(&format!(". Otherwise, {}", lowercase_first(&false_branch)));
     }
     Some(rendered)
 }

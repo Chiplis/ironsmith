@@ -14,6 +14,7 @@ mod blocks_or_becomes_blocked;
 mod deals_combat_damage_to_player;
 mod deals_damage;
 mod deals_damage_to;
+mod deals_exact_damage_to_object_or_player;
 mod relative_power_block;
 mod this_attacks;
 mod this_attacks_and_isnt_blocked;
@@ -29,7 +30,7 @@ mod this_deals_combat_damage_to_player;
 mod this_deals_damage;
 mod this_deals_damage_to;
 
-pub use attacks::{AttacksTrigger, PlayersAttackedTrigger};
+pub use attacks::{AttacksTrigger, PlayerAttacksOneOrMoreTrigger, PlayersAttackedTrigger};
 pub use attacks_alone::AttacksAloneTrigger;
 pub use attacks_and_isnt_blocked::AttacksAndIsntBlockedTrigger;
 pub use attacks_while_saddled::AttacksWhileSaddledTrigger;
@@ -40,10 +41,14 @@ pub use blocks_or_becomes_blocked::BlocksOrBecomesBlockedTrigger;
 pub use deals_combat_damage_to_player::DealsCombatDamageToPlayerTrigger;
 pub use deals_damage::DealsDamageTrigger;
 pub use deals_damage_to::DealsDamageToTrigger;
+pub use deals_exact_damage_to_object_or_player::DealsExactDamageToObjectOrPlayerTrigger;
 pub use relative_power_block::{
     BecomesBlockedByObjectWithLesserPowerTrigger, BlocksObjectWithLesserPowerTrigger,
 };
-pub use this_attacks::{ThisAttacksPlayerWhoControlsAtLeastTrigger, ThisAttacksTrigger};
+pub use this_attacks::{
+    ThisAndAnotherAttackDifferentPlayersTrigger, ThisAttacksPlayerWhoControlsAtLeastTrigger,
+    ThisAttacksTrigger,
+};
 pub use this_attacks_and_isnt_blocked::ThisAttacksAndIsntBlockedTrigger;
 pub use this_attacks_player_with_most_life::ThisAttacksPlayerWithMostLifeTrigger;
 pub use this_attacks_while_saddled::ThisAttacksWhileSaddledTrigger;

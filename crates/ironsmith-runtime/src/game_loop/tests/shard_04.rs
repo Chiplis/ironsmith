@@ -1657,6 +1657,9 @@ pub(super) fn test_drain_pending_events_checks_delayed_zone_change_triggers() {
             controller: alice,
             choices: vec![],
             tagged_objects: std::collections::HashMap::new(),
+            tagged_players: std::collections::HashMap::new(),
+            prepayment: None,
+            prevention_shield: None,
         });
 
     let moved = game.move_object_by_effect(stangg_id, Zone::Graveyard);

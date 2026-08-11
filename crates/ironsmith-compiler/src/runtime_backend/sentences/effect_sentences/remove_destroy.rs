@@ -302,6 +302,16 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
 
 pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let original_clause = crate::runtime_backend::token_word_refs(tokens).join(" ");
+    if crate::runtime_backend::token_word_refs(tokens).as_slice() == ["both", "creatures"] {
+        return Ok(EffectAst::Coordinated {
+            effects: vec![
+                EffectAst::subject_verb_destroy(TargetAst::Source(None)),
+                EffectAst::subject_verb_destroy(TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+            ],
+            leading_duration: false,
+            result_conjunction: false,
+        });
+    }
     let shape = shapes::parse_destroy_clause_shape(tokens);
     let timing = shape.timing;
     let effect = match shape.kind {
@@ -377,6 +387,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 effects: vec![EffectAst::subject_verb_destroy(target)],
                 player,
                 cost,
+                before_delayed_step: false,
             }
         }
         shapes::DestroyClauseKind::UnsupportedUnless => {
@@ -447,6 +458,9 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 ],
             }
         }
+        shapes::DestroyClauseKind::InlineNoRegeneration { target_tokens } => {
+            EffectAst::subject_verb_destroy_no_regeneration(parse_target_phrase(target_tokens)?)
+        }
         shapes::DestroyClauseKind::MultiTarget => {
             return Err(CardTextError::ParseError(format!(
                 "unsupported multi-target destroy clause (clause: '{original_clause}')"
@@ -485,6 +499,22 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
 }
 
 pub(crate) fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception: &ObjectFilter) {
+    for branch in &exception.any_of {
+        apply_except_filter_exclusions(base, branch);
+    }
+    // A proper-name self-reference in an exception denotes the source object,
+    // not every permanent that happens to share its name. Preserve that as the
+    // ordinary source-identity exclusion (`other`) while retaining the authored
+    // name solely as surface metadata.
+    if exception.source {
+        base.other = true;
+        base.source_surface = exception.source_surface.clone();
+    }
+    // Literal named exceptions are name predicates rather than source
+    // references. Carry those structurally instead of silently dropping them.
+    if let Some(name) = &exception.name {
+        base.excluded_name = Some(name.clone());
+    }
     for card_type in exception
         .card_types
         .iter()
@@ -505,11 +535,74 @@ pub(crate) fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception:
     if exception.is_commander {
         base.noncommander = true;
     }
+    if exception.token {
+        base.nontoken = true;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
+    use crate::runtime_backend::clause_support::parse_effect_sentences_lexed;
+    use crate::{CardType, Subtype};
+
+    #[test]
+    fn destroy_all_except_lands_and_tokens_transports_both_union_exclusions() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Destroy all other permanents except for lands and tokens.",
+            0,
+        )
+        .expect("destroy exception should lex");
+        let effect = parse_destroy(&tokens).expect("destroy exception should parse");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Destroy { target, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected typed destroy-all action: {effect:#?}");
+        };
+        let TargetAst::Object(filter, ..) = target else {
+            panic!("expected object filter: {target:#?}");
+        };
+        assert!(filter.other, "{filter:#?}");
+        assert!(filter.nontoken, "{filter:#?}");
+        assert!(filter.excluded_card_types.contains(&CardType::Land));
+    }
+
+    #[test]
+    fn destroy_all_single_exception_does_not_synthesize_the_other_exception() {
+        fn parsed_filter(text: &str) -> ObjectFilter {
+            let tokens =
+                crate::runtime_backend::lex_line(text, 0).expect("destroy exception should lex");
+            let effect = parse_destroy(&tokens).expect("destroy exception should parse");
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Destroy { target, .. },
+                ..
+            }) = effect
+            else {
+                panic!("expected typed destroy-all action: {effect:#?}");
+            };
+            let TargetAst::Object(filter, ..) = target else {
+                panic!("expected object filter: {target:#?}");
+            };
+            filter
+        }
+
+        let lands = parsed_filter("Destroy all other permanents except for lands.");
+        assert_eq!(lands.excluded_card_types, [CardType::Land]);
+        assert!(
+            !lands.nontoken,
+            "lands-only exception must still destroy tokens"
+        );
+
+        let tokens = parsed_filter("Destroy all other permanents except for tokens.");
+        assert!(tokens.excluded_card_types.is_empty());
+        assert!(
+            tokens.nontoken,
+            "tokens-only exception must still destroy lands"
+        );
+    }
 
     #[test]
     fn destroy_all_plural_shared_color_keeps_tagged_relation() {
@@ -523,5 +616,99 @@ mod tests {
 
         assert!(debug.contains("SharesColorWithTagged"), "{debug}");
         assert!(debug.contains(IT_TAG), "{debug}");
+    }
+
+    #[test]
+    fn repeated_or_if_destroy_condition_is_one_disjunction() {
+        let tokens = crate::runtime_backend::lex_line(
+            "target nonland permanent if it's a creature or if {G}{W} was spent to cast this spell",
+            0,
+        )
+        .expect("conditional destroy should lex");
+        let effect = parse_destroy(&tokens).expect("conditional destroy should parse");
+        let EffectAst::Conditional {
+            predicate: PredicateAst::Or(left, right),
+            if_true,
+            if_false,
+        } = effect
+        else {
+            panic!("expected one disjunctive condition: {effect:#?}");
+        };
+        assert!(if_false.is_empty());
+        assert_eq!(if_true.len(), 1);
+        assert!(matches!(*left, PredicateAst::ItMatches(_)));
+        assert!(matches!(
+            *right,
+            PredicateAst::And(_, _) | PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
+        ));
+    }
+
+    #[test]
+    fn destroy_all_except_named_source_keeps_identity_exclusion_and_regeneration_rider() {
+        let effects = crate::runtime_backend::util::with_card_source_reference_context(
+            "Mageta the Lion",
+            &[CardType::Creature],
+            &[Subtype::Human, Subtype::Spellshaper],
+            || {
+                let tokens = crate::runtime_backend::lex_line(
+                    "Destroy all creatures except for Mageta. Those creatures can't be regenerated.",
+                    0,
+                )
+                .expect("Mageta destroy clause should lex");
+                parse_effect_sentences_lexed(&tokens)
+                    .expect("Mageta destroy and regeneration rider should parse together")
+            },
+        );
+
+        let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
+            panic!("expected one destroy-all effect, got {effects:#?}");
+        };
+        let SubjectVerbActionAst::DestroyAll {
+            filter,
+            no_regeneration,
+            ..
+        } = &subject_verb.action
+        else {
+            panic!("expected destroy-all action, got {subject_verb:#?}");
+        };
+        assert!(
+            *no_regeneration,
+            "the destroyed set must ignore regeneration"
+        );
+        assert!(
+            filter.other,
+            "the source object must be excluded by identity"
+        );
+        assert_eq!(
+            filter
+                .source_surface
+                .as_ref()
+                .map(|surface| surface.display_text())
+                .as_deref(),
+            Some("Mageta")
+        );
+    }
+
+    #[test]
+    fn inline_same_object_regeneration_rider_sets_destroy_semantics() {
+        let tokens =
+            crate::runtime_backend::lex_line("target Knight and it can't be regenerated", 0)
+                .expect("destroy clause should lex");
+        let effect = parse_destroy(&tokens).expect("inline rider should parse");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+            panic!("expected one destroy action, got {effect:#?}");
+        };
+        let SubjectVerbActionAst::Destroy {
+            target,
+            no_regeneration,
+            ..
+        } = action
+        else {
+            panic!("expected a destroy action, got {action:#?}");
+        };
+        assert!(no_regeneration);
+        assert!(
+            matches!(target, TargetAst::Object(filter, _, _) if filter.subtypes == [Subtype::Knight])
+        );
     }
 }

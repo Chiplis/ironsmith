@@ -6,6 +6,7 @@ use super::shard_03::*;
 use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
+use crate::runtime_backend::ast::SubjectVerbEffectAst;
 
 fn contains_choice_debug(debug: &str) -> bool {
     debug.contains("ChooseObjects") || debug.contains("ChooseTaggedObjectsInZone")
@@ -25,6 +26,53 @@ fn each_player_may_comma_then_each_opponent_who_didnt_lowers_as_one_flow() {
     assert!(debug.contains("ForPlayersEffect"), "{debug}");
     assert!(debug.contains("MayEffect"), "{debug}");
     assert!(debug.contains("DrawCardsEffect"), "{debug}");
+}
+
+#[test]
+fn gain_control_full_card_path_keeps_historical_controller_source_scope() {
+    let compiled = super::super::compile_card_text(
+        CardDefinitionBuilder::new(CardId::new(), "Historical Control Probe")
+            .card_types(vec![CardType::Creature]),
+        "At the beginning of your end step, gain control of target nonland permanent controlled by a player who was dealt combat damage by three or more Pirates this turn.",
+        false,
+    )
+    .expect("historical gain-control target should compile through the full card API");
+    let triggered = compiled
+        .definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("probe should compile to a triggered ability");
+    let apply = triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| find_nested_effect::<crate::effects::ApplyContinuousEffect>(effect))
+        .expect("gain control should lower to one continuous effect");
+    let crate::target::ChooseSpec::Object(filter) = apply
+        .target_spec
+        .as_ref()
+        .expect("gain control should preserve its explicit target")
+        .base()
+    else {
+        panic!("expected an object target: {apply:#?}");
+    };
+
+    assert!(
+        filter.subtypes.is_empty(),
+        "source Pirates leaked onto the target: {filter:#?}"
+    );
+    assert!(matches!(
+        filter.controller.as_ref(),
+        Some(crate::target::PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+            minimum,
+            sources,
+            ..
+        }) if *minimum == 3 && sources.subtypes == [Subtype::Pirate]
+    ));
 }
 
 #[test]
@@ -384,6 +432,31 @@ pub(super) fn rewrite_lexed_effect_sentence_supports_leading_this_turn_targeted_
     assert!(debug.contains("IfResult"), "{debug}");
     assert!(debug.contains("AssignNoCombatDamage"), "{debug}");
     assert!(debug.contains("source: Tagged"), "{debug}");
+}
+
+#[test]
+pub(super) fn duration_scoped_unblocked_damage_offer_preempts_direct_damage_recognizers() {
+    let lexed = lex_line(
+        "Until end of turn, whenever a creature you control attacks and isn't blocked, you may choose to have it deal damage equal to its power to a target creature. If you do, it assigns no combat damage this turn.",
+        0,
+    )
+    .expect("duration-scoped unblocked damage offer should lex");
+
+    let parsed = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("duration-scoped unblocked damage offer should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert_eq!(
+        debug.matches("DelayedTriggerForDuration").count(),
+        1,
+        "the damage action must remain inside one duration-scoped trigger: {debug}"
+    );
+    assert!(debug.contains("AttacksAndIsntBlocked"), "{debug}");
+    assert!(debug.contains("MayByPlayer"), "{debug}");
+    assert!(debug.contains("DealDamageEqualToPower"), "{debug}");
+    assert!(debug.contains("IfResult"), "{debug}");
+    assert!(debug.contains("AssignNoCombatDamage"), "{debug}");
+    assert!(debug.contains("EndOfTurn"), "{debug}");
 }
 
 #[test]
@@ -1630,6 +1703,43 @@ pub(super) fn rewrite_indefinite_creature_death_uses_multi_use_future_replacemen
 }
 
 #[test]
+pub(super) fn rewrite_sequence_registry_links_delayed_counters_to_prevented_target_and_amount() {
+    let sentences = registry_sentence_inputs(
+        "prevent the next 7 damage that would be dealt to any target this turn. if it's a creature, put a +0/+1 counter on it for each 1 damage prevented this way at the beginning of the next end step.",
+    );
+
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("registry should match the delayed prevention-counter bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "damage-prevention-then-delayed-creature-counters"
+    );
+    assert_eq!(matched.consumed_sentences, 2);
+    assert!(debug.contains("TargetMatches"), "{debug}");
+    assert!(debug.contains("\"targeted_0\""), "{debug}");
+    assert!(debug.contains("PriorEffectMetricQuery"), "{debug}");
+    assert!(debug.contains("DamagePrevented"), "{debug}");
+    assert!(debug.contains("Prevented"), "{debug}");
+
+    let near_miss = registry_sentence_inputs(
+        "prevent the next 7 damage that would be dealt to any target this turn. if this permanent is a creature, put a +0/+1 counter on it for each 1 damage prevented this way at the beginning of the next end step.",
+    );
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&near_miss, 0)
+            .expect("near-miss registry lookup should not error");
+    assert!(
+        matched.as_ref().is_none_or(|matched| {
+            matched.name != "damage-prevention-then-delayed-creature-counters"
+        }),
+        "a source-authored condition must not be rebound to the target: {matched:#?}"
+    );
+}
+
+#[test]
 pub(super) fn rewrite_filtered_future_exile_and_delayed_return_links_all_objects() {
     let sentences = registry_sentence_inputs(
         "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead. Return it to the battlefield under its owner's control at the beginning of the next end step.",
@@ -1974,6 +2084,68 @@ pub(super) fn rewrite_damage_this_way_would_die_registers_source_history_replace
 }
 
 #[test]
+pub(super) fn attached_target_death_replacement_tracks_the_attachment_host() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Attachment Death Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Attachment Death Variant deals 5 damage to target creature. Exile up to one target Equipment attached to that creature. If that creature would die this turn, exile it instead.",
+        )
+        .expect("attached-target death replacement should parse");
+    let program = def.spell_effect.as_ref().expect("spell program");
+    let [damage_segment, attachment_segment, replacement_segment] = program.segments.as_slice()
+    else {
+        panic!("expected three linked resolution segments: {program:#?}");
+    };
+    let [damage_effect] = damage_segment.default_effects.as_slice() else {
+        panic!("expected one damage producer");
+    };
+    let damage_tag = &damage_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .expect("damage producer should retain its result tag")
+        .tag;
+
+    let [attachment_effect] = attachment_segment.default_effects.as_slice() else {
+        panic!("expected one attachment exile");
+    };
+    let attachment_exile =
+        super::find_nested_effect::<crate::effects::ExileEffect>(attachment_effect)
+            .expect("second segment should exile an attached Equipment");
+    let crate::ChooseSpec::Object(attachment_filter) = attachment_exile.spec.base() else {
+        panic!("expected an object attachment filter: {attachment_exile:#?}");
+    };
+    assert!(
+        attachment_filter.card_types.is_empty(),
+        "{attachment_filter:#?}"
+    );
+    assert_eq!(attachment_filter.subtypes, [Subtype::Equipment]);
+    assert!(
+        attachment_filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| {
+                &constraint.tag == damage_tag
+                    && constraint.relation
+                        == crate::filter::TaggedOpbjectRelation::AttachedToTaggedObject
+            })
+    );
+
+    let [replacement_effect] = replacement_segment.default_effects.as_slice() else {
+        panic!("expected one death replacement");
+    };
+    let replacement = replacement_effect
+        .downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()
+        .expect("third segment should register the death replacement");
+    assert!(
+        matches!(replacement.target.base(), crate::ChooseSpec::Tagged(tag) if tag == damage_tag),
+        "{replacement:#?}"
+    );
+    assert_eq!(
+        replacement.mode,
+        crate::effects::ReplacementApplyMode::UntilEndOfTurn
+    );
+}
+
+#[test]
 pub(super) fn rewrite_serial_damage_fanout_emits_distinct_damage_effects() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Serpentine Spike")
         .card_types(vec![CardType::Sorcery])
@@ -2214,6 +2386,29 @@ pub(super) fn rewrite_lowered_becomes_blocked_by_binds_that_creature_to_blocker(
             && effects_debug.contains("DestroyEffect"),
         "{effects_debug}"
     );
+    Ok(())
+}
+
+#[test]
+pub(super) fn rewrite_lowered_this_blocks_destroy_both_keeps_the_exact_attacker()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Alaborn Shape")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(1, 1));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "When this creature blocks a creature, destroy both creatures.".to_string(),
+        false,
+    )?;
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let debug = format!("{:#?}", triggered.effects);
+    assert!(debug.contains("TagTriggeringAttackerEffect"), "{debug}");
+    assert!(debug.contains("\"blocked\""), "{debug}");
+    assert_eq!(debug.matches("DestroyEffect").count(), 2, "{debug}");
+    assert!(debug.contains("Source"), "{debug}");
+    assert!(debug.contains("Tagged"), "{debug}");
     Ok(())
 }
 
@@ -3132,6 +3327,147 @@ pub(super) fn rewrite_lexed_consult_any_number_and_repeated_moves_keep_explicit_
         glimpse_debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{glimpse_debug}"
     );
+
+    fn collect_reveal_partition_filters(
+        effect: &EffectAst,
+        reveal_tags: &mut Vec<crate::cards::builders::TagKey>,
+        captures: &mut Vec<crate::filter::ObjectFilter>,
+    ) {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
+            match action {
+                SubjectVerbActionAst::LookAtTopCards {
+                    tag, reveal: true, ..
+                } => reveal_tags.push(tag.clone()),
+                SubjectVerbActionAst::TagMatchingObjects { filter, .. } => {
+                    captures.push(filter.clone());
+                }
+                _ => {}
+            }
+        }
+        crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effects(
+            effect,
+            true,
+            |nested| {
+                for child in nested {
+                    collect_reveal_partition_filters(child, reveal_tags, captures);
+                }
+            },
+        );
+    }
+
+    let mut reveal_tags = Vec::new();
+    let mut captures = Vec::new();
+    for effect in &glimpse {
+        collect_reveal_partition_filters(effect, &mut reveal_tags, &mut captures);
+    }
+    let [reveal_tag] = reveal_tags.as_slice() else {
+        panic!("the repeated disposition must have one reveal producer: {glimpse_debug}");
+    };
+    let [union, first, second] = captures.as_slice() else {
+        panic!("the union and two ordered partitions must remain typed: {glimpse_debug}");
+    };
+    let [union_first, union_second] = union.any_of.as_slice() else {
+        panic!("the moved-set capture must retain both partition filters: {union:#?}");
+    };
+    for filter in [union_first, union_second, first, second] {
+        let [constraint] = filter.tagged_constraints.as_slice() else {
+            panic!("each partition must name exactly one revealed collection: {filter:#?}");
+        };
+        assert_eq!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        );
+        assert_eq!(
+            &constraint.tag, reveal_tag,
+            "the AST must transport the reveal producer instead of a later derived tag"
+        );
+    }
+}
+
+#[test]
+fn repeated_revealed_permanent_groups_lower_with_one_shared_collection_tag() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Repeated Reveal Groups")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Shuffle all permanents you own into your library, then reveal that many cards from the top of your library. Put all non-Aura permanent cards revealed this way onto the battlefield, then do the same for Aura cards, then put the rest on the bottom of your library in a random order.",
+        )
+        .expect("the two-sentence reveal/disposition procedure should lower");
+    let program = definition.spell_effect.as_ref().expect("spell resolution");
+    let [shuffle_reveal, disposition] = program.segments.as_slice() else {
+        panic!("the authored sentence boundary must remain typed: {program:#?}");
+    };
+    let [first_sequence] = shuffle_reveal.default_effects.as_slice() else {
+        panic!("shuffle/reveal must remain one coordinated instruction: {shuffle_reveal:#?}");
+    };
+    let first = &first_sequence
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("shuffle/reveal sequence")
+        .effects;
+    let [second_sequence] = disposition.default_effects.as_slice() else {
+        panic!("disposition must remain one coordinated instruction: {disposition:#?}");
+    };
+    let second = &second_sequence
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("permanent-group disposition sequence")
+        .effects;
+
+    let shuffle = first
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .and_then(|with_id| {
+                    with_id
+                        .effect
+                        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
+                })
+        })
+        .expect("shuffle producer");
+    assert!(
+        matches!(&shuffle.target, crate::target::ChooseSpec::All(_)),
+        "{shuffle:#?}"
+    );
+    let look = first
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>())
+        .expect("revealed collection producer");
+    let captures = second
+        .iter()
+        .filter_map(|effect| effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>())
+        .collect::<Vec<_>>();
+    assert_eq!(captures.len(), 3, "{second:#?}");
+    let [capture, first_group, second_group] = captures.as_slice() else {
+        unreachable!();
+    };
+    assert_eq!(capture.filter.any_of.len(), 2, "{capture:#?}");
+    for branch in &capture.filter.any_of {
+        assert_eq!(branch.tagged_constraints.len(), 1, "{branch:#?}");
+        assert_eq!(branch.tagged_constraints[0].tag, look.tag, "{branch:#?}");
+        assert_eq!(
+            branch.tagged_constraints[0].relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            "{branch:#?}"
+        );
+    }
+    assert_eq!(first_group.filter, capture.filter.any_of[0]);
+    assert_eq!(second_group.filter, capture.filter.any_of[1]);
+    let moved_groups = second
+        .iter()
+        .filter_map(|effect| {
+            effect.downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(moved_groups.len(), 2, "{second:#?}");
+    assert_eq!(moved_groups[0].tag, first_group.tag);
+    assert_eq!(moved_groups[1].tag, second_group.tag);
+    let remainder = second
+        .iter()
+        .find_map(|effect| {
+            effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+        })
+        .expect("revealed collection remainder");
+    assert_eq!(remainder.tag, look.tag);
+    assert_eq!(remainder.keep_tagged.as_ref(), Some(&capture.tag));
 }
 
 #[test]
@@ -3388,6 +3724,126 @@ pub(super) fn activated_self_move_from_the_command_zone_is_functional_there() {
         .find(|ability| matches!(&ability.kind, crate::ability::AbilityKind::Activated(_)))
         .expect("expected activated ability");
     assert_eq!(activated.functional_zones, vec![crate::zone::Zone::Command]);
+}
+
+#[test]
+pub(super) fn activated_self_return_from_graveyard_or_exile_keeps_both_functional_zones() {
+    let built = CardDefinitionBuilder::new(CardId::from_raw(98_505), "Persistent Survivor")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{2}{G}: Return this card from your graveyard or from exile to the battlefield tapped.",
+        )
+        .expect("multi-zone self-return activation should compile");
+
+    let ability = built
+        .abilities
+        .iter()
+        .find(|ability| matches!(&ability.kind, crate::ability::AbilityKind::Activated(_)))
+        .expect("activated ability");
+    assert_eq!(
+        ability.functional_zones,
+        vec![crate::zone::Zone::Graveyard, crate::zone::Zone::Exile]
+    );
+    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+        unreachable!("filtered to the activated ability")
+    };
+    assert!(
+        activated
+            .effects
+            .flattened_default_effects()
+            .iter()
+            .any(|effect| effect
+                .downcast_ref::<crate::effects::ReturnFromGraveyardOrExileToBattlefieldEffect>()
+                .is_some()),
+        "{activated:#?}"
+    );
+}
+
+#[test]
+pub(super) fn creature_destroyed_this_way_surface_survives_destroy_fusion() {
+    let built = CardDefinitionBuilder::new(CardId::from_raw(98_506), "Unregenerate")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Destroy target creature. A creature destroyed this way can't be regenerated.\nOverload {2}{W}{W}",
+        )
+        .expect("destroy antecedent and overload should compile");
+    let spell = built.spell_effect.as_ref().expect("spell effect");
+    assert!(spell.flattened_default_effects().iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .and_then(|tagged| {
+                tagged
+                    .effect
+                    .downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
+            })
+            .is_some_and(|destroy| destroy.creature_destroyed_this_way_surface)
+    }));
+}
+
+#[test]
+pub(super) fn upkeep_combat_history_uses_one_typed_conditional() {
+    let built = CardDefinitionBuilder::new(CardId::from_raw(98_507), "Combat History Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Aura])
+        .parse_text(
+            "Enchant creature\nAt the beginning of your upkeep, put a +1/+1 counter on enchanted creature if it attacked or blocked since your last upkeep. Otherwise, remove a +1/+1 counter from it.",
+        )
+        .expect("upkeep-relative attack/block history should compile");
+    let debug = format!("{built:#?}");
+    assert!(
+        debug.contains("EnchantedPermanentAttackedOrBlockedSinceLastUpkeep"),
+        "{debug}"
+    );
+    assert!(!debug.contains("blocked_this_turn: true"), "{debug}");
+}
+
+#[test]
+pub(super) fn source_block_history_distinguishes_blocking_from_becoming_blocked() {
+    let built = CardDefinitionBuilder::new(CardId::from_raw(98_521), "Block History Creature")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of your upkeep, put a +1/+1 counter on this creature if it has blocked or been blocked since your last upkeep. Otherwise, remove a +1/+1 counter from it.",
+        )
+        .expect("two-sided source block history should compile");
+    let debug = format!("{built:#?}");
+    assert!(
+        debug.contains("SourceBlockedOrBecameBlockedSinceLastUpkeep"),
+        "{debug}"
+    );
+    assert!(!debug.contains("blocked_this_turn: true"), "{debug}");
+}
+
+#[test]
+pub(super) fn source_and_another_attack_different_players_keeps_trigger_relation_and_surface() {
+    let built = CardDefinitionBuilder::new(CardId::from_raw(98_508), "Split Attack Courier")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature and another creature attack different players, this creature can't be blocked this combat.",
+        )
+        .expect("different-player attack trigger should compile");
+    let triggered = built
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("triggered ability");
+    assert!(
+        format!("{:#?}", triggered.trigger).contains("ThisAndAnotherAttackDifferentPlayers"),
+        "{triggered:#?}"
+    );
+    let cant = triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::CantEffect>())
+        .expect("unblockable restriction");
+    assert_eq!(cant.duration, crate::effect::Until::EndOfCombat);
+    let crate::effect::Restriction::BeBlocked(filter) = &cant.restriction else {
+        panic!("expected be-blocked restriction: {cant:#?}");
+    };
+    assert!(filter.source, "{filter:#?}");
 }
 
 #[test]
@@ -4558,6 +5014,28 @@ pub(super) fn rewrite_lowered_each_player_gains_control_of_owned_objects_uses_it
 }
 
 #[test]
+pub(super) fn other_players_optional_copy_and_retarget_remains_a_runtime_loop()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Other Player Copy Variant")
+        .card_types(vec![CardType::Enchantment]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Enchant player\nWhenever enchanted player casts an instant or sorcery spell, each other player may copy that spell and may choose new targets for the copy they control."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(debug.contains("Excluding"), "{debug}");
+    assert!(debug.contains("AliasedControllerOf"), "{debug}");
+    assert!(debug.contains("MayEffect"), "{debug}");
+    assert!(debug.contains("CopySpellEffect"), "{debug}");
+    assert!(debug.contains("ChooseNewTargetsEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
 pub(super) fn forced_block_it_keeps_the_prior_target_across_the_blocker_choice()
 -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Feral Contest Variant")
@@ -4613,4 +5091,26 @@ pub(super) fn forced_block_it_keeps_the_prior_target_across_the_blocker_choice()
         "the newly chosen blocker must not replace the prior attacker reference"
     );
     Ok(())
+}
+#[test]
+fn vision_quest_search_threshold_shuffle_keeps_three_typed_steps() {
+    let text = "Search your library and/or graveyard for an artifact creature card with mana value X or less and put it onto the battlefield with X additional +1/+1 counters on it. If X is 4 or greater, it gains haste until end of turn. If you search your library this way, shuffle.";
+    let lexed = super::super::lexer::lex_line(text, 0).expect("Vision Quest shape should lex");
+    let parsed = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("Vision Quest sentences should parse before reference resolution");
+    assert_eq!(parsed.len(), 3, "{parsed:#?}");
+    assert!(
+        matches!(
+            parsed[1],
+            crate::cards::builders::EffectAst::Conditional { .. }
+        ),
+        "{parsed:#?}"
+    );
+    assert!(
+        matches!(
+            parsed[2],
+            crate::cards::builders::EffectAst::IfResult { .. }
+        ),
+        "{parsed:#?}"
+    );
 }

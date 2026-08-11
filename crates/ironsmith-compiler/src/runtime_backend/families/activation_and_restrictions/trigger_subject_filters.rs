@@ -1,5 +1,6 @@
 use super::*;
 use crate::runtime_backend::grammar::trigger_subjects as trigger_subject_grammar;
+use crate::runtime_backend::grammar::trigger_subjects::SpellOwnerSurface;
 
 fn trigger_controller_player_filter(
     reference: crate::runtime_backend::grammar::trigger_subjects::TriggerControllerReference,
@@ -85,7 +86,12 @@ pub(crate) fn parse_discard_trigger_card_filter(
     }
 
     let qualifier_words = crate::runtime_backend::token_word_refs(&qualifier_tokens);
-    if let Ok(filter) = parse_object_filter(&qualifier_tokens, false) {
+    if let Ok(mut filter) = parse_object_filter(&qualifier_tokens, false) {
+        // A discard event already fixes the object's event-time zone to the
+        // hand. Nouns such as "permanent" otherwise make the general object
+        // parser infer Battlefield, which can never match the pre-discard
+        // hand snapshot carried by CardDiscardedEvent.
+        filter.zone = None;
         return Ok(Some(filter));
     }
 
@@ -250,13 +256,12 @@ pub(crate) fn parse_subtype_list_enters_trigger_filter_lexed(
 
     let mut subtypes = Vec::new();
     for word in &words[..subject_end] {
-        if trigger_subject_grammar::trigger_word_is_connector(word) {
+        if trigger_subject_grammar::trigger_word_is_connector(word) || matches!(*word, "a" | "an") {
             continue;
         }
-        if let Some(subtype) = parse_subtype_flexible(word) {
-            if !subtypes.iter().any(|existing| existing == &subtype) {
-                subtypes.push(subtype);
-            }
+        let subtype = parse_subtype_flexible(word)?;
+        if !subtypes.iter().any(|existing| existing == &subtype) {
+            subtypes.push(subtype);
         }
     }
     if subtypes.is_empty() {
@@ -288,15 +293,29 @@ fn subtype_list_enter_trigger_preserves_and_or_surface() {
         filter.union_connective(),
         crate::filter::ObjectFilterUnionConnective::AndOr
     );
+    assert_eq!(
+        filter.description(),
+        "another Rabbit, Bat, Bird, and/or Mouse you control"
+    );
+
+    let mixed = crate::runtime_backend::lexer::lex_line(
+        "nontoken artifact creature or Vehicle you control",
+        0,
+    )
+    .expect("lex mixed type/subtype trigger subject");
+    assert!(
+        parse_subtype_list_enters_trigger_filter_lexed(&mixed, true).is_none(),
+        "the compact subtype-list path must not discard non-subtype predicates"
+    );
 }
 
-fn parse_source_or_another_trigger_subject_filter_lexed(
+fn parse_source_or_filter_trigger_subject_filter_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let word_view = ActivationRestrictionCompatWords::new(subject_tokens);
     let subject_words = word_view.to_word_refs();
     let Some(shape) =
-        crate::runtime_backend::grammar::trigger_subjects::parse_source_or_another_shape(
+        crate::runtime_backend::grammar::trigger_subjects::parse_source_or_filter_shape(
             &subject_words,
         )
     else {
@@ -306,26 +325,34 @@ fn parse_source_or_another_trigger_subject_filter_lexed(
     if !is_source_reference_words(source_words) {
         return Ok(None);
     }
-    let Some(other_token_idx) =
+    let Some(filter_token_idx) =
         crate::runtime_backend::grammar::trigger_subjects::parse_trigger_word_span(
             subject_tokens,
-            shape.other_word,
+            shape.filter_word,
         )
         .map(|span| span.first)
     else {
         return Ok(None);
     };
-    let Some(other_filter) =
-        parse_trigger_subject_filter_lexed(&subject_tokens[other_token_idx..])?
+    let Some(alternative_filter) =
+        parse_trigger_subject_filter_lexed(&subject_tokens[filter_token_idx..])?
     else {
         return Ok(None);
     };
 
-    let source_filter = this_source_surface_for_words(source_words)
+    let source_filter = source_reference_surface_for_words(source_words)
+        .or_else(|| this_source_surface_for_words(source_words))
         .map(ObjectFilter::source_with_surface)
         .unwrap_or_else(ObjectFilter::source);
     let mut filter = ObjectFilter::default();
-    filter.any_of = vec![source_filter, other_filter];
+    filter.any_of = vec![source_filter, alternative_filter];
+    match subject_words.get(shape.connector_word).copied() {
+        Some("and/or") => {
+            filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr)
+        }
+        Some("and") => filter.set_conjunctive_set_surface(true),
+        _ => {}
+    }
     Ok(Some(filter))
 }
 
@@ -360,6 +387,23 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
         return Ok(None);
     }
 
+    // An authored "the chosen creature" is a durable choice reference, not
+    // the resolution-local `it` antecedent. Keep the canonical choice tag when
+    // this trigger lives on a later ability; a same-resolution reference pass
+    // can still alias it to the concrete producer tag.
+    if let Some(chosen) =
+        crate::runtime_backend::front_end::grammar::targets::parse_chosen_object_target(
+            subject_tokens,
+        )
+    {
+        let mut filter = parse_object_filter_lexed(chosen.filter_tokens, false)?;
+        filter = filter.match_tagged(
+            crate::cards::builders::CHOSEN_OBJECTS_TAG,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        return Ok(Some(filter));
+    }
+
     let subject_words = ActivationRestrictionCompatWords::new(subject_tokens);
     let subject_words = subject_words.to_word_refs();
     let intrinsic_attachment_state = subject_words.iter().enumerate().find_map(|(idx, word)| {
@@ -371,7 +415,7 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
             .is_some_and(|copula| matches!(*copula, "is" | "are" | "that's" | "thats"))
             .then_some(*word)
     });
-    if let Some(filter) = parse_source_or_another_trigger_subject_filter_lexed(subject_tokens)? {
+    if let Some(filter) = parse_source_or_filter_trigger_subject_filter_lexed(subject_tokens)? {
         return Ok(Some(filter));
     }
     if is_source_reference_words(&subject_words) {
@@ -669,6 +713,9 @@ pub(crate) fn parse_spell_activity_trigger(
                         Some(SpellOwnerSurface::SubjectActor) => {
                             filter.owner = Some(actor.clone());
                         }
+                        Some(SpellOwnerSurface::SubjectActorPronoun) => {
+                            filter.owner = Some(PlayerFilter::IteratedPlayer);
+                        }
                         Some(SpellOwnerSurface::Opponent) => {
                             filter.owner = Some(PlayerFilter::Opponent);
                         }
@@ -683,7 +730,19 @@ pub(crate) fn parse_spell_activity_trigger(
                     Ok(mut filter) => {
                         if let Some(origin_filter) = parse_spell_origin_zone_filter() {
                             filter.zone = origin_filter.zone;
-                            if filter.owner.is_none() {
+                            if matches!(
+                                filter_facts.owner,
+                                Some(SpellOwnerSurface::SubjectActorPronoun)
+                            ) {
+                                // The generic object-filter parser has no
+                                // trigger actor and interprets `their` as an
+                                // opponent possessive. At this boundary the
+                                // casting actor is already typed; spell-cast
+                                // matching evaluates IteratedPlayer as that
+                                // caster, preserving the exact owner/caster
+                                // correlation without choosing an opponent.
+                                filter.owner = Some(PlayerFilter::IteratedPlayer);
+                            } else if filter.owner.is_none() {
                                 filter.owner = origin_filter.owner;
                             }
                         }
@@ -1059,6 +1118,9 @@ pub(crate) fn controller_filter_for_token_player(player: PlayerAst) -> Option<Pl
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
         PlayerAst::Defending => Some(PlayerFilter::Defending),
+        PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
+            crate::filter::ObjectRef::tagged("triggering_source"),
+        )),
         _ => None,
     }
 }
@@ -1223,6 +1285,18 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
                 | crate::runtime_backend::grammar::token_definitions::TokenReminderSentenceKind::ExplicitTokenReference
         )
     );
+    // Reminder facts have no representation for a quoted enters-trigger
+    // ("... and \"When this token enters, ...\""), so letting the facts path
+    // claim such a sentence keeps the keywords but silently discards the
+    // quoted rule. Route those sentences through the generic granted-ability
+    // parser first, which models the full keyword-plus-quoted-rule list.
+    let has_quoted_enters_rule = tokens.windows(5).any(|window| {
+        window[0].kind == crate::runtime_backend::lexer::TokenKind::Quote
+            && matches!(window[1].as_word(), Some("when" | "whenever"))
+            && window[2].as_word() == Some("this")
+            && window[3].as_word() == Some("token")
+            && window[4].as_word() == Some("enters")
+    });
     for effect in effects.iter_mut().rev() {
         // A separately authored `It has "This token's power and toughness
         // ..."` sentence is a characteristic-defining ability of the token,
@@ -1230,7 +1304,7 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
         // the nested token-identity parser first refusal for this shape; the
         // dynamic reminder path below remains the fallback for unquoted
         // copy/snapshot P/T clauses.
-        if reminder.dynamic_power_toughness.is_some()
+        if (reminder.dynamic_power_toughness.is_some() || has_quoted_enters_rule)
             && append_token_granted_ability_to_effect(Some(effect), tokens)?
         {
             return Ok(true);
@@ -1494,6 +1568,31 @@ mod typed_trigger_subject_migration_tests {
     use crate::runtime_backend::lexer::lex_line;
 
     #[test]
+    fn discard_permanent_card_filter_does_not_require_battlefield_zone() {
+        let tokens = lex_line("a permanent card", 0).unwrap();
+        let filter = parse_discard_trigger_card_filter(&tokens, &["a", "permanent", "card"])
+            .unwrap()
+            .expect("permanent-card discard filter");
+
+        assert_eq!(
+            filter.zone, None,
+            "discard matching uses hand LKI: {filter:#?}"
+        );
+        assert_eq!(
+            filter.card_types,
+            vec![
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Battle,
+            ],
+            "permanent must remain a characteristic union: {filter:#?}"
+        );
+    }
+
+    #[test]
     fn typed_spell_activity_facts_preserve_trigger_spec_fields() {
         let tokens = lex_line("you cast a spell during your turn", 0).unwrap();
         let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
@@ -1639,6 +1738,26 @@ mod typed_trigger_subject_migration_tests {
     }
 
     #[test]
+    fn spell_cast_trigger_preserves_authored_static_ability_requirement() {
+        let tokens = lex_line("you cast a spell that has convoke", 0).unwrap();
+        let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
+        let TriggerSpec::SpellCast {
+            filter: Some(filter),
+            caster,
+            ..
+        } = trigger
+        else {
+            panic!("expected a filtered spell-cast trigger, got {trigger:?}");
+        };
+
+        assert_eq!(caster, PlayerFilter::You);
+        assert_eq!(
+            filter.static_abilities,
+            [crate::static_abilities::StaticAbilityId::Convoke]
+        );
+    }
+
+    #[test]
     fn trigger_clause_dispatch_preserves_spell_cast_origin_zones() {
         for (text, expected_zone) in [
             ("you cast a spell from exile", Zone::Exile),
@@ -1658,6 +1777,20 @@ mod typed_trigger_subject_migration_tests {
             assert_eq!(caster, PlayerFilter::You, "{text}: {filter:#?}");
             assert_eq!(filter.zone, Some(expected_zone), "{text}: {filter:#?}");
         }
+
+        let tokens = lex_line("a player casts a spell from their hand", 0).unwrap();
+        let trigger = super::trigger_clause_core::parse_trigger_clause_lexed(&tokens).unwrap();
+        let TriggerSpec::SpellCast {
+            filter: Some(filter),
+            caster,
+            ..
+        } = trigger
+        else {
+            panic!("expected actor-relative hand-origin trigger: {trigger:#?}");
+        };
+        assert_eq!(caster, PlayerFilter::Any);
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
     }
 
     #[test]
@@ -1670,6 +1803,24 @@ mod typed_trigger_subject_migration_tests {
         assert_eq!(filter.controller, Some(PlayerFilter::You));
         assert_eq!(filter.zone, Some(Zone::Battlefield));
         assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+    }
+
+    #[test]
+    fn chosen_object_trigger_subject_keeps_the_persistent_choice_tag() {
+        let tokens = lex_line("the chosen creature", 0).unwrap();
+        let filter = parse_trigger_subject_filter_lexed(&tokens)
+            .unwrap()
+            .expect("chosen creature trigger subject");
+
+        assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+        assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
+        assert_eq!(
+            filter.tagged_constraints[0],
+            crate::filter::TaggedObjectConstraint {
+                tag: crate::tag::TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            }
+        );
     }
 
     #[test]

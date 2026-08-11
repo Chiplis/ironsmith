@@ -124,7 +124,12 @@ fn preserve_spell_kind_on_counter_target(target: &mut TargetAst) {
             // Once ability targets have been routed above, a typed object in a
             // counter instruction is a spell on the stack. Generic object
             // parsing preserves the Stack zone but otherwise loses this kind.
-            filter.zone = Some(Zone::Stack);
+            // A non-Stack zone on an already typed spell is positive cast-
+            // origin provenance ("spell cast from a graveyard"), not the
+            // object's current zone; retain it for legality and rendering.
+            if filter.zone.is_none() {
+                filter.zone = Some(Zone::Stack);
+            }
             filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
         }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
@@ -320,21 +325,28 @@ fn parse_counter_ability_target_phrase(
         // scope, shared by every term ("spell or ability that targets a
         // permanent you control").
         if word == "that"
-            && clause_tokens
-                .get(idx + 1)
-                .and_then(OwnedLexToken::as_word)
-                == Some("targets")
+            && clause_tokens.get(idx + 1).and_then(OwnedLexToken::as_word) == Some("targets")
             && !term_filters.is_empty()
         {
-            let filter_tokens: Vec<OwnedLexToken> = clause_tokens[idx + 2..].to_vec();
-            if let Ok(targeted) =
-                crate::runtime_backend::families::object_filters::parse_object_filter_lexed(
+            let targets_only =
+                clause_tokens.get(idx + 2).and_then(OwnedLexToken::as_word) == Some("only");
+            let filter_start = idx + if targets_only { 3 } else { 2 };
+            let filter_tokens: Vec<OwnedLexToken> = clause_tokens[filter_start..].to_vec();
+            if let Ok((target_player, target_object, targets_any_of)) =
+                crate::runtime_backend::families::keyword_static::parse_cost_modifier_target_spec(
                     &filter_tokens,
-                    false,
                 )
             {
                 for (filter, _) in &mut term_filters {
-                    filter.targets_only_object = Some(Box::new(targeted.clone()));
+                    if targets_only {
+                        filter.targets_only_player = target_player.clone();
+                        filter.targets_only_object = target_object.clone();
+                        filter.targets_only_any_of = targets_any_of;
+                    } else {
+                        filter.targets_player = target_player.clone();
+                        filter.targets_object = target_object.clone();
+                        filter.targets_any_of = targets_any_of;
+                    }
                 }
                 idx = clause_tokens.len();
                 break;
@@ -392,6 +404,40 @@ fn parse_counter_ability_target_phrase(
             } else {
                 2
             };
+            continue;
+        }
+        // A controller qualifier may precede the shared target relation:
+        // "spell or ability an opponent controls that targets a land you
+        // control". The term loop stops at the controller tail, so retain
+        // the remaining relation here and apply it to every parsed Stack
+        // branch rather than letting the generic spell fallback claim only
+        // the first term.
+        if word == "that"
+            && clause_tokens.get(idx + 1).and_then(OwnedLexToken::as_word) == Some("targets")
+        {
+            let targets_only =
+                clause_tokens.get(idx + 2).and_then(OwnedLexToken::as_word) == Some("only");
+            let filter_start = idx + if targets_only { 3 } else { 2 };
+            let filter_tokens = clause_tokens[filter_start..].to_vec();
+            let Ok((target_player, target_object, targets_any_of)) =
+                crate::runtime_backend::families::keyword_static::parse_cost_modifier_target_spec(
+                    &filter_tokens,
+                )
+            else {
+                return Ok(None);
+            };
+            for (filter, _) in &mut term_filters {
+                if targets_only {
+                    filter.targets_only_player = target_player.clone();
+                    filter.targets_only_object = target_object.clone();
+                    filter.targets_only_any_of = targets_any_of;
+                } else {
+                    filter.targets_player = target_player.clone();
+                    filter.targets_object = target_object.clone();
+                    filter.targets_any_of = targets_any_of;
+                }
+            }
+            idx = clause_tokens.len();
             continue;
         }
         if word == COUNTER_FROM_WORD {
@@ -457,9 +503,7 @@ fn parse_counter_ability_target_phrase(
         let mut any = ObjectFilter::default();
         any.any_of = term_filters.into_iter().map(|(filter, _)| filter).collect();
         if saw_and_or_connective {
-            any = any.with_union_connective(
-                crate::filter::ObjectFilterUnionConnective::AndOr,
-            );
+            any = any.with_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
         }
         any
     };
@@ -952,8 +996,7 @@ pub(crate) fn parse_life_amount_from_trailing(
         let addend = if addend_trailing.is_empty() {
             addend_base
         } else {
-            let Some(resolved) =
-                parse_life_amount_from_trailing(&addend_base, &addend_trailing)?
+            let Some(resolved) = parse_life_amount_from_trailing(&addend_base, &addend_trailing)?
             else {
                 return Ok(None);
             };
@@ -1103,6 +1146,9 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
         PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
         PlayerAst::ThatPlayerOrTargetController => None,
+        PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
+            crate::filter::ObjectRef::tagged("triggering_source"),
+        )),
         PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => None,
     }
 }
@@ -1127,19 +1173,21 @@ mod filtered_prior_action_life_tests {
     fn life_multiplier_preserves_discarded_land_filter() {
         let tokens = lex_line("for each land card discarded this way", 0).unwrap();
         let expected = Value::Scaled(
-            Box::new(Value::PendingPriorEffectMetric(
-                ironsmith_core::PriorEffectMetricQuery::new(
-                    ironsmith_core::EffectMetricSource::AffectedObjects,
-                    ironsmith_core::EffectMetric::Count,
+            Box::new(
+                Value::PendingPriorEffectMetric(
+                    ironsmith_core::PriorEffectMetricQuery::new(
+                        ironsmith_core::EffectMetricSource::AffectedObjects,
+                        ironsmith_core::EffectMetric::Count,
+                    )
+                    .with_filter({
+                        let mut filter = ObjectFilter::land();
+                        filter.set_explicit_card_noun(true);
+                        filter
+                    })
+                    .with_action(ironsmith_core::PriorEffectAction::Discarded),
                 )
-                .with_filter({
-                    let mut filter = ObjectFilter::land();
-                    filter.set_explicit_card_noun(true);
-                    filter
-                })
-                .with_action(ironsmith_core::PriorEffectAction::Discarded),
-            )
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDiscardedThisWay)),
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDiscardedThisWay),
+            ),
             3,
         )
         .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
@@ -1172,6 +1220,98 @@ mod counter_spell_target_kind_tests {
         assert_typed_spell_target("target creature spell with mana value 4 or less");
         assert_typed_spell_target("target spell with mana value 3 or less");
     }
+
+    #[test]
+    fn counter_target_keeps_positive_cast_origin_as_spell_provenance() {
+        let target = parse_counter_target_phrase(
+            &lex_line("target spell cast from a graveyard", 0).unwrap(),
+        )
+        .unwrap();
+        let TargetAst::Object(filter, ..) = target else {
+            panic!("expected typed counter target");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Graveyard), "{filter:#?}");
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell),
+            "{filter:#?}"
+        );
+    }
+
+    #[test]
+    fn counter_spell_or_ability_uses_any_matching_target_relation() {
+        let target = parse_counter_target_phrase(
+            &lex_line(
+                "target spell or ability that targets a creature you control",
+                0,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let TargetAst::Object(filter, ..) = target else {
+            panic!("expected typed counter target");
+        };
+        assert_eq!(filter.any_of.len(), 2);
+        assert!(filter.any_of.iter().all(|branch| {
+            branch.targets_object.is_some() && branch.targets_only_object.is_none()
+        }));
+    }
+
+    #[test]
+    fn counter_spell_or_ability_preserves_player_or_object_target_union() {
+        let target = parse_counter_target_phrase(
+            &lex_line(
+                "target spell or ability that targets you or a creature you control",
+                0,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let TargetAst::Object(filter, ..) = target else {
+            panic!("expected typed counter target");
+        };
+        assert_eq!(filter.any_of.len(), 2);
+        assert!(filter.any_of.iter().all(|branch| {
+            branch.targets_player == Some(PlayerFilter::You)
+                && branch.targets_object.is_some()
+                && branch.targets_any_of
+        }));
+    }
+
+    #[test]
+    fn counter_spell_or_ability_keeps_controller_before_shared_land_target_relation() {
+        let target = parse_counter_target_phrase(
+            &lex_line(
+                "target spell or ability an opponent controls that targets a land you control",
+                0,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let TargetAst::Object(filter, ..) = target else {
+            panic!("expected typed counter target");
+        };
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert!(filter.any_of.iter().all(|branch| {
+            branch.controller == Some(PlayerFilter::Opponent)
+                && branch.targets_object.as_ref().is_some_and(|target| {
+                    target.card_types == [CardType::Land]
+                        && target.controller == Some(PlayerFilter::You)
+                })
+        }));
+        assert!(
+            filter
+                .any_of
+                .iter()
+                .any(|branch| { branch.stack_kind == Some(crate::filter::StackObjectKind::Spell) })
+        );
+        assert!(
+            filter.any_of.iter().any(|branch| {
+                branch.stack_kind == Some(crate::filter::StackObjectKind::Ability)
+            })
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1183,11 +1323,8 @@ mod reveal_hand_count_tests {
     fn that_many_cards_from_hand_keeps_the_prior_effect_amount() {
         let tokens = lex_line("that many cards from their hand", 0)
             .expect("dependent hand-reveal count should lex");
-        let parsed = parse_reveal(
-            &tokens,
-            Some(SubjectAst::Player(PlayerAst::TargetOpponent)),
-        )
-        .expect("dependent hand-reveal count should parse");
+        let parsed = parse_reveal(&tokens, Some(SubjectAst::Player(PlayerAst::TargetOpponent)))
+            .expect("dependent hand-reveal count should parse");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject:
                 SubjectVerbSubjectAst {

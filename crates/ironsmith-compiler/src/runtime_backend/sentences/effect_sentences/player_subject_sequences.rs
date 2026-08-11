@@ -215,21 +215,22 @@ pub(super) fn parse_controller_and_defending_player_discard_or_sacrifice(
     }])
 }
 
-/// Split a coordinated sequence whose quantified-opponent action is followed
-/// by one or more explicitly controller-scoped actions.
+/// Split a coordinated sequence when a quantified-player action is followed
+/// by one or more actions with their own explicit player subjects.
 ///
 /// The ordinary chain splitter intentionally requires a bare verb immediately
 /// after a comma. That keeps noun lists intact, but it also leaves sequences
-/// such as `each opponent discards ..., you draw ..., and you gain ...` as one
-/// unparseable clause. On a triggered line, the trigger/effect probe can then
-/// absorb the opponent action into the trigger and silently lose it. This
-/// recognizer is deliberately narrower: the first clause must be headed by
-/// `each opponent` (or `for each opponent`) and every split boundary must begin
-/// an explicit `you <effect verb>` clause.
-pub(super) fn split_quantified_opponent_then_controller_clauses(
+/// such as `each player mills ..., then each opponent discards ... and you
+/// draw ...` as one quantified action. That incorrectly repeats the later
+/// opponent/controller actions once for every player. This recognizer is
+/// deliberately narrow: the first clause and every split tail must begin with
+/// an explicit quantified-player or `you <effect verb>` subject. Shared-
+/// subject tails such as `each player mills ..., then draws ...` remain nested
+/// in the original fanout.
+pub(super) fn split_explicit_player_subject_clauses(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<&[OwnedLexToken]>> {
-    if !starts_quantified_opponent_action(tokens) {
+    if !starts_quantified_player_action(tokens) {
         return None;
     }
 
@@ -256,7 +257,8 @@ pub(super) fn split_quantified_opponent_then_controller_clauses(
         } else {
             continue;
         };
-        let Some((next_start, tail)) = controller_action_after_boundary(tokens, boundary_start)
+        let Some((next_start, tail)) =
+            explicit_player_action_after_boundary(tokens, boundary_start)
         else {
             continue;
         };
@@ -272,21 +274,21 @@ pub(super) fn split_quantified_opponent_then_controller_clauses(
         return None;
     }
     let tail = trim_lexed_commas(tokens.get(clause_start..).unwrap_or_default());
-    if !starts_controller_action(tail) {
+    if !starts_explicit_player_action(tail) {
         return None;
     }
     clauses.push(tail);
     Some(clauses)
 }
 
-fn starts_quantified_opponent_action(tokens: &[OwnedLexToken]) -> bool {
-    let words = parser_token_word_refs(tokens);
-    let expected_verb_idx = match words.as_slice() {
-        ["each", "opponent" | "opponents", ..] => 2,
-        ["for", "each", "opponent" | "opponents", ..] => 3,
-        _ => return false,
+fn starts_quantified_player_action(tokens: &[OwnedLexToken]) -> bool {
+    let Some(shape) =
+        super::super::grammar::effects::for_each_shapes::parse_participant_clause_shape(tokens)
+    else {
+        return false;
     };
-    find_verb_lexed(tokens).is_some_and(|(_, verb_idx)| verb_idx == expected_verb_idx)
+    shape.participant_is_actor
+        && find_verb_lexed(shape.inner_tokens).is_some_and(|(_, verb_idx)| verb_idx == 0)
 }
 
 fn starts_controller_action(tokens: &[OwnedLexToken]) -> bool {
@@ -295,16 +297,23 @@ fn starts_controller_action(tokens: &[OwnedLexToken]) -> bool {
         && find_verb_lexed(tokens).is_some_and(|(_, verb_idx)| verb_idx == 1)
 }
 
-fn controller_action_after_boundary(
+fn starts_explicit_player_action(tokens: &[OwnedLexToken]) -> bool {
+    starts_controller_action(tokens) || starts_quantified_player_action(tokens)
+}
+
+fn explicit_player_action_after_boundary(
     tokens: &[OwnedLexToken],
     mut start: usize,
 ) -> Option<(usize, &[OwnedLexToken])> {
     let mut tail = trim_lexed_commas(tokens.get(start..).unwrap_or_default());
-    if token_word_refs(tail).first().copied() == Some("and") {
+    if token_word_refs(tail)
+        .first()
+        .is_some_and(|word| matches!(*word, "and" | "then"))
+    {
         start = start.saturating_add(1);
         tail = trim_lexed_commas(tokens.get(start..).unwrap_or_default());
     }
-    starts_controller_action(tail).then_some((start, tail))
+    starts_explicit_player_action(tail).then_some((start, tail))
 }
 
 #[cfg(test)]
@@ -315,7 +324,7 @@ mod tests {
     use crate::runtime_backend::lexer::lex_line;
 
     use super::super::parse_effect_sentence_lexed;
-    use super::split_quantified_opponent_then_controller_clauses;
+    use super::split_explicit_player_subject_clauses;
 
     #[test]
     fn splits_quantified_opponent_then_explicit_controller_actions() {
@@ -324,7 +333,7 @@ mod tests {
             0,
         )
         .expect("player sequence should lex");
-        let clauses = split_quantified_opponent_then_controller_clauses(&tokens)
+        let clauses = split_explicit_player_subject_clauses(&tokens)
             .expect("quantified-player sequence should split");
         assert_eq!(clauses.len(), 3);
         assert_eq!(
@@ -348,7 +357,7 @@ mod tests {
             0,
         )
         .expect("player sequence should lex");
-        let clauses = split_quantified_opponent_then_controller_clauses(&tokens)
+        let clauses = split_explicit_player_subject_clauses(&tokens)
             .expect("quantified-player sequence should split");
         assert_eq!(clauses.len(), 2);
         assert_eq!(
@@ -379,6 +388,77 @@ mod tests {
                 "your",
                 "hand"
             ]
+        );
+    }
+
+    #[test]
+    fn splits_each_player_then_each_opponent_then_controller_actions() {
+        let tokens = lex_line(
+            "Each player mills three cards, then each opponent discards a card and you draw a card.",
+            0,
+        )
+        .expect("quantified-player sequence should lex");
+        let clauses = split_explicit_player_subject_clauses(&tokens)
+            .expect("each explicit player subject should start a new scope");
+        assert_eq!(clauses.len(), 3);
+        assert_eq!(
+            super::token_word_refs(clauses[0]),
+            ["Each", "player", "mills", "three", "cards"]
+        );
+        assert_eq!(
+            super::token_word_refs(clauses[1]),
+            ["each", "opponent", "discards", "a", "card"]
+        );
+        assert_eq!(
+            super::token_word_refs(clauses[2]),
+            ["you", "draw", "a", "card"]
+        );
+    }
+
+    #[test]
+    fn shared_subject_tail_does_not_end_quantified_player_scope() {
+        let tokens = lex_line("Each player mills three cards, then draws a card.", 0)
+            .expect("shared-subject sequence should lex");
+        assert!(split_explicit_player_subject_clauses(&tokens).is_none());
+    }
+
+    #[test]
+    fn parses_explicit_player_subjects_as_three_top_level_actions() {
+        let tokens = lex_line(
+            "Each player mills three cards, then each opponent discards a card and you draw a card.",
+            0,
+        )
+        .expect("quantified-player sequence should lex");
+        let effects = parse_effect_sentence_lexed(&tokens)
+            .expect("quantified-player sequence should parse structurally");
+        let [EffectAst::CommaThen { effects }] = effects.as_slice() else {
+            panic!("expected authored comma-then surface, got {effects:#?}");
+        };
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [
+                    EffectAst::ForEachPlayer { effects: mill },
+                    EffectAst::ForEachOpponent { effects: discard },
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::Draw { .. },
+                        ..
+                    })
+                ] if matches!(
+                    mill.as_slice(),
+                    [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::Mill { .. },
+                        ..
+                    })]
+                ) && matches!(
+                    discard.as_slice(),
+                    [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::Discard { .. },
+                        ..
+                    })]
+                )
+            ),
+            "later actions must not remain nested in the each-player scope: {effects:#?}"
         );
     }
 

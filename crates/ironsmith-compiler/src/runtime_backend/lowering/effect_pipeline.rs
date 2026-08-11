@@ -20,7 +20,9 @@ use super::shared_types::{LineInfo, LineSemanticFacts};
 pub(crate) enum EffectPreludeTag {
     AttachedSource(TagKey),
     TriggeringObject(TagKey),
+    TriggeringAttacker(TagKey, crate::target::ObjectFilter),
     TriggeringBlockers(TagKey, crate::target::ObjectFilter),
+    OtherBlockParticipant(TagKey, crate::target::ObjectFilter),
     TriggeringSource(TagKey),
     TriggeringDamageTarget(TagKey),
 }
@@ -95,6 +97,7 @@ pub(crate) struct NormalizedModalModeAst {
 pub(crate) struct NormalizedModalAst {
     pub(crate) header: ParsedModalHeader,
     pub(crate) prepared_prefix: Option<PreparedEffectsForLowering>,
+    pub(crate) prepared_common_prefix: Option<PreparedEffectsForLowering>,
     pub(crate) modes: Vec<NormalizedModalModeAst>,
 }
 

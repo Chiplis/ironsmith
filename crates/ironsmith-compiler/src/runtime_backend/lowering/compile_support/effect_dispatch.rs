@@ -220,6 +220,28 @@ fn nested_effect_is_move_to_zone(effect: &Effect) -> bool {
     found
 }
 
+fn nested_effect_is_discard(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::DiscardEffect>()
+        .is_some()
+    {
+        return true;
+    }
+    if let Some(with_id) = effect.as_with_id() {
+        return nested_effect_is_discard(&with_id.effect);
+    }
+    if let Some(tagged) = effect.as_tagged() {
+        return nested_effect_is_discard(&tagged.effect);
+    }
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if !found && nested_effect_is_discard(child) {
+            found = true;
+        }
+    });
+    found
+}
+
 fn nested_effect_defines_result_id(effect: &Effect, id: EffectId) -> bool {
     if let Some(with_id) = effect.as_with_id() {
         if with_id.id == id {
@@ -241,8 +263,11 @@ fn nested_effect_can_produce_reference(effect: &Effect, reference: NestedResultR
         // moved as their scalar outcome. Search/exile procedures are commonly
         // lowered behind a sequence wrapper, so accept that transparent
         // aggregate just as we already accept nested mana producers.
-        NestedResultReferenceKind::Outcome => {
-            effect.contains_mana_production() || nested_effect_is_move_to_zone(effect)
+        NestedResultReferenceKind::Outcome
+        | NestedResultReferenceKind::Metric(ironsmith_core::EffectMetricSource::Outcome) => {
+            effect.contains_mana_production()
+                || nested_effect_is_move_to_zone(effect)
+                || nested_effect_is_discard(effect)
         }
         NestedResultReferenceKind::Metric(ironsmith_core::EffectMetricSource::AffectedObjects) => {
             nested_effect_is_move_to_zone(effect)
@@ -774,6 +799,17 @@ fn compile_effect_inner(
         preserve_nested_result_value_links(&mut effects);
         return Ok((effects, choices));
     }
+    if let EffectAst::ResultBranchLabel { label, effects } = effect {
+        let (mut effects, choices) = compile_effects(effects, ctx)?;
+        preserve_nested_result_value_links(&mut effects);
+        return Ok((
+            vec![Effect::new(crate::effects::SequenceEffect::result_labeled(
+                effects,
+                label.clone(),
+            ))],
+            choices,
+        ));
+    }
     if let EffectAst::Coordinated {
         effects,
         leading_duration,
@@ -875,6 +911,33 @@ fn compile_effect_inner(
         }
         let fallback = Effect::if_then(id, EffectPredicate::DidNotHappen, otherwise_effects);
         return Ok((vec![wrapped, fallback], choices));
+    }
+    if let EffectAst::IfEffectResult {
+        effect,
+        predicate,
+        if_true,
+    } = effect
+    {
+        let id = ctx.next_effect_id();
+        let (mut lowered, mut choices) = compile_effect(effect, ctx)?;
+        let inner = lowered.pop().ok_or_else(|| {
+            CardTextError::ParseError(
+                "if-effect-result requires a single nested effect".to_string(),
+            )
+        })?;
+        if !lowered.is_empty() {
+            return Err(CardTextError::ParseError(
+                "if-effect-result nested effect must lower to a single effect".to_string(),
+            ));
+        }
+        let wrapped = Effect::with_id(id.0, inner);
+        ctx.last_effect_id = Some(id);
+        let (if_true_effects, if_true_choices) = compile_effects(if_true, ctx)?;
+        for choice in if_true_choices {
+            push_choice(&mut choices, choice);
+        }
+        let conditional = Effect::if_then(id, predicate.clone(), if_true_effects);
+        return Ok((vec![wrapped, conditional], choices));
     }
     if let EffectAst::TagAffected { effect, tag } = effect {
         // This wrapper is itself the authoritative outcome tag. Letting the
@@ -1196,7 +1259,20 @@ where
     let you_value = per_player_partition_value_for_filter(you_value, &PlayerFilter::You);
     let mut prelude_effects = Vec::new();
     let mut merged_choices = choices.clone();
-    collect_value_player_target_choices(&value, &mut merged_choices);
+    let mut value_player_target_choices = Vec::new();
+    collect_value_player_target_choices(&value, &mut value_player_target_choices);
+    for choice in value_player_target_choices {
+        let reuses_prior_player_target = ctx
+            .last_player_filter
+            .as_ref()
+            .is_some_and(|player| player_target_choice_matches_filter(&choice, player));
+        if !choices.iter().any(|existing| existing == &choice) && !reuses_prior_player_target {
+            prelude_effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
+                choice.clone(),
+            )));
+        }
+        push_choice(&mut merged_choices, choice);
+    }
     if let Some(spec) = value_object_target_spec(&value)
         && ctx.auto_tag_object_targets
     {
@@ -1222,6 +1298,17 @@ where
     Ok((prelude_effects, merged_choices))
 }
 
+fn player_target_choice_matches_filter(choice: &ChooseSpec, player: &PlayerFilter) -> bool {
+    let ChooseSpec::Player(choice_filter) = choice.base() else {
+        return false;
+    };
+    matches!(
+        player,
+        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner)
+            if inner.as_ref() == choice_filter
+    )
+}
+
 fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSpec>) {
     match value {
         Value::SurfaceHinted { value, .. } => collect_value_player_target_choices(value, choices),
@@ -1235,6 +1322,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -1262,7 +1350,8 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         Value::StaticAbilitiesAmong { filter, .. } => {
             collect_object_filter_player_target_choices(filter, choices);
         }
-        Value::SpellsCastThisTurnMatching { player, filter, .. } => {
+        Value::SpellsCastThisTurnMatching { player, filter, .. }
+        | Value::TotalManaValueOfSpellsCastThisTurnMatching { player, filter, .. } => {
             collect_player_filter_target_choice(player, choices);
             collect_object_filter_player_target_choices(filter, choices);
         }
@@ -1279,6 +1368,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::LifeGainedThisTurn(player)
         | Value::LifeLostThisTurn(player)
         | Value::CardsDiscardedThisTurn(player)
+        | Value::AttractionsVisitedThisTurn(player)
         | Value::DamageDealtToPlayersThisTurn(player)
         | Value::NoncombatDamageDealtToPlayersThisTurn(player)
         | Value::MaxCardsDrawnThisTurn(player)
@@ -1342,8 +1432,13 @@ fn collect_object_filter_player_target_choices(
         filter
             .attacking_player_or_planeswalker_controlled_by
             .as_ref(),
+        filter.protected_by.as_ref(),
         filter.attached_to_player.as_ref(),
         filter.entered_battlefield_controller.as_ref(),
+        filter
+            .counters_put_on_this_turn
+            .as_ref()
+            .map(|constraint| &constraint.source_controller),
         filter.dealt_damage_to_player_this_turn.as_ref(),
     ]
     .into_iter()
@@ -1370,12 +1465,6 @@ fn collect_object_filter_player_target_choices(
 
 fn collect_player_filter_target_choice(player: &PlayerFilter, choices: &mut Vec<ChooseSpec>) {
     if let PlayerFilter::Target(inner) = player {
-        if matches!(**inner, PlayerFilter::Any) {
-            // `Target(Any)` inside a value is how resolved back-references to the
-            // spell's existing player targets surface (e.g. "those players"); the
-            // explicit choose effect already carries the target requirement.
-            return;
-        }
         push_choice(
             choices,
             ChooseSpec::target(ChooseSpec::Player((**inner).clone())),

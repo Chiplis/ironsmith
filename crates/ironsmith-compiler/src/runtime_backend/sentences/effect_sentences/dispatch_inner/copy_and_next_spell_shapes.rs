@@ -213,7 +213,9 @@ fn next_cast_instant_sorcery_or_loyalty_trigger_from_core(
 }
 
 fn delayed_trigger_is_one_shot(trigger_clause: LexedClause<'_>) -> bool {
-    delayed_shapes::delayed_trigger_has_next_marker(trigger_clause.trimmed().tokens())
+    let tokens = trigger_clause.trimmed().tokens();
+    delayed_shapes::delayed_trigger_has_next_marker(tokens)
+        || delayed_shapes::delayed_trigger_has_first_time_marker(tokens)
 }
 
 fn delayed_trigger_provides_triggering_stack_object(trigger: &TriggerSpec) -> bool {
@@ -428,6 +430,50 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             },
         ]));
     }
+    if let Some(history_shape) =
+        delayed_shapes::parse_delayed_dies_after_damage_by_previous_creature_shape(
+            trigger_core_tokens,
+        )
+    {
+        let mut victim = parse_object_filter(history_shape.victim_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported delayed damage-history victim filter (clause: '{}')",
+                clause_display.trim()
+            ))
+        })?;
+        victim.dealt_damage_by_source_this_turn =
+            Some(ironsmith_core::DamagedBySource::ThisCreature);
+        let delayed_effects = parse_effect_chain(&shape.effect_tokens)?;
+        if delayed_effects.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing delayed damage-history death effect clause (clause: '{}')",
+                clause_display.trim()
+            )));
+        }
+        return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+            trigger: TriggerSpec::Dies(victim),
+            effects: delayed_effects,
+            one_shot: delayed_trigger_is_one_shot(trigger_clause),
+            until_end_of_combat: false,
+            attach_to_previous_ability: true,
+        }]));
+    }
+    if delayed_shapes::is_delayed_prior_object_put_into_a_graveyard(trigger_core_tokens) {
+        let delayed_effects = parse_effect_chain(&shape.effect_tokens)?;
+        if delayed_effects.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing delayed prior-object graveyard effect clause (clause: '{}')",
+                clause_display.trim()
+            )));
+        }
+        return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+            trigger: TriggerSpec::PutIntoGraveyard(ObjectFilter::tagged(TagKey::from(IT_TAG))),
+            effects: delayed_effects,
+            one_shot: true,
+            until_end_of_combat: false,
+            attach_to_previous_ability: true,
+        }]));
+    }
     if let Some(combat_shape) =
         delayed_shapes::parse_delayed_target_deals_combat_damage_shape(trigger_core_tokens)
         && let Ok(filter) = parse_object_filter(combat_shape.subject_tokens, false)
@@ -518,6 +564,23 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
     };
     let (delayed_filter, remainder) = match shape {
         delayed_shapes::DelayedDiesShape::ThatReference { effect_tokens } => (None, effect_tokens),
+        delayed_shapes::DelayedDiesShape::DefinitePriorTarget {
+            subject_tokens,
+            effect_tokens,
+        } => {
+            let mut filter =
+                delayed_dies_this_way_filter(subject_tokens, tokens)?.ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "missing definite delayed-death object filter (clause: '{}')",
+                        clause_display.trim()
+                    ))
+                })?;
+            let noun = crate::runtime_backend::token_word_refs(subject_tokens)
+                .get(1)
+                .and_then(|noun| ironsmith_core::DemonstrativeAntecedentSurface::from_noun(noun));
+            filter.set_demonstrative_antecedent_surface(noun);
+            (Some(filter), effect_tokens)
+        }
         delayed_shapes::DelayedDiesShape::ThisWay {
             subject_tokens,
             effect_tokens,
@@ -533,7 +596,22 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
         )));
     }
 
-    let delayed_effects = parse_effect_chain(&remainder)?;
+    let remainder_words = crate::runtime_backend::token_word_refs(&remainder);
+    let delayed_effects = if matches!(
+        remainder_words.as_slice(),
+        ["exile", "its", "controllers", "graveyard"]
+            | ["exile", "its", "controller's", "graveyard"]
+            | ["exile", "its", "controller", "s", "graveyard"]
+    ) {
+        let mut graveyard = ObjectFilter::default();
+        graveyard.zone = Some(Zone::Graveyard);
+        graveyard.owner = Some(PlayerFilter::ControllerOf(
+            crate::filter::ObjectRef::Tagged(TagKey::from(crate::cards::builders::IT_TAG)),
+        ));
+        vec![EffectAst::subject_verb_exile_all(graveyard, false)]
+    } else {
+        parse_effect_chain(&remainder)?
+    };
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed dies-this-turn effect clause (clause: '{}')",
@@ -832,6 +910,118 @@ mod copy_and_next_spell_shape_tests {
     }
 
     #[test]
+    fn delayed_death_exiles_the_referenced_objects_controllers_whole_graveyard() {
+        let tokens = crate::runtime_backend::lex_line(
+            "When that creature dies this turn, exile its controller's graveyard.",
+            0,
+        )
+        .expect("whole-graveyard delayed text should lex");
+
+        let effects = parse_delayed_when_that_dies_this_turn_sentence(&tokens)
+            .expect("delayed death parser should not error")
+            .expect("delayed death parser should match");
+        let [
+            EffectAst::DelayedWhenLastObjectDiesThisTurn {
+                effects: delayed, ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one delayed watcher: {effects:#?}");
+        };
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ExileAll { filter, .. },
+                ..
+            }),
+        ] = delayed.as_slice()
+        else {
+            panic!("expected exhaustive graveyard exile: {delayed:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert!(matches!(
+            &filter.owner,
+            Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag)))
+                if tag.as_str() == crate::cards::builders::IT_TAG
+        ));
+    }
+
+    #[test]
+    fn definite_filtered_death_subject_watches_the_prior_object_once() {
+        let tokens = crate::runtime_backend::lex_line(
+            "When the permanent you don't control dies this turn, you gain 2 life.",
+            0,
+        )
+        .expect("definite delayed-death text should lex");
+
+        let effects = parse_delayed_when_that_dies_this_turn_sentence(&tokens)
+            .expect("definite delayed-death parser should not error")
+            .expect("definite delayed-death parser should match");
+        let [
+            EffectAst::DelayedWhenLastObjectDiesThisTurn {
+                filter: Some(filter),
+                effects,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected a prior-object delayed death watcher: {effects:#?}");
+        };
+
+        assert_eq!(
+            filter.demonstrative_antecedent_surface(),
+            Some(ironsmith_core::DemonstrativeAntecedentSurface::Permanent)
+        );
+        assert_eq!(filter.controller, Some(PlayerFilter::NotYou));
+        assert!(matches!(effects.as_slice(), [EffectAst::SubjectVerb(_)]));
+    }
+
+    #[test]
+    fn prior_target_damage_then_definite_death_lowers_to_tagged_this_dies() {
+        let definition = crate::CardDefinitionBuilder::new(
+            crate::CardId::new(),
+            "Prior Target Death Watch",
+        )
+        .card_types(vec![crate::CardType::Sorcery])
+        .parse_text(
+            "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control. When the permanent you don't control dies this turn, you gain 2 life.",
+        )
+        .expect("a definite delayed-death subject should compile against the prior target");
+        let debug = format!("{:#?}", definition.spell_effect);
+
+        assert!(debug.contains("ThisDies"), "{debug}");
+        assert!(debug.contains("one_shot: true"), "{debug}");
+        assert!(debug.contains("target_tag: Some"), "{debug}");
+        assert!(
+            debug.contains("demonstrative_antecedent: Some(\n") && debug.contains("Permanent"),
+            "{debug}"
+        );
+        assert!(!debug.contains("ThisLeavesBattlefield"), "{debug}");
+    }
+
+    #[test]
+    fn indefinite_damage_history_subject_keeps_this_way_collection_shape() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Whenever a creature dealt damage this way dies this turn, you gain 2 life.",
+            0,
+        )
+        .expect("damage-history delayed-death text should lex");
+
+        let effects = parse_delayed_when_that_dies_this_turn_sentence(&tokens)
+            .expect("damage-history delayed-death parser should not error")
+            .expect("damage-history delayed-death parser should match");
+        let [
+            EffectAst::DelayedWhenLastObjectDiesThisTurn {
+                filter: Some(filter),
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected a this-way delayed death watcher: {effects:#?}");
+        };
+
+        assert_eq!(filter.demonstrative_antecedent_surface(), None);
+    }
+
+    #[test]
     fn delayed_that_creature_leaves_uses_captured_effect_tail() {
         let tokens = crate::runtime_backend::lex_line(
             "When that creature leaves the battlefield, return this card from exile to the battlefield under its owner's control.",
@@ -884,6 +1074,80 @@ mod copy_and_next_spell_shape_tests {
         assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
         assert!(debug.contains("YouDrawCard"), "{debug}");
         assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn delayed_death_after_damage_by_previous_creature_keeps_both_identities() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Whenever a creature dealt damage by that creature dies this turn, its controller loses 2 life.",
+            0,
+        )
+        .expect("damage-history death watcher should lex");
+
+        let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
+            .expect("damage-history death watcher should not error")
+            .expect("damage-history death watcher should match");
+        let [
+            EffectAst::DelayedTriggerThisTurn {
+                trigger: TriggerSpec::Dies(victim),
+                effects: delayed_effects,
+                one_shot,
+                attach_to_previous_ability,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one delayed death watcher: {effects:#?}");
+        };
+
+        assert_eq!(victim.card_types, [CardType::Creature]);
+        assert_eq!(
+            victim.dealt_damage_by_source_this_turn,
+            Some(ironsmith_core::DamagedBySource::ThisCreature)
+        );
+        assert!(!*one_shot, "`Whenever` must remain repeatable this turn");
+        assert!(
+            *attach_to_previous_ability,
+            "the damager must be the preceding creature target"
+        );
+        assert!(format!("{delayed_effects:#?}").contains("LoseLife"));
+    }
+
+    #[test]
+    fn suffix_this_turn_first_matching_cast_is_one_shot() {
+        let tokens = crate::runtime_backend::lex_line(
+            "When you cast a spell with the chosen name for the first time this turn, draw two cards.",
+            0,
+        )
+        .expect("first-matching-cast delayed trigger text should lex");
+
+        let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
+            .expect("first-matching-cast delayed trigger parser should not error")
+            .expect("first-matching-cast delayed trigger parser should match");
+
+        let [
+            EffectAst::DelayedTriggerThisTurn {
+                trigger:
+                    TriggerSpec::SpellCast {
+                        filter: Some(filter),
+                        caster: PlayerFilter::You,
+                        ..
+                    },
+                effects: delayed_effects,
+                one_shot,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one named-spell delayed trigger, got {effects:#?}");
+        };
+
+        assert_eq!(filter.name.as_deref(), Some("{chosen name}"));
+        assert!(
+            *one_shot,
+            "the first matching cast must consume the trigger"
+        );
+        assert!(format!("{delayed_effects:#?}").contains("Draw"));
     }
 
     #[test]

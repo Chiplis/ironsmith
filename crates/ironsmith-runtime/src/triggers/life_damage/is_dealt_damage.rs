@@ -12,6 +12,8 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 pub struct IsDealtDamageTrigger {
     pub target: ChooseSpec,
     pub combat_only: bool,
+    pub noncombat_only: bool,
+    pub excess_only: bool,
 }
 
 impl IsDealtDamageTrigger {
@@ -19,6 +21,8 @@ impl IsDealtDamageTrigger {
         Self {
             target,
             combat_only: false,
+            noncombat_only: false,
+            excess_only: false,
         }
     }
 
@@ -26,6 +30,17 @@ impl IsDealtDamageTrigger {
         Self {
             target,
             combat_only: true,
+            noncombat_only: false,
+            excess_only: false,
+        }
+    }
+
+    pub fn excess_noncombat(target: ChooseSpec) -> Self {
+        Self {
+            target,
+            combat_only: false,
+            noncombat_only: true,
+            excess_only: true,
         }
     }
 }
@@ -41,6 +56,12 @@ impl TriggerMatcher for IsDealtDamageTrigger {
         if self.combat_only && !e.is_combat {
             return false;
         }
+        if self.noncombat_only && e.is_combat {
+            return false;
+        }
+        if self.excess_only && e.excess_damage == 0 {
+            return false;
+        }
 
         match e.target {
             DamageTarget::Object(object_id) => target_matches_object(&self.target, object_id, ctx),
@@ -53,8 +74,12 @@ impl TriggerMatcher for IsDealtDamageTrigger {
     }
 
     fn display(&self) -> String {
-        let damage_text = if self.combat_only {
+        let damage_text = if self.excess_only && self.noncombat_only {
+            "excess noncombat damage"
+        } else if self.combat_only {
             "combat damage"
+        } else if self.noncombat_only {
+            "noncombat damage"
         } else {
             "damage"
         };
@@ -67,11 +92,7 @@ impl TriggerMatcher for IsDealtDamageTrigger {
 
         match base_spec(&self.target) {
             ChooseSpec::Source => {
-                if self.combat_only {
-                    "Whenever this creature is dealt combat damage".to_string()
-                } else {
-                    "Whenever this creature is dealt damage".to_string()
-                }
+                format!("Whenever this creature is dealt {damage_text}")
             }
             ChooseSpec::SpecificObject(_) => {
                 format!("Whenever that permanent is dealt {damage_text}")
@@ -92,6 +113,15 @@ impl TriggerMatcher for IsDealtDamageTrigger {
             }
             _ => format!("Whenever a target is dealt {damage_text}"),
         }
+    }
+
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        if !self.excess_only || !self.matches(event, ctx) {
+            return None;
+        }
+        event
+            .downcast::<DamageEvent>()
+            .map(|damage| damage.excess_damage as i32)
     }
 }
 
@@ -139,6 +169,10 @@ fn target_matches_player(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::cause::EventCause;
+    use crate::ids::{ObjectId, PlayerId};
+    use crate::provenance::ProvNodeId;
+    use crate::target::FilterContext;
 
     #[test]
     fn test_display() {
@@ -147,5 +181,58 @@ mod tests {
 
         let combat_trigger = IsDealtDamageTrigger::combat_only(ChooseSpec::creature());
         assert!(combat_trigger.display().contains("combat damage"));
+    }
+
+    #[test]
+    fn excess_noncombat_trigger_matches_and_exports_only_the_excess() {
+        let game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(11);
+        let damaged = ObjectId::from_raw(12);
+        let ctx = TriggerContext::new(source, alice, FilterContext::new(alice), &game);
+        let trigger = IsDealtDamageTrigger::excess_noncombat(ChooseSpec::SpecificObject(damaged));
+        let event = TriggerEvent::new_with_provenance(
+            DamageEvent::with_cause(
+                ObjectId::from_raw(13),
+                DamageTarget::Object(damaged),
+                5,
+                false,
+                EventCause::effect(),
+            )
+            .with_excess_damage(3),
+            ProvNodeId::default(),
+        );
+
+        assert!(trigger.matches(&event, &ctx));
+        assert_eq!(trigger.event_value_amount(&event, &ctx), Some(3));
+        assert_eq!(
+            trigger.display(),
+            "Whenever that permanent is dealt excess noncombat damage"
+        );
+
+        let no_excess = TriggerEvent::new_with_provenance(
+            DamageEvent::with_cause(
+                ObjectId::from_raw(13),
+                DamageTarget::Object(damaged),
+                2,
+                false,
+                EventCause::effect(),
+            ),
+            ProvNodeId::default(),
+        );
+        let combat = TriggerEvent::new_with_provenance(
+            DamageEvent::with_cause(
+                ObjectId::from_raw(13),
+                DamageTarget::Object(damaged),
+                5,
+                true,
+                EventCause::effect(),
+            )
+            .with_excess_damage(3),
+            ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&no_excess, &ctx));
+        assert!(!trigger.matches(&combat, &ctx));
     }
 }

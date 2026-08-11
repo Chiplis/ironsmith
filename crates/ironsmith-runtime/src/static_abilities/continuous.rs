@@ -137,6 +137,11 @@ fn object_ability_keyword_label(ability: &Ability) -> Option<String> {
 fn explicit_granted_keyword_label(display: &str) -> Option<String> {
     let label = display.trim().trim_end_matches('.');
     let lower = label.to_ascii_lowercase();
+    if lower == "scavenge. the scavenge cost is equal to its mana cost" {
+        // This two-sentence surface is one structured granted keyword. Keep
+        // it unquoted while preserving the authored sentence capitalization.
+        return Some(label.to_string());
+    }
     if matches!(lower.as_str(), "storm" | "gravestorm") {
         return Some(lower);
     }
@@ -676,6 +681,21 @@ fn indefinite_article_for(word: &str) -> &'static str {
     }
 }
 
+fn with_indefinite_article_unless_present(text: String) -> String {
+    if text.starts_with("a ")
+        || text.starts_with("an ")
+        || text.starts_with("the ")
+        || text.starts_with("your ")
+        || text.starts_with("their ")
+        || text.starts_with("this ")
+        || text.starts_with("that ")
+    {
+        text
+    } else {
+        format!("{} {text}", indefinite_article_for(&text))
+    }
+}
+
 fn pluralize_terminal_word(phrase: &str) -> String {
     if let Some((head, tail)) = phrase.rsplit_once(' ') {
         if head.trim().is_empty() {
@@ -701,7 +721,19 @@ pub(crate) fn grant_subject_with_set_quantifier(
 ) -> (String, bool) {
     let (subject, singular) = match surface {
         Some(ironsmith_core::SetQuantifierSurface::Each) => {
-            let mut subject = strip_article(filter.description());
+            let mut subject = if let Some(spell_subject) = spell_grant_subject_text(filter) {
+                if let Some(index) = spell_subject.find("spells") {
+                    format!(
+                        "{}spell{}",
+                        &spell_subject[..index],
+                        &spell_subject[index + "spells".len()..]
+                    )
+                } else {
+                    spell_subject
+                }
+            } else {
+                strip_article(filter.description())
+            };
             if subject.starts_with("another ") {
                 subject = subject.replacen("another ", "other ", 1);
             }
@@ -767,7 +799,10 @@ fn describe_filter_comparison(cmp: &crate::filter::Comparison) -> String {
 }
 
 fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
-    let is_spell_subject = filter.has_mana_cost
+    let is_spell_subject = matches!(
+        filter.stack_kind,
+        Some(crate::filter::StackObjectKind::Spell)
+    ) || filter.has_mana_cost
         && (filter.cast_by.is_some()
             || matches!(
                 filter.zone,
@@ -955,6 +990,14 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
         subject.push_str(" each turn");
     }
 
+    if let Some(source_filter) = &filter.mana_from_source_spent_to_cast {
+        subject.push_str(" that mana from ");
+        subject.push_str(&with_indefinite_article_unless_present(
+            source_filter.description(),
+        ));
+        subject.push_str(" was spent to cast");
+    }
+
     if let Some(power) = &filter.power {
         subject.push_str(" with power ");
         subject.push_str(&describe_filter_comparison(power));
@@ -1131,6 +1174,9 @@ fn counter_source_location(expr: &AnthemCountExpression) -> Option<(CounterType,
             counter_type,
             surface,
         } => Some((*counter_type, describe_source_reference_surface(surface))),
+        AnthemCountExpression::CountersOnSourceWithPronoun { counter_type, .. } => {
+            Some((*counter_type, "this permanent".to_string()))
+        }
         AnthemCountExpression::CountersOnAffected(counter_type) => {
             Some((*counter_type, "it".to_string()))
         }
@@ -1198,6 +1244,9 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
                 counter_type.description(),
                 describe_source_reference_surface(surface)
             )
+        }
+        AnthemCountExpression::CountersOnSourceWithPronoun { counter_type, .. } => {
+            format!("{} counter on this permanent", counter_type.description())
         }
         AnthemCountExpression::StickersOnSource {
             action,
@@ -1398,6 +1447,14 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             "{} counter on {}",
             counter_type.description(),
             describe_source_reference_surface(surface)
+        )),
+        AnthemCountExpression::CountersOnSourceWithPronoun {
+            counter_type,
+            pronoun,
+        } => Some(format!(
+            "{} counter on {}",
+            counter_type.description(),
+            pronoun.object_pronoun()
         )),
         AnthemCountExpression::StickersOnSource {
             action,
@@ -1663,7 +1720,11 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             return described.join(" and ");
         }
         crate::ConditionExpr::ThisSpellWasKicked => "as long as this spell was kicked".to_string(),
+        crate::ConditionExpr::XValueAtLeast(amount) => {
+            format!("as long as X is {amount} or more")
+        }
         crate::ConditionExpr::YourTurn => "as long as it's your turn".to_string(),
+        crate::ConditionExpr::CurrentTurnIsExtra => "during extra turns".to_string(),
         crate::ConditionExpr::Not(inner)
             if matches!(inner.as_ref(), crate::ConditionExpr::YourTurn) =>
         {
@@ -2156,12 +2217,28 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                 "as long as that player is the monarch".to_string()
             }
+            crate::target::PlayerFilter::ControlsMost { .. } => {
+                "as long as that player is the monarch".to_string()
+            }
             crate::target::PlayerFilter::MaxSpeed { .. } => {
                 "as long as that player is the monarch".to_string()
             }
             crate::target::PlayerFilter::CastCardTypeThisTurn(_) => {
                 "as long as that player is the monarch".to_string()
             }
+            crate::target::PlayerFilter::AttackedBySourceThisTurn => {
+                "as long as a player this creature attacked this turn is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
+                "as long as a player this source has dealt damage to this game is the monarch"
+                    .to_string()
+            }
+            crate::target::PlayerFilter::LostLifeThisTurn { .. } => {
+                "as long as a player who lost life this turn is the monarch".to_string()
+            }
+            filter @ crate::target::PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+                ..
+            } => format!("as long as {} is the monarch", filter.description()),
             crate::target::PlayerFilter::ChosenPlayer => {
                 "as long as the chosen player is the monarch".to_string()
             }
@@ -2516,6 +2593,9 @@ pub(crate) fn resolve_anthem_count_expression(
         AnthemCountExpression::CountersOnSourceWithSurface { counter_type, .. } => {
             game.counter_count(source, *counter_type) as i32
         }
+        AnthemCountExpression::CountersOnSourceWithPronoun { counter_type, .. } => {
+            game.counter_count(source, *counter_type) as i32
+        }
         AnthemCountExpression::StickersOnSource {
             action,
             max_name_letters,
@@ -2706,6 +2786,9 @@ pub struct Anthem {
     /// True when the original oracle text scaled with a "where X is …" clause
     /// rather than "for each …". Surface hint for rendering only.
     pub count_uses_where_x: bool,
+    /// Authored "an additional P/T" surface. Execution remains the same
+    /// additive continuous modifier.
+    pub additional_surface: bool,
     /// Absolute P/T from a typed "gets P/T instead" continuation. The effect
     /// values above remain the executable conditional delta.
     pub replacement_surface: Option<ironsmith_core::AnthemReplacementSurface>,
@@ -2721,6 +2804,7 @@ impl Anthem {
             condition: None,
             set_quantifier_surface: None,
             count_uses_where_x: false,
+            additional_surface: false,
             replacement_surface: None,
         }
     }
@@ -2734,6 +2818,7 @@ impl Anthem {
             condition: None,
             set_quantifier_surface: None,
             count_uses_where_x: false,
+            additional_surface: false,
             replacement_surface: None,
         }
     }
@@ -2746,6 +2831,11 @@ impl Anthem {
 
     pub fn with_count_uses_where_x(mut self, uses_where_x: bool) -> Self {
         self.count_uses_where_x = uses_where_x;
+        self
+    }
+
+    pub fn with_additional_surface(mut self, additional_surface: bool) -> Self {
+        self.additional_surface = additional_surface;
         self
     }
 
@@ -2862,6 +2952,9 @@ impl StaticAbilityKind for Anthem {
                 .then(|| {
                     crate::compiled_text::describe_party_size_for_each_basis(value)
                         .or_else(|| crate::compiled_text::describe_counter_for_each_basis(value))
+                        .or_else(|| {
+                            crate::compiled_text::describe_for_each_multiplier_and_basis(value)
+                        })
                 })
                 .flatten()
         };
@@ -2882,8 +2975,13 @@ impl StaticAbilityKind for Anthem {
 
         let mut text = match (&self.power, &self.toughness) {
             (AnthemValue::Fixed(power), AnthemValue::Fixed(toughness)) => {
+                let additional = if self.additional_surface {
+                    "an additional "
+                } else {
+                    ""
+                };
                 format!(
-                    "{subject} {verb} {}/{}",
+                    "{subject} {verb} {additional}{}/{}",
                     signed(*power),
                     signed_toughness(*power, *toughness),
                 )
@@ -3505,6 +3603,29 @@ impl StaticAbilityKind for GrantAbility {
         {
             ability_text = format!("\"{ability_text}\"");
         }
+        if self.condition.is_none()
+            && self.filter.has_mana_source_spent_trailing_if_surface()
+            && let Some(source_filter) = &self.filter.mana_from_source_spent_to_cast
+        {
+            let mut affected_filter = self.filter.clone();
+            affected_filter.mana_from_source_spent_to_cast = None;
+            affected_filter.set_mana_source_spent_trailing_if_surface(false);
+            let (affected, singular) =
+                grant_subject_with_set_quantifier(&affected_filter, self.set_quantifier_surface);
+            let verb = if singular { "has" } else { "have" };
+            let mana_source = with_indefinite_article_unless_present(source_filter.description());
+            let mut rendered = format!(
+                "{affected} {verb} {ability_text} if mana from {mana_source} was spent to cast it"
+            );
+            if self.ability.id() == StaticAbilityId::SplitSecond
+                && !rendered.to_ascii_lowercase().contains("as long as")
+            {
+                rendered.push_str(
+                    ". (As long as it's on the stack, players can't cast spells or activate abilities that aren't mana abilities.)",
+                );
+            }
+            return rendered;
+        }
         let singular_subject = explicitly_singular_subject
             || subject.starts_with("enchanted ")
             || subject.starts_with("equipped ")
@@ -3874,6 +3995,7 @@ pub struct RemoveAbilityForFilter {
     pub abilities: Vec<Ability>,
     pub display: String,
     pub mode: ironsmith_core::AbilityLossMode,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl RemoveAbilityForFilter {
@@ -3892,6 +4014,7 @@ impl RemoveAbilityForFilter {
             abilities: vec![Ability::static_ability(ability)],
             display,
             mode,
+            condition: None,
         }
     }
 
@@ -3919,7 +4042,13 @@ impl RemoveAbilityForFilter {
             abilities,
             display,
             mode,
+            condition: None,
         }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
@@ -3929,6 +4058,7 @@ impl PartialEq for RemoveAbilityForFilter {
             && self.abilities == other.abilities
             && self.display == other.display
             && self.mode == other.mode
+            && self.condition == other.condition
     }
 }
 
@@ -3983,7 +4113,22 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
                 format!(" and can't have or gain {ability_text}")
             }
         };
-        format!("{subject} {verb} {ability_text}{suffix}")
+        let text = format!("{subject} {verb} {ability_text}{suffix}");
+        if let Some(condition) = &self.condition {
+            let condition_text = describe_static_condition(condition);
+            if let Some(rest) = condition_text.strip_prefix("as long as ") {
+                if subject.eq_ignore_ascii_case("enchanted permanent") {
+                    return format!("As long as {rest}, it {verb} {ability_text}{suffix}");
+                }
+                return format!("As long as {rest}, {text}");
+            }
+            return format!("{text} {condition_text}");
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_effects(
@@ -3996,16 +4141,19 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
             .iter()
             .cloned()
             .map(|ability| {
-                ContinuousEffect::new(
-                    source,
-                    controller,
-                    EffectTarget::Filter(self.filter.clone()),
-                    Modification::RemoveAbilityGeneric {
-                        ability,
-                        mode: self.mode,
-                    },
+                effect_with_optional_static_condition(
+                    ContinuousEffect::new(
+                        source,
+                        controller,
+                        EffectTarget::Filter(self.filter.clone()),
+                        Modification::RemoveAbilityGeneric {
+                            ability,
+                            mode: self.mode,
+                        },
+                    )
+                    .with_source_type(EffectSourceType::StaticAbility),
+                    &self.condition,
                 )
-                .with_source_type(EffectSourceType::StaticAbility)
             })
             .collect()
     }
@@ -4148,6 +4296,24 @@ impl StaticAbilityKind for SetBasePowerToughnessForFilter {
             self.power, self.toughness
         );
         if let Some(condition) = &self.condition {
+            if matches!(
+                condition,
+                crate::ConditionExpr::EnchantedPermanentIsCreature
+                    | crate::ConditionExpr::EnchantedPermanentIsLand
+                    | crate::ConditionExpr::EnchantedPermanentIsEquipment
+                    | crate::ConditionExpr::EnchantedPermanentIsVehicle
+            ) {
+                let condition_text = describe_static_condition(condition);
+                if let Some(condition_body) = condition_text.strip_prefix("as long as ") {
+                    if subject.eq_ignore_ascii_case("enchanted permanent") {
+                        return format!(
+                            "As long as {condition_body}, it has base power and toughness {}/{}",
+                            self.power, self.toughness
+                        );
+                    }
+                    return format!("As long as {condition_body}, {text}");
+                }
+            }
             if static_condition_is_during_your_turn(condition) {
                 return format!("During your turn, {text}");
             }
@@ -5678,6 +5844,13 @@ impl StaticAbilityKind for MakeColorlessForFilter {
     fn display(&self) -> String {
         if self.filter == ObjectFilter::source() {
             "Devoid".to_string()
+        } else if self.filter.global_characteristic_domain_surface()
+            == Some(
+                ironsmith_core::GlobalCharacteristicDomainSurface::CardsOutsideBattlefieldSpellsAndPermanents,
+            )
+        {
+            "All cards that aren't on the battlefield, spells, and permanents are colorless"
+                .to_string()
         } else {
             let subject = pluralized_subject_text(&self.filter);
             let (verb, _) = subject_verb_and_possessive(&subject);
@@ -5887,6 +6060,7 @@ pub struct AttachedAbilityGrant {
     pub additional_abilities: Vec<Ability>,
     pub display: String,
     pub condition: Option<crate::ConditionExpr>,
+    pub protection_does_not_remove_controlled_attachments: bool,
 }
 
 impl AttachedAbilityGrant {
@@ -5896,6 +6070,7 @@ impl AttachedAbilityGrant {
             additional_abilities: Vec::new(),
             display,
             condition: None,
+            protection_does_not_remove_controlled_attachments: false,
         }
     }
 
@@ -5906,6 +6081,11 @@ impl AttachedAbilityGrant {
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
         self.condition = Some(condition);
+        self
+    }
+
+    pub fn with_protection_attachment_exception(mut self, enabled: bool) -> Self {
+        self.protection_does_not_remove_controlled_attachments = enabled;
         self
     }
 }
@@ -5968,6 +6148,30 @@ impl StaticAbilityKind for AttachedAbilityGrant {
     }
 
     fn display(&self) -> String {
+        // A conditioned grant that removes all abilities describes a rule on
+        // the attached permanent, not a global loss rule.  Keep the authored
+        // attachment subject in front of the condition and use the pronoun in
+        // the consequent: "As long as enchanted creature is red, it loses all
+        // abilities."  Restrict this presentation to the typed ability-loss
+        // payload so ordinary conditional grants retain their existing form.
+        if self.additional_abilities.is_empty()
+            && let Some(condition) = &self.condition
+            && let AbilityKind::Static(granted) = &self.ability.kind
+            && granted.id() == StaticAbilityId::RemoveAllAbilitiesForFilter
+            && let Some(subject) = self
+                .display
+                .trim()
+                .trim_end_matches('.')
+                .strip_suffix(" loses all abilities")
+            && matches!(
+                subject,
+                "enchanted creature" | "enchanted permanent" | "equipped creature"
+            )
+            && let Some(condition_text) =
+                describe_attached_subject_static_condition(condition, subject)
+        {
+            return format!("{condition_text}, it loses all abilities");
+        }
         let mut text = self.display.clone();
         if let Some(condition) = &self.condition {
             text.push(' ');
@@ -6030,6 +6234,32 @@ impl StaticAbilityKind for AttachedAbilityGrant {
         controller: PlayerId,
         _game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        // Removing all abilities is itself a layer-6 modification. Adding a
+        // granted static ability whose payload removes abilities would require
+        // the layer engine to discover a new continuous effect while already
+        // evaluating that layer, and the newly granted rule would never take
+        // effect. Apply this exact typed payload directly to the attached
+        // object while retaining the grant's attachment-relative condition.
+        if self.additional_abilities.is_empty()
+            && let AbilityKind::Static(static_ability) = &self.ability.kind
+            && let Some(model) = static_ability.compiled_model()
+            && matches!(
+                &model.payload,
+                ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(filter)
+                    if filter == &ObjectFilter::source()
+            )
+        {
+            return vec![effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    EffectTarget::AttachedTo(source),
+                    Modification::RemoveAllAbilities,
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            )];
+        }
         let mut effects = Vec::with_capacity(1 + self.additional_abilities.len());
         effects.push(effect_with_optional_static_condition(
             ContinuousEffect::new(

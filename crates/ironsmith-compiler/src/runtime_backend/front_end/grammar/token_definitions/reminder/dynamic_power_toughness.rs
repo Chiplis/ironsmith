@@ -1,4 +1,6 @@
 use super::*;
+use crate::target::{ObjectFilter, TaggedOpbjectRelation};
+use crate::types::CardType;
 
 pub(super) fn normalized_reminder_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
     let words = if let Some(rest) = common::strip_phrase_prefix(words, &["it", "has"])
@@ -103,6 +105,20 @@ fn parse_possessive_stat_rhs(words: &[&str], is_power: bool) -> Option<Value> {
 }
 
 fn parse_dynamic_rhs(words: &[&str]) -> Option<Value> {
+    if common::phrase_exact(
+        words,
+        &["the", "total", "power", "of", "those", "creatures"],
+    ) {
+        let filter = ObjectFilter {
+            card_types: vec![CardType::Creature],
+            ..Default::default()
+        }
+        .match_tagged(
+            ironsmith_core::ZONE_CHANGE_GROUP_TAG,
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+        return Some(Value::TotalPower(filter));
+    }
     if let Some(value) =
         parse_possessive_stat_rhs(words, true).or_else(|| parse_possessive_stat_rhs(words, false))
     {
@@ -113,6 +129,23 @@ fn parse_dynamic_rhs(words: &[&str]) -> Option<Value> {
 }
 
 pub(super) fn parse_dynamic_power_toughness(words: &[&str]) -> Option<(Value, Value)> {
+    if let Some(rhs) = common::strip_phrase_prefix(
+        words,
+        &[
+            "with",
+            "base",
+            "power",
+            "and",
+            "toughness",
+            "each",
+            "equal",
+            "to",
+        ],
+    ) {
+        let value = parse_dynamic_rhs(rhs)?;
+        return Some((value.clone(), value));
+    }
+
     if let Some(start) = common::phrase_offset(words, &["with", "power", "equal", "to"])
         && let Some(power_rhs) =
             common::strip_phrase_prefix(words.get(start..)?, &["with", "power", "equal", "to"])

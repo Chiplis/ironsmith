@@ -783,10 +783,9 @@ fn add_battlefield_actions(
 ) {
     use crate::special_actions::{SpecialAction, can_perform_check};
 
-    // Attachment-relative ignore permissions are usable by the attached
-    // object's controller, who need not control the Aura itself. Scan every
-    // battlefield source before the ordinary controlled-permanent ability
-    // pass so the special action is visible to the correct player.
+    // Ignore-effect permissions may be usable by a player who does not
+    // control the source. Scan every battlefield source before the ordinary
+    // controlled-permanent pass so those special actions remain visible.
     for source_id in game.zone_ids(Zone::Battlefield) {
         let Some(source) = game.object(source_id) else {
             continue;
@@ -795,14 +794,20 @@ fn add_battlefield_actions(
             let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
                 continue;
             };
-            if static_ability.id()
-                != crate::static_abilities::StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
-            {
-                continue;
-            }
-            let action = SpecialAction::IgnoreAttachedRestriction {
-                source_id,
-                ability_index,
+            let action = match static_ability.id() {
+                crate::static_abilities::StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn => {
+                    SpecialAction::IgnoreAttachedRestriction {
+                        source_id,
+                        ability_index,
+                    }
+                }
+                crate::static_abilities::StaticAbilityId::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn => {
+                    SpecialAction::IgnoreSourceEffect {
+                        source_id,
+                        ability_index,
+                    }
+                }
+                _ => continue,
             };
             if can_perform_check(&action, game, player).is_ok() {
                 actions.push(LegalAction::SpecialAction(action));
@@ -940,11 +945,7 @@ fn collect_non_battlefield_source_ids(
 }
 
 fn activated_allows_any_player(activated: &crate::ability::ActivatedAbility) -> bool {
-    activated.additional_restrictions.iter().any(|restriction| {
-        restriction
-            .to_ascii_lowercase()
-            .starts_with("any player may activate this ability")
-    })
+    activated.allows_any_player_to_activate()
 }
 
 fn add_non_battlefield_ability_actions(
@@ -1067,6 +1068,22 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     perf.controlled_battlefield_ms = controlled_battlefield_started_at.elapsed_ms();
 
     actions.push(LegalAction::PassPriority);
+    for delayed_trigger_index in 0..game.effect_store.delayed_triggers.len() {
+        let action = crate::special_actions::SpecialAction::PayDelayedTrigger {
+            delayed_trigger_index,
+        };
+        if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+            actions.push(LegalAction::SpecialAction(action));
+        }
+    }
+    for action_index in 0..game.effect_store.repeatable_mana_payment_actions.len() {
+        let action = crate::special_actions::SpecialAction::PerformRepeatableManaPaymentAction {
+            action_index,
+        };
+        if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+            actions.push(LegalAction::SpecialAction(action));
+        }
+    }
     let planar_die_action = crate::special_actions::SpecialAction::RollPlanarDie;
     if crate::special_actions::can_perform_check(&planar_die_action, game, player).is_ok() {
         actions.push(LegalAction::SpecialAction(planar_die_action));
@@ -1203,7 +1220,7 @@ fn activated_ability_has_legal_targets_with_view(
     effects.is_empty() || view.spell_has_legal_targets(effects, controller, Some(source), None)
 }
 
-fn activation_timing_allows(
+pub(crate) fn activation_timing_allows(
     game: &GameState,
     controller: PlayerId,
     source: ObjectId,
@@ -1230,6 +1247,9 @@ fn activation_timing_allows(
         }
         crate::ability::ActivationTiming::DuringYourTurn => game.is_active_player(controller),
         crate::ability::ActivationTiming::DuringOpponentsTurn => !game.is_active_player(controller),
+        crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
+            game.is_active_player(controller) && game.turn.phase != Phase::Ending
+        }
         crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
             game.object(source)
                 .is_some_and(|object| game.is_active_player(object.owner))

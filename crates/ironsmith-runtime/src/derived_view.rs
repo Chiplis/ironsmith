@@ -725,6 +725,15 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn candidate_ids_for_filter(&self, filter: &ObjectFilter) -> Vec<ObjectId> {
+        if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+            && filter.zone.is_some_and(|zone| zone != Zone::Stack)
+        {
+            // A non-Stack zone on an explicitly typed stack spell is cast
+            // origin provenance, not the candidate object's current zone.
+            // Origin legality is checked by ObjectFilter::matches after this
+            // intentionally broad Stack candidate pass.
+            return self.candidate_ids_for_zone(Some(Zone::Stack));
+        }
         if let Some(zone) = filter.zone {
             return self.candidate_ids_for_zone(Some(zone));
         }
@@ -855,9 +864,7 @@ impl<'a> DerivedGameView<'a> {
             let Some(perm) = self.game.object(perm_id) else {
                 continue;
             };
-            if self.current_controller(perm_id) != Some(player)
-                || !self.game.can_activate_abilities_of(perm_id)
-            {
+            if !self.game.can_activate_abilities_of(perm_id) {
                 continue;
             }
 
@@ -871,24 +878,50 @@ impl<'a> DerivedGameView<'a> {
                 continue;
             }
 
+            let player_controls_source = self.current_controller(perm_id) == Some(player);
+            let player_may_activate = |ability_index: &usize| {
+                player_controls_source
+                    || abilities.get(*ability_index).is_some_and(|ability| {
+                        matches!(
+                            &ability.kind,
+                            crate::ability::AbilityKind::Activated(activated)
+                                if activated.allows_any_player_to_activate()
+                        )
+                    })
+            };
+            let mana_ability_indices = ability_summary
+                .mana_ability_indices()
+                .iter()
+                .copied()
+                .filter(player_may_activate)
+                .collect::<Vec<_>>();
+            let activated_ability_indices = ability_summary
+                .activated_ability_indices()
+                .iter()
+                .copied()
+                .filter(player_may_activate)
+                .collect::<Vec<_>>();
+            if mana_ability_indices.is_empty() && activated_ability_indices.is_empty() {
+                continue;
+            }
+
             analysis.relevant_source_ids.push(perm_id);
-            if !ability_summary.mana_ability_indices().is_empty() {
+            if !mana_ability_indices.is_empty() {
                 analysis.mana_source_ids.push(perm_id);
                 analysis
                     .mana_ability_indices
-                    .insert(perm_id, ability_summary.mana_ability_indices().to_vec());
+                    .insert(perm_id, mana_ability_indices.clone());
             }
-            if !ability_summary.activated_ability_indices().is_empty() {
-                analysis.activated_ability_indices.insert(
-                    perm_id,
-                    ability_summary.activated_ability_indices().to_vec(),
-                );
+            if !activated_ability_indices.is_empty() {
+                analysis
+                    .activated_ability_indices
+                    .insert(perm_id, activated_ability_indices);
             }
 
             let mut activatable_indices = Vec::new();
             let mut first_output = None;
 
-            for &ability_index in ability_summary.mana_ability_indices() {
+            for &ability_index in &mana_ability_indices {
                 let Some(ability) = abilities.get(ability_index) else {
                     continue;
                 };

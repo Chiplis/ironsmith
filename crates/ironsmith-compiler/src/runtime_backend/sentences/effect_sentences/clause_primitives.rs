@@ -12,7 +12,10 @@ use super::super::permission_helpers::{
     parse_unsupported_play_cast_permission_clause, parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause,
 };
-use super::super::util::{parse_subject, parse_target_phrase, span_from_tokens};
+use super::super::util::{
+    parse_subject, parse_target_phrase, record_source_reference_surface,
+    source_reference_surface_for_words, span_from_tokens,
+};
 use super::parse_restriction_duration;
 use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
@@ -78,6 +81,9 @@ pub(crate) fn parse_choose_new_targets_clause(
     let Some(split) = split_choose_new_targets_clause_lexed(tokens) else {
         return Ok(None);
     };
+    let plural_copy_reference = crate::runtime_backend::token_word_refs(tokens)
+        .iter()
+        .any(|word| *word == "copies");
     if split.reference_target {
         let reference_tag = match clause_shapes::parse_retarget_reference_shape(split.target_tokens)
         {
@@ -94,12 +100,15 @@ pub(crate) fn parse_choose_new_targets_clause(
             TagKey::from(reference_tag),
             span_from_tokens(split.target_tokens),
         );
-        return Ok(Some(EffectAst::subject_verb_retarget_stack_object(
-            PlayerAst::Implicit,
-            target,
-            RetargetModeAst::All,
-            false,
-        )));
+        return Ok(Some(
+            EffectAst::subject_verb_retarget_stack_object(
+                PlayerAst::Implicit,
+                target,
+                RetargetModeAst::All,
+                false,
+            )
+            .with_retarget_plural_copy_reference(plural_copy_reference),
+        ));
     }
     let tail_tokens = split.target_tokens;
     if tail_tokens.is_empty() {
@@ -123,12 +132,15 @@ pub(crate) fn parse_choose_new_targets_clause(
         target = TargetAst::WithCount(Box::new(target), count);
     }
 
-    Ok(Some(EffectAst::subject_verb_retarget_stack_object(
-        PlayerAst::Implicit,
-        target,
-        RetargetModeAst::All,
-        false,
-    )))
+    Ok(Some(
+        EffectAst::subject_verb_retarget_stack_object(
+            PlayerAst::Implicit,
+            target,
+            RetargetModeAst::All,
+            false,
+        )
+        .with_retarget_plural_copy_reference(plural_copy_reference),
+    ))
 }
 
 pub(crate) fn parse_change_target_clause(
@@ -148,6 +160,7 @@ pub(crate) fn parse_change_target_clause(
             effects: vec![inner],
             player,
             cost,
+            before_delayed_step: false,
         }));
     }
 
@@ -488,6 +501,10 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
     if shape.kind != clause_shapes::CombatRequirementKind::AttackOrBlock {
         return Ok(None);
     }
+    let duration = match shape.duration {
+        clause_shapes::CombatRequirementDuration::Turn => Until::EndOfTurn,
+        clause_shapes::CombatRequirementDuration::Combat => Until::EndOfCombat,
+    };
     let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
     let result_filter = parse_dealt_damage_this_way_subject_filter(subject_clause.tokens())?;
     let target = if subject_clause.is_empty() {
@@ -518,9 +535,7 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
             target
         };
         return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
-            target,
-            abilities,
-            Until::EndOfTurn,
+            target, abilities, duration,
         )));
     }
 
@@ -532,9 +547,7 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
     })?;
 
     Ok(Some(EffectAst::subject_verb_grant_abilities_all(
-        filter,
-        abilities,
-        Until::EndOfTurn,
+        filter, abilities, duration,
     )))
 }
 
@@ -550,6 +563,10 @@ pub(crate) fn parse_attack_this_turn_if_able_clause(
     if shape.kind != clause_shapes::CombatRequirementKind::Attack {
         return Ok(None);
     }
+    let duration = match shape.duration {
+        clause_shapes::CombatRequirementDuration::Turn => Until::EndOfTurn,
+        clause_shapes::CombatRequirementDuration::Combat => Until::EndOfCombat,
+    };
     let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
     let result_filter = parse_dealt_damage_this_way_subject_filter(subject_clause.tokens())?;
     let target = if subject_clause.is_empty() {
@@ -582,7 +599,7 @@ pub(crate) fn parse_attack_this_turn_if_able_clause(
         return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
             target,
             vec![ability],
-            Until::EndOfTurn,
+            duration,
         )));
     }
 
@@ -596,7 +613,7 @@ pub(crate) fn parse_attack_this_turn_if_able_clause(
     Ok(Some(EffectAst::subject_verb_grant_abilities_all(
         filter,
         vec![ability],
-        Until::EndOfTurn,
+        duration,
     )))
 }
 
@@ -963,14 +980,22 @@ pub(crate) fn parse_anaphoric_object_deals_damage_clause(
         return Ok(None);
     };
     let source_words = &words[..deal_idx];
-    if !matches!(
-        source_words,
-        ["it"]
-            | ["that", "token"]
-            | ["that", "creature"]
-            | ["that", "permanent"]
-            | ["that", "card"]
-    ) {
+    let source_surface = source_reference_surface_for_words(source_words).or_else(|| {
+        matches!(source_words, ["he"] | ["she"] | ["they"]).then(|| {
+            crate::target::SourceReferenceSurface::ThisPermanentType(source_words[0].to_string())
+        })
+    });
+    if source_surface.is_none()
+        && !matches!(
+            source_words,
+            ["it"]
+                | ["that", "token"]
+                | ["that", "creature"]
+                | ["that", "land"]
+                | ["that", "permanent"]
+                | ["that", "card"]
+        )
+    {
         return Ok(None);
     }
     // Leave conjoined damage clauses to the generic effect-chain parser. It
@@ -996,9 +1021,24 @@ pub(crate) fn parse_anaphoric_object_deals_damage_clause(
     // the preceding spell or ability's damage event. Binding that "it" to
     // last-object memory instead can incorrectly turn the previous damage
     // target into the source of the delayed damage.
-    let source = if source_words == ["it"] && body_words.starts_with(&["an", "additional"]) {
+    let source_span = span_from_tokens(source_tokens);
+    let source = if let Some(surface) = source_surface {
+        record_source_reference_surface(source_span, surface);
+        TargetAst::Source(source_span)
+    } else if source_words == ["it"] && body_words.starts_with(&["an", "additional"]) {
         TargetAst::Source(span_from_tokens(source_tokens))
     } else {
+        if source_words == ["that", "land"] {
+            // This demonstrative commonly names the land supplied by a
+            // tap-for-mana or landfall trigger.  Identity still resolves via
+            // the trigger's typed object tag; the surface hint only prevents
+            // the runtime renderer from weakening the authored noun to a
+            // generic "that creature".
+            record_source_reference_surface(
+                source_span,
+                crate::target::SourceReferenceSurface::ThisPermanentType("that land".to_string()),
+            );
+        }
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(source_tokens))
     };
     let distributed_source = if source_words == ["that", "creature"] {
@@ -1030,13 +1070,15 @@ pub(crate) fn parse_anaphoric_object_deals_damage_clause(
             amount,
             target,
             chooser,
+            distribution,
             ..
         } => Ok(Some(
-            EffectAst::subject_verb_distributed_damage_with_source(
+            EffectAst::subject_verb_distributed_damage_with_source_and_mode(
                 amount,
                 target,
                 distributed_source,
                 chooser,
+                distribution,
             ),
         )),
         _ => Ok(None),
@@ -1078,6 +1120,10 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 &shape.source_tokens[1..tapped_idx]
             };
             let mut filter = parse_object_filter(filter_tokens, false)?;
+            if source_words.starts_with(&["each", "of", "those"]) {
+                filter
+                    .set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those));
+            }
             if filter.zone.is_none() {
                 filter.zone = Some(Zone::Battlefield);
             }
@@ -1100,7 +1146,7 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
         None
     };
     let amount = if iterated_source_filter.is_some() {
-        bind_iterated_source_possessive_power(shape.amount)
+        bind_iterated_source_possessive_characteristic(shape.amount)
     } else {
         shape.amount
     };
@@ -1151,10 +1197,10 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
     }
 }
 
-fn bind_iterated_source_possessive_power(value: Value) -> Value {
+fn bind_iterated_source_possessive_characteristic(value: Value) -> Value {
     match value {
         Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
-            value: Box::new(bind_iterated_source_possessive_power(*value)),
+            value: Box::new(bind_iterated_source_possessive_characteristic(*value)),
             hints,
         },
         Value::PowerOf(spec)
@@ -1169,6 +1215,19 @@ fn bind_iterated_source_possessive_power(value: Value) -> Value {
         {
             let hints = spec.surface_hints().to_vec();
             Value::PowerOf(Box::new(ChooseSpec::Source.with_surface_hints(hints)))
+        }
+        Value::ToughnessOf(spec)
+            if matches!(
+                spec.base(),
+                ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+            ) && matches!(
+                spec.source_reference_surface(),
+                Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface))
+                    if matches!(surface.as_str(), "it" | "its")
+            ) =>
+        {
+            let hints = spec.surface_hints().to_vec();
+            Value::ToughnessOf(Box::new(ChooseSpec::Source.with_surface_hints(hints)))
         }
         value => value,
     }
@@ -1240,6 +1299,30 @@ pub(crate) fn parse_clash_clause(
 mod result_subject_tests {
     use super::*;
     use crate::runtime_backend::ast::SubjectVerbEffectAst;
+    use crate::types::CardType;
+
+    #[test]
+    fn copy_retarget_keeps_authored_reference_number() {
+        for (text, expected_plural) in [
+            ("You may choose new targets for the copy.", false),
+            ("You may choose new targets for the copies.", true),
+        ] {
+            let tokens = crate::runtime_backend::lex_line(text, 0).expect("lex copy retarget");
+            let effect = parse_choose_new_targets_clause(&tokens)
+                .expect("parse copy retarget")
+                .expect("match copy retarget");
+            assert!(matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::RetargetStackObject {
+                        copy_reference_plural,
+                        ..
+                    },
+                    ..
+                }) if copy_reference_plural == expected_plural
+            ));
+        }
+    }
 
     #[test]
     fn dealt_damage_this_way_attack_subject_keeps_result_tag() {
@@ -1271,6 +1354,47 @@ mod result_subject_tests {
                 ..
             }]
         ));
+    }
+
+    #[test]
+    fn named_source_excess_damage_keeps_source_and_damaged_target_identity() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Excess Herald deals damage equal to the excess to any target other than that permanent.",
+            0,
+        )
+        .expect("lex named-source excess damage");
+        let effects =
+            crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
+                "Excess Herald",
+                &[CardType::Creature],
+                &[],
+                || super::super::parse_effect_sentence_lexed(&tokens),
+            )
+            .expect("parse named-source excess damage");
+
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::DealDamageEqualToPower {
+                        source: TargetAst::Source(_),
+                        amount,
+                        target: TargetAst::ObjectOrPlayer(filter, PlayerFilter::Any, Some(_)),
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected explicit-source damage with a mixed target domain: {effects:#?}");
+        };
+        assert!(matches!(
+            amount.unhinted(),
+            Value::EventValue(crate::effect::EventValueSpec::Amount)
+        ));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "damaged"
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        }));
     }
 
     #[test]
@@ -1330,5 +1454,89 @@ mod result_subject_tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn personal_pronoun_damage_keeps_the_authored_source_surface() {
+        let tokens = crate::runtime_backend::lex_line(
+            "She deals that much damage to target opponent or planeswalker.",
+            0,
+        )
+        .expect("lex personal-pronoun damage");
+        let effect = parse_anaphoric_object_deals_damage_clause(&tokens)
+            .expect("parse personal-pronoun damage")
+            .expect("match personal-pronoun damage");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DealDamageEqualToPower { source, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected typed explicit-source damage: {effect:#?}");
+        };
+        let TargetAst::Source(span) = source else {
+            panic!("expected source target: {source:#?}");
+        };
+        assert_eq!(
+            crate::runtime_backend::util::source_reference_surface_for_span(span),
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "she".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn demonstrative_land_damage_keeps_the_trigger_object_and_authored_noun() {
+        let tokens =
+            crate::runtime_backend::lex_line("That land deals 1 damage to that player.", 0)
+                .expect("lex demonstrative-land damage");
+        let effect = parse_anaphoric_object_deals_damage_clause(&tokens)
+            .expect("parse demonstrative-land damage")
+            .expect("match demonstrative-land damage");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::DealDamageEqualToPower {
+                    source: TargetAst::Tagged(tag, span),
+                    amount: Value::Fixed(1),
+                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, _),
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected typed triggering-land damage: {effect:#?}");
+        };
+        assert_eq!(tag.as_str(), IT_TAG);
+        assert_eq!(
+            crate::runtime_backend::util::source_reference_surface_for_span(span),
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "that land".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn combat_scoped_attack_or_block_requirement_does_not_become_a_prohibition() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Up to one target creature attacks or blocks this combat if able and up to one target creature can't attack or block this combat.",
+            0,
+        )
+        .expect("lex asymmetric combat clauses");
+        let effects = super::super::parse_effect_sentence_lexed(&tokens)
+            .expect("parse asymmetric combat clauses");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(
+            debug.matches("GrantAbilitiesToTarget").count(),
+            1,
+            "{debug}"
+        );
+        assert_eq!(debug.matches("Cant {").count(), 1, "{debug}");
+        assert!(debug.contains("MustAttack"), "{debug}");
+        assert!(debug.contains("MustBlock"), "{debug}");
+        assert_eq!(debug.matches("duration: EndOfCombat").count(), 2, "{debug}");
+        assert_eq!(debug.matches("min: 0").count(), 2, "{debug}");
+        assert_eq!(debug.matches("max: Some(").count(), 2, "{debug}");
     }
 }

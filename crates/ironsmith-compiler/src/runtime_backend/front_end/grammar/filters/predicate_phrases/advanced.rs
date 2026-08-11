@@ -637,6 +637,9 @@ pub(super) fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFi
         PlayerAst::ThatPlayerOrTargetController => {
             Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
         }
+        PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
+            crate::filter::ObjectRef::tagged("triggering_source"),
+        )),
         PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => None,
     }
 }
@@ -1588,6 +1591,19 @@ pub(super) fn parse_player_spell_cast_this_turn_predicate(
         } => Some(PredicateAst::PlayerCastSpellsThisTurnOrMore {
             player: player_ast_from_status_player_filter(player)?,
             count,
+        }),
+        crate::runtime_backend::grammar::conditions::PlayerSpellCastThisTurnConditionAst::MatchingFilterCountAtLeast {
+            player,
+            filter,
+            count,
+        } => Some(PredicateAst::ValueComparison {
+            left: Value::SpellsCastThisTurnMatching {
+                player,
+                filter,
+                exclude_source: false,
+            },
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
         }),
         crate::runtime_backend::grammar::conditions::PlayerSpellCastThisTurnConditionAst::MatchingFilters {
             player,
@@ -2680,6 +2696,7 @@ fn parse_mana_from_source_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Optio
         left: Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
             include_source_noun: false,
+            reference: ironsmith_core::ManaSpentCastReferenceSurface::It,
         },
         operator: ValueComparisonOperator::GreaterThanOrEqual,
         right: Value::Fixed(amount as i32),
@@ -3013,6 +3030,50 @@ pub(super) fn parse_tagged_state_predicate(tokens: &[OwnedLexToken]) -> Option<P
         .or_else(|| parse_tagged_creature_filter_shape(tokens))
 }
 
+fn parse_triggering_object_first_tap_this_turn_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let rest = if words.first() == Some(&"its") {
+        &words[1..]
+    } else if words.starts_with(&["it", "is"]) {
+        &words[2..]
+    } else {
+        return None;
+    };
+    if rest.len() != 10
+        || rest[..4] != ["the", "first", "time", "that"]
+        || !matches!(rest[4], "creature" | "object" | "permanent")
+        || rest[5..] != ["has", "become", "tapped", "this", "turn"]
+    {
+        return None;
+    }
+    Some(PredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn)
+}
+
+fn parse_triggering_object_first_counters_this_turn_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let rest = if words.first() == Some(&"its") {
+        &words[1..]
+    } else if words.starts_with(&["it", "is"]) {
+        &words[2..]
+    } else {
+        return None;
+    };
+    if rest.len() != 12
+        || rest[..3] != ["the", "first", "time"]
+        || rest[3..8] != ["counters", "have", "been", "put", "on"]
+        || rest[8] != "that"
+        || !matches!(rest[9], "creature" | "object" | "permanent")
+        || rest[10..] != ["this", "turn"]
+    {
+        return None;
+    }
+    Some(PredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn)
+}
+
 pub(super) fn parse_tagged_controlled_permanent_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
@@ -3115,6 +3176,7 @@ pub(super) fn object_filter_has_state(filter: &ObjectFilter) -> bool {
     filter.tapped
         || filter.untapped
         || filter.attacking
+        || filter.attacking_alone
         || filter.nonattacking
         || filter.blocking
         || filter.nonblocking
@@ -4610,6 +4672,40 @@ fn parse_source_regenerated_this_turn_predicate(tokens: &[OwnedLexToken]) -> Opt
     })
 }
 
+fn parse_source_only_creature_card_in_your_graveyard_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    if !surface::exact(
+        clause,
+        &[
+            "this",
+            "card",
+            "is",
+            "the",
+            "only",
+            "creature",
+            "card",
+            "in",
+            "your",
+            "graveyard",
+        ],
+    ) {
+        return None;
+    }
+
+    let mut creature_cards = ObjectFilter::creature()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You);
+    creature_cards.set_explicit_card_noun(true);
+    creature_cards.set_explicit_card_type_noun(Some(CardType::Creature));
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(creature_cards),
+        operator: ValueComparisonOperator::Equal,
+        right: Value::Fixed(1),
+    })
+}
+
 fn parse_each_global_greatest_power_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let words = clause.word_refs();
@@ -4712,6 +4808,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     // phase-step control gate, whose generic object-filter parser would merge
     // them into one filter (for example, "an artifact and a creature").
     if let Some(predicate) =
+        parse_you_control_or_returned_to_hand_this_way_predicate(predicate_tokens).transpose()?
+    {
+        return Ok(predicate);
+    }
+    if let Some(predicate) =
         parse_you_control_or_graveyard_predicate(predicate_tokens).transpose()?
     {
         return Ok(predicate);
@@ -4749,7 +4850,23 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) =
+        parse_source_only_creature_card_in_your_graveyard_predicate(predicate_tokens)
+    {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_turn_history_intervening_predicate(predicate_tokens)? {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_triggering_object_first_tap_this_turn_predicate(predicate_tokens)
+    {
+        return Ok(predicate);
+    }
+    if let Some(predicate) =
+        parse_triggering_object_first_counters_this_turn_predicate(predicate_tokens)
+    {
         return Ok(predicate);
     }
 
@@ -4812,6 +4929,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_exploited_triggering_object_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_source_graveyard_cards_above_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
@@ -5148,9 +5269,16 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             .iter()
             .any(|token| token_word_is(token, OR_WORD))
         && !contains_most_common_color_among_all_permanents_clause(predicate_tokens)
-        && let Some(predicate) = parse_or_predicate(predicate_tokens)?
     {
-        return Ok(predicate);
+        // Let a single demonstrative copula own its complete coordinated
+        // descriptor before the broad boolean splitter sees the conjunction.
+        // In particular, negation in "it isn't A or B" scopes over A or B.
+        if let Some(predicate) = parse_demonstrative_or_descriptor_predicate(predicate_tokens)? {
+            return Ok(predicate);
+        }
+        if let Some(predicate) = parse_or_predicate(predicate_tokens)? {
+            return Ok(predicate);
+        }
     }
 
     if demonstrative_reference.is_some() {

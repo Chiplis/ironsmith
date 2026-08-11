@@ -324,31 +324,6 @@ pub(super) fn queue_ability_activated_event(
     }
 }
 
-pub(super) fn queue_mana_ability_event_for_action(
-    game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
-    decision_maker: &mut dyn DecisionMaker,
-    action: &ManaPipPaymentAction,
-    activator: PlayerId,
-) {
-    if let ManaPipPaymentAction::ActivateManaAbility {
-        source_id,
-        ability_index,
-    } = action
-    {
-        queue_ability_activated_event(
-            game,
-            trigger_queue,
-            decision_maker,
-            *source_id,
-            activator,
-            true,
-            None,
-            activated_ability_has_tap_cost(game, *source_id, *ability_index),
-        );
-    }
-}
-
 pub(super) fn activated_ability_has_tap_cost(
     game: &GameState,
     source: ObjectId,
@@ -401,19 +376,12 @@ pub(super) fn payment_contribution_tag(effect: AlternativePaymentEffect) -> &'st
 
 pub(super) fn record_keyword_payment_contribution(
     contributions: &mut Vec<KeywordPaymentContribution>,
-    action: &ManaPipPaymentAction,
+    permanent_id: ObjectId,
+    effect: AlternativePaymentEffect,
 ) {
-    let ManaPipPaymentAction::PayViaAlternative {
+    let contribution = KeywordPaymentContribution {
         permanent_id,
         effect,
-    } = action
-    else {
-        return;
-    };
-
-    let contribution = KeywordPaymentContribution {
-        permanent_id: *permanent_id,
-        effect: *effect,
     };
     if !contributions.contains(&contribution) {
         contributions.push(contribution);
@@ -788,6 +756,66 @@ fn append_declared_targets_added_after(
     added.extend(declared.into_iter().skip(base_len));
 }
 
+/// Target state shared across children of one coordinated Oracle clause.
+///
+/// Ordinary sibling targets remain independent. Only lowering-generated
+/// synthetic preludes cross the sibling boundary, and each such prelude can
+/// still be consumed by at most one compatible target-bearing child.
+#[derive(Default)]
+pub(crate) struct CoordinatedTargetState {
+    shared: Vec<DeclaredTarget>,
+    additions: Vec<DeclaredTarget>,
+    base_len: usize,
+}
+
+impl CoordinatedTargetState {
+    fn from_declared(declared: &[DeclaredTarget]) -> Self {
+        Self {
+            shared: declared.to_vec(),
+            additions: Vec::new(),
+            base_len: declared.len(),
+        }
+    }
+
+    fn child_state(&self) -> Vec<DeclaredTarget> {
+        self.shared.clone()
+    }
+
+    fn merge_child_state(&mut self, child: Vec<DeclaredTarget>) {
+        let shared_len = self.shared.len();
+        for (shared, child) in self.shared.iter_mut().zip(&child) {
+            if shared.synthetic_prelude {
+                shared.synthetic_prelude_consumed |= child.synthetic_prelude_consumed;
+            }
+        }
+        for declared in child.into_iter().skip(shared_len) {
+            self.additions.push(declared.clone());
+            if declared.synthetic_prelude {
+                self.shared.push(declared);
+            }
+        }
+    }
+
+    fn finish(self, declared: &mut Vec<DeclaredTarget>) {
+        let synthetic_consumption = self
+            .shared
+            .iter()
+            .filter(|target| target.synthetic_prelude)
+            .map(|target| target.synthetic_prelude_consumed)
+            .collect::<Vec<_>>();
+        let mut result = self.shared[..self.base_len].to_vec();
+        result.extend(self.additions);
+        for (target, consumed) in result
+            .iter_mut()
+            .filter(|target| target.synthetic_prelude)
+            .zip(synthetic_consumption)
+        {
+            target.synthetic_prelude_consumed = consumed;
+        }
+        *declared = result;
+    }
+}
+
 fn resolved_target_bounds(
     game: &GameState,
     profile: &ExtractedTarget<'_>,
@@ -828,7 +856,10 @@ fn player_filter_reuses_declared_target(candidate: &PlayerFilter, declared: &Pla
         || matches!(candidate, PlayerFilter::Target(inner) if inner.as_ref() == declared)
 }
 
-fn target_spec_reuses_declared_target(candidate: &ChooseSpec, declared: &ChooseSpec) -> bool {
+pub(super) fn target_spec_reuses_declared_target(
+    candidate: &ChooseSpec,
+    declared: &ChooseSpec,
+) -> bool {
     if candidate == declared || candidate.base() == declared.base() {
         return true;
     }
@@ -1294,6 +1325,57 @@ fn distribution_supports_minimum_target_count(
     total.max(0) as u32 >= required
 }
 
+/// Some restrictive relative clauses are represented as a conditional around
+/// the targeted effect so the authored sentence can round-trip. Unlike an
+/// ordinary trailing "if" clause, these predicates constrain which object may
+/// be announced as the target in the first place.
+fn target_announcement_condition(effect: &Effect) -> Option<&crate::effect::Condition> {
+    let conditional = effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+    match &conditional.condition {
+        crate::effect::Condition::TargetSpellCastOrderThisTurn(_) => Some(&conditional.condition),
+        _ => None,
+    }
+}
+
+fn target_satisfies_announcement_condition(
+    game: &GameState,
+    condition: &crate::effect::Condition,
+    caster: PlayerId,
+    source: ObjectId,
+    target: &Target,
+) -> bool {
+    let resolved_target = match target {
+        Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
+        Target::Player(id) => crate::effects::ResolvedTarget::Player(*id),
+    };
+    let mut decisions = crate::decision::SelectFirstDecisionMaker;
+    let context = crate::effects::ExecutionContext::new(source, caster, &mut decisions)
+        .with_targets(vec![resolved_target]);
+    crate::condition_eval::evaluate_condition_resolution(game, condition, &context).unwrap_or(false)
+}
+
+fn retain_targets_satisfying_announcement_condition(
+    game: &GameState,
+    effect: &Effect,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    legal_targets: &mut Vec<Target>,
+) {
+    let Some(condition) = target_announcement_condition(effect) else {
+        return;
+    };
+    let Some(source) = source_id else {
+        legal_targets.clear();
+        return;
+    };
+    legal_targets.retain(|target| {
+        target_satisfies_announcement_condition(game, condition, caster, source, target)
+    });
+}
+
 fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     game: &GameState,
     effect: &Effect,
@@ -1332,11 +1414,9 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && sequence.surface.is_coordinated()
     {
-        let base_declared_targets = declared_targets.clone();
-        let base_declared_len = base_declared_targets.len();
-        let mut declared_targets_from_children = Vec::new();
+        let mut coordinated = CoordinatedTargetState::from_declared(declared_targets);
         for inner in &sequence.effects {
-            let mut child_declared_targets = base_declared_targets.clone();
+            let mut child_declared_targets = coordinated.child_state();
             if !spell_effect_has_legal_targets_internal_with_preview_mode_selection(
                 game,
                 inner,
@@ -1350,13 +1430,9 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
             ) {
                 return false;
             }
-            append_declared_targets_added_after(
-                base_declared_len,
-                child_declared_targets,
-                &mut declared_targets_from_children,
-            );
+            coordinated.merge_child_state(child_declared_targets);
         }
-        declared_targets.extend(declared_targets_from_children);
+        coordinated.finish(declared_targets);
         return true;
     }
 
@@ -1391,13 +1467,21 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
         if min_targets == 0 {
             return true;
         }
-        let legal_targets = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+        let mut legal_targets =
+            crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+                game,
+                extracted.spec,
+                caster,
+                source_id,
+                None,
+                view,
+            );
+        retain_targets_satisfying_announcement_condition(
             game,
-            extracted.spec,
+            effect,
             caster,
             source_id,
-            None,
-            view,
+            &mut legal_targets,
         );
         return legal_targets.len() >= min_targets
             && distribution_supports_minimum_target_count(
@@ -1495,11 +1579,9 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && sequence.surface.is_coordinated()
     {
-        let base_declared_targets = declared_targets.clone();
-        let base_declared_len = base_declared_targets.len();
-        let mut declared_targets_from_children = Vec::new();
+        let mut coordinated = CoordinatedTargetState::from_declared(declared_targets);
         for inner in &sequence.effects {
-            let mut child_declared_targets = base_declared_targets.clone();
+            let mut child_declared_targets = coordinated.child_state();
             extract_target_requirements_from_effect_internal(
                 game,
                 inner,
@@ -1510,13 +1592,9 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 &mut child_declared_targets,
                 requirements,
             );
-            append_declared_targets_added_after(
-                base_declared_len,
-                child_declared_targets,
-                &mut declared_targets_from_children,
-            );
+            coordinated.merge_child_state(child_declared_targets);
         }
-        declared_targets.extend(declared_targets_from_children);
+        coordinated.finish(declared_targets);
         return;
     }
 
@@ -1614,6 +1692,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                     chooser: None,
                     legal_targets,
                     legal_target_sets,
+                    aggregate_constraint: None,
                     description: "target".to_string(),
                     min_targets: 1,
                     max_targets: Some(1),
@@ -1633,11 +1712,25 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             return;
         }
         declare_target(&extracted, declared_targets);
-        let legal_targets = compute_legal_targets(game, extracted.spec, caster, source_id);
+        let mut legal_targets = compute_legal_targets(game, extracted.spec, caster, source_id);
+        retain_targets_satisfying_announcement_condition(
+            game,
+            effect,
+            caster,
+            source_id,
+            &mut legal_targets,
+        );
         let (min_targets, max_targets) =
             resolved_target_bounds(game, &extracted, caster, source_id);
         let legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, extracted.spec, &legal_targets);
+        let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
+            game,
+            extracted.spec,
+            caster,
+            source_id,
+            &legal_targets,
+        );
         // For "any number" effects (min_targets == 0), we can cast even with no legal targets.
         // For required targets (min_targets > 0), we need at least min_targets legal targets.
         let has_enough_targets = crate::targeting::has_enough_legal_targets_for_spec(
@@ -1645,22 +1738,54 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             extracted.spec,
             &legal_targets,
             min_targets,
-        );
+        ) && aggregate_constraint
+            .as_ref()
+            .is_none_or(|constraint| constraint.supports_minimum(min_targets));
         if has_enough_targets || extracted.chooser.is_some() {
+            let distinct_player_group =
+                link_relative_player_target_to_prior_requirement(extracted.spec, requirements);
             requirements.push(TargetRequirement {
                 spec: extracted.spec.clone(),
                 chooser: extracted.chooser.cloned(),
                 legal_targets,
                 legal_target_sets,
+                aggregate_constraint,
                 description: extracted.description.to_string(),
                 min_targets,
                 max_targets,
-                distinct_player_group: None,
+                distinct_player_group,
                 distribution_value: extracted.distribution_value.cloned(),
                 distribution_min_per_target: extracted.distribution_min_per_target,
             });
         }
     }
+}
+
+fn relative_target_player_exclusion_base(filter: &PlayerFilter) -> Option<&PlayerFilter> {
+    filter.relative_target_exclusion_base()
+}
+
+fn link_relative_player_target_to_prior_requirement(
+    spec: &ChooseSpec,
+    requirements: &mut [TargetRequirement],
+) -> Option<usize> {
+    let ChooseSpec::Player(filter) = spec.base() else {
+        return None;
+    };
+    relative_target_player_exclusion_base(filter)?;
+    let prior_index = requirements
+        .iter()
+        .rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Player(_)))?;
+    let next_group = requirements
+        .iter()
+        .filter_map(|requirement| requirement.distinct_player_group)
+        .max()
+        .map_or(0, |group| group + 1);
+    let group = requirements[prior_index]
+        .distinct_player_group
+        .unwrap_or(next_group);
+    requirements[prior_index].distinct_player_group = Some(group);
+    Some(group)
 }
 
 fn extract_for_players_target_requirements(
@@ -1742,18 +1867,28 @@ fn extract_target_requirements_from_iterated_effect(
         let (min_targets, max_targets) = resolved_target_bounds(game, &profile, caster, source_id);
         let legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
+        let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
+            game,
+            &spec,
+            caster,
+            source_id,
+            &legal_targets,
+        );
         let has_enough_targets = crate::targeting::has_enough_legal_targets_for_spec(
             game,
             &spec,
             &legal_targets,
             min_targets,
-        );
+        ) && aggregate_constraint
+            .as_ref()
+            .is_none_or(|constraint| constraint.supports_minimum(min_targets));
         if has_enough_targets || extracted.chooser.is_some() {
             requirements.push(TargetRequirement {
                 spec,
                 chooser: extracted.chooser.cloned(),
                 legal_targets,
                 legal_target_sets,
+                aggregate_constraint,
                 description: extracted.description.to_string(),
                 min_targets,
                 max_targets,
@@ -1847,6 +1982,10 @@ fn specialize_iterated_player_object_filter(
         .attacking_player_or_planeswalker_controlled_by
         .as_ref()
         .map(|attacking_player| specialize_iterated_player_filter(attacking_player, player));
+    filter.protected_by = filter
+        .protected_by
+        .as_ref()
+        .map(|protector| specialize_iterated_player_filter(protector, player));
     filter.attached_to_player = filter
         .attached_to_player
         .as_ref()
@@ -1861,6 +2000,10 @@ fn specialize_iterated_player_object_filter(
         .entered_battlefield_controller
         .as_ref()
         .map(|controller| specialize_iterated_player_filter(controller, player));
+    if let Some(constraint) = filter.counters_put_on_this_turn.as_mut() {
+        constraint.source_controller =
+            specialize_iterated_player_filter(&constraint.source_controller, player);
+    }
     if let Some(targets_object) = filter.targets_object.as_ref() {
         filter.targets_object = Some(Box::new(specialize_iterated_player_object_filter(
             targets_object,
@@ -1897,6 +2040,9 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
             }
         }
         PlayerFilter::HasMoreLifeThanYou { base } => PlayerFilter::HasMoreLifeThanYou {
+            base: Box::new(specialize_iterated_player_filter(base, player)),
+        },
+        PlayerFilter::LostLifeThisTurn { base } => PlayerFilter::LostLifeThisTurn {
             base: Box::new(specialize_iterated_player_filter(base, player)),
         },
         PlayerFilter::MaxSpeed {
@@ -1943,25 +2089,19 @@ fn count_target_selection_slots_from_effect_internal(
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && sequence.surface.is_coordinated()
     {
-        let base_declared_targets = declared_targets.clone();
-        let base_declared_len = base_declared_targets.len();
-        let mut declared_targets_from_children = Vec::new();
+        let mut coordinated = CoordinatedTargetState::from_declared(declared_targets);
         let mut count = 0;
         for inner in &sequence.effects {
-            let mut child_declared_targets = base_declared_targets.clone();
+            let mut child_declared_targets = coordinated.child_state();
             count += count_target_selection_slots_from_effect_internal(
                 inner,
                 chosen_modes,
                 consumed_modal_selection,
                 &mut child_declared_targets,
             );
-            append_declared_targets_added_after(
-                base_declared_len,
-                child_declared_targets,
-                &mut declared_targets_from_children,
-            );
+            coordinated.merge_child_state(child_declared_targets);
         }
-        declared_targets.extend(declared_targets_from_children);
+        coordinated.finish(declared_targets);
         return count;
     }
 
@@ -2066,6 +2206,23 @@ pub(crate) fn count_target_selection_slots_for_isolated_effect(
         consumed_modal_selection,
         &mut declared_targets,
     )
+}
+
+pub(crate) fn count_target_selection_slots_for_coordinated_child(
+    effect: &Effect,
+    chosen_modes: Option<&[usize]>,
+    consumed_modal_selection: &mut bool,
+    coordinated: &mut CoordinatedTargetState,
+) -> usize {
+    let mut child_declared_targets = coordinated.child_state();
+    let count = count_target_selection_slots_from_effect_internal(
+        effect,
+        chosen_modes,
+        consumed_modal_selection,
+        &mut child_declared_targets,
+    );
+    coordinated.merge_child_state(child_declared_targets);
+    count
 }
 
 pub(crate) fn extract_target_requirements_for_effect_with_state(
@@ -2654,6 +2811,21 @@ pub fn player_matches_filter_with_combat(
             .any(|snapshot| {
                 snapshot.controller == player_id && snapshot.card_types.contains(card_type)
             }),
+        // Source-relative history is not meaningful while validating a
+        // standalone player target; these filters are used by effect loops.
+        PlayerFilter::AttackedBySourceThisTurn
+        | PlayerFilter::WasDealtDamageBySourceThisGame { .. } => false,
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+            let filter_ctx = game.filter_context_for(controller, None);
+            crate::filter::player_filter_matches_game(filter, player_id, game, &filter_ctx)
+        }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            player_matches_filter_with_combat(player_id, base, game, controller, combat)
+                && game
+                    .turn_store
+                    .turn_history
+                    .player_lost_life_this_turn(player_id)
+        }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             if !player_matches_filter_with_combat(player_id, base, game, controller, combat) {
                 return false;
@@ -2669,7 +2841,8 @@ pub fn player_matches_filter_with_combat(
                     .zip(game.player(controller))
                     .is_some_and(|(candidate, you)| candidate.life > you.life)
         }
-        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+        | PlayerFilter::ControlsMost { .. } => {
             let filter_ctx = game.filter_context_for(controller, None);
             crate::filter::player_filter_matches_game(filter, player_id, game, &filter_ctx)
         }
@@ -2692,8 +2865,14 @@ pub fn player_matches_filter_with_combat(
             true
         }
         PlayerFilter::Excluding { base, excluded } => {
-            player_matches_filter_with_combat(player_id, base, game, controller, combat)
-                && !player_matches_filter_with_combat(player_id, excluded, game, controller, combat)
+            if filter.relative_target_exclusion_base().is_some() {
+                player_matches_filter_with_combat(player_id, base, game, controller, combat)
+            } else {
+                player_matches_filter_with_combat(player_id, base, game, controller, combat)
+                    && !player_matches_filter_with_combat(
+                        player_id, excluded, game, controller, combat,
+                    )
+            }
         }
         PlayerFilter::ControllerOf(_)
         | PlayerFilter::OwnerOf(_)
@@ -2740,11 +2919,9 @@ pub(super) fn collect_validation_target_specs_from_effect(
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && sequence.surface.is_coordinated()
     {
-        let base_declared_targets = declared_targets.clone();
-        let base_declared_len = base_declared_targets.len();
-        let mut declared_targets_from_children = Vec::new();
+        let mut coordinated = CoordinatedTargetState::from_declared(declared_targets);
         for inner in &sequence.effects {
-            let mut child_declared_targets = base_declared_targets.clone();
+            let mut child_declared_targets = coordinated.child_state();
             collect_validation_target_specs_from_effect(
                 inner,
                 chosen_modes,
@@ -2752,13 +2929,9 @@ pub(super) fn collect_validation_target_specs_from_effect(
                 &mut child_declared_targets,
                 specs,
             );
-            append_declared_targets_added_after(
-                base_declared_len,
-                child_declared_targets,
-                &mut declared_targets_from_children,
-            );
+            coordinated.merge_child_state(child_declared_targets);
         }
-        declared_targets.extend(declared_targets_from_children);
+        coordinated.finish(declared_targets);
         return;
     }
 
@@ -2947,6 +3120,9 @@ fn replace_damaged_player_object_filter(
     }
     if let Some(entered_battlefield_controller) = &mut filter.entered_battlefield_controller {
         replace_damaged_player_filter(entered_battlefield_controller, player);
+    }
+    if let Some(constraint) = filter.counters_put_on_this_turn.as_mut() {
+        replace_damaged_player_filter(&mut constraint.source_controller, player);
     }
     if let Some(attached_to_player) = &mut filter.attached_to_player {
         replace_damaged_player_filter(attached_to_player, player);

@@ -15,6 +15,11 @@ use crate::zone::Zone;
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpellCastTrigger {
     pub filter: Option<ObjectFilter>,
+    /// Require another card with the triggering spell's name in the given
+    /// zone, owned by a player matching the supplied filter. This is checked
+    /// when the spell is cast, so later graveyard changes cannot retroactively
+    /// suppress the trigger.
+    pub same_name_card_in_zone: Option<(Zone, PlayerFilter)>,
     /// Mana-producing objects whose mana must have been spent to cast the
     /// triggering spell. This is matched when the cast event occurs rather
     /// than re-checked as an intervening-if condition during resolution.
@@ -36,6 +41,7 @@ impl SpellCastTrigger {
     pub fn new(filter: Option<ObjectFilter>, caster: PlayerFilter) -> Self {
         Self {
             filter,
+            same_name_card_in_zone: None,
             mana_source_filter: None,
             caster,
             timing: None,
@@ -59,6 +65,7 @@ impl SpellCastTrigger {
     ) -> Self {
         Self {
             filter,
+            same_name_card_in_zone: None,
             mana_source_filter: None,
             caster,
             timing,
@@ -86,6 +93,11 @@ impl SpellCastTrigger {
 
     pub fn with_mana_source_filter(mut self, mana_source_filter: Option<ObjectFilter>) -> Self {
         self.mana_source_filter = mana_source_filter;
+        self
+    }
+
+    pub fn with_same_name_card_in_zone(mut self, zone: Zone, owner: PlayerFilter) -> Self {
+        self.same_name_card_in_zone = Some((zone, owner));
         self
     }
 
@@ -177,8 +189,8 @@ impl TriggerMatcher for SpellCastTrigger {
             }
         }
 
-        // Check spell filter if present
-        if let Some(ref filter) = self.filter {
+        // Check spell filter if present.
+        let spell_matches = if let Some(ref filter) = self.filter {
             let mut object_filter = filter.clone();
 
             // "Cast from <zone>" filters refer to the source zone, not the spell's
@@ -208,13 +220,53 @@ impl TriggerMatcher for SpellCastTrigger {
             object_filter.has_mana_cost = false;
 
             if let Some(obj) = ctx.game.object(e.spell) {
-                object_filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                // Actor-relative spell-origin phrases such as `a player casts
+                // a spell from their hand` use IteratedPlayer in the object
+                // owner filter. During trigger matching, that participant is
+                // the event's caster.
+                let mut filter_ctx = ctx.filter_ctx.clone().with_iterated_player(Some(e.caster));
+                for (tag, snapshots) in &obj.cast_tagged_objects {
+                    let retained = filter_ctx.tagged_objects.entry(tag.clone()).or_default();
+                    for snapshot in snapshots {
+                        if retained
+                            .iter()
+                            .all(|existing| existing.stable_id != snapshot.stable_id)
+                        {
+                            retained.push(snapshot.clone());
+                        }
+                    }
+                }
+                object_filter.matches(obj, &filter_ctx, ctx.game)
             } else {
                 false
             }
         } else {
             true
+        };
+        if !spell_matches {
+            return false;
         }
+
+        if let Some((zone, owner)) = &self.same_name_card_in_zone {
+            let Some(spell) = ctx.game.object(e.spell) else {
+                return false;
+            };
+            let owner_ctx = ctx.filter_ctx.clone().with_iterated_player(Some(e.caster));
+            if !ctx
+                .game
+                .objects_in_zone(*zone)
+                .into_iter()
+                .any(|candidate| {
+                    ctx.game.object(candidate).is_some_and(|candidate| {
+                        owner.matches_player(candidate.owner, &owner_ctx)
+                            && crate::filter::names_match(&candidate.name, &spell.name)
+                    })
+                })
+            {
+                return false;
+            }
+        }
+        true
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
@@ -420,12 +472,24 @@ impl TriggerMatcher for SpellCastTrigger {
                 };
             }
         } else if self.min_spells_this_turn == Some(2)
-            && matches!(self.caster, PlayerFilter::Any)
             && (spell_text == "a spell" || spell_text == "spell")
         {
-            spell_text = "their second spell each turn".to_string();
-        } else if self.min_spells_this_turn == Some(2) && spell_text == "a spell" {
-            spell_text = "another spell".to_string();
+            spell_text = match &self.caster {
+                PlayerFilter::You if self.during_turn == Some(PlayerFilter::You) => {
+                    suppress_turn_suffix = true;
+                    "a spell during your turn other than your first spell that turn".to_string()
+                }
+                PlayerFilter::You => "a spell other than your first spell each turn".to_string(),
+                PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+                    "a spell other than the first spell they cast each turn".to_string()
+                }
+                PlayerFilter::ChosenPlayer
+                | PlayerFilter::TaggedPlayer(_)
+                | PlayerFilter::Specific(_) => {
+                    "a spell other than that player's first spell each turn".to_string()
+                }
+                _ => "a spell other than their first spell each turn".to_string(),
+            };
         } else if self.min_spells_this_turn == Some(2)
             && matches!(
                 self.caster,
@@ -457,6 +521,21 @@ impl TriggerMatcher for SpellCastTrigger {
         }
         if self.from_not_hand {
             suffix.push_str(" from anywhere other than your hand");
+        }
+        if let Some((zone, owner)) = &self.same_name_card_in_zone {
+            let zone_text = match (zone, owner) {
+                (Zone::Graveyard, PlayerFilter::You) => "your graveyard",
+                (Zone::Graveyard, PlayerFilter::Opponent) => "an opponent's graveyard",
+                (Zone::Graveyard, PlayerFilter::Specific(_))
+                | (Zone::Graveyard, PlayerFilter::ChosenPlayer)
+                | (Zone::Graveyard, PlayerFilter::TaggedPlayer(_)) => "that player's graveyard",
+                (Zone::Graveyard, _) => "a graveyard",
+                (Zone::Exile, PlayerFilter::You) => "among cards you own in exile",
+                (Zone::Exile, _) => "among cards in exile",
+                _ => "the specified zone",
+            };
+            suffix.push_str(" that has the same name as a card in ");
+            suffix.push_str(zone_text);
         }
         let mana_source = self
             .mana_source_filter
@@ -556,7 +635,78 @@ fn describe_simple_spell_characteristic_union(filter: &ObjectFilter) -> Option<S
     Some(format!("{} {phrase}", indefinite_article_for(&phrase)))
 }
 
+fn describe_single_creature_target_excluding_source(filter: &ObjectFilter) -> Option<String> {
+    if filter.targets_only_player.is_some()
+        || filter.targets_player.is_some()
+        || filter.targets_object.is_some()
+        || filter.targets_only_any_of
+        || filter.target_count != Some(crate::effect::ChoiceCount::exactly(1))
+    {
+        return None;
+    }
+    let target = filter.targets_only_object.as_deref()?;
+    let source_surface = target.source_surface.as_ref()?;
+    if !target.other || target.source {
+        return None;
+    }
+
+    let mut plain_target = target.clone();
+    plain_target.other = false;
+    plain_target.source_surface = None;
+    if !matches!(plain_target.zone, None | Some(Zone::Battlefield)) {
+        return None;
+    }
+    let mut exact_creature = ObjectFilter::default();
+    exact_creature.zone = plain_target.zone;
+    exact_creature.card_types = vec![crate::types::CardType::Creature];
+    if plain_target != exact_creature {
+        return None;
+    }
+
+    // Prove the outer object is otherwise an unqualified spell. This keeps
+    // the authored single-target/source-relative surface from hiding color,
+    // controller, timing, or other targeting restrictions.
+    let mut plain_spell = filter.clone();
+    plain_spell.targets_only_object = None;
+    plain_spell.target_count = None;
+    if describe_spell_filter(&plain_spell) != "a spell" {
+        return None;
+    }
+
+    Some(format!(
+        "a spell that targets only a single creature other than {}",
+        source_surface.display_text()
+    ))
+}
+
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
+    if let Some(description) = describe_single_creature_target_excluding_source(filter) {
+        return description;
+    }
+    if filter.has_phyrexian_mana_symbol {
+        let mut base_filter = filter.clone();
+        base_filter.has_phyrexian_mana_symbol = false;
+        let mut base = describe_spell_filter(&base_filter);
+        if base == "spell" {
+            base = "a spell".to_string();
+        }
+        return format!("{base} with {{H}} in its mana cost");
+    }
+    let linked_spell = filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints[0].tag.as_str() == "__it__"
+        && filter.tagged_constraints[0].relation
+            == crate::filter::TaggedOpbjectRelation::IsTaggedObject;
+    if linked_spell {
+        let mut plain = filter.clone();
+        plain.tagged_constraints.clear();
+        plain.zone = None;
+        plain.stack_kind = None;
+        plain.has_mana_cost = false;
+        if plain == ObjectFilter::default() {
+            return "that spell".to_string();
+        }
+    }
+
     if filter.has_x_in_cost {
         let mut base_filter = filter.clone();
         base_filter.has_x_in_cost = false;
@@ -607,11 +757,18 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
                 | PlayerFilter::HasMoreLifeThanYou { .. }
                 | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+                | PlayerFilter::ControlsMost { .. }
                 | PlayerFilter::MaxSpeed { .. } => player_filter.description(),
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
                     "a player who cast one or more {} spells this turn",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::AttackedBySourceThisTurn => player_filter.description(),
+                PlayerFilter::WasDealtDamageBySourceThisGame { .. } => player_filter.description(),
+                PlayerFilter::LostLifeThisTurn { .. } => player_filter.description(),
+                PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+                    player_filter.description()
+                }
                 PlayerFilter::ChosenPlayer => "the chosen player".to_string(),
                 PlayerFilter::TaggedPlayer(_) => "that player".to_string(),
                 PlayerFilter::Teammate => "a teammate".to_string(),
@@ -901,6 +1058,115 @@ mod tests {
     fn test_display() {
         let trigger = SpellCastTrigger::you_cast_any();
         assert!(trigger.display().contains("you cast"));
+    }
+
+    #[test]
+    fn same_name_graveyard_requirement_matches_at_cast_time_and_renders() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = CardBuilder::new(CardId::new(), "Ascension Source")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+        let duplicated = CardBuilder::new(CardId::new(), "Repeated Spark")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_card(&duplicated, alice, Zone::Stack);
+        let graveyard_id = game.create_object_from_card(&duplicated, alice, Zone::Graveyard);
+        let trigger =
+            SpellCastTrigger::new(Some(ObjectFilter::instant_or_sorcery()), PlayerFilter::You)
+                .with_same_name_card_in_zone(Zone::Graveyard, PlayerFilter::You);
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(spell_id, alice, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        assert!(trigger.matches(&event, &ctx));
+        assert_eq!(
+            trigger.display(),
+            "Whenever you cast an instant or sorcery spell that has the same name as a card in your graveyard"
+        );
+
+        game.move_object_by_effect(graveyard_id, Zone::Exile);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(!trigger.matches(&event, &ctx));
+    }
+
+    #[test]
+    fn linked_spell_identity_displays_as_that_spell() {
+        let mut filter = ObjectFilter::spell();
+        filter.has_mana_cost = true;
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: crate::tag::TagKey::from("__it__"),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let trigger = SpellCastTrigger::new(Some(filter), PlayerFilter::You);
+
+        assert_eq!(trigger.display(), "Whenever you cast that spell");
+    }
+
+    #[test]
+    fn phyrexian_mana_spell_filter_renders_and_matches_the_printed_cost() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = CardBuilder::new(CardId::new(), "Rage Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+        let phyrexian = CardBuilder::new(CardId::new(), "Phyrexian Spell")
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+                crate::mana::ManaSymbol::Red,
+                crate::mana::ManaSymbol::Life(2),
+            ]]))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let phyrexian_id = game.create_object_from_card(&phyrexian, alice, Zone::Stack);
+        let ordinary = CardBuilder::new(CardId::new(), "Ordinary Spell")
+            .mana_cost(crate::mana::ManaCost::from_symbols(vec![
+                crate::mana::ManaSymbol::Red,
+            ]))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let ordinary_id = game.create_object_from_card(&ordinary, alice, Zone::Stack);
+
+        let mut filter = ObjectFilter::spell();
+        filter.has_phyrexian_mana_symbol = true;
+        let trigger = SpellCastTrigger::new(Some(filter), PlayerFilter::You);
+        assert_eq!(
+            trigger.display(),
+            "Whenever you cast a spell with {H} in its mana cost"
+        );
+
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        for (spell, expected) in [(phyrexian_id, true), (ordinary_id, false)] {
+            let event = TriggerEvent::new_with_provenance(
+                SpellCastEvent::new(spell, alice, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            );
+            assert_eq!(trigger.matches(&event, &ctx), expected);
+        }
+    }
+
+    #[test]
+    fn display_keeps_shared_creature_type_comparison_on_the_spell() {
+        let filter = ObjectFilter::spell()
+            .with_type(CardType::Creature)
+            .sharing_no_creature_types_with(ObjectFilter::creature().you_control())
+            .sharing_no_creature_types_with(
+                ObjectFilter::default()
+                    .with_type(CardType::Creature)
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You),
+            );
+        let trigger = SpellCastTrigger::new(Some(filter), PlayerFilter::You);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever you cast a creature spell that doesn't share a creature type with a creature you control or a creature card in your graveyard"
+        );
     }
 
     #[test]
@@ -1349,7 +1615,7 @@ mod tests {
         );
         assert_eq!(
             trigger.display(),
-            "Whenever you cast another spell during your turn"
+            "Whenever you cast a spell during your turn other than your first spell that turn"
         );
     }
 
@@ -1457,6 +1723,55 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever you cast a spell that targets this creature"
+        );
+    }
+
+    #[test]
+    fn single_creature_target_source_exclusion_keeps_explicit_cardinality_and_alias() {
+        for mut target in [
+            ObjectFilter::creature(),
+            ObjectFilter::default().with_type(CardType::Creature),
+        ] {
+            target.other = true;
+            target.source_surface = Some(crate::target::SourceReferenceSurface::ShortName(
+                "Named Source".to_string(),
+            ));
+            let mut spell = ObjectFilter::spell();
+            spell.targets_only_object = Some(Box::new(target));
+            spell.target_count = Some(crate::effect::ChoiceCount::exactly(1));
+            let trigger = SpellCastTrigger::new(Some(spell), PlayerFilter::Any);
+
+            assert_eq!(
+                trigger.display(),
+                "Whenever a player casts a spell that targets only a single creature other than Named Source"
+            );
+        }
+    }
+
+    #[test]
+    fn source_exclusion_surface_requires_exact_single_plain_creature_target_shape() {
+        let mut target = ObjectFilter::creature();
+        target.other = true;
+        target.source_surface = Some(crate::target::SourceReferenceSurface::ShortName(
+            "Named Source".to_string(),
+        ));
+
+        let mut non_single = ObjectFilter::spell();
+        non_single.targets_only_object = Some(Box::new(target.clone()));
+        non_single.target_count = Some(crate::effect::ChoiceCount::at_least(1));
+        assert_ne!(
+            SpellCastTrigger::new(Some(non_single), PlayerFilter::Any).display(),
+            "Whenever a player casts a spell that targets only a single creature other than Named Source"
+        );
+
+        let mut controlled_target = target;
+        controlled_target.controller = Some(PlayerFilter::You);
+        let mut qualified = ObjectFilter::spell();
+        qualified.targets_only_object = Some(Box::new(controlled_target));
+        qualified.target_count = Some(crate::effect::ChoiceCount::exactly(1));
+        assert_ne!(
+            SpellCastTrigger::new(Some(qualified), PlayerFilter::Any).display(),
+            "Whenever a player casts a spell that targets only a single creature other than Named Source"
         );
     }
 

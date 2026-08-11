@@ -18,6 +18,11 @@ fn parse_next_spell_grant_ability(
     let NextSpellGrantAbilitySurface::Keyword(tokens) = surface else {
         return None;
     };
+    if crate::runtime_backend::token_word_refs(tokens) == ["affinity", "for", "artifacts"] {
+        return Some(GrantedAbilityAst::StaticAbility(
+            StaticAbility::affinity_for_artifacts(),
+        ));
+    }
     let action = match parse_next_spell_keyword_action_tokens(tokens)? {
         NextSpellKeywordActionShape::Known(action) => action,
         NextSpellKeywordActionShape::SingleWord(word) => parse_single_word_keyword_action(word)?,
@@ -28,22 +33,47 @@ fn parse_next_spell_grant_ability(
 pub(crate) fn parse_next_spell_grant_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = parse_next_spell_grant_tokens(tokens)? else {
+    if let Some(shape) = parse_next_spell_grant_tokens(tokens)?
+        && let Some(effects) = lower_next_spell_grant(shape)
+    {
+        return Ok(Some(effects));
+    }
+
+    // A next-spell grant can be coordinated with an independent optional
+    // action, as in “The next spell ... has cascade and you may planeswalk.”
+    // Parse the one-shot grant on the left before the broad static-grant
+    // fallback can discard both `next` and `this turn`, then route the right
+    // clause through the ordinary effect grammar.
+    let Some(split) = tokens.windows(3).position(|window| {
+        window[0].is_word("and") && window[1].is_word("you") && window[2].is_word("may")
+    }) else {
         return Ok(None);
     };
-    let Some(ability) = parse_next_spell_grant_ability(shape.ability) else {
+    let Some(shape) = parse_next_spell_grant_tokens(&tokens[..split])? else {
         return Ok(None);
     };
-    let effects = shape
-        .filters
-        .into_iter()
-        .map(|filter| {
-            EffectAst::subject_verb_grant_next_spell_ability_this_turn(
-                shape.player.clone(),
-                filter,
-                ability.clone(),
-            )
-        })
-        .collect();
+    let Some(mut effects) = lower_next_spell_grant(shape) else {
+        return Ok(None);
+    };
+    effects.extend(super::parse_effect_sentence_lexed(&tokens[split + 1..])?);
     Ok(Some(effects))
+}
+
+fn lower_next_spell_grant(
+    shape: super::super::grammar::effects::NextSpellGrantShape<'_>,
+) -> Option<Vec<EffectAst>> {
+    let ability = parse_next_spell_grant_ability(shape.ability)?;
+    Some(
+        shape
+            .filters
+            .into_iter()
+            .map(|filter| {
+                EffectAst::subject_verb_grant_next_spell_ability_this_turn(
+                    shape.player.clone(),
+                    filter,
+                    ability.clone(),
+                )
+            })
+            .collect(),
+    )
 }

@@ -6,12 +6,12 @@ use std::collections::HashMap;
 use super::players_finished_voting::PlayerVote;
 use crate::events::context::EventContext;
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, downcast_event};
-use crate::filter::ObjectFilterExt as _;
+use crate::filter::{ObjectFilterExt as _, player_filter_matches_game};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 
 pub use ironsmith_core::KeywordActionKind;
 
@@ -130,6 +130,7 @@ impl GameEventType for KeywordActionEvent {
 pub struct WouldKeywordActionMatcher {
     pub action: KeywordActionKind,
     pub source_filter: ObjectFilter,
+    pub performer_filter: Option<PlayerFilter>,
 }
 
 impl WouldKeywordActionMatcher {
@@ -137,7 +138,13 @@ impl WouldKeywordActionMatcher {
         Self {
             action,
             source_filter,
+            performer_filter: None,
         }
+    }
+
+    pub fn with_performer_filter(mut self, performer_filter: Option<PlayerFilter>) -> Self {
+        self.performer_filter = performer_filter;
+        self
     }
 }
 
@@ -151,6 +158,20 @@ impl ReplacementMatcher for WouldKeywordActionMatcher {
         };
         if !self.action.matches_performed_action(keyword_event.action) {
             return false;
+        }
+
+        if self.performer_filter.as_ref().is_some_and(|filter| {
+            !player_filter_matches_game(filter, keyword_event.player, ctx.game, &ctx.filter_ctx)
+        }) {
+            return false;
+        }
+
+        // Player keyword actions such as planeswalking and proliferating do
+        // not require an object to perform the action. An unrestricted source
+        // filter therefore means exactly that, including when the instruction
+        // has no live source object.
+        if self.performer_filter.is_some() && self.source_filter == ObjectFilter::default() {
+            return true;
         }
 
         if let Some(snapshot) = keyword_event.snapshot.as_ref() {
@@ -247,6 +268,75 @@ mod tests {
         assert_eq!(
             e.display(),
             "Player performed keyword action 'investigate' (1)"
+        );
+    }
+
+    #[test]
+    fn player_keyword_action_matcher_uses_the_performer_without_a_live_source() {
+        let game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let replacement_source = ObjectId::from_raw(99);
+        let matcher =
+            WouldKeywordActionMatcher::new(KeywordActionKind::Planeswalk, ObjectFilter::default())
+                .with_performer_filter(Some(PlayerFilter::You));
+        let ctx = EventContext::for_replacement_effect(alice, replacement_source, &game);
+
+        assert!(matcher.matches_event(
+            &KeywordActionEvent::new(
+                KeywordActionKind::Planeswalk,
+                alice,
+                ObjectId::from_raw(0),
+                1,
+            ),
+            &ctx,
+        ));
+        assert!(!matcher.matches_event(
+            &KeywordActionEvent::new(KeywordActionKind::Planeswalk, bob, ObjectId::from_raw(0), 1,),
+            &ctx,
+        ));
+    }
+
+    #[test]
+    fn planeswalk_would_event_enters_the_generic_replacement_processor() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(99);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            crate::replacement::ReplacementEffect::with_matcher(
+                source,
+                alice,
+                WouldKeywordActionMatcher::new(
+                    KeywordActionKind::Planeswalk,
+                    ObjectFilter::default(),
+                )
+                .with_performer_filter(Some(PlayerFilter::You)),
+                crate::replacement::ReplacementAction::Instead(vec![
+                    crate::effect::Effect::gain_life(1),
+                ]),
+            ),
+        );
+
+        let result = crate::events::processing::process_trait_event(
+            &mut game,
+            crate::events::Event::new_with_provenance(
+                KeywordActionEvent::new(
+                    KeywordActionKind::Planeswalk,
+                    alice,
+                    ObjectId::from_raw(0),
+                    1,
+                ),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+
+        assert!(
+            matches!(
+                result,
+                crate::events::processing::TraitEventResult::Replaced { ref effects, .. }
+                    if effects.len() == 1
+            ),
+            "expected a typed planeswalk replacement outcome, got {result:?}"
         );
     }
 }

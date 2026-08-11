@@ -92,6 +92,16 @@ fn replacement_effects_from_granted_abilities(
             };
             let mut replacement =
                 granted_ability.generate_replacement_effect(source, controller)?;
+            // A source-only grant is how the model interpreter preserves a
+            // condition around a static ability that has no native conditional
+            // runtime form. The granted ability's replacement matcher already
+            // refers to `source`, which is also the object receiving the grant.
+            // Wrapping it in an enter-the-battlefield matcher would incorrectly
+            // restrict every such replacement to zone-entry events (and makes
+            // conditional damage prevention impossible to apply).
+            if matches!(effect.applies_to, EffectTarget::Source) {
+                return Some(replacement);
+            }
             let grant_target = replacement_matcher_for_effect_target(&effect.applies_to)?;
             let granted_ability = replacement.matcher.take()?;
             replacement.matcher = Some(Box::new(GrantedReplacementMatcher {

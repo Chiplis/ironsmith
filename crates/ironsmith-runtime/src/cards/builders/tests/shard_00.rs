@@ -844,8 +844,9 @@ pub(super) fn tchaka_venerable_king_binds_the_inline_milled_collection() {
 
     assert!(
         rendered.contains("mill three cards")
-            && rendered
-                .contains("put an artifact or land card from among the milled cards into your hand"),
+            && rendered.contains(
+                "put an artifact or land card from among the milled cards into your hand"
+            ),
         "T'Chaka should keep the optional choice bound to the inline mill result, got {rendered}"
     );
 }

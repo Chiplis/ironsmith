@@ -73,6 +73,11 @@ pub struct Card {
     pub name: String,
     /// Name of the earliest eligible paper set for this oracle identity.
     pub first_printed_set_name: Option<String>,
+    /// Printed lit numbers on an Attraction card (CR 717.1).
+    ///
+    /// This is printing-specific physical-card metadata, so ordinary cards
+    /// carry an empty list.
+    pub attraction_lights: Vec<u8>,
     pub mana_cost: Option<ManaCost>,
     /// Color indicator (for cards like Ancestral Vision or DFC backs)
     pub color_indicator: Option<ColorSet>,
@@ -261,6 +266,7 @@ pub struct CardBuilder {
     id: CardId,
     name: String,
     first_printed_set_name: Option<String>,
+    attraction_lights: Vec<u8>,
     mana_cost: Option<ManaCost>,
     color_indicator: Option<ColorSet>,
     supertypes: Vec<Supertype>,
@@ -294,6 +300,12 @@ impl CardBuilder {
 
     pub fn first_printed_set_name(mut self, set_name: impl Into<String>) -> Self {
         self.first_printed_set_name = Some(set_name.into());
+        self
+    }
+
+    /// Set the printed lit numbers for an Attraction card.
+    pub fn attraction_lights(mut self, lights: Vec<u8>) -> Self {
+        self.attraction_lights = lights;
         self
     }
 
@@ -410,6 +422,7 @@ impl CardBuilder {
             id: self.id,
             name: self.name,
             first_printed_set_name: self.first_printed_set_name,
+            attraction_lights: self.attraction_lights,
             mana_cost: self.mana_cost,
             color_indicator: self.color_indicator,
             supertypes: self.supertypes,

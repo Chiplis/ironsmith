@@ -197,6 +197,7 @@ mod tests {
                 x_value: None,
                 cast_order_this_turn: None,
                 mana_spent_to_cast: crate::player::ManaPool::default(),
+                mana_sources_spent_to_cast: Vec::new(),
                 counters: std::collections::HashMap::new(),
                 is_token: false,
                 tapped: false,

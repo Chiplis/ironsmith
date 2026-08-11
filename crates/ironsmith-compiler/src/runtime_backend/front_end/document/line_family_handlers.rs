@@ -591,7 +591,7 @@ pub(super) fn run_station_line_family(
         && let Some(threshold) = station_shape.creature_threshold
         && let Some(pt) = ctx.preprocessed.builder.card_builder.power_toughness_ref()
     {
-        let chosen_option = ChosenOptionContext::StationThreshold(threshold);
+        let chosen_option = ChosenOptionContext::StationThresholdSupport(threshold);
         let power = pt.power.base_value();
         let toughness = pt.toughness.base_value();
         for parse_tokens in station_creature_support_parse_tokens(power, toughness) {
@@ -641,7 +641,7 @@ pub(super) fn run_station_threshold_line_family(
                 )));
             };
             lines.push(RewriteLineCst::Static(StaticLineCst {
-                chosen_option: Some(chosen_option.clone()),
+                chosen_option: Some(ChosenOptionContext::StationThresholdSupport(threshold)),
                 ..static_cst
             }));
         }
@@ -650,6 +650,10 @@ pub(super) fn run_station_threshold_line_family(
     let body_line = rewrite_line_tokens(ctx.line, &body_tokens);
     if shape.trigger_intro.is_some() {
         let mut triggered = parse_triggered_line_cst(&body_line)?;
+        triggered.presentation = Some(PresentationLabel::AbilityWord(format!(
+            "{}{threshold}",
+            ironsmith_core::static_ability_model::STATION_THRESHOLD_STATIC_LABEL_PREFIX
+        )));
         triggered.chosen_option = Some(chosen_option);
         lines.push(RewriteLineCst::Triggered(triggered));
         return Ok(Some(LineDispatchResult {
@@ -928,10 +932,60 @@ pub(super) fn run_keyword_line_family(
             next_idx: ctx.idx + 1,
         }));
     }
+    if let Some(split_lines) = split_kicker_x_minimum_line(ctx.line)? {
+        return Ok(Some(LineDispatchResult {
+            lines: split_lines,
+            next_idx: ctx.idx + 1,
+        }));
+    }
 
     Ok(parse_keyword_line_cst(ctx.line)?.map(|keyword_line| {
         LineDispatchResult::single(RewriteLineCst::Keyword(keyword_line), ctx.idx + 1)
     }))
+}
+
+fn split_kicker_x_minimum_line(
+    line: &PreprocessedLine,
+) -> Result<Option<Vec<RewriteLineCst>>, CardTextError> {
+    let Some(first_period) = line
+        .tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Period)
+    else {
+        return Ok(None);
+    };
+    let kicker_tokens = &line.tokens[..=first_period];
+    if !kicker_tokens
+        .first()
+        .is_some_and(|token| token.is_word("kicker"))
+        || !kicker_tokens.iter().any(|token| {
+            token.kind == TokenKind::ManaGroup && token.slice.eq_ignore_ascii_case("{X}")
+        })
+    {
+        return Ok(None);
+    }
+
+    let suffix_end = line.tokens[first_period + 1..]
+        .iter()
+        .position(|token| token.kind == TokenKind::LParen)
+        .map_or(line.tokens.len(), |offset| first_period + 1 + offset);
+    let minimum_tokens = trim_lexed_commas(&line.tokens[first_period + 1..suffix_end]);
+    let minimum_words = token_word_refs(minimum_tokens);
+    if !matches!(minimum_words.as_slice(), ["x", "cant" | "can't", "be", "0"]) {
+        return Ok(None);
+    }
+
+    let kicker_line = rewrite_line_tokens(line, kicker_tokens);
+    let Some(keyword) = parse_keyword_line_cst(&kicker_line)? else {
+        return Ok(None);
+    };
+    let Some(static_line) = parse_static_line_from_tokens(line, minimum_tokens.to_vec())? else {
+        return Ok(None);
+    };
+    Ok(Some(vec![
+        RewriteLineCst::Keyword(keyword),
+        RewriteLineCst::Static(static_line),
+    ]))
 }
 
 fn split_same_line_and_or_kicker_keywords(
@@ -1183,6 +1237,39 @@ mod tests {
         assert_eq!(
             render_token_slice(&line.parse_tokens),
             "unless you pay {2}, sacrifice this permanent."
+        );
+    }
+
+    #[test]
+    fn expanded_removed_draft_ladder_yields_to_typed_static_dispatch() {
+        let oracle = "If you removed a creature card with flying from the draft with cards named Animus of Predation, this creature has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, and vigilance.";
+        let builder = CardDefinitionBuilder::new(crate::CardId::new(), "Animus of Predation")
+            .card_types(vec![crate::types::CardType::Creature]);
+        let document = preprocess_document(builder, oracle)
+            .expect("the removed-from-draft ladder should preprocess");
+        let cst = parse_document_cst(&document, false)
+            .expect("the removed-from-draft ladder should classify");
+        assert!(
+            matches!(cst.lines.as_slice(), [RewriteLineCst::Static(_)]),
+            "keyword discovery must not claim a typed conditional static ladder: {cst:#?}"
+        );
+
+        let compiled = crate::runtime_backend::compile_card_text(
+            CardDefinitionBuilder::new(crate::CardId::new(), "Animus of Predation")
+                .card_types(vec![crate::types::CardType::Creature]),
+            oracle,
+            false,
+        )
+        .expect("the typed draft ladder should lower");
+        let debug = format!("{:#?}", compiled.definition.abilities);
+        assert_eq!(
+            debug.matches("PlayerRemovedDraftCardMatching").count(),
+            11,
+            "{debug}"
+        );
+        assert!(
+            !debug.contains("animus of predation this creature"),
+            "{debug}"
         );
     }
 

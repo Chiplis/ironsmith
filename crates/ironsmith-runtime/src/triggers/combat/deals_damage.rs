@@ -7,7 +7,9 @@ use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::target::{PlayerFilter, PlayerFilterExt};
 use crate::triggers::TriggerEvent;
-use crate::triggers::matcher_trait::{SimultaneousTriggerKey, TriggerContext, TriggerMatcher};
+use crate::triggers::matcher_trait::{
+    SimultaneousTriggerKey, TriggerContext, TriggerMatcher, current_turn_matches_player_filter,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DealsDamageTrigger {
@@ -15,6 +17,8 @@ pub struct DealsDamageTrigger {
     pub damaged_player: Option<PlayerFilter>,
     pub combat_only: bool,
     pub noncombat_only: bool,
+    pub damaged_player_one_or_more: bool,
+    pub during_turn: Option<PlayerFilter>,
     pub source_surface: ironsmith_core::trigger_model::DamageSourceSurface,
 }
 
@@ -25,6 +29,8 @@ impl DealsDamageTrigger {
             damaged_player: None,
             combat_only: false,
             noncombat_only: false,
+            damaged_player_one_or_more: false,
+            during_turn: None,
             source_surface: ironsmith_core::trigger_model::DamageSourceSurface::Filter,
         }
     }
@@ -52,11 +58,8 @@ impl DealsDamageTrigger {
 
     pub fn combat_only(filter: ObjectFilter) -> Self {
         Self {
-            filter,
-            damaged_player: None,
             combat_only: true,
-            noncombat_only: false,
-            source_surface: ironsmith_core::trigger_model::DamageSourceSurface::Filter,
+            ..Self::new(filter)
         }
     }
 
@@ -69,6 +72,16 @@ impl DealsDamageTrigger {
             noncombat_only: true,
             ..Self::to_player(filter, damaged_player, source_surface)
         }
+    }
+
+    pub fn damaged_player_one_or_more(mut self) -> Self {
+        self.damaged_player_one_or_more = true;
+        self
+    }
+
+    pub fn during_turn(mut self, player: PlayerFilter) -> Self {
+        self.during_turn = Some(player);
+        self
     }
 }
 
@@ -99,6 +112,13 @@ impl TriggerMatcher for DealsDamageTrigger {
             return false;
         }
         if self.noncombat_only && e.is_combat {
+            return false;
+        }
+        if self
+            .during_turn
+            .as_ref()
+            .is_some_and(|player| !current_turn_matches_player_filter(player, ctx, None))
+        {
             return false;
         }
         if let Some(player_filter) = &self.damaged_player {
@@ -139,14 +159,17 @@ impl TriggerMatcher for DealsDamageTrigger {
     }
 
     fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<SimultaneousTriggerKey> {
-        if !self.filter.union_is_one_or_more() {
-            return None;
-        }
         let damage = event.downcast::<DamageEvent>()?;
-        if self.damaged_player.is_some() {
-            Some(SimultaneousTriggerKey::DamageTarget(damage.target))
-        } else {
-            Some(SimultaneousTriggerKey::DamageBatch)
+        match (
+            self.filter.union_is_one_or_more(),
+            self.damaged_player_one_or_more,
+        ) {
+            (false, false) => None,
+            (false, true) => Some(SimultaneousTriggerKey::DamageSource(damage.source)),
+            (true, false) if self.damaged_player.is_some() => {
+                Some(SimultaneousTriggerKey::DamageTarget(damage.target))
+            }
+            (true, false) | (true, true) => Some(SimultaneousTriggerKey::DamageBatch),
         }
     }
 
@@ -187,37 +210,61 @@ impl TriggerMatcher for DealsDamageTrigger {
                 player.description()
             );
         }
+        let during_turn = match self.during_turn.as_ref() {
+            Some(PlayerFilter::You) => " during your turn",
+            Some(PlayerFilter::Opponent) => " during an opponent's turn",
+            Some(PlayerFilter::NotYou) => " during a turn other than yours",
+            Some(PlayerFilter::Any | PlayerFilter::Active) => " during a player's turn",
+            Some(_) | None => "",
+        };
+        let player_description = |player: &PlayerFilter| {
+            if self.damaged_player_one_or_more {
+                match player {
+                    PlayerFilter::Opponent => "one or more of your opponents".to_string(),
+                    PlayerFilter::NotYou => "one or more players other than you".to_string(),
+                    PlayerFilter::Any => "one or more players".to_string(),
+                    _ => player.description(),
+                }
+            } else {
+                player.description()
+            }
+        };
         if self.combat_only {
-            format!("Whenever {source_description} {verb} combat damage")
+            format!("Whenever {source_description} {verb} combat damage{during_turn}")
         } else if self.noncombat_only {
             if let Some(player) = &self.damaged_player {
                 format!(
-                    "Whenever {} {} noncombat damage to {}",
+                    "Whenever {} {} noncombat damage to {}{}",
                     source_description,
                     verb,
-                    player.description()
+                    player_description(player),
+                    during_turn,
                 )
             } else {
-                format!("Whenever {source_description} {verb} noncombat damage")
+                format!("Whenever {source_description} {verb} noncombat damage{during_turn}")
             }
         } else if let Some(player) = &self.damaged_player {
             if self.source_surface == ironsmith_core::trigger_model::DamageSourceSurface::Filter
                 && self.filter == ObjectFilter::default()
             {
-                let player_description = player.description();
+                let player_description = player_description(player);
                 if player_description == "you" {
-                    return "Whenever you are dealt damage".to_string();
+                    return format!("Whenever you are dealt damage{during_turn}");
                 }
-                return format!("Whenever {} is dealt damage", player_description);
+                return format!(
+                    "Whenever {} is dealt damage{during_turn}",
+                    player_description
+                );
             }
             format!(
-                "Whenever {} {} damage to {}",
+                "Whenever {} {} damage to {}{}",
                 source_description,
                 verb,
-                player.description()
+                player_description(player),
+                during_turn,
             )
         } else {
-            format!("Whenever {source_description} {verb} damage")
+            format!("Whenever {source_description} {verb} damage{during_turn}")
         }
     }
 }
@@ -338,6 +385,66 @@ mod tests {
             trigger.display(),
             "Whenever a source you control deals noncombat damage to an opponent"
         );
+    }
+
+    #[test]
+    fn grouped_noncombat_damage_to_opponents_is_limited_to_your_turn() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+        let creature = CardBuilder::new(CardId::new(), "Damage Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let watcher = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let alice_source = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let bob_source = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+        let trigger = DealsDamageTrigger::noncombat_to_player(
+            ObjectFilter::default().controlled_by(PlayerFilter::You),
+            PlayerFilter::Opponent,
+            ironsmith_core::trigger_model::DamageSourceSurface::Source,
+        )
+        .damaged_player_one_or_more()
+        .during_turn(PlayerFilter::You);
+        let event = |source, target, combat| {
+            TriggerEvent::new_with_provenance(
+                DamageEvent::with_cause(
+                    source,
+                    DamageTarget::Player(target),
+                    1,
+                    combat,
+                    EventCause::effect(),
+                ),
+                ProvNodeId::default(),
+            )
+        };
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever a source you control deals noncombat damage to one or more of your opponents during your turn"
+        );
+        assert!(trigger.matches(
+            &event(alice_source, bob, false),
+            &TriggerContext::for_source(watcher, alice, &game),
+        ));
+        assert!(!trigger.matches(
+            &event(alice_source, bob, true),
+            &TriggerContext::for_source(watcher, alice, &game),
+        ));
+        assert!(!trigger.matches(
+            &event(alice_source, alice, false),
+            &TriggerContext::for_source(watcher, alice, &game),
+        ));
+        assert!(!trigger.matches(
+            &event(bob_source, bob, false),
+            &TriggerContext::for_source(watcher, alice, &game),
+        ));
+
+        game.turn.active_player = bob;
+        assert!(!trigger.matches(
+            &event(alice_source, bob, false),
+            &TriggerContext::for_source(watcher, alice, &game),
+        ));
     }
 
     #[test]

@@ -426,6 +426,12 @@ fn parse_draw_for_each_object_filter_value(
     }
 
     let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
+    if let Some(aggregate_value) = crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_aggregate_scope_value_words(&filter_words)
+    {
+        return Ok(Some(aggregate_value.with_surface_hint(
+            ironsmith_core::ValueSurfaceHint::ForEach,
+        )));
+    }
     if let Some(player) = crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_party_size_player(&filter_words)
     {
         return Ok(Some(
@@ -922,5 +928,21 @@ mod turn_history_draw_tests {
             ),
             "{paradox:?}"
         );
+    }
+
+    #[test]
+    fn draw_for_each_preserves_distinct_power_aggregate() {
+        let value = parse_draw_for_each_object_filter_value(&lex(
+            "for each different power among creatures you control",
+        ))
+        .expect("draw value parse")
+        .expect("distinct-power value");
+
+        assert!(value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+        let Value::DistinctPowers(filter) = value.unhinted() else {
+            panic!("expected a distinct-power aggregate, got {value:#?}");
+        };
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
     }
 }

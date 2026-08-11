@@ -1,5 +1,116 @@
 use super::*;
 
+fn triggering_spell_ordinal_condition(
+    mut filter: ObjectFilter,
+    exclude_source: bool,
+    before_triggering_spell: bool,
+) -> Condition {
+    filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+    Condition::ValueComparison {
+        left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::SpellsCast {
+            player: PlayerFilter::You,
+            filter,
+            from_zone: None,
+            from_outside_hand: false,
+            exclude_source,
+            before_triggering_spell,
+        }),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: Value::Fixed(0),
+    }
+}
+
+#[test]
+fn triggering_spell_ordinal_union_renders_every_repeated_category() {
+    let mut instant = ObjectFilter::default();
+    instant.card_types.push(CardType::Instant);
+    let instant = triggering_spell_ordinal_condition(instant, false, true);
+    let mut sorcery = ObjectFilter::default();
+    sorcery.card_types.push(CardType::Sorcery);
+    let sorcery = triggering_spell_ordinal_condition(sorcery, false, true);
+    let mut otter = ObjectFilter::default().with_subtype(Subtype::Otter);
+    otter.source_surface = Some(crate::target::SourceReferenceSurface::ShortName(
+        "Alania".to_string(),
+    ));
+    let otter = triggering_spell_ordinal_condition(otter, true, true);
+    let condition = Condition::Or(
+        Box::new(Condition::Or(Box::new(instant), Box::new(sorcery))),
+        Box::new(otter),
+    );
+
+    assert_eq!(
+        describe_condition(&condition),
+        "it's the first instant spell, the first sorcery spell, or the first Otter spell other than Alania you've cast this turn"
+    );
+}
+
+#[test]
+fn full_turn_spell_history_does_not_gain_triggering_ordinal_surface() {
+    let mut instant = ObjectFilter::default();
+    instant.card_types.push(CardType::Instant);
+    let condition = triggering_spell_ordinal_condition(instant, false, false);
+
+    assert_ne!(
+        describe_condition(&condition),
+        "it's the first instant spell you've cast this turn"
+    );
+}
+
+#[test]
+fn chosen_type_set_surface_pluralizes_cards_and_way_once() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Each player returns all creature card of a type chosen this ways from their graveyard to the battlefield."
+        ),
+        "Each player returns all creature cards of a type chosen this way from their graveyard to the battlefield."
+    );
+}
+
+#[test]
+fn exact_quest_threshold_and_counter_trigger_surfaces_drop_generic_artifacts() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Whenever you cast an instant or sorcery spell, if this enchantment has 2 or more quest counters on it, you may copy that spell. You may choose new targets for the copy."
+        ),
+        "Whenever you cast an instant or sorcery spell while this enchantment has two or more quest counters on it, you may copy that spell. You may choose new targets for the copy."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Whenever one or more more counters are put on a creature you control, put a +1/+1 counter on it."
+        ),
+        "Whenever one or more counters are put on a creature you control, put a +1/+1 counter on it."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "It's a Food artifact with \"{2}, {T}, sacrifice this token: You gain 3 life.\""
+        ),
+        "It's a Food artifact with \"{2}, {T}, Sacrifice this token: You gain 3 life.\""
+    );
+}
+
+#[test]
+fn combat_scoped_attack_or_block_grant_uses_combat_not_turn_surface() {
+    let mut creature = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    creature.set_explicit_card_type_noun(Some(CardType::Creature));
+    let target = ChooseSpec::target(ChooseSpec::Object(creature))
+        .with_count(crate::effect::ChoiceCount::up_to(1));
+    let effect = crate::effects::ApplyContinuousEffect::with_spec(
+        target,
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::must_attack(),
+        ),
+        Until::EndOfCombat,
+    )
+    .with_additional_modification(crate::continuous::Modification::AddAbility(
+        crate::static_abilities::StaticAbility::must_block(),
+    ));
+
+    assert_eq!(
+        describe_apply_continuous_effect(&effect).as_deref(),
+        Some("up to one target creature attacks or blocks this combat if able")
+    );
+}
+
 #[test]
 fn sacrifice_all_never_gains_an_implied_choice_suffix() {
     let wave = "Each player sacrifices all artifacts, enchantments, and nonbasic lands they control. For each land sacrificed this way, its controller may search their library. Then each player who searched their library this way shuffles.";
@@ -57,6 +168,20 @@ fn unscoped_where_x_count_preserves_battlefield_zone() {
         )
         .as_deref(),
         Some("the number of Clerics you control")
+    );
+}
+
+#[test]
+fn greatest_shared_creature_type_count_renders_its_relational_basis() {
+    let creatures = ObjectFilter::creature()
+        .in_zone(Zone::Battlefield)
+        .controlled_by(PlayerFilter::You);
+    let value = Value::GreatestSharedCreatureTypeCount(creatures)
+        .with_surface_hint(ValueSurfaceHint::WhereXIs);
+
+    assert_eq!(
+        describe_where_x_basis(&value).as_deref(),
+        Some("the greatest number of creatures you control that have a creature type in common")
     );
 }
 
@@ -515,6 +640,66 @@ fn describe_total_power_of_sacrificed_objects_keeps_the_sacrifice_link() {
     );
 }
 
+fn attached_union_count_filter(
+    first_tag: &str,
+    second_tag: &str,
+    relation: TaggedOpbjectRelation,
+) -> ObjectFilter {
+    let branch = |subtype, tag: &str| {
+        let mut branch = ObjectFilter::default().with_subtype(subtype);
+        branch.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(tag),
+            relation,
+        });
+        branch
+    };
+    ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        any_of: vec![
+            branch(Subtype::Aura, first_tag),
+            branch(Subtype::Equipment, second_tag),
+        ],
+        ..ObjectFilter::default()
+    }
+}
+
+#[test]
+fn count_subject_preserves_a_shared_tagged_attachment_relation_across_union_arms() {
+    let filter = attached_union_count_filter(
+        "__it__",
+        "__it__",
+        TaggedOpbjectRelation::AttachedToTaggedObject,
+    );
+
+    assert_eq!(
+        describe_count_filter_value_subject(&filter),
+        "Auras and Equipment attached to it"
+    );
+}
+
+#[test]
+fn attached_union_count_surface_requires_current_attachment_to_one_shared_tag() {
+    let changed_tag = attached_union_count_filter(
+        "__it__",
+        "different_object",
+        TaggedOpbjectRelation::AttachedToTaggedObject,
+    );
+    assert_ne!(
+        describe_count_filter_value_subject(&changed_tag),
+        "Auras and Equipment attached to it"
+    );
+
+    let historical = attached_union_count_filter(
+        "__it__",
+        "__it__",
+        TaggedOpbjectRelation::WasAttachedToTaggedObject,
+    );
+    assert_ne!(
+        describe_count_filter_value_subject(&historical),
+        "Auras and Equipment attached to it"
+    );
+}
+
 #[test]
 fn greatest_mana_value_spell_history_keeps_aggregate_and_cast_surface() {
     let mut filter = ObjectFilter {
@@ -599,6 +784,24 @@ fn count_subject_uses_attacked_player_instead_of_possessive_plural() {
     assert_eq!(
         describe_for_each_count_filter(&attacking_you),
         "creature attacking you"
+    );
+}
+
+#[test]
+fn count_subject_distinguishes_nested_target_player_from_later_alias() {
+    let introduced = ObjectFilter::creature()
+        .controlled_by(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)));
+    let referenced = ObjectFilter::creature().controlled_by(PlayerFilter::AliasedTarget(Box::new(
+        PlayerFilter::Opponent,
+    )));
+
+    assert_eq!(
+        describe_for_each_count_filter(&introduced),
+        "creature target opponent controls"
+    );
+    assert_eq!(
+        describe_for_each_count_filter(&referenced),
+        "creature that player controls"
     );
 }
 
@@ -796,6 +999,27 @@ fn authored_that_player_hand_possessive_is_distinct_from_their() {
 }
 
 #[test]
+fn matching_named_creature_control_conditions_share_one_plural_subject() {
+    let named = |name: &str| {
+        let mut filter = ObjectFilter::creature().controlled_by(PlayerFilter::You);
+        filter.name = Some(name.to_string());
+        Condition::PlayerControls {
+            player: PlayerFilter::You,
+            filter,
+        }
+    };
+    let condition = Condition::And(
+        Box::new(named("mine worker")),
+        Box::new(named("power plant worker")),
+    );
+
+    assert_eq!(
+        describe_condition(&condition),
+        "you control creatures named Mine Worker and Power Plant Worker"
+    );
+}
+
+#[test]
 fn matching_filtered_hand_count_renders_as_discard_all_matching_cards() {
     let owner = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any));
     let mut nonland_hand = ObjectFilter::default()
@@ -833,6 +1057,22 @@ fn prior_draw_count_keeps_discard_for_each_surface() {
     assert_eq!(
         describe_discard_count(&count, None),
         "a card for each card drawn this way"
+    );
+}
+
+#[test]
+fn attraction_visit_for_each_uses_the_singular_history_basis() {
+    let count = Value::AttractionsVisitedThisTurn(PlayerFilter::You)
+        .with_surface_hint(ValueSurfaceHint::ForEach);
+
+    assert_eq!(
+        describe_turn_history_for_each_basis(&count).as_deref(),
+        Some("Attraction you've visited this turn")
+    );
+    assert_eq!(
+        describe_turn_history_for_each_basis(&Value::AttractionsVisitedThisTurn(PlayerFilter::You)),
+        None,
+        "an unhinted numeric count must retain its ordinary value surface"
     );
 }
 
@@ -1643,6 +1883,60 @@ fn describe_past_controller_tagged_condition_uses_authored_control_surface() {
 }
 
 #[test]
+fn describe_returned_tagged_card_condition_uses_typed_action_surface() {
+    let mut returned_squirrel = ObjectFilter::default().with_subtype(Subtype::Squirrel);
+    returned_squirrel.zone = Some(Zone::Hand);
+    returned_squirrel
+        .set_prior_effect_action_surface(Some(crate::effect::PriorEffectAction::Returned));
+    let condition = Condition::PlayerTaggedObjectMatches {
+        player: PlayerFilter::You,
+        tag: TagKey::from("__sentence_helper_chosen_milled_0"),
+        filter: returned_squirrel.clone(),
+        mode: crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown,
+    };
+
+    assert_eq!(
+        describe_condition(&condition),
+        "you returned a Squirrel card to your hand this way"
+    );
+
+    returned_squirrel
+        .set_prior_effect_action_surface(Some(crate::effect::PriorEffectAction::Milled));
+    let near_miss = Condition::PlayerTaggedObjectMatches {
+        player: PlayerFilter::You,
+        tag: TagKey::from("__sentence_helper_chosen_milled_0"),
+        filter: returned_squirrel,
+        mode: crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown,
+    };
+    assert_ne!(
+        describe_condition(&near_miss),
+        "you returned a Squirrel card to your hand this way"
+    );
+}
+
+#[test]
+fn control_or_returned_condition_factors_the_shared_you_subject() {
+    let controlled = Condition::PlayerControls {
+        player: PlayerFilter::You,
+        filter: ObjectFilter::default().with_subtype(Subtype::Squirrel),
+    };
+    let mut returned = ObjectFilter::default().with_subtype(Subtype::Squirrel);
+    returned.zone = Some(Zone::Hand);
+    returned.set_prior_effect_action_surface(Some(crate::effect::PriorEffectAction::Returned));
+    let returned = Condition::PlayerTaggedObjectMatches {
+        player: PlayerFilter::You,
+        tag: TagKey::from("__sentence_helper_chosen_milled_0"),
+        filter: returned,
+        mode: crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown,
+    };
+
+    assert_eq!(
+        describe_condition(&Condition::Or(Box::new(controlled), Box::new(returned))),
+        "you control a Squirrel or returned a Squirrel card to your hand this way"
+    );
+}
+
+#[test]
 fn describe_tagged_object_matches_all_card_types_uses_is_clause() {
     let mut filter = ObjectFilter::default();
     filter.all_card_types = vec![CardType::Artifact, CardType::Creature];
@@ -1750,6 +2044,40 @@ fn goad_target_preserves_relative_enchanted_by_attachment_filter() {
     assert_eq!(
         describe_goad_target(&ChooseSpec::All(host)),
         "each creature an opponent controls that's enchanted by an Aura you control"
+    );
+}
+
+#[test]
+fn goad_target_preserves_exact_chosen_name_source_noun() {
+    let mut creatures = ObjectFilter::creature();
+    creatures.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
+    creatures
+        .set_chosen_name_source_surface(Some(ironsmith_core::ChosenNameSourceSurface::Enchantment));
+    creatures.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("__chosen_name__"),
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+
+    assert_eq!(
+        describe_goad_target(&ChooseSpec::All(creatures)),
+        "all creatures with a name chosen for this enchantment"
+    );
+}
+
+#[test]
+fn goad_target_chosen_name_surface_rejects_extra_semantic_constraints() {
+    let mut creatures = ObjectFilter::creature().controlled_by(PlayerFilter::Opponent);
+    creatures.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
+    creatures
+        .set_chosen_name_source_surface(Some(ironsmith_core::ChosenNameSourceSurface::Enchantment));
+    creatures.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("__chosen_name__"),
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+
+    assert_ne!(
+        describe_goad_target(&ChooseSpec::All(creatures)),
+        "all creatures with a name chosen for this enchantment"
     );
 }
 
@@ -1879,6 +2207,36 @@ fn describe_generic_object_or_player_union() {
 }
 
 #[test]
+fn describe_qualified_any_target_subtype_exclusion() {
+    let mut non_dinosaur = ObjectFilter::default();
+    non_dinosaur
+        .excluded_subtypes
+        .push(crate::types::Subtype::Dinosaur);
+    let target = ChooseSpec::target(ChooseSpec::ObjectOrPlayer(non_dinosaur, PlayerFilter::Any));
+
+    assert_eq!(
+        describe_choose_spec(&target),
+        "any target that isn't a Dinosaur"
+    );
+}
+
+#[test]
+fn describe_object_type_list_or_player_as_one_coordinated_union() {
+    let union = ChooseSpec::target(ChooseSpec::ObjectOrPlayer(
+        ObjectFilter::default()
+            .with_type(CardType::Artifact)
+            .with_type(CardType::Creature)
+            .with_type(CardType::Planeswalker),
+        PlayerFilter::Opponent,
+    ));
+
+    assert_eq!(
+        describe_choose_spec(&union),
+        "target artifact, creature, planeswalker, or opponent"
+    );
+}
+
+#[test]
 fn describe_target_fixed_effective_pt_uses_creature_shorthand() {
     let mut filter = ObjectFilter::creature().you_control();
     filter.power = Some(ironsmith_core::FilterComparison::Equal(1));
@@ -1910,6 +2268,18 @@ fn describe_target_fixed_pt_preserves_comparisons_and_base_reference() {
     assert_eq!(
         describe_choose_spec(&base_pt),
         "target creature with base power and toughness 1/1"
+    );
+}
+
+#[test]
+fn describe_target_power_toughness_inequality_uses_relative_clause() {
+    let mut filter = ObjectFilter::creature();
+    filter.excluded_subtypes = vec![crate::types::Subtype::Elf];
+    filter.power_toughness_relation = Some(ironsmith_core::PowerToughnessRelation::NotEqual);
+
+    assert_eq!(
+        describe_choose_spec(&ChooseSpec::target(ChooseSpec::Object(filter))),
+        "target non-Elf creature whose power and toughness aren't equal"
     );
 }
 
@@ -2018,6 +2388,12 @@ fn normalize_named_library_graveyard_search_to_hand_surfaces() {
     assert_eq!(
         normalize_common_semantic_phrasing(
             "When this creature enters, you may search your library and/or graveyard for a card named huatli dinosaur knight, reveal it, and put it into your hand. If you do, shuffle your library."
+        ),
+        "When this creature enters, you may search your library and/or graveyard for a card named Huatli Dinosaur Knight, reveal it, and put it into your hand. If you search your library this way, shuffle."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this creature enters, you may search your library and/or graveyard for a card named huatli dinosaur knight. Reveal it, then put it into your hand. If you search your library this way, shuffle."
         ),
         "When this creature enters, you may search your library and/or graveyard for a card named Huatli Dinosaur Knight, reveal it, and put it into your hand. If you search your library this way, shuffle."
     );
@@ -2348,12 +2724,6 @@ fn normalize_bottom_batch_look_choose_and_hand_choice_surfaces() {
             "At the beginning of your end step, draw a card, each player may put a land card from their hand onto the battlefield, then for each opponent, if effect #0 that doesn't happen, that player draws a card."
         ),
         "At the beginning of your end step, draw a card. Each player may put a land card from their hand onto the battlefield, then each opponent who didn't draws a card."
-    );
-    assert_eq!(
-        normalize_common_semantic_phrasing(
-            "Choose target instant or sorcery spell. Each opponent may copy it. Each opponent may choose new targets for the copy. Copy it that many players plus 1 time. You may choose new targets for the copy."
-        ),
-        "Tempting offer — Choose target instant or sorcery spell. Each opponent may copy that spell and may choose new targets for the copy they control. You copy that spell once plus an additional time for each opponent who copied the spell this way. You may choose new targets for the copies you control."
     );
     assert_eq!(
         normalize_common_semantic_phrasing(
@@ -3050,6 +3420,41 @@ fn land_animation_prefers_still_land_surface_for_land_targets() {
 }
 
 #[test]
+fn trailing_animation_duration_stays_after_a_quoted_granted_ability() {
+    let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Source,
+        crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+        Until::EndOfTurn,
+    )
+    .with_source_reference_surface(crate::target::SourceReferenceSurface::ThisPermanentType(
+        "this land".to_string(),
+    ))
+    .with_type_retention_surface(Some(ironsmith_core::TypeRetentionSurface::StillALand))
+    .with_animation_pt_surface(Some(
+        ironsmith_core::AnimationPtSurface::LeadingPowerToughness,
+    ));
+    effect.additional_modifications.extend([
+        crate::continuous::Modification::SetPowerToughness {
+            power: Value::Fixed(1),
+            toughness: Value::Fixed(1),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        },
+        crate::continuous::Modification::AddSubtypes(vec![Subtype::Skeleton]),
+        crate::continuous::Modification::AddAbilityGeneric(Ability::static_ability(
+            crate::static_abilities::StaticAbility::trample(),
+        )),
+    ]);
+
+    let (target_text, plural_target) = describe_apply_continuous_target(&effect);
+    assert_eq!(
+        describe_apply_continuous_animation_effect(&effect, &target_text, plural_target).as_deref(),
+        Some(
+            "This land becomes a 1/1 Skeleton creature with \"Trample\" until end of turn. It's still a land"
+        )
+    );
+}
+
+#[test]
 fn typed_animation_pt_surface_preserves_leading_and_authored_base_pt_forms() {
     let build = |surface, power| {
         let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
@@ -3217,7 +3622,8 @@ fn attached_land_animation_is_singular_and_quotes_its_granted_ability() {
         crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
         Until::EndOfTurn,
     )
-    .with_type_retention_surface(Some(ironsmith_core::TypeRetentionSurface::StillALand));
+    .with_type_retention_surface(Some(ironsmith_core::TypeRetentionSurface::StillALand))
+    .with_animation_duration_surface(Some(ironsmith_core::AnimationDurationSurface::Leading));
     effect.additional_modifications.extend([
         crate::continuous::Modification::SetPowerToughness {
             power: Value::Fixed(2),
@@ -3465,6 +3871,12 @@ fn quoted_token_abilities_use_token_self_reference_for_activation_costs() {
         "\"When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'\""
     );
     assert_eq!(
+        quote_token_granted_ability_text(
+            "This token creature's power and toughness are each equal to the number of slime counters on Gutter Grime"
+        ),
+        "\"This token's power and toughness are each equal to the number of slime counters on Gutter Grime.\""
+    );
+    assert_eq!(
         normalize_token_quoted_ability_surfaces(
             "Create a 1/1 colorless Snake artifact creature token. It has \"Whenever this token deals damage to a player, that player gets a poison counter.\""
         ),
@@ -3491,6 +3903,30 @@ fn cant_block_token_blueprint_uses_with_clause() {
     assert_eq!(
         describe_token_blueprint(&token),
         "1/1 black Fungus creature token with \"This token can't block.\""
+    );
+}
+
+#[test]
+fn five_color_token_blueprint_uses_all_colors_postnominal_surface() {
+    let all_colors = crate::ColorSet::WHITE
+        .union(crate::ColorSet::BLUE)
+        .union(crate::ColorSet::BLACK)
+        .union(crate::ColorSet::RED)
+        .union(crate::ColorSet::GREEN);
+    let token = crate::cards::builders::CardDefinitionBuilder::new(
+        crate::ids::CardId::from_raw(1),
+        "Elemental",
+    )
+    .token()
+    .card_types(vec![CardType::Creature])
+    .subtypes(vec![Subtype::Elemental])
+    .color_indicator(all_colors)
+    .power_toughness(crate::PowerToughness::fixed(2, 2))
+    .build();
+
+    assert_eq!(
+        describe_token_blueprint(&token),
+        "2/2 Elemental creature token that's all colors"
     );
 }
 

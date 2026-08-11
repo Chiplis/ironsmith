@@ -36,8 +36,13 @@ pub(crate) fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> b
         filter
             .attacking_player_or_planeswalker_controlled_by
             .as_ref(),
+        filter.protected_by.as_ref(),
         filter.attached_to_player.as_ref(),
         filter.entered_battlefield_controller.as_ref(),
+        filter
+            .counters_put_on_this_turn
+            .as_ref()
+            .map(|constraint| &constraint.source_controller),
         filter.discarded_or_cycled_this_turn_by.as_ref(),
         filter.dealt_damage_to_player_this_turn.as_ref(),
     ]
@@ -167,6 +172,7 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -224,6 +230,7 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::LifeGainedThisTurn(player)
         | Value::LifeLostThisTurn(player)
         | Value::CardsDiscardedThisTurn(player)
+        | Value::AttractionsVisitedThisTurn(player)
         | Value::DamageDealtToPlayersThisTurn(player)
         | Value::NoncombatDamageDealtToPlayersThisTurn(player)
         | Value::MaxCardsDrawnThisTurn(player)
@@ -239,7 +246,8 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::PlayerVoteCount(player) => player.mentions_iterated_player(),
         Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, .. }
         | Value::Devotion { player, .. } => player.mentions_iterated_player(),
-        Value::SpellsCastThisTurnMatching { player, filter, .. } => {
+        Value::SpellsCastThisTurnMatching { player, filter, .. }
+        | Value::TotalManaValueOfSpellsCastThisTurnMatching { player, filter, .. } => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
         }
         Value::TurnHistoryCount(query) => {
@@ -259,6 +267,7 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
                 | TurnHistoryCount::PlayersLostLife(player)
+                | TurnHistoryCount::UntappedLandsAtTurnStart(player)
                 | TurnHistoryCount::Descended(player)
                 | TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => {
                     player.mentions_iterated_player()
@@ -302,6 +311,7 @@ pub(crate) fn value_contains_pending_effect_metric(value: &Value) -> bool {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -329,7 +339,8 @@ pub(crate) fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::ManaValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_contains_pending_effect_metric(spec),
-        Value::SpellsCastThisTurnMatching { filter, .. } => {
+        Value::SpellsCastThisTurnMatching { filter, .. }
+        | Value::TotalManaValueOfSpellsCastThisTurnMatching { filter, .. } => {
             object_filter_contains_pending_effect_metric(filter)
         }
         _ => false,

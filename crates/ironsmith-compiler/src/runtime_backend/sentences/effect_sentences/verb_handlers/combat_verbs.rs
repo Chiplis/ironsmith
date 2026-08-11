@@ -68,6 +68,19 @@ fn combat_player_damage_target_effect(
     }
 }
 
+fn combat_player_damage_target_filter(
+    target: combat_grammar::CombatPlayerDamageTargetShape,
+) -> PlayerFilter {
+    match target {
+        combat_grammar::CombatPlayerDamageTargetShape::EachPlayer => PlayerFilter::Any,
+        combat_grammar::CombatPlayerDamageTargetShape::EachOtherPlayer => PlayerFilter::NotYou,
+        combat_grammar::CombatPlayerDamageTargetShape::EachOpponent => PlayerFilter::Opponent,
+        combat_grammar::CombatPlayerDamageTargetShape::EachOtherOpponent => {
+            PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::DamagedPlayer)
+        }
+    }
+}
+
 fn combat_simple_damage_target_ast(
     shape: combat_grammar::CombatSimpleDamageTargetShape,
     tokens: &[OwnedLexToken],
@@ -100,13 +113,12 @@ fn damage_to_embedded_target_controller(
     amount: Value,
     target_tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
-    let anchor = match combat_grammar::parse_combat_embedded_target_controller_shape_lexed(
-        target_tokens,
-    )? {
-        combat_grammar::CombatEmbeddedTargetControllerShape::Spell => {
-            TargetAst::Spell(span_from_tokens(target_tokens))
-        }
-    };
+    let anchor =
+        match combat_grammar::parse_combat_embedded_target_controller_shape_lexed(target_tokens)? {
+            combat_grammar::CombatEmbeddedTargetControllerShape::Spell => {
+                TargetAst::Spell(span_from_tokens(target_tokens))
+            }
+        };
     let recipient = TargetAst::Player(
         PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG)),
         None,
@@ -343,7 +355,52 @@ pub(crate) fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, Card
     Ok(EffectAst::subject_verb_unattach(object))
 }
 
+pub(crate) fn damage_clause_has_terminal_unpreventable_rider(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    const RIDERS: &[&[&str]] = &[
+        &["and", "the", "damage", "cant", "be", "prevented"],
+        &["and", "the", "damage", "can't", "be", "prevented"],
+        &["and", "that", "damage", "cant", "be", "prevented"],
+        &["and", "that", "damage", "can't", "be", "prevented"],
+    ];
+    RIDERS.iter().any(|rider| {
+        words
+            .get(words.len().saturating_sub(rider.len())..)
+            .is_some_and(|tail| tail == *rider)
+    })
+}
+
+pub(crate) fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {
+    if let EffectAst::SubjectVerb(subject_verb) = effect {
+        match &mut subject_verb.action {
+            SubjectVerbActionAst::DealDamage { unpreventable, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { unpreventable, .. } => {
+                *unpreventable = true;
+            }
+            _ => {}
+        }
+    }
+    crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut(
+        effect,
+        true,
+        |nested| {
+            for nested_effect in nested {
+                mark_damage_ast_unpreventable(nested_effect);
+            }
+        },
+    );
+}
+
 pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let has_unpreventable_rider = damage_clause_has_terminal_unpreventable_rider(tokens);
+    let mut effect = parse_deal_damage_inner(tokens)?;
+    if has_unpreventable_rider {
+        mark_damage_ast_unpreventable(&mut effect);
+    }
+    Ok(effect)
+}
+
+fn parse_deal_damage_inner(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let shape = combat_grammar::parse_combat_damage_head_shape_lexed(tokens);
     let tokens = shape.body_tokens;
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
@@ -447,6 +504,31 @@ fn preserve_equal_to_surface(value: Value) -> Value {
     }
 }
 
+/// Preserve an authored optional single target on the equal-to-damage
+/// family. Some broader subject/verb routes have already normalized a bare
+/// object union by the time the target reaches this handler; the terminal
+/// words remain the authoritative proof that choosing no target is legal.
+fn preserve_optional_single_damage_target(
+    target: TargetAst,
+    target_tokens: &[OwnedLexToken],
+) -> TargetAst {
+    let words = crate::runtime_backend::token_word_refs(target_tokens);
+    if !words.starts_with(&["up", "to", "one", "target"]) {
+        return target;
+    }
+
+    match target {
+        TargetAst::WithCount(inner, count) if count == ChoiceCount::up_to(1) => {
+            TargetAst::WithCount(inner, count)
+        }
+        TargetAst::WithCount(inner, count) if count.is_single() => {
+            TargetAst::WithCount(inner, ChoiceCount::up_to(1))
+        }
+        target @ TargetAst::WithCountValue(..) => target,
+        other => TargetAst::WithCount(Box::new(other), ChoiceCount::up_to(1)),
+    }
+}
+
 pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -455,10 +537,13 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         return Ok(None);
     };
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let amount = parse_add_mana_equal_amount_value(tokens)
-        .or(parse_equal_to_aggregate_filter_value(tokens))
-        .or(parse_devotion_value_from_add_clause(tokens)?)
+    // A relative-controller count must preempt the tolerant generic value
+    // parser, which otherwise absorbs the antecedent noun into the counted
+    // object filter (for example, Land + Creature).
+    let amount = parse_equal_to_aggregate_filter_value(tokens)
         .or(parse_equal_to_number_of_filter_value(tokens))
+        .or(parse_add_mana_equal_amount_value(tokens))
+        .or(parse_devotion_value_from_add_clause(tokens)?)
         .or_else(|| {
             shape
                 .amount_is_event_result
@@ -472,8 +557,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
             ))
         })?;
     let amount = preserve_equal_to_surface(amount);
-    if let Some(effect) =
-        damage_to_embedded_target_controller(amount.clone(), shape.target_tokens)
+    if let Some(effect) = damage_to_embedded_target_controller(amount.clone(), shape.target_tokens)
     {
         return Ok(Some(effect));
     }
@@ -492,7 +576,10 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         let filter = parse_object_filter(&shape.target_tokens[1..], false)?;
         return Ok(Some(EffectAst::subject_verb_damage_each(amount, filter)));
     }
-    let target = parse_target_phrase(shape.target_tokens)?;
+    let target = preserve_optional_single_damage_target(
+        parse_target_phrase(shape.target_tokens)?,
+        shape.target_tokens,
+    );
     Ok(Some(EffectAst::subject_verb_damage(amount, target)))
 }
 pub(crate) fn parse_deal_damage_equal_to_clause(
@@ -507,19 +594,26 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
         .any(|window| window == ["difference", "between"])
         .then(|| parse_add_mana_equal_amount_value(shape.amount_tokens))
         .flatten();
-    let complete_value = authored_difference.or_else(|| {
-        parse_value(shape.amount_tokens)
-            .and_then(|(value, used)| (used == shape.amount_tokens.len()).then_some(value))
-            .map(preserve_equal_to_surface)
-    });
+    // Count expressions with a relative controller tail need the typed count
+    // parser before the permissive value-expression fallback. Otherwise
+    // `nonbasic lands that creature's controller controls` is accepted as a
+    // single Land+Creature filter and loses the same-target controller link.
+    let aggregate_amount = parse_equal_to_aggregate_filter_value(shape.amount_tokens);
+    let relative_count = parse_equal_to_number_of_filter_value(shape.amount_tokens);
+    let complete_value = aggregate_amount
+        .or(authored_difference)
+        .or(relative_count)
+        .or_else(|| {
+            parse_value(shape.amount_tokens)
+                .and_then(|(value, used)| (used == shape.amount_tokens.len()).then_some(value))
+                .map(preserve_equal_to_surface)
+        });
     let amount = complete_value
         .or(parse_add_mana_equal_amount_value(shape.amount_tokens))
-        .or(parse_equal_to_aggregate_filter_value(shape.amount_tokens))
         .or(parse_devotion_value_from_add_clause(shape.amount_tokens)?)
         .or(parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
             shape.amount_tokens,
         ))
-        .or(parse_equal_to_number_of_filter_value(shape.amount_tokens))
         .or(parse_equal_to_number_of_opponents_you_have_value(
             shape.amount_tokens,
         ))
@@ -534,8 +628,7 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
             ))
         })?;
     let amount = preserve_equal_to_surface(amount);
-    if let Some(effect) =
-        damage_to_embedded_target_controller(amount.clone(), shape.target_tokens)
+    if let Some(effect) = damage_to_embedded_target_controller(amount.clone(), shape.target_tokens)
     {
         return Ok(Some(effect));
     }
@@ -554,7 +647,10 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
         let filter = parse_object_filter(&shape.target_tokens[1..], false)?;
         return Ok(Some(EffectAst::subject_verb_damage_each(amount, filter)));
     }
-    let target = parse_target_phrase(shape.target_tokens)?;
+    let target = preserve_optional_single_damage_target(
+        parse_target_phrase(shape.target_tokens)?,
+        shape.target_tokens,
+    );
     Ok(Some(EffectAst::subject_verb_damage(amount, target)))
 }
 fn parse_divided_damage_target(
@@ -624,9 +720,18 @@ fn parse_divided_damage_with_amount(
             let filter = parse_object_filter(filter_tokens, false)?;
             Ok(EffectAst::subject_verb_damage_each(amount, filter))
         }
-        combat_grammar::CombatDividedAmountShape::Distributed { target_tokens } => {
+        combat_grammar::CombatDividedAmountShape::Distributed {
+            target_tokens,
+            evenly_rounded_down,
+        } => {
             let target = parse_divided_damage_target(target_tokens)?;
-            Ok(EffectAst::subject_verb_distributed_damage(amount, target))
+            if evenly_rounded_down {
+                Ok(EffectAst::subject_verb_evenly_distributed_damage(
+                    amount, target,
+                ))
+            } else {
+                Ok(EffectAst::subject_verb_distributed_damage(amount, target))
+            }
         }
     }
 }
@@ -717,9 +822,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             let amount = if shape == combat_grammar::CombatSimpleDamageTargetShape::IteratedPlayer
                 && crate::runtime_backend::token_word_refs(target_tokens) == ["them"]
             {
-                amount.with_surface_hint(
-                    ironsmith_core::ValueSurfaceHint::DamageRecipientPronoun,
-                )
+                amount.with_surface_hint(ironsmith_core::ValueSurfaceHint::DamageRecipientPronoun)
             } else {
                 amount
             };
@@ -826,6 +929,28 @@ pub(crate) fn parse_deal_damage_with_amount(
                 ],
             })
         }
+        combat_grammar::CombatDamageTargetShape::HistoricalDamageRecipients {
+            players,
+            filter_tokens,
+        } => {
+            let player_filter = PlayerFilter::was_dealt_damage_by_source_this_game(
+                combat_player_damage_target_filter(players),
+            );
+            let mut object_filter = parse_object_filter(filter_tokens, false)?;
+            object_filter.was_dealt_damage_by_source_this_game = true;
+            Ok(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::ForEachPlayersFiltered {
+                        filter: player_filter,
+                        effects: vec![EffectAst::subject_verb_damage(
+                            amount.clone(),
+                            TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                        )],
+                    },
+                    EffectAst::subject_verb_damage_each(amount, object_filter),
+                ],
+            })
+        }
         combat_grammar::CombatDamageTargetShape::EachFilter { filter_tokens } => {
             let filter = parse_object_filter(filter_tokens, false)?;
             Ok(EffectAst::subject_verb_damage_each(amount, filter))
@@ -879,6 +1004,30 @@ mod equal_to_damage_surface_tests {
     use crate::runtime_backend::front_end::lexer::lex_line;
 
     #[test]
+    fn historical_mixed_damage_recipients_keep_both_typed_filters() {
+        let tokens = lex_line(
+            "1 damage to each opponent and planeswalker it has dealt damage to this game",
+            0,
+        )
+        .expect("historical damage clause should lex");
+        let effect = parse_deal_damage(&tokens).expect("historical damage clause should parse");
+        let debug = format!("{effect:#?}");
+        assert!(
+            debug.contains("WasDealtDamageBySourceThisGame"),
+            "player history filter missing: {debug}"
+        );
+        assert!(
+            debug.contains("was_dealt_damage_by_source_this_game: true"),
+            "object history filter missing: {debug}"
+        );
+        assert!(
+            debug.contains("Planeswalker"),
+            "object domain missing: {debug}"
+        );
+        assert_eq!(debug.matches("DealDamage").count(), 2, "{debug}");
+    }
+
+    #[test]
     fn fixed_plus_count_damage_keeps_equal_to_surface() {
         let tokens = lex_line(
             "damage equal to 2 plus the number of Lesson cards in your graveyard to target creature",
@@ -901,6 +1050,79 @@ mod equal_to_damage_surface_tests {
     }
 
     #[test]
+    fn equal_to_damage_keeps_authored_optional_single_target() {
+        for (target_words, expected_count) in [
+            (
+                "up to one target creature or planeswalker",
+                ChoiceCount::up_to(1),
+            ),
+            ("target creature or planeswalker", ChoiceCount::exactly(1)),
+        ] {
+            let tokens = lex_line(
+                &format!("damage equal to that card's mana value to {target_words}"),
+                0,
+            )
+            .expect("linked damage clause should lex");
+            let effect = parse_deal_damage_equal_to_clause(&tokens)
+                .expect("linked damage clause should parse")
+                .expect("linked damage clause should match");
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DealDamage { amount, target, .. },
+                ..
+            }) = effect
+            else {
+                panic!("expected typed damage effect");
+            };
+            let actual_count = match target {
+                TargetAst::WithCount(_, count) => count,
+                _ => ChoiceCount::exactly(1),
+            };
+
+            assert_eq!(actual_count, expected_count, "{target_words}");
+            assert!(amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo));
+            assert!(matches!(amount.unhinted(), Value::ManaValueOf(_)));
+        }
+    }
+
+    #[test]
+    fn relative_controller_count_preempts_the_permissive_filter_value() {
+        let tokens = lex_line(
+            "damage to target creature equal to the number of nonbasic lands that creature's controller controls",
+            0,
+        )
+        .expect("relative-controller damage should lex");
+        let effect = parse_deal_damage(&tokens).expect("relative-controller damage should parse");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::DealDamage {
+                    amount,
+                    target: TargetAst::Object(target, Some(_), _),
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected typed targeted damage: {effect:#?}");
+        };
+        let Value::Count(counted) = amount.unhinted() else {
+            panic!("expected typed land count: {amount:#?}");
+        };
+
+        assert_eq!(target.card_types, vec![crate::CardType::Creature]);
+        assert_eq!(counted.card_types, vec![crate::CardType::Land]);
+        assert!(!counted.card_types.contains(&crate::CardType::Creature));
+        assert!(
+            counted
+                .excluded_supertypes
+                .contains(&crate::Supertype::Basic)
+        );
+        assert_eq!(
+            counted.controller,
+            Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+        );
+    }
+
+    #[test]
     fn authored_damage_recipient_pronoun_is_preserved_on_the_amount() {
         for (text, expects_hint) in [
             ("2 damage to them", true),
@@ -912,8 +1134,7 @@ mod equal_to_damage_surface_tests {
                 action:
                     SubjectVerbActionAst::DealDamage {
                         amount,
-                        target:
-                            TargetAst::Player(PlayerFilter::IteratedPlayer, _),
+                        target: TargetAst::Player(PlayerFilter::IteratedPlayer, _),
                         ..
                     },
                 ..
@@ -923,9 +1144,7 @@ mod equal_to_damage_surface_tests {
             };
 
             assert_eq!(
-                amount.has_surface_hint(
-                    ironsmith_core::ValueSurfaceHint::DamageRecipientPronoun
-                ),
+                amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::DamageRecipientPronoun),
                 expects_hint,
                 "{text}"
             );
@@ -955,11 +1174,10 @@ mod equal_to_damage_surface_tests {
             assert!(matches!(
                 target,
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action:
-                        SubjectVerbActionAst::TargetOnly {
-                            target: TargetAst::Spell(Some(_)),
-                            explicit_declaration: false,
-                        },
+                    action: SubjectVerbActionAst::TargetOnly {
+                        target: TargetAst::Spell(Some(_)),
+                        explicit_declaration: false,
+                    },
                     ..
                 })
             ));

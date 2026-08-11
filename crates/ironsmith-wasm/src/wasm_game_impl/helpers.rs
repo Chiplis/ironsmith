@@ -205,6 +205,10 @@ pub(super) fn action_drag_metadata(
             ironsmith::special_actions::SpecialAction::IgnoreAttachedRestriction {
                 source_id,
                 ability_index,
+            }
+            | ironsmith::special_actions::SpecialAction::IgnoreSourceEffect {
+                source_id,
+                ability_index,
             } => (
                 "special_action",
                 Some(source_id.0),
@@ -212,6 +216,10 @@ pub(super) fn action_drag_metadata(
                 Some(zone_name(Zone::Battlefield)),
                 None,
             ),
+            ironsmith::special_actions::SpecialAction::PayDelayedTrigger { .. }
+            | ironsmith::special_actions::SpecialAction::PerformRepeatableManaPaymentAction {
+                ..
+            } => ("special_action", None, None, None, None),
         },
     }
 }
@@ -520,6 +528,32 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                     object_name(game, *source_id)
                 )
             }
+            ironsmith::special_actions::SpecialAction::IgnoreSourceEffect {
+                source_id,
+                ability_index,
+            } => {
+                let cost = ironsmith::special_actions::ignore_source_effect_cost_display(
+                    game,
+                    *source_id,
+                    *ability_index,
+                )
+                .unwrap_or_else(|| "Pay mana".to_string());
+                format!(
+                    "{cost}: Ignore this effect until end of turn. ({})",
+                    object_name(game, *source_id)
+                )
+            }
+            ironsmith::special_actions::SpecialAction::PayDelayedTrigger { .. } => {
+                "Pay the pending delayed-trigger cost".to_string()
+            }
+            ironsmith::special_actions::SpecialAction::PerformRepeatableManaPaymentAction {
+                action_index,
+            } => game
+                .effect_store
+                .repeatable_mana_payment_actions
+                .get(*action_index)
+                .map(|action| format!("{}: Perform granted action", action.cost.to_oracle()))
+                .unwrap_or_else(|| "Perform granted action".to_string()),
         },
     }
 }
@@ -611,6 +645,14 @@ pub(super) fn decision_exposes_object_to_perspective(
                     .iter()
                     .any(|(blocker, _)| *blocker == id)
         }),
+        DecisionContext::ManaPayment(payment) => {
+            payment.source == id
+                || payment
+                    .plan
+                    .mana_ability_steps
+                    .iter()
+                    .any(|step| step.source == id)
+        }
         DecisionContext::Partition(_)
         | DecisionContext::Modes(_)
         | DecisionContext::HybridChoice(_)
@@ -796,6 +838,23 @@ pub(super) fn special_action_ref(
             source_id: source_id.0,
             ability_index: *ability_index,
         },
+        ironsmith::special_actions::SpecialAction::IgnoreSourceEffect {
+            source_id,
+            ability_index,
+        } => SpecialActionRef::IgnoreSourceEffect {
+            source_id: source_id.0,
+            ability_index: *ability_index,
+        },
+        ironsmith::special_actions::SpecialAction::PayDelayedTrigger {
+            delayed_trigger_index,
+        } => SpecialActionRef::PayDelayedTrigger {
+            delayed_trigger_index: *delayed_trigger_index,
+        },
+        ironsmith::special_actions::SpecialAction::PerformRepeatableManaPaymentAction {
+            action_index,
+        } => SpecialActionRef::PerformRepeatableManaPaymentAction {
+            action_index: *action_index,
+        },
     }
 }
 
@@ -923,6 +982,7 @@ pub(super) fn decision_reason(ctx: &DecisionContext) -> Option<String> {
             }
         }
         DecisionContext::Proliferate(_) => Some("Proliferate".into()),
+        DecisionContext::ManaPayment(_) => Some("Mana payment".into()),
         DecisionContext::SelectObjects(o) => {
             let d = o.description.to_lowercase();
             if d.contains("sacrifice") {
@@ -1081,6 +1141,7 @@ pub(super) fn decision_context_kind(ctx: &DecisionContext) -> &'static str {
         DecisionContext::Proliferate(_) => "proliferate",
         DecisionContext::Priority(_) => "priority",
         DecisionContext::Targets(_) => "targets",
+        DecisionContext::ManaPayment(_) => "mana_payment",
     }
 }
 
@@ -1096,6 +1157,7 @@ pub(super) fn replay_decision_requires_root_reexecution(ctx: &DecisionContext) -
             | DecisionContext::Counters(_)
             | DecisionContext::Partition(_)
             | DecisionContext::Proliferate(_)
+            | DecisionContext::ManaPayment(_)
     )
 }
 

@@ -93,6 +93,10 @@ fn parses_resource_chosen_name_target_shape() {
         TokenWordView::new(shape.base_tokens).word_refs(),
         vec!["target", "creature"]
     );
+    assert_eq!(
+        shape.chosen_name_source,
+        ironsmith_core::ChosenNameSourceSurface::Source
+    );
 }
 
 #[test]

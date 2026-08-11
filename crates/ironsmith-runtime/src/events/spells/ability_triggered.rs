@@ -7,6 +7,19 @@ use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::snapshot::ObjectSnapshot;
 use crate::triggers::TriggerIdentity;
+use crate::zone::Zone;
+
+/// Zone-change provenance of the event that caused an ability to trigger.
+///
+/// This is copied from the original trigger event before the derived
+/// `AbilityTriggeredEvent` is queued. Keeping the complete destination set
+/// makes same-object ETB qualification work for both single and batch moves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AbilityTriggerZoneChangeCause {
+    pub from: Zone,
+    pub to: Zone,
+    pub destination_objects: Vec<ObjectId>,
+}
 
 /// A triggered ability triggered and became pending.
 #[derive(Debug, Clone)]
@@ -21,6 +34,12 @@ pub struct AbilityTriggeredEvent {
     pub trigger_identity: TriggerIdentity,
     /// Last-known source information, when the source is no longer available.
     pub source_snapshot: Option<ObjectSnapshot>,
+    /// The immediate event kind that caused this ability to trigger.
+    pub cause_kind: Option<EventKind>,
+    /// Primary object of the immediate cause, when it has one.
+    pub cause_object: Option<ObjectId>,
+    /// Full zone-change provenance for same-object entry qualification.
+    pub zone_change_cause: Option<AbilityTriggerZoneChangeCause>,
 }
 
 impl AbilityTriggeredEvent {
@@ -36,11 +55,26 @@ impl AbilityTriggeredEvent {
             controller,
             trigger_identity,
             source_snapshot: None,
+            cause_kind: None,
+            cause_object: None,
+            zone_change_cause: None,
         }
     }
 
     pub fn with_source_snapshot(mut self, source_snapshot: Option<ObjectSnapshot>) -> Self {
         self.source_snapshot = source_snapshot;
+        self
+    }
+
+    pub fn with_cause(
+        mut self,
+        cause_kind: EventKind,
+        cause_object: Option<ObjectId>,
+        zone_change_cause: Option<AbilityTriggerZoneChangeCause>,
+    ) -> Self {
+        self.cause_kind = Some(cause_kind);
+        self.cause_object = cause_object;
+        self.zone_change_cause = zone_change_cause;
         self
     }
 }

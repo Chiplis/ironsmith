@@ -203,13 +203,37 @@ impl EffectExecutor for CopySpellEffect {
             let Some(original_entry) = stack_entry_for_copy_target(game, target_id, ctx)? else {
                 continue;
             };
+            let target = game
+                .object(target_id)
+                .ok_or(ExecutionError::ObjectNotFound(target_id))?
+                .clone();
             for _ in 0..copy_count {
-                let copy_id = create_stack_copy(
+                let copy_id = create_stack_copy_from_object(
                     game,
+                    &target,
                     target_id,
                     &original_entry,
                     copier,
                     &self.removed_supertypes,
+                    |copy| {
+                        if let Some(colors) = self.set_colors {
+                            copy.color_override = Some(colors);
+                        }
+                        for card_type in &self.added_card_types {
+                            if !copy.card_types.contains(card_type) {
+                                copy.card_types.push(*card_type);
+                            }
+                        }
+                        for subtype in &self.added_subtypes {
+                            if !copy.subtypes.contains(subtype) {
+                                copy.subtypes.push(*subtype);
+                            }
+                        }
+                        if let Some((power, toughness)) = self.set_base_power_toughness {
+                            copy.base_power = Some(crate::card::PtValue::Fixed(power));
+                            copy.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+                        }
+                    },
                     None,
                 )?;
                 created_ids.push(copy_id);
@@ -248,12 +272,12 @@ impl EffectExecutor for CopySpellEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::card::CardBuilder;
+    use crate::card::{CardBuilder, PowerToughness};
     use crate::effect::Value;
     use crate::events::EventKind;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
@@ -311,6 +335,47 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn spell_copy_characteristic_exceptions_become_copiable_values() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(2), "Winged Herald")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Wizard])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
+        game.stack.push(StackEntry::new(spell_id, alice));
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.targets = vec![ResolvedTarget::Object(spell_id)];
+        let effect = CopySpellEffect::single(ChooseSpec::spell())
+            .with_added_subtypes(vec![Subtype::Spirit])
+            .with_set_base_power_toughness(Some((1, 1)));
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+        let crate::effect::OutcomeValue::Objects(copy_ids) = outcome.value else {
+            panic!("expected the copy object")
+        };
+        let copy = game
+            .object(copy_ids[0])
+            .expect("copy should be on stack")
+            .clone();
+        assert_eq!(copy.card_types, [CardType::Creature]);
+        assert_eq!(copy.subtypes, [Subtype::Wizard, Subtype::Spirit]);
+        assert_eq!(copy.base_power, Some(crate::card::PtValue::Fixed(1)));
+        assert_eq!(copy.base_toughness, Some(crate::card::PtValue::Fixed(1)));
+
+        let second_copy_id = game.new_object_id();
+        let second_copy = Object::spell_copy_of(&copy, second_copy_id, alice);
+        assert_eq!(second_copy.subtypes, [Subtype::Wizard, Subtype::Spirit]);
+        assert_eq!(second_copy.base_power, Some(crate::card::PtValue::Fixed(1)));
+        assert_eq!(
+            second_copy.base_toughness,
+            Some(crate::card::PtValue::Fixed(1))
+        );
     }
 
     #[test]

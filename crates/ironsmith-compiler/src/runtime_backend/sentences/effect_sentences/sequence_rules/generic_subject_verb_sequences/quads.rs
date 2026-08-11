@@ -59,7 +59,8 @@ fn effect_ast_contains_sacrifice(effect: &EffectAst) -> bool {
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. } => {
+        | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. } => {
             effects.iter().any(effect_ast_contains_sacrifice)
         }
         EffectAst::TagAffected { effect, .. } => effect_ast_contains_sacrifice(effect),
@@ -117,20 +118,24 @@ fn parse_looked_card_move_result_branch(
     let Ok(mut effects) = effect_sentences::parse_effect_sentence_lexed(tokens) else {
         return Ok(None);
     };
-    let [EffectAst::IfResult {
-        predicate: parsed_predicate,
-        effects: branch,
-    }] = effects.as_mut_slice()
+    let [
+        EffectAst::IfResult {
+            predicate: parsed_predicate,
+            effects: branch,
+        },
+    ] = effects.as_mut_slice()
     else {
         return Ok(None);
     };
     if *parsed_predicate != predicate {
         return Ok(None);
     }
-    let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::MoveToZone { target, .. },
-        ..
-    })] = branch.as_mut_slice()
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::MoveToZone { target, .. },
+            ..
+        }),
+    ] = branch.as_mut_slice()
     else {
         return Ok(None);
     };
@@ -173,11 +178,8 @@ pub(crate) fn parse_look_then_may_action_if_did_or_did_not_move_looked_card(
     }
 
     let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
-    let Some(did) = parse_looked_card_move_result_branch(
-        &third_tokens,
-        IfResultPredicate::Did,
-        &looked_tag,
-    )?
+    let Some(did) =
+        parse_looked_card_move_result_branch(&third_tokens, IfResultPredicate::Did, &looked_tag)?
     else {
         return Ok(None);
     };
@@ -381,6 +383,209 @@ pub(crate) fn parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_o
             player,
         ),
     );
+
+    Ok(Some(vec![EffectAst::SelfReplacement {
+        predicate,
+        if_true: replacement_effects,
+        if_false: default_effects,
+        attach_to_previous_ability: false,
+    }]))
+}
+
+fn exact_flat_optional_reveal_to_hand_partition(
+    effects: &[EffectAst],
+) -> Option<(EffectAst, ObjectFilter, ChoiceCount, PlayerAst, Zone)> {
+    let [look, choose, reveal, move_selected, remainder] = effects else {
+        return None;
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::LookAtTopCards {
+            tag: looked_tag, ..
+        },
+        ..
+    }) = look
+    else {
+        return None;
+    };
+    let EffectAst::ChooseTaggedObjectsInZone {
+        filter,
+        count,
+        player,
+        tag: selected_tag,
+        zone,
+    } = choose
+    else {
+        return None;
+    };
+    let EffectAst::ForEachTagged {
+        tag: revealed_tag,
+        effects: reveal_effects,
+    } = reveal
+    else {
+        return None;
+    };
+    if revealed_tag != selected_tag
+        || !matches!(
+            reveal_effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RevealTagged { .. },
+                ..
+            })]
+        )
+    {
+        return None;
+    }
+    let EffectAst::ForEachTagged {
+        tag: moved_tag,
+        effects: move_effects,
+    } = move_selected
+    else {
+        return None;
+    };
+    if moved_tag != selected_tag
+        || !matches!(
+            move_effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::MoveToZone {
+                    zone: Zone::Hand,
+                    ..
+                },
+                ..
+            })]
+        )
+    {
+        return None;
+    }
+    if !matches!(
+        remainder,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    tag,
+                    keep_tagged: Some(keep_tagged),
+                    ..
+                },
+            ..
+        }) if tag == looked_tag && keep_tagged == selected_tag
+    ) {
+        return None;
+    }
+
+    Some((look.clone(), filter.clone(), *count, *player, *zone))
+}
+
+fn wrap_flat_reveal_to_hand_partition_in_may(
+    effects: Vec<EffectAst>,
+    exact_count: usize,
+) -> Option<Vec<EffectAst>> {
+    let [look, mut choose, reveal, move_selected, remainder]: [EffectAst; 5] =
+        effects.try_into().ok()?;
+    let EffectAst::ChooseTaggedObjectsInZone { count, .. } = &mut choose else {
+        return None;
+    };
+    *count = ChoiceCount::exactly(exact_count);
+    Some(vec![
+        look,
+        EffectAst::May {
+            effects: vec![choose, reveal, move_selected],
+        },
+        remainder,
+    ])
+}
+
+/// Keeps the selected set and its exact complement stable when a leading
+/// conditional `instead` changes how many matching looked-at cards may be
+/// revealed and moved to hand. The optional action remains a real `May`
+/// around an exact-size choice, so "may reveal two" cannot select only one.
+pub(crate) fn parse_look_reveal_one_or_instead_two_then_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(conditional) =
+        crate::runtime_backend::front_end::grammar::static_line_support::parse_leading_if_clause(
+            sentences[sentence_idx + 2].lowered(),
+        )
+    else {
+        return Ok(None);
+    };
+    let condition_tokens = trim_commas(conditional.condition_tokens);
+    let Ok(predicate) =
+        crate::runtime_backend::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
+            &condition_tokens,
+        )
+    else {
+        return Ok(None);
+    };
+
+    let replacement_tokens = trim_commas(conditional.remainder_tokens);
+    let [you, may, instead, reveal, ..] = replacement_tokens.as_slice() else {
+        return Ok(None);
+    };
+    if !you.is_word("you")
+        || !may.is_word("may")
+        || !instead.is_word("instead")
+        || !reveal.is_word("reveal")
+    {
+        return Ok(None);
+    }
+    let mut replacement_action = replacement_tokens;
+    replacement_action.remove(2);
+
+    let default_sentences = [
+        SentenceInput::from_lexed(sentences[sentence_idx].lexed()),
+        SentenceInput::from_lexed(sentences[sentence_idx + 1].lexed()),
+        SentenceInput::from_lexed(sentences[sentence_idx + 3].lexed()),
+    ];
+    let Some(default_effects) =
+        super::triples::parse_look_at_top_reveal_match_put_rest_bottom(&default_sentences, 0)?
+    else {
+        return Ok(None);
+    };
+    let replacement_sentences = [
+        SentenceInput::from_lexed(sentences[sentence_idx].lexed()),
+        SentenceInput::from_lexed(&replacement_action),
+        SentenceInput::from_lexed(sentences[sentence_idx + 3].lexed()),
+    ];
+    let Some(replacement_effects) =
+        super::triples::parse_look_at_top_reveal_match_put_rest_bottom(&replacement_sentences, 0)?
+    else {
+        return Ok(None);
+    };
+
+    let Some((default_look, default_filter, default_count, default_player, default_zone)) =
+        exact_flat_optional_reveal_to_hand_partition(&default_effects)
+    else {
+        return Ok(None);
+    };
+    let Some((
+        replacement_look,
+        replacement_filter,
+        replacement_count,
+        replacement_player,
+        replacement_zone,
+    )) = exact_flat_optional_reveal_to_hand_partition(&replacement_effects)
+    else {
+        return Ok(None);
+    };
+    if default_look != replacement_look
+        || default_filter != replacement_filter
+        || default_player != replacement_player
+        || default_zone != replacement_zone
+        || default_count != ChoiceCount::up_to(1)
+        || replacement_count != ChoiceCount::up_to(2)
+    {
+        return Ok(None);
+    }
+
+    let Some(default_effects) = wrap_flat_reveal_to_hand_partition_in_may(default_effects, 1)
+    else {
+        return Ok(None);
+    };
+    let Some(replacement_effects) =
+        wrap_flat_reveal_to_hand_partition_in_may(replacement_effects, 2)
+    else {
+        return Ok(None);
+    };
 
     Ok(Some(vec![EffectAst::SelfReplacement {
         predicate,
@@ -1903,18 +2108,24 @@ pub(crate) fn parse_look_at_top_may_exile_match_rest_bottom_cast_exiled(
                     allow_land,
                     as_copy,
                     without_paying_mana_cost,
+                    additional_mana_cost,
                     cost_reduction,
+                    mana_spend_mode,
                     ..
                 },
             ..
-        }) if !as_copy => EffectAst::subject_verb_cast_tagged(
-            exiled_tag.clone(),
-            permission_player,
-            allow_land,
-            false,
-            without_paying_mana_cost,
-            cost_reduction,
-        ),
+        }) if !as_copy => {
+            EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
+                exiled_tag.clone(),
+                permission_player,
+                allow_land,
+                false,
+                without_paying_mana_cost,
+                additional_mana_cost,
+                cost_reduction,
+                mana_spend_mode,
+            )
+        }
         _ => return Ok(None),
     };
 
@@ -2184,6 +2395,100 @@ pub(crate) fn parse_search_reveal_named_match_battlefield_else_hand_then_shuffle
 mod looked_partition_tests {
     use super::*;
     use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn conditional_instead_count_keeps_two_exact_optional_looked_partitions() {
+        let raw = [
+            "Look at the top four cards of your library",
+            "You may reveal a creature or land card from among them and put it into your hand",
+            "If you gained life this turn, you may instead reveal two creature and/or land cards from among them and put them into your hand",
+            "Put the rest on the bottom of your library in a random order",
+        ];
+        let lexed = raw
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| lex_line(line, idx).expect("sentence should lex"))
+            .collect::<Vec<_>>();
+        let sentences = lexed
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect::<Vec<_>>();
+
+        let effects = parse_look_reveal_one_or_instead_two_then_rest_bottom(&sentences, 0)
+            .expect("count replacement parser should not error")
+            .expect("count replacement partition should parse");
+        let [
+            EffectAst::SelfReplacement {
+                predicate,
+                if_true,
+                if_false,
+                attach_to_previous_ability: false,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one complete self-replacement: {effects:#?}");
+        };
+        assert!(matches!(
+            predicate,
+            PredicateAst::PlayerGainedLifeThisTurnOrMore {
+                player: PlayerAst::You,
+                count: 1,
+            }
+        ));
+
+        let assert_branch = |branch: &[EffectAst], expected_count| {
+            let [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::LookAtTopCards {
+                            tag: looked_tag, ..
+                        },
+                    ..
+                }),
+                EffectAst::May { effects: optional },
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                            tag,
+                            keep_tagged: Some(keep_tagged),
+                            order: LibraryBottomOrderAst::Random,
+                            ..
+                        },
+                    ..
+                }),
+            ] = branch
+            else {
+                panic!("expected look/may/exact-remainder branch: {branch:#?}");
+            };
+            let [
+                EffectAst::ChooseTaggedObjectsInZone {
+                    filter,
+                    count,
+                    tag: selected_tag,
+                    zone: Zone::Library,
+                    ..
+                },
+                EffectAst::ForEachTagged {
+                    tag: revealed_tag, ..
+                },
+                EffectAst::ForEachTagged { tag: moved_tag, .. },
+            ] = optional.as_slice()
+            else {
+                panic!("expected exact choose/reveal/move optional body: {optional:#?}");
+            };
+            assert_eq!(*count, ChoiceCount::exactly(expected_count));
+            assert_eq!(revealed_tag, selected_tag);
+            assert_eq!(moved_tag, selected_tag);
+            assert_eq!(tag, looked_tag);
+            assert_eq!(keep_tagged, selected_tag);
+            assert!(filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == *looked_tag
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }));
+        };
+        assert_branch(if_false, 1);
+        assert_branch(if_true, 2);
+    }
 
     #[test]
     fn discover_cast_condition_describes_the_exiled_card_not_a_stack_object() {
@@ -2875,10 +3180,9 @@ mod looked_partition_tests {
             .map(|tokens| SentenceInput::from_lexed(tokens))
             .collect::<Vec<_>>();
 
-        let effects =
-            parse_look_then_may_action_if_did_or_did_not_move_looked_card(&sentences, 0)
-                .expect("looked-card result parser should not error")
-                .expect("optional action with two looked-card result branches should parse");
+        let effects = parse_look_then_may_action_if_did_or_did_not_move_looked_card(&sentences, 0)
+            .expect("looked-card result parser should not error")
+            .expect("optional action with two looked-card result branches should parse");
         let [look, optional, did, did_not] = effects.as_slice() else {
             panic!("expected look/optional/two-branch program: {effects:#?}");
         };
@@ -2906,10 +3210,12 @@ mod looked_partition_tests {
                 panic!("expected one move result branch: {effect:#?}");
             };
             assert_eq!(*predicate, expected);
-            let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone { target, .. },
-                ..
-            })] = branch.as_slice()
+            let [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::MoveToZone { target, .. },
+                    ..
+                }),
+            ] = branch.as_slice()
             else {
                 panic!("expected one move in result branch: {branch:#?}");
             };

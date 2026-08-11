@@ -123,7 +123,7 @@ impl EffectExecutor for PreventDamageEffect {
         } else {
             resolve_prevention_target_from_spec(game, &self.target, ctx)?
         };
-        register_prevention_shield(
+        let shield_id = register_prevention_shield(
             game,
             ctx,
             protected,
@@ -134,6 +134,7 @@ impl EffectExecutor for PreventDamageEffect {
             ctx.targets.clone(),
             ctx.target_assignments.clone(),
         );
+        ctx.last_prevention_shield = Some(shield_id);
 
         Ok(EffectOutcome::resolved())
     }

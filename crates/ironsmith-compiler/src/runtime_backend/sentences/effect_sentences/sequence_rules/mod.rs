@@ -17,6 +17,7 @@ struct SequenceRuleDef {
     parser: SequenceRuleParser,
 }
 
+#[derive(Debug)]
 pub(crate) struct SequenceRuleMatch {
     pub(crate) name: &'static str,
     pub(crate) feature_tag: Option<&'static str>,
@@ -82,7 +83,7 @@ fn first_word_mill(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
 }
 
 fn first_word_mill_sequence_candidate(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
-    sentence_head_word_in(sentences, sentence_idx, &["mill", "you", "if"])
+    sentence_head_word_in(sentences, sentence_idx, &["mill", "you", "if", "target"])
 }
 
 fn first_word_search(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
@@ -93,6 +94,18 @@ fn first_word_destroy(sentences: &[SentenceInput], sentence_idx: usize) -> bool 
     sentence_head_word_is(sentences, sentence_idx, "destroy")
 }
 
+fn first_word_put(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "put")
+}
+
+fn first_word_copy(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "copy")
+}
+
+fn first_word_up(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "up")
+}
+
 fn first_word_sacrifice(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "sacrifice")
 }
@@ -101,8 +114,8 @@ fn first_word_exile(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "exile")
 }
 
-fn first_word_exile_or_shuffle(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
-    sentence_head_word_in(sentences, sentence_idx, &["exile", "shuffle"])
+fn first_word_exile_or_target(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["exile", "target"])
 }
 
 fn first_word_look_or_reveal(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
@@ -260,6 +273,78 @@ fn for_each_tagged_copy_window(sentences: &[SentenceInput], sentence_idx: usize)
 
 const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
     SequenceRuleDef {
+        name: "destroy-set-no-regeneration-rider",
+        feature_tag: Some("destroy-no-regeneration"),
+        priority: 454,
+        consumed_sentences: 2,
+        predicate: first_word_destroy,
+        parser: generic_subject_verb_sequences::parse_destroy_then_no_regeneration_sequence,
+    },
+    SequenceRuleDef {
+        name: "reveal-then-exile-noncreature-nonland-hand-graveyard",
+        feature_tag: Some("shared-owner-zone-union"),
+        priority: 453,
+        consumed_sentences: 2,
+        predicate: first_word_target,
+        parser: generic_subject_verb_sequences::parse_reveal_then_exile_noncreature_nonland_hand_graveyard_sequence,
+    },
+    SequenceRuleDef {
+        name: "target-opponent-copy-triggering-spell-retarget",
+        feature_tag: Some("target-opponent-copy-triggering-spell"),
+        priority: 452,
+        consumed_sentences: 2,
+        predicate: first_word_up,
+        parser: generic_subject_verb_sequences::pairs::parse_target_opponent_may_copy_triggering_spell_then_retarget,
+    },
+    SequenceRuleDef {
+        name: "copy-next-spell-when-cast-retarget",
+        feature_tag: Some("delayed-next-spell-copy"),
+        priority: 451,
+        consumed_sentences: 2,
+        predicate: first_word_copy,
+        parser: generic_subject_verb_sequences::pairs::parse_copy_next_spell_when_cast_then_retarget,
+    },
+    SequenceRuleDef {
+        name: "opponent-optional-sacrifice-or-discard-correlated-damage",
+        feature_tag: Some("per-opponent-optional-alternative-result"),
+        priority: 450,
+        consumed_sentences: 2,
+        predicate: first_word_each,
+        parser: generic_subject_verb_sequences::optional_sacrifice_discard::parse_each_opponent_may_sacrifice_or_discard_then_damage_nonparticipants,
+    },
+    SequenceRuleDef {
+        name: "source-block-history-counter-otherwise",
+        feature_tag: Some("source-block-history"),
+        priority: 391,
+        consumed_sentences: 2,
+        predicate: first_word_put,
+        parser: generic_subject_verb_sequences::pairs::parse_counter_on_source_if_blocked_or_been_blocked_since_last_upkeep,
+    },
+    SequenceRuleDef {
+        name: "enchanted-combat-history-counter-otherwise",
+        feature_tag: Some("enchanted-combat-history"),
+        priority: 390,
+        consumed_sentences: 2,
+        predicate: first_word_put,
+        parser: generic_subject_verb_sequences::pairs::parse_counter_on_enchanted_if_attacked_or_blocked_since_last_upkeep,
+    },
+    SequenceRuleDef {
+        name: "participant-loot-greatest-mana-value-followup",
+        feature_tag: Some("participant-result-extremum"),
+        priority: 449,
+        consumed_sentences: 2,
+        predicate: first_word_you,
+        parser: generic_subject_verb_sequences::pairs::parse_controller_defending_loot_then_greatest_mana_value_followup,
+    },
+    SequenceRuleDef {
+        name: "resolving-card-exile-return-next-end-step",
+        feature_tag: Some("linked-zone-replacement-followup"),
+        priority: 448,
+        consumed_sentences: 2,
+        predicate: first_word_exile,
+        parser: generic_subject_verb_sequences::pairs::parse_resolving_card_exile_then_return_next_end_step,
+    },
+    SequenceRuleDef {
         name: "participant-secret-object-choice-reveal-sacrifice",
         feature_tag: Some("secret-participant-object-choice"),
         priority: 447,
@@ -274,6 +359,22 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 4,
         predicate: first_word_exile,
         parser: generic_subject_verb_sequences::exiled_collections::parse_exile_each_player_put_return_exiled_then_exile_source,
+    },
+    SequenceRuleDef {
+        name: "graveyard-exile-if-copy-cast-copy",
+        feature_tag: Some("conditional-graveyard-card-copy-cast"),
+        priority: 447,
+        consumed_sentences: 3,
+        predicate: first_word_exile,
+        parser: generic_subject_verb_sequences::graveyard_copy_cast::parse_graveyard_exile_if_copy_then_may_cast_copy,
+    },
+    SequenceRuleDef {
+        name: "graveyard-exile-copy-cast-copy",
+        feature_tag: Some("graveyard-card-copy-cast"),
+        priority: 446,
+        consumed_sentences: 2,
+        predicate: first_word_exile,
+        parser: generic_subject_verb_sequences::graveyard_copy_cast::parse_graveyard_exile_copy_then_may_cast_copy,
     },
     SequenceRuleDef {
         name: "exile-top-play-event-followup",
@@ -300,12 +401,20 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::exiled_collections::parse_exile_top_then_put_from_among_onto_battlefield,
     },
     SequenceRuleDef {
-        name: "exile-top-cast-any-number-free",
-        feature_tag: Some("exiled-collection-cast-any"),
+        name: "exile-top-cast-collection-partition",
+        feature_tag: Some("exiled-collection-cast-partition"),
+        priority: 444,
+        consumed_sentences: 3,
+        predicate: first_word_exile_or_target,
+        parser: generic_subject_verb_sequences::exiled_collections::parse_exile_top_cast_collection_then_partition,
+    },
+    SequenceRuleDef {
+        name: "exile-top-cast-collection-free",
+        feature_tag: Some("exiled-collection-cast-choice"),
         priority: 443,
         consumed_sentences: 2,
-        predicate: first_word_exile_or_shuffle,
-        parser: generic_subject_verb_sequences::exiled_collections::parse_exile_top_then_cast_any_number_free,
+        predicate: first_word_exile_or_target,
+        parser: generic_subject_verb_sequences::exiled_collections::parse_exile_top_then_cast_collection_free,
     },
     SequenceRuleDef {
         name: "tempting-offer-copy-spell",
@@ -314,6 +423,46 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 4,
         predicate: first_word_choose_or_tempting,
         parser: generic_subject_verb_sequences::pairs::parse_tempting_offer_copy_spell_sequence,
+    },
+    SequenceRuleDef {
+        name: "revealed-opponent-hand-or-their-graveyard-choice",
+        feature_tag: Some("revealed-hand-graveyard-choice"),
+        priority: 442,
+        consumed_sentences: 2,
+        predicate: first_word_target,
+        parser: generic_subject_verb_sequences::pairs::parse_reveal_opponent_hand_then_choose_from_it_or_their_graveyard,
+    },
+    SequenceRuleDef {
+        name: "revealed-hand-optional-free-cast",
+        feature_tag: Some("revealed-hand-cast-choice"),
+        priority: 441,
+        consumed_sentences: 2,
+        predicate: first_word_target,
+        parser: generic_subject_verb_sequences::pairs::parse_reveal_target_opponent_hand_then_may_cast_from_those_cards,
+    },
+    SequenceRuleDef {
+        name: "looked-hand-optional-free-cast",
+        feature_tag: Some("looked-hand-cast-choice"),
+        priority: 441,
+        consumed_sentences: 2,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::pairs::parse_look_at_players_hand_then_may_cast_from_those_cards,
+    },
+    SequenceRuleDef {
+        name: "revealed-hand-shared-terminal-union-count",
+        feature_tag: Some("revealed-hand-union-count"),
+        priority: 440,
+        consumed_sentences: 2,
+        predicate: first_word_target,
+        parser: generic_subject_verb_sequences::pairs::parse_reveal_hand_then_draw_shared_terminal_union,
+    },
+    SequenceRuleDef {
+        name: "multi-target-restriction-destroy-typed-subset",
+        feature_tag: Some("tagged-target-subset"),
+        priority: 440,
+        consumed_sentences: 2,
+        predicate: first_word_up,
+        parser: generic_subject_verb_sequences::pairs::parse_multi_target_restriction_then_destroy_typed_subset,
     },
     SequenceRuleDef {
         name: "reciprocal-creature-control",
@@ -346,6 +495,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 4,
         predicate: first_word_look_or_reveal,
         parser: generic_subject_verb_sequences::quads::parse_top_cards_move_then_grant_rest_bottom,
+    },
+    SequenceRuleDef {
+        name: "look-reveal-one-or-instead-two-rest-bottom",
+        feature_tag: Some("looked-cards-count-replacement-partition"),
+        priority: 438,
+        consumed_sentences: 4,
+        predicate: first_word_look,
+        parser:
+            generic_subject_verb_sequences::quads::parse_look_reveal_one_or_instead_two_then_rest_bottom,
     },
     SequenceRuleDef {
         name: "top-cards-move-rest-typed-when-result",
@@ -489,6 +647,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::quads::parse_look_may_reveal_then_your_turn_battlefield_else_hand_rest_bottom,
     },
     SequenceRuleDef {
+        name: "destroy-historical-blocker-reanimation",
+        feature_tag: Some("historical-block-controller-reanimation"),
+        priority: 431,
+        consumed_sentences: 3,
+        predicate: first_word_destroy,
+        parser: generic_subject_verb_sequences::triples::parse_destroy_historically_blocked_then_reanimate_from_historical_controller,
+    },
+    SequenceRuleDef {
         name: "destroy-for-each-destroyed-consult-exile-put-shuffle",
         feature_tag: Some("destroyed-consult-exile-put"),
         priority: 429,
@@ -496,6 +662,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         predicate: first_word_destroy,
         parser:
             generic_subject_verb_sequences::parse_destroy_for_each_destroyed_consult_exile_put_shuffle,
+    },
+    SequenceRuleDef {
+        name: "destroy-all-search-target-opponent-graveyard-shuffle",
+        feature_tag: Some("destroy-search-library-partition"),
+        priority: 429,
+        consumed_sentences: 2,
+        predicate: first_word_destroy,
+        parser: generic_subject_verb_sequences::pairs::parse_destroy_all_then_search_target_opponent_to_graveyard_then_shuffle,
     },
     SequenceRuleDef {
         name: "look-at-top-may-put-match-onto-battlefield-if-not-put-into-hand-rest-bottom",
@@ -531,6 +705,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         predicate: first_word_reveal,
         parser:
             generic_subject_verb_sequences::triples::parse_reveal_top_opponent_chooses_one_then_move_and_followup,
+    },
+    SequenceRuleDef {
+        name: "each-player-mill-land-result-then-cast-one-milled-spell",
+        feature_tag: Some("mill-result-permission"),
+        priority: 342,
+        consumed_sentences: 3,
+        predicate: first_word_each,
+        parser: generic_subject_verb_sequences::triples::parse_each_player_mill_then_land_result_then_cast_one_milled_spell,
     },
     SequenceRuleDef {
         name: "choose-two-targets-counter-first-if-power-then-fight",
@@ -596,6 +778,22 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 3,
         predicate: first_word_look_or_reveal,
         parser: generic_subject_verb_sequences::triples::parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast,
+    },
+    SequenceRuleDef {
+        name: "look-at-top-may-put-with-counter-rest-bottom",
+        feature_tag: Some("looked-card-optional-countered-entry"),
+        priority: 342,
+        consumed_sentences: 3,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::triples::parse_look_at_top_may_put_with_counter_then_rest_bottom,
+    },
+    SequenceRuleDef {
+        name: "look-at-top-partition-face-down-filtered-permission",
+        feature_tag: Some("looked-card-hidden-filtered-permission"),
+        priority: 341,
+        consumed_sentences: 3,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::triples::parse_look_at_top_partition_face_down_then_filtered_permission,
     },
     SequenceRuleDef {
         name: "look-at-top-exile-match-and-rest-bottom-cast-exiled",
@@ -904,6 +1102,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::pairs::parse_copy_for_each_target_then_each_copy_targets_different,
     },
     SequenceRuleDef {
+        name: "explicit-stack-target-copy-for-each-target",
+        feature_tag: Some("copy-target-assignment"),
+        priority: 443,
+        consumed_sentences: 3,
+        predicate: first_word_choose,
+        parser: generic_subject_verb_sequences::triples::parse_explicit_stack_target_then_copy_for_each_target,
+    },
+    SequenceRuleDef {
         name: "for-each-tagged-copy-then-copy-targets-it",
         feature_tag: Some("copy-target-assignment"),
         priority: 242,
@@ -928,6 +1134,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::pairs::parse_filtered_future_exile_then_return_next_end_step,
     },
     SequenceRuleDef {
+        name: "when-result-may-cast-target-graveyard-spell-then-exile-replacement",
+        feature_tag: Some("reflexive-cast-target-graveyard-spell-replacement"),
+        priority: 244,
+        consumed_sentences: 2,
+        predicate: first_word_when_or_whenever,
+        parser: generic_subject_verb_sequences::pairs::parse_when_result_may_cast_target_graveyard_spell_then_exile_replacement,
+    },
+    SequenceRuleDef {
         name: "may-cast-target-graveyard-spell-then-exile-replacement",
         feature_tag: Some("cast-target-graveyard-spell-replacement"),
         priority: 242,
@@ -942,6 +1156,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_you,
         parser: generic_subject_verb_sequences::pairs::parse_gain_life_then_self_animate_source,
+    },
+    SequenceRuleDef {
+        name: "damage-prevention-then-delayed-creature-counters",
+        feature_tag: Some("damage-prevention-delayed-followup"),
+        priority: 242,
+        consumed_sentences: 2,
+        predicate: first_word_prevent,
+        parser: generic_subject_verb_sequences::parse_damage_prevention_delayed_counter_sequence,
     },
     SequenceRuleDef {
         name: "damage-prevention-then-damage-any-target",
@@ -1079,6 +1301,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_head_look_at,
         parser: generic_subject_verb_sequences::pairs::parse_look_at_top_then_put_one_hand_other_graveyard,
+    },
+    SequenceRuleDef {
+        name: "mill-then-may-cast-from-among",
+        feature_tag: Some("mill-followup-cast"),
+        priority: 236,
+        consumed_sentences: 2,
+        predicate: first_word_mill_sequence_candidate,
+        parser: generic_subject_verb_sequences::pairs::parse_mill_then_may_cast_from_among,
     },
     SequenceRuleDef {
         name: "mill-then-put-from-among-to-zone",

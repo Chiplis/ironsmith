@@ -24,6 +24,8 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
     normalized = replace_standalone_phrase(&normalized, "a Aura", "an Aura");
     normalized = replace_standalone_phrase(&normalized, "a Elf", "an Elf");
     normalized = normalized
+        .replace("this aura", "this Aura")
+        .replace("This aura", "This Aura")
         .replace(" ors ", " or ")
         .replace("non-aura", "non-Aura")
         .replace("Non-aura", "Non-Aura")
@@ -123,6 +125,7 @@ pub(super) fn normalize_top_card_exile_imperative(input: &str) -> String {
 }
 
 fn normalize_keyword_only_comma_line(line: &str) -> Option<String> {
+    let authored_terminal_period = line.trim().ends_with('.');
     let parts = line
         .trim()
         .trim_end_matches('.')
@@ -136,13 +139,18 @@ fn normalize_keyword_only_comma_line(line: &str) -> Option<String> {
     if parts.len() < 2 || !parts.iter().all(|part| is_keyword_phrase(part)) {
         return None;
     }
-    Some(capitalize_first(
+    let normalized = capitalize_first(
         &parts
             .iter()
             .map(|part| part.to_ascii_lowercase())
             .collect::<Vec<_>>()
             .join(", "),
-    ))
+    );
+    Some(if authored_terminal_period {
+        format!("{normalized}.")
+    } else {
+        normalized
+    })
 }
 
 fn replace_standalone_phrase(input: &str, from: &str, to: &str) -> String {

@@ -82,7 +82,9 @@ pub(crate) enum KnownSpellCostConditionFact {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FirstSpellEachTurnCostFact;
+pub(crate) struct FirstSpellEachTurnCostFact {
+    pub(crate) during_each_of_your_turns: bool,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SpellCastActorFact {
@@ -516,10 +518,18 @@ pub(crate) fn parse_first_spell_each_turn_cost_fact(
     tokens: &[OwnedLexToken],
 ) -> Option<FirstSpellEachTurnCostFact> {
     let words = TokenWordView::new(tokens).word_refs();
-    contains_all_words(&words, &["first", "each", "turn"]).then_some(())?;
+    (contains_all_words(&words, &["first", "each"])
+        && (contains_word(&words, "turn") || contains_word(&words, "turns")))
+    .then_some(())?;
     let has_cost = primitives::parse_word_sequence_span(&words, &["cost"]).is_some()
         || primitives::parse_word_sequence_span(&words, &["costs"]).is_some();
-    has_cost.then_some(FirstSpellEachTurnCostFact)
+    has_cost.then_some(FirstSpellEachTurnCostFact {
+        during_each_of_your_turns: primitives::parse_word_sequence_span(
+            &words,
+            &["during", "each", "of", "your", "turns"],
+        )
+        .is_some(),
+    })
 }
 
 pub(crate) fn parse_spell_cost_between_fact(tokens: &[OwnedLexToken]) -> SpellCostBetweenFact<'_> {
@@ -914,5 +924,16 @@ mod tests {
             Some(KnownSpellCostConditionFact::OpponentControlsLandsOrMore(7))
         );
         assert!(parse_where_x_clause_tokens(&lex("less to cast, where X is three")).is_some());
+
+        let ordinary = parse_first_spell_each_turn_cost_fact(&lex(
+            "The first creature spell you cast each turn costs {1} less to cast",
+        ))
+        .expect("ordinary first-spell fact");
+        assert!(!ordinary.during_each_of_your_turns);
+        let own_turn = parse_first_spell_each_turn_cost_fact(&lex(
+            "The first creature spell you cast during each of your turns costs {1} less to cast",
+        ))
+        .expect("own-turn first-spell fact");
+        assert!(own_turn.during_each_of_your_turns);
     }
 }

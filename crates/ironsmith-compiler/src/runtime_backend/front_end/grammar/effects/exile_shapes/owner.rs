@@ -172,6 +172,24 @@ pub(crate) fn is_each_opponent_library_shape(tokens: &[OwnedLexToken]) -> bool {
         .is_some()
 }
 
+pub(crate) fn is_each_player_library_shape(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_prefix(
+        tokens,
+        (primitives::phrase(&["each", "player"]), library_word),
+    )
+    .is_some()
+        || primitives::parse_prefix(
+            tokens,
+            (primitives::phrase(&["each", "players"]), library_word),
+        )
+        .is_some()
+        || primitives::parse_prefix(
+            tokens,
+            (primitives::phrase(&["each", "player's"]), library_word),
+        )
+        .is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,6 +213,7 @@ mod tests {
         assert!(is_each_opponent_library_shape(&lex(
             "each opponent's library"
         )));
+        assert!(is_each_player_library_shape(&lex("each player's library")));
 
         let each_type = parse_exile_one_per_card_type_from_graveyard_shape(&lex(
             "up to one card of each card type from defending player's graveyard",

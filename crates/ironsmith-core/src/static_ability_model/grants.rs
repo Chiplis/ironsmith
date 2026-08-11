@@ -20,6 +20,11 @@ pub struct Anthem {
     /// "where X is …" clause rather than "for each …". Purely a surface hint
     /// for rendering; the count itself is identical either way.
     pub count_uses_where_x: bool,
+    /// True when the authored fixed modifier was introduced as "an
+    /// additional P/T". This does not change layer semantics; it preserves
+    /// the additive presentation when independently executable static
+    /// siblings are rejoined.
+    pub additional_surface: bool,
     /// Absolute power/toughness from an Oracle "gets P/T instead" continuation.
     ///
     /// The executable anthem stores only the conditional delta so layer 7c
@@ -43,6 +48,7 @@ impl Anthem {
             condition: None,
             set_quantifier_surface: None,
             count_uses_where_x: false,
+            additional_surface: false,
             replacement_surface: None,
         }
     }
@@ -54,6 +60,7 @@ impl Anthem {
             condition: None,
             set_quantifier_surface: None,
             count_uses_where_x: false,
+            additional_surface: false,
             replacement_surface: None,
         }
     }
@@ -68,6 +75,10 @@ impl Anthem {
     }
     pub fn with_count_uses_where_x(mut self, uses_where_x: bool) -> Self {
         self.count_uses_where_x = uses_where_x;
+        self
+    }
+    pub fn with_additional_surface(mut self, additional_surface: bool) -> Self {
+        self.additional_surface = additional_surface;
         self
     }
     pub fn with_set_quantifier_surface(mut self, surface: Option<SetQuantifierSurface>) -> Self {
@@ -86,6 +97,7 @@ pub struct AttachedAbilityGrant<T, E, C, Cond> {
     pub additional_abilities: Vec<AbilityModel<T, E, C, Cond>>,
     pub display: String,
     pub condition: Option<Condition>,
+    pub protection_does_not_remove_controlled_attachments: bool,
 }
 
 impl<T, E, C, Cond> AttachedAbilityGrant<T, E, C, Cond> {
@@ -95,6 +107,7 @@ impl<T, E, C, Cond> AttachedAbilityGrant<T, E, C, Cond> {
             additional_abilities: Vec::new(),
             display: display.into(),
             condition: None,
+            protection_does_not_remove_controlled_attachments: false,
         }
     }
     pub fn with_additional_abilities(
@@ -106,6 +119,10 @@ impl<T, E, C, Cond> AttachedAbilityGrant<T, E, C, Cond> {
     }
     pub fn with_condition(mut self, condition: Condition) -> Self {
         self.condition = Some(condition);
+        self
+    }
+    pub fn with_protection_attachment_exception(mut self, enabled: bool) -> Self {
+        self.protection_does_not_remove_controlled_attachments = enabled;
         self
     }
 }

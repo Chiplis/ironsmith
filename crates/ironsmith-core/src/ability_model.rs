@@ -13,6 +13,9 @@ pub enum ActivationTiming {
     OncePerTurn,
     DuringYourTurn,
     DuringOpponentsTurn,
+    /// Any player may activate the ability, but only while that player is the
+    /// active player and before the ending phase begins.
+    AnyPlayerDuringTheirTurnBeforeEndStep,
     /// Only during the upkeep of the player who owns the source object.
     ///
     /// This is distinct from `DuringYourTurn`: Forecast is activated from a
@@ -361,6 +364,7 @@ impl PresentationKeyword {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActivatedPresentationLabel {
+    Throw,
     ThrowEllipsis,
     Boast,
     Exhaust,
@@ -374,8 +378,11 @@ pub enum ActivatedPresentationLabel {
 impl ActivatedPresentationLabel {
     pub fn from_label(label: &str) -> Option<Self> {
         let trimmed = label.trim();
-        if trimmed.eq_ignore_ascii_case("Throw ...") || trimmed.eq_ignore_ascii_case("Throw") {
+        if trimmed.eq_ignore_ascii_case("Throw ...") || trimmed.eq_ignore_ascii_case("Throw...") {
             return Some(Self::ThrowEllipsis);
+        }
+        if trimmed.eq_ignore_ascii_case("Throw") {
+            return Some(Self::Throw);
         }
         let head = trimmed.split_whitespace().next().unwrap_or(trimmed);
         match head.to_ascii_lowercase().as_str() {
@@ -392,6 +399,7 @@ impl ActivatedPresentationLabel {
 
     pub fn display(self) -> &'static str {
         match self {
+            Self::Throw => "Throw",
             Self::ThrowEllipsis => "Throw ...",
             Self::Boast => "Boast",
             Self::Exhaust => "Exhaust",
@@ -832,6 +840,19 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
         })
     }
 
+    /// Whether the ability may be activated by a player who does not control
+    /// its source. The string fallback preserves older compiled definitions;
+    /// new parses use the typed activator-relative timing variant.
+    pub fn allows_any_player_to_activate(&self) -> bool {
+        self.timing == ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
+            || self.additional_restrictions.iter().any(|restriction| {
+                restriction
+                    .trim()
+                    .to_ascii_lowercase()
+                    .starts_with("any player may activate this ability")
+            })
+    }
+
     /// Minimum X announced for this activation. Oracle currently expresses
     /// this activated-ability constraint as the standalone sentence
     /// "X can't be 0."; keeping it on the ability lets the decision flow
@@ -1000,6 +1021,18 @@ fn parse_named_count_word(word: &str) -> Option<u32> {
 mod tests {
     use super::*;
     use crate::{ChooseSpec, Cost, CounterType};
+
+    #[test]
+    fn throw_label_preserves_authored_ellipsis() {
+        assert_eq!(
+            PresentationLabel::from_ability_word("Throw").display_prefix(),
+            Some("Throw".to_string())
+        );
+        assert_eq!(
+            PresentationLabel::from_ability_word("Throw ...").display_prefix(),
+            Some("Throw ...".to_string())
+        );
+    }
 
     #[test]
     fn targeted_mana_production_is_not_a_mana_ability() {

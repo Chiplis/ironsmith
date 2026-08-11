@@ -263,6 +263,10 @@ pub struct ExecutionContext<'a> {
     pub triggering_event: Option<crate::triggers::TriggerEvent>,
     /// Numeric value computed by the trigger matcher for resolving "that many".
     pub event_value_amount: Option<i32>,
+    /// Most recently registered prevention shield in this resolution path.
+    /// Delayed effects that explicitly reference damage "prevented this way"
+    /// capture this stable identity when they are scheduled.
+    pub last_prevention_shield: Option<crate::prevention::PreventionShieldId>,
     /// Structural identity of the resolving triggered ability, when available.
     pub trigger_identity: Option<crate::triggers::TriggerIdentity>,
     /// Index of the resolving activated ability on its source object, when available.
@@ -317,6 +321,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field("face_down_exile_viewers", &self.face_down_exile_viewers)
             .field("triggering_event", &self.triggering_event)
             .field("event_value_amount", &self.event_value_amount)
+            .field("last_prevention_shield", &self.last_prevention_shield)
             .field("trigger_identity", &self.trigger_identity)
             .field("ability_index", &self.ability_index)
             .field("cause", &self.cause)
@@ -364,6 +369,7 @@ impl<'a> ExecutionContext<'a> {
             face_down_exile_viewers: HashMap::new(),
             triggering_event: None,
             event_value_amount: None,
+            last_prevention_shield: None,
             trigger_identity: None,
             ability_index: None,
             chosen_modes: None,
@@ -412,6 +418,7 @@ impl<'a> ExecutionContext<'a> {
             face_down_exile_viewers: HashMap::new(),
             triggering_event: None,
             event_value_amount: None,
+            last_prevention_shield: None,
             trigger_identity: None,
             ability_index: None,
             chosen_modes: None,
@@ -450,6 +457,7 @@ impl<'a> ExecutionContext<'a> {
             face_down_exile_viewers: self.face_down_exile_viewers,
             triggering_event: self.triggering_event,
             event_value_amount: self.event_value_amount,
+            last_prevention_shield: self.last_prevention_shield,
             trigger_identity: self.trigger_identity,
             ability_index: self.ability_index,
             chosen_modes: self.chosen_modes,
@@ -818,6 +826,10 @@ impl<'a> ExecutionContext<'a> {
             self.iteration.iterated_player = event.trigger_player();
         }
 
+        for (tag, players) in event.player_tags() {
+            self.set_tagged_players(tag.clone(), players.clone());
+        }
+
         // If the event is vote-related, compute tags from THIS ability controller's perspective.
         if let Some(voting_event) = event.downcast::<crate::events::PlayersFinishedVotingEvent>() {
             self.apply_voting_tags(&voting_event.votes, &voting_event.player_tags);
@@ -1117,7 +1129,6 @@ impl<'a> ExecutionContext<'a> {
                     .map(|obj| ObjectSnapshot::from_object(obj, game))
             })
         {
-            target_objects.push(snapshot.clone());
             tagged_objects
                 .entry(TagKey::from("triggering"))
                 .or_default()
@@ -1312,8 +1323,10 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::events::cause::EventCause;
     use crate::events::{DamageEvent, DamageTarget};
+    use crate::filter::ObjectFilterExt;
     use crate::ids::CardId;
     use crate::provenance::ProvNodeId;
+    use crate::target::ObjectFilter;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -1323,6 +1336,60 @@ mod tests {
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
         game.create_object_from_card(&card, controller, Zone::Battlefield)
+    }
+
+    #[test]
+    fn non_damage_triggering_object_is_tagged_without_becoming_an_announced_target() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Source", alice);
+        let triggering_object = create_creature(&mut game, "Triggering object", alice);
+        let triggering_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(triggering_object).expect("triggering object"),
+            &game,
+        );
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::ZoneChangeEvent::with_cause(
+                triggering_object,
+                Zone::Hand,
+                Zone::Battlefield,
+                EventCause::effect(),
+                Some(triggering_snapshot),
+            ),
+            ProvNodeId::default(),
+        );
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let ctx = ExecutionContext::new(source, alice, &mut dm).with_triggering_event(event);
+        let filter_ctx = ctx.filter_context(&game);
+
+        assert!(filter_ctx.target_objects.is_empty());
+        assert!(
+            filter_ctx
+                .tagged_objects
+                .get(&TagKey::from("triggering"))
+                .is_some_and(|snapshots| snapshots
+                    .iter()
+                    .any(|snapshot| snapshot.object_id == triggering_object))
+        );
+        let other_creature = ObjectFilter::creature().you_control().other();
+        assert!(!other_creature.matches(game.object(source).expect("source"), &filter_ctx, &game));
+        assert!(other_creature.matches(
+            game.object(triggering_object).expect("triggering object"),
+            &filter_ctx,
+            &game
+        ));
+
+        let explicitly_targeted = create_creature(&mut game, "Explicit target", alice);
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let targeted_ctx = ExecutionContext::new(source, alice, &mut dm)
+            .with_targets(vec![ResolvedTarget::Object(explicitly_targeted)]);
+        let filter_ctx = targeted_ctx.filter_context(&game);
+        assert!(!other_creature.matches(
+            game.object(explicitly_targeted).expect("explicit target"),
+            &filter_ctx,
+            &game
+        ));
+        assert!(other_creature.matches(game.object(source).expect("source"), &filter_ctx, &game));
     }
 
     #[test]

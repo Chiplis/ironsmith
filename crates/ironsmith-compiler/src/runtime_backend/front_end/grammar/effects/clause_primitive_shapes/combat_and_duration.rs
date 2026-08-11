@@ -9,8 +9,15 @@ pub(crate) enum CombatRequirementKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CombatRequirementDuration {
+    Turn,
+    Combat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CombatRequirementShape<'a> {
     pub(crate) kind: CombatRequirementKind,
+    pub(crate) duration: CombatRequirementDuration,
     pub(crate) subject_tokens: &'a [OwnedLexToken],
 }
 
@@ -43,29 +50,39 @@ pub(crate) enum TriggerClauseIntroShape {
     Step,
 }
 
-fn attack_or_block_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+fn attack_or_block_suffix<'a>(input: &mut LexStream<'a>) -> WResult<CombatRequirementDuration> {
     (
         alt((
-            primitives::phrase(&["attack", "or", "block", "this", "turn", "if", "able"]),
-            primitives::phrase(&["attacks", "or", "blocks", "this", "turn", "if", "able"]),
-            primitives::phrase(&["attacks", "or", "block", "this", "turn", "if", "able"]),
-            primitives::phrase(&["attack", "or", "blocks", "this", "turn", "if", "able"]),
+            primitives::phrase(&["attack", "or", "block"]),
+            primitives::phrase(&["attacks", "or", "blocks"]),
+            primitives::phrase(&["attacks", "or", "block"]),
+            primitives::phrase(&["attack", "or", "blocks"]),
         )),
+        alt((
+            primitives::phrase(&["this", "turn"]).value(CombatRequirementDuration::Turn),
+            primitives::phrase(&["this", "combat"]).value(CombatRequirementDuration::Combat),
+        )),
+        primitives::phrase(&["if", "able"]),
         primitives::sentence_end(),
     )
-        .void()
+        .map(|(_, duration, _, _)| duration)
         .parse_next(input)
 }
 
-fn attack_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+fn attack_suffix<'a>(input: &mut LexStream<'a>) -> WResult<CombatRequirementDuration> {
     (
         alt((
-            primitives::phrase(&["attack", "this", "turn", "if", "able"]),
-            primitives::phrase(&["attacks", "this", "turn", "if", "able"]),
+            primitives::phrase(&["attack"]),
+            primitives::phrase(&["attacks"]),
         )),
+        alt((
+            primitives::phrase(&["this", "turn"]).value(CombatRequirementDuration::Turn),
+            primitives::phrase(&["this", "combat"]).value(CombatRequirementDuration::Combat),
+        )),
+        primitives::phrase(&["if", "able"]),
         primitives::sentence_end(),
     )
-        .void()
+        .map(|(_, duration, _, _)| duration)
         .parse_next(input)
 }
 
@@ -88,34 +105,37 @@ fn combat_requirement<'a>(input: &mut LexStream<'a>) -> WResult<CombatRequiremen
     alt((
         |input: &mut LexStream<'a>| {
             let subject_tokens = repeat_till(0.., any.void(), peek(attack_or_block_suffix))
-                .map(|((), ())| ())
+                .map(|((), _)| ())
                 .take()
                 .parse_next(input)?;
-            attack_or_block_suffix.parse_next(input)?;
+            let duration = attack_or_block_suffix.parse_next(input)?;
             Ok(CombatRequirementShape {
                 kind: CombatRequirementKind::AttackOrBlock,
+                duration,
                 subject_tokens: trim_shape_edges(subject_tokens),
             })
         },
         |input: &mut LexStream<'a>| {
             let subject_tokens = repeat_till(0.., any.void(), peek(attack_suffix))
-                .map(|((), ())| ())
+                .map(|((), _)| ())
                 .take()
                 .parse_next(input)?;
-            attack_suffix.parse_next(input)?;
+            let duration = attack_suffix.parse_next(input)?;
             Ok(CombatRequirementShape {
                 kind: CombatRequirementKind::Attack,
+                duration,
                 subject_tokens: trim_shape_edges(subject_tokens),
             })
         },
         |input: &mut LexStream<'a>| {
             let subject_tokens = repeat_till(1.., any.void(), peek(must_be_blocked_suffix))
-                .map(|((), ())| ())
+                .map(|((), _duration)| ())
                 .take()
                 .parse_next(input)?;
             must_be_blocked_suffix.parse_next(input)?;
             Ok(CombatRequirementShape {
                 kind: CombatRequirementKind::MustBeBlocked,
+                duration: CombatRequirementDuration::Turn,
                 subject_tokens: trim_shape_edges(subject_tokens),
             })
         },
@@ -149,7 +169,7 @@ fn subject_blocks_this_turn<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockS
             .void()
     };
     let subject_tokens = repeat_till(1.., any.void(), peek(suffix()))
-        .map(|((), ())| ())
+        .map(|((), _duration)| ())
         .take()
         .parse_next(input)?;
     suffix().parse_next(input)?;

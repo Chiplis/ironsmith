@@ -22,8 +22,6 @@ impl WasmGame {
             self.trigger_queue = TriggerQueue::new();
             self.priority_state =
                 PriorityLoopState::new(self.game.priority_players_for_current_turn().len());
-            self.priority_state
-                .set_auto_choose_single_pip_payment(false);
         }
         self.runner_pending_decision = false;
         self.priority_epoch_checkpoint = None;
@@ -1181,6 +1179,9 @@ impl WasmGame {
         command: UiCommand,
     ) -> Result<ReplayDecisionAnswer, JsValue> {
         match (ctx, command) {
+            (DecisionContext::ManaPayment(_), UiCommand::ManaPayment { response }) => {
+                Ok(ReplayDecisionAnswer::ManaPayment(response.into_runtime()?))
+            }
             (DecisionContext::Boolean(_), UiCommand::SelectOptions { option_indices }) => {
                 validate_option_selection(1, Some(1), &option_indices, &[0usize, 1usize])?;
                 let choice = option_indices
@@ -1560,6 +1561,9 @@ impl WasmGame {
     ) -> Result<PriorityResponse, JsValue> {
         let command_kind = crate::ui_command_kind(&command);
         match (ctx, command) {
+            (DecisionContext::ManaPayment(_), UiCommand::ManaPayment { response }) => {
+                Ok(PriorityResponse::ManaPaymentPlan(response.into_runtime()?))
+            }
             (
                 DecisionContext::Priority(priority),
                 UiCommand::PriorityAction {
@@ -1856,25 +1860,15 @@ impl WasmGame {
             .is_some_and(|pending| {
                 matches!(
                     pending.stage,
-                    CastStage::ChoosingAssistPlayer
-                        | CastStage::ActivatingAssistManaAbilities
-                        | CastStage::ChoosingAssistContribution
-                        | CastStage::ActivatingManaAbilities
+                    CastStage::ChoosingAssistPlayer | CastStage::ChoosingAssistContribution
                 )
             })
         {
             let choice = option_indices
                 .first()
                 .copied()
-                .ok_or_else(|| JsValue::from_str("mana or Assist choice requires one option"))?;
-            return Ok(PriorityResponse::ManaPayment(choice));
-        }
-        if self.priority_state.pending_mana_ability.is_some() {
-            let choice = option_indices
-                .first()
-                .copied()
-                .ok_or_else(|| JsValue::from_str("mana payment choice requires one option"))?;
-            return Ok(PriorityResponse::ManaPayment(choice));
+                .ok_or_else(|| JsValue::from_str("Assist choice requires one option"))?;
+            return Ok(PriorityResponse::AssistChoice(choice));
         }
         if self
             .priority_state
@@ -1898,29 +1892,6 @@ impl WasmGame {
                 .ok_or_else(|| JsValue::from_str("next-cost choice requires one option"))?;
             return Ok(PriorityResponse::NextCostChoice(choice));
         }
-        if self
-            .priority_state
-            .pending_activation
-            .as_ref()
-            .is_some_and(|pending| matches!(pending.stage, ActivationStage::PayingMana))
-            || self
-                .priority_state
-                .pending_cast
-                .as_ref()
-                .is_some_and(|pending| {
-                    matches!(
-                        pending.stage,
-                        CastStage::PayingMana | CastStage::PayingAssistMana
-                    )
-                })
-        {
-            let choice = option_indices
-                .first()
-                .copied()
-                .ok_or_else(|| JsValue::from_str("mana pip payment requires one option"))?;
-            return Ok(PriorityResponse::ManaPipPayment(choice));
-        }
-
         let cast_stage = self
             .priority_state
             .pending_cast
@@ -2381,17 +2352,16 @@ mod live_action_rollback_tests {
             stack_spell_id,
         );
         pending.display_mana_pips = vec![vec![ManaSymbol::White]];
-        pending.remaining_mana_pips = vec![vec![ManaSymbol::White]];
         wasm.priority_state.pending_cast = Some(pending);
         wasm.pending_action_checkpoint = Some(pre_cast_checkpoint.clone());
         wasm.pending_decision = Some(DecisionContext::SelectOptions(
-            ironsmith::decisions::context::SelectOptionsContext::mana_pip_payment(
+            ironsmith::decisions::context::SelectOptionsContext::new(
                 alice,
-                stack_spell_id,
-                "White Probe",
-                "W",
+                Some(stack_spell_id),
+                "Confirm payment for White Probe",
+                vec![SelectableOption::new(0, "Confirm payment")],
                 1,
-                vec![SelectableOption::new(0, "Tap Colorless Rock: Add {C}{C}")],
+                1,
             ),
         ));
 

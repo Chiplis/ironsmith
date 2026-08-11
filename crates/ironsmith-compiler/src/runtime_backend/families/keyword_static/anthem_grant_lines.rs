@@ -55,6 +55,10 @@ fn first_spell_each_turn_subject_tokens(
     }
     filter.cast_by = Some(PlayerFilter::You);
     filter.first_spell_cast_each_turn = true;
+    filter.mana_from_source_spent_to_cast = parsed
+        .mana_source_tokens
+        .map(|tokens| parse_object_filter_lexed(tokens, false).map(Box::new))
+        .transpose()?;
     Ok(Some(AnthemSubjectAst::Filter(filter)))
 }
 
@@ -1006,9 +1010,24 @@ pub(crate) fn parse_granted_keyword_static_line(
 
     let mut keyword_tokens = tail_tokens.clone();
     let mut suffix_condition = None;
+    let mut suffix_condition_is_trailing_if = false;
     if let Some(split) = anthem_grant_grammar::split_trailing_as_long_as_clause(&tail_tokens) {
         keyword_tokens = split.keyword_tokens.to_vec();
         suffix_condition = Some(parse_static_condition_clause(split.condition_tokens)?);
+    } else if let Some(split) = anthem_grant_grammar::split_granted_ability_condition(
+        &tail_tokens,
+        anthem_grant_grammar::GrantedAbilityConditionKind::If,
+    ) {
+        keyword_tokens = split.ability_tokens.to_vec();
+        suffix_condition = Some(parse_static_condition_clause(split.condition_tokens)?);
+        suffix_condition_is_trailing_if = true;
+    } else if let Some(keyword_prefix) =
+        anthem_grant_grammar::split_trailing_during_your_turn_clause(&tail_tokens)
+    {
+        keyword_tokens = keyword_prefix.to_vec();
+        suffix_condition = Some(crate::ConditionExpr::ActivationTiming(
+            crate::ability::ActivationTiming::DuringYourTurn,
+        ));
     }
     if keyword_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -1049,6 +1068,11 @@ pub(crate) fn parse_granted_keyword_static_line(
             || is_granted_emerge_cost_tail(&trailing_clause_tokens))
     {
         return granted_emerge_abilities_from_subject(&subject_tokens, condition);
+    }
+    if keyword_kind == anthem_grant_grammar::GrantedKeywordTokenKind::Scavenge
+        && is_granted_scavenge_cost_tail(&trailing_clause_tokens)
+    {
+        return granted_scavenge_abilities_from_subject(&subject_tokens, condition);
     }
 
     if !trailing_clause_tokens.is_empty() {
@@ -1106,7 +1130,7 @@ pub(crate) fn parse_granted_keyword_static_line(
 
     let attached_subject_filter =
         infer_attached_subject_filter_from_condition_expr(condition.as_ref());
-    let subject = first_spell_each_turn_subject(&subject_tokens)
+    let mut subject = first_spell_each_turn_subject(&subject_tokens)
         .map(Ok)
         .unwrap_or_else(|| {
             parse_anthem_subject_with_attached_fallback(
@@ -1114,6 +1138,25 @@ pub(crate) fn parse_granted_keyword_static_line(
                 attached_subject_filter.as_ref(),
             )
         })?;
+    let mut condition = condition;
+    if suffix_condition_is_trailing_if
+        && let Some(crate::ConditionExpr::ValueComparison {
+            left:
+                crate::effect::Value::ManaFromSourceSpentToCastThisSpell {
+                    source_filter,
+                    include_source_noun: false,
+                    ..
+                },
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(1),
+        }) = condition.as_ref()
+        && let AnthemSubjectAst::Filter(filter) = &mut subject
+        && filter.mana_from_source_spent_to_cast.is_none()
+    {
+        filter.mana_from_source_spent_to_cast = Some(Box::new(source_filter.clone()));
+        filter.set_mana_source_spent_trailing_if_surface(true);
+        condition = None;
+    }
     let condition =
         condition.map(|condition| bind_attachment_condition_to_subject(condition, &subject));
 
@@ -1298,6 +1341,7 @@ pub(crate) fn parse_granted_keyword_static_line(
         condition,
         set_quantifier_surface: leading_set_quantifier_surface(&subject_tokens),
         count_uses_where_x: false,
+        additional_surface: false,
     };
     for (ability, display) in object_ability_grants {
         compiled.push(grant_object_ability_for_anthem_subject(
@@ -1643,9 +1687,14 @@ pub(crate) fn parse_lose_all_abilities_and_doesnt_untap_line(
         return Ok(None);
     };
     let remove_clause = trim_edge_punctuation_tokens(remove_clause);
-    if !is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(untap_clause) {
-        return Ok(None);
-    }
+    let untap_display =
+        if is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(untap_clause) {
+            "doesn't untap during its controller's untap step"
+        } else if is_dependent_cant_become_untapped_line_lexed(untap_clause) {
+            "can't become untapped"
+        } else {
+            return Ok(None);
+        };
 
     let Some(shape) = anthem_grant_grammar::parse_lose_all_abilities_shape(remove_clause) else {
         return Ok(None);
@@ -1685,7 +1734,7 @@ pub(crate) fn parse_lose_all_abilities_and_doesnt_untap_line(
         StaticAbility::remove_all_abilities(filter.clone()),
         StaticAbility::restriction(
             crate::effect::Restriction::untap(filter),
-            format!("{subject} doesn't untap during its controller's untap step"),
+            format!("{subject} {untap_display}"),
         ),
     ]))
 }
@@ -1868,6 +1917,8 @@ pub(crate) struct ParsedAnthemClause {
     /// Whether the scaling count was written as "where X is …" (vs "for each …")
     /// in the original oracle text. Surface hint preserved for rendering.
     pub(crate) count_uses_where_x: bool,
+    /// Whether the fixed modifier was authored as "an additional P/T".
+    pub(crate) additional_surface: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1902,6 +1953,10 @@ fn is_granted_blitz_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
 
 fn is_granted_emerge_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
     anthem_grant_grammar::parse_granted_emerge_cost_equals_mana(trailing_tokens)
+}
+
+fn is_granted_scavenge_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
+    anthem_grant_grammar::parse_granted_scavenge_cost_equals_mana(trailing_tokens)
 }
 
 fn normalize_granted_alternative_spell_filter(
@@ -1984,6 +2039,60 @@ fn granted_emerge_abilities_from_subject(
         abilities.push(ability);
     }
     Ok((!abilities.is_empty()).then_some(abilities))
+}
+
+fn granted_scavenge_abilities_from_subject(
+    subject_tokens: &[OwnedLexToken],
+    condition: Option<crate::ConditionExpr>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let subject = parse_anthem_subject(subject_tokens)?;
+    let AnthemSubjectAst::Filter(filter) = subject else {
+        return Ok(None);
+    };
+    // Scavenge itself functions from a graveyard. A grant scoped to a
+    // different zone would disappear before the granted ability could be
+    // activated, so do not claim that unrelated shape here.
+    if filter.zone != Some(Zone::Graveyard) {
+        return Ok(None);
+    }
+
+    let target = ChooseSpec::target(ChooseSpec::creature());
+    let ability = Ability {
+        kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            mana_cost: TotalCost::from_costs(vec![
+                crate::costs::Cost::dynamic_mana(
+                    ironsmith_core::DynamicManaCost::from_source_mana_cost(),
+                ),
+                crate::costs::Cost::exile_self(),
+            ]),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::put_counters(
+                    CounterType::PlusOnePlusOne,
+                    Value::SourcePower,
+                    target.clone(),
+                ),
+            ]),
+            choices: vec![target],
+            timing: crate::ability::ActivationTiming::SorcerySpeed,
+            additional_restrictions: Vec::new(),
+            activation_restrictions: Vec::new(),
+            mana_output: None,
+            activation_condition: None,
+            mana_usage_restrictions: Vec::new(),
+            is_loyalty_ability: false,
+        }),
+        functional_zones: vec![Zone::Graveyard],
+    };
+    let grant = StaticAbilityAst::GrantObjectAbility {
+        filter,
+        ability: parsed_ability_from_ability(ability),
+        display: "scavenge. The scavenge cost is equal to its mana cost".to_string(),
+        condition,
+    };
+    Ok(Some(vec![with_leading_set_quantifier_surface(
+        grant,
+        subject_tokens,
+    )]))
 }
 
 fn parse_keyword_and_subtype_addition_tail(
@@ -2170,6 +2279,7 @@ pub(crate) fn parse_anthem_subject(
         && (filter.in_combat_with_source
             || filter.attached_to_object.is_some()
             || filter.attached_to_player.is_some()
+            || filter.counters_put_on_this_turn.is_some()
             || !filter.characteristic_relations.is_empty())
     {
         return Ok(AnthemSubjectAst::Filter(filter.clone()));
@@ -2437,6 +2547,43 @@ pub(crate) fn parse_static_condition_clause(
     }
     let display = clause_words.join(" ");
 
+    // A trailing mana-source predicate on a granted spell ability is parsed
+    // initially as a condition, then moved onto the affected spell filter by
+    // the grant lowering below. Keep that exact typed value available here;
+    // otherwise the earlier broad grant rule errors before the per-spell
+    // provenance transfer can run.
+    if let Ok(crate::cards::builders::PredicateAst::ValueComparison {
+        left:
+            crate::effect::Value::ManaFromSourceSpentToCastThisSpell {
+                source_filter,
+                include_source_noun: false,
+                ..
+            },
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: crate::effect::Value::Fixed(1),
+    }) = crate::runtime_backend::grammar::filters::parse_condition_predicate_lexed(&tokens)
+    {
+        return Ok(crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::ManaFromSourceSpentToCastThisSpell {
+                source_filter,
+                include_source_noun: false,
+                reference: ironsmith_core::ManaSpentCastReferenceSurface::It,
+            },
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(1),
+        });
+    }
+
+    if let Some(condition) =
+        crate::runtime_backend::grammar::conditions::parse_removed_from_draft_condition(&tokens)
+    {
+        return Ok(crate::ConditionExpr::PlayerRemovedDraftCardMatching {
+            player: condition.player,
+            filter: condition.filter,
+            with_cards_named: condition.with_cards_named,
+        });
+    }
+
     if let Some(condition) = parse_negated_subject_descriptor_condition(&tokens) {
         return Ok(condition);
     }
@@ -2458,9 +2605,9 @@ pub(crate) fn parse_static_condition_clause(
     if let Some(kind) = anthem_grant_grammar::parse_fixed_static_condition_kind(&tokens) {
         use anthem_grant_grammar::FixedStaticConditionKind;
         return match kind {
-            FixedStaticConditionKind::SourceIsEquipped => {
-                Ok(crate::ConditionExpr::SourceIsEquipped)
-            }
+            FixedStaticConditionKind::SourceEquipmentAttachedToCreature => Ok(
+                crate::ConditionExpr::AttachedToSourceMatches(ObjectFilter::creature()),
+            ),
             FixedStaticConditionKind::SourceSpellWasKicked => {
                 Ok(crate::ConditionExpr::ThisSpellWasKicked)
             }
@@ -2493,6 +2640,9 @@ pub(crate) fn parse_static_condition_clause(
             FixedStaticConditionKind::SourceIsOnBattlefield => {
                 Ok(crate::ConditionExpr::SourceIsInZone(Zone::Battlefield))
             }
+            FixedStaticConditionKind::SourceIsNotOnBattlefield => Ok(crate::ConditionExpr::Not(
+                Box::new(crate::ConditionExpr::SourceIsInZone(Zone::Battlefield)),
+            )),
             FixedStaticConditionKind::SourceDevouredCreature => {
                 Ok(crate::ConditionExpr::SourceDevouredCreaturesOrMore(1))
             }
@@ -2784,13 +2934,31 @@ pub(crate) fn parse_static_condition_clause(
 
     match anthem_grant_grammar::parse_source_counter_condition(&tokens) {
         Ok(Some(shape)) => {
-            let mut filter = ObjectFilter::source();
-            filter.with_counter = Some(match shape.counter_type {
-                Some(counter_type) => crate::filter::CounterConstraint::Typed(counter_type),
-                None => crate::filter::CounterConstraint::Any,
-            });
+            let Some(counter_type) = shape.counter_type else {
+                let Some((operator, value)) =
+                    crate::runtime_backend::util::comparison_to_value_comparison_operator(
+                        shape.comparison,
+                    )
+                else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported total-counter comparison (clause: '{display}')"
+                    )));
+                };
+                return Ok(crate::ConditionExpr::ValueComparison {
+                    left: Value::CountersOn(Box::new(ChooseSpec::Source), None),
+                    operator,
+                    right: Value::Fixed(value),
+                });
+            };
+            let count = shape.pronoun.map_or(
+                AnthemCountExpression::CountersOnSource(counter_type),
+                |pronoun| AnthemCountExpression::CountersOnSourceWithPronoun {
+                    counter_type,
+                    pronoun,
+                },
+            );
             return Ok(crate::ConditionExpr::CountComparison {
-                count: AnthemCountExpression::MatchingFilter(filter),
+                count,
                 comparison: shape.comparison,
                 display: Some(display.clone()),
             });
@@ -3413,6 +3581,14 @@ pub(crate) fn parse_anthem_clause(
                     {
                         if matches!(value.unhinted(), Value::PartySize(_))
                             || matches!(value.unhinted(), Value::CountersOn(_, None))
+                            || matches!(
+                                value.unhinted(),
+                                Value::ColorsAmong(_)
+                                    | Value::ColorPairsAmong(_)
+                                    | Value::CardTypesAmong(_)
+                                    | Value::DistinctNames(_)
+                                    | Value::DistinctPowers(_)
+                            )
                         {
                             value_scale = Some(
                                 value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
@@ -3611,6 +3787,14 @@ pub(crate) fn parse_anthem_clause(
     }
 
     parser_trace_stack("parse_static:anthem-clause:matched", tokens);
+    let modifier_words = crate::runtime_backend::token_word_refs(
+        tokens.get(get_idx + 1..tail_end).unwrap_or_default(),
+    );
+    let additional_surface = modifier_shape.additional_surface
+        || modifier_words
+            .windows(2)
+            .any(|words| words == ["a", "additional"] || words == ["an", "additional"]);
+
     Ok(ParsedAnthemClause {
         subject,
         power,
@@ -3618,6 +3802,7 @@ pub(crate) fn parse_anthem_clause(
         condition,
         set_quantifier_surface,
         count_uses_where_x,
+        additional_surface,
     })
 }
 
@@ -3717,7 +3902,8 @@ fn build_anthem(clause: &ParsedAnthemClause) -> Anthem {
     }
     .with_values(clause.power.clone(), clause.toughness.clone())
     .with_set_quantifier_surface(clause.set_quantifier_surface)
-    .with_count_uses_where_x(clause.count_uses_where_x);
+    .with_count_uses_where_x(clause.count_uses_where_x)
+    .with_additional_surface(clause.additional_surface);
 
     if let Some(condition) = &clause.condition {
         anthem = anthem.with_condition(condition.clone());
@@ -4052,6 +4238,7 @@ pub(crate) fn parse_carried_subject_type_addition_line(
         condition: None,
         set_quantifier_surface: None,
         count_uses_where_x: false,
+        additional_surface: false,
     };
     push_type_color_additions_for_anthem_subject(&mut result, &clause, additions);
     Ok(Some(result))
@@ -4070,6 +4257,7 @@ fn fixed_anthem_clause(
         condition,
         set_quantifier_surface: None,
         count_uses_where_x: false,
+        additional_surface: false,
     }
 }
 
@@ -4077,6 +4265,71 @@ fn fixed_anthem_clause(
 mod dynamic_anthem_tests {
     use super::*;
     use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn trailing_during_your_turn_keeps_a_typed_keyword_condition() {
+        let tokens = lex_line("This creature has first strike during your turn.", 0)
+            .expect("trailing turn condition should lex");
+        let abilities = parse_granted_keyword_static_line(&tokens)
+            .expect("trailing turn condition should parse")
+            .expect("granted-keyword parser should match");
+
+        assert!(matches!(
+            abilities.as_slice(),
+            [StaticAbilityAst::ConditionalKeywordAction {
+                action: KeywordAction::FirstStrike,
+                condition: crate::ConditionExpr::ActivationTiming(
+                    crate::ability::ActivationTiming::DuringYourTurn
+                ),
+            }]
+        ));
+
+        let broad = super::parse_filter_has_granted_ability_line(&tokens)
+            .expect("broad grant parser should not reject the trailing timing clause")
+            .expect("broad grant parser should recognize the source keyword grant");
+        assert!(
+            format!("{broad:#?}").contains("DuringYourTurn"),
+            "the broad static grant route must preserve the same timing condition: {broad:#?}"
+        );
+
+        let routed = super::parse_static_ability_ast_line_lexed(&tokens)
+            .expect("static-line router should accept the grant")
+            .expect("static-line router should claim the grant");
+        assert!(
+            format!("{routed:#?}").contains("DuringYourTurn"),
+            "the winning static-line route must preserve the timing condition: {routed:#?}"
+        );
+    }
+
+    #[test]
+    fn kid_loki_hexproof_grant_keeps_counter_placement_history_filter() {
+        let tokens = lex_line(
+            "Each creature you control that you've put one or more +1/+1 counters on this turn has hexproof.",
+            0,
+        )
+        .expect("Kid Loki static line should lex");
+        let abilities = parse_granted_keyword_static_line(&tokens)
+            .expect("Kid Loki static line should parse")
+            .expect("granted-keyword parser should match");
+        let [
+            StaticAbilityAst::GrantKeywordAction {
+                filter,
+                action: KeywordAction::Hexproof,
+                condition: None,
+            },
+        ] = abilities.as_slice()
+        else {
+            panic!("expected one typed hexproof grant: {abilities:#?}");
+        };
+
+        let constraint = filter
+            .counters_put_on_this_turn
+            .as_ref()
+            .expect("counter placement history must survive anthem subject parsing");
+        assert_eq!(constraint.counter_type, Some(CounterType::PlusOnePlusOne));
+        assert_eq!(constraint.source_controller, PlayerFilter::You);
+        assert_eq!(constraint.minimum, 1);
+    }
 
     #[test]
     fn first_spell_cast_from_zone_grant_keeps_typed_turn_and_origin_filter() {
@@ -4103,6 +4356,89 @@ mod dynamic_anthem_tests {
         assert_eq!(filter.cast_by, Some(PlayerFilter::You));
         assert!(filter.has_mana_cost);
         assert!(filter.first_spell_cast_each_turn);
+    }
+
+    #[test]
+    fn first_spell_cast_with_mana_source_keeps_typed_provenance_filter() {
+        let tokens = lex_line(
+            "The first spell you cast each turn that mana from a Treasure was spent to cast has cascade.",
+            0,
+        )
+        .expect("first-spell mana-source grant should lex");
+        let abilities = parse_granted_keyword_static_line(&tokens)
+            .expect("first-spell mana-source grant should parse")
+            .expect("granted-keyword parser should match");
+        let [
+            StaticAbilityAst::GrantKeywordAction {
+                filter,
+                action: KeywordAction::Cascade,
+                condition: None,
+            },
+        ] = abilities.as_slice()
+        else {
+            panic!("expected one typed cascade grant: {abilities:#?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Stack));
+        assert_eq!(filter.cast_by, Some(PlayerFilter::You));
+        assert!(filter.first_spell_cast_each_turn);
+        let mana_source = filter
+            .mana_from_source_spent_to_cast
+            .as_deref()
+            .expect("mana-source predicate should be retained");
+        assert_eq!(mana_source.subtypes, [crate::types::Subtype::Treasure]);
+        assert!(filter.subtypes.is_empty(), "{filter:#?}");
+    }
+
+    #[test]
+    fn winning_keyword_grant_route_moves_trailing_mana_source_predicate_into_spell_filter() {
+        fn grant<'a>(ability: &'a StaticAbilityAst) -> Option<(&'a ObjectFilter, bool)> {
+            match ability {
+                StaticAbilityAst::WithSetQuantifierSurface { ability, .. } => grant(ability),
+                StaticAbilityAst::GrantKeywordAction {
+                    filter, condition, ..
+                } => Some((filter, condition.is_some())),
+                _ => None,
+            }
+        }
+
+        let tokens = lex_line(
+            "Each spell you cast has split second if mana from an artifact was spent to cast it.",
+            0,
+        )
+        .expect("mana-qualified keyword grant should lex");
+        let routed = super::parse_static_ability_ast_line_lexed(&tokens)
+            .expect("static router should accept the grant")
+            .expect("static router should claim the grant");
+        let (filter, has_condition) = routed
+            .iter()
+            .find_map(grant)
+            .expect("winning route should keep a typed affected-spell grant");
+        assert!(
+            !has_condition,
+            "the per-spell predicate is not a source condition"
+        );
+        let mana_source = filter
+            .mana_from_source_spent_to_cast
+            .as_deref()
+            .expect("artifact-mana provenance should qualify the affected spell");
+        assert_eq!(mana_source.card_types, [CardType::Artifact]);
+        assert!(filter.has_mana_source_spent_trailing_if_surface());
+
+        let near_miss = lex_line(
+            "Each spell you cast has split second if you control an artifact.",
+            0,
+        )
+        .expect("ordinary source-condition near miss should lex");
+        let routed = super::parse_static_ability_ast_line_lexed(&near_miss)
+            .expect("ordinary conditional grant should remain parseable")
+            .expect("ordinary conditional grant should be claimed");
+        let (filter, has_condition) = routed
+            .iter()
+            .find_map(grant)
+            .expect("near miss should remain a typed grant");
+        assert!(has_condition, "ordinary conditions must stay on the grant");
+        assert!(filter.mana_from_source_spent_to_cast.is_none());
     }
 
     #[test]
@@ -4206,6 +4542,52 @@ mod dynamic_anthem_tests {
                 .iter()
                 .any(|constraint| constraint.tag.as_str() == "enchanted"),
             "{remove_filter:#?}"
+        );
+    }
+
+    #[test]
+    fn ability_loss_and_cant_become_untapped_share_the_original_typed_subject() {
+        let tokens = lex_line(
+            "Enchanted creature loses all abilities and can't become untapped.",
+            0,
+        )
+        .expect("compound attached restriction fixture should lex");
+        let abilities = parse_lose_all_abilities_and_doesnt_untap_line(&tokens)
+            .expect("compound attached restriction should parse")
+            .expect("compound parser should match");
+        let [remove, untap] = abilities.as_slice() else {
+            panic!("expected exactly two typed static abilities: {abilities:#?}");
+        };
+        let ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(remove_filter) =
+            &remove.payload
+        else {
+            panic!("expected typed ability removal: {remove:#?}");
+        };
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+            restriction: crate::effect::Restriction::Untap(untap_filter),
+            display,
+            ..
+        } = &untap.payload
+        else {
+            panic!("expected typed untap restriction: {untap:#?}");
+        };
+        assert_eq!(remove_filter, untap_filter);
+        assert_eq!(display, "Enchanted creature can't become untapped");
+    }
+
+    #[test]
+    fn ability_loss_and_cant_become_untapped_rejects_a_second_authored_subject() {
+        let tokens = lex_line(
+            "Enchanted creature loses all abilities and target creature can't become untapped.",
+            0,
+        )
+        .expect("near-miss compound restriction fixture should lex");
+
+        assert!(
+            parse_lose_all_abilities_and_doesnt_untap_line(&tokens)
+                .expect("near-miss compound restriction should be non-fatal")
+                .is_none(),
+            "the shared-filter parser must require a dependent second predicate"
         );
     }
 
@@ -4335,6 +4717,35 @@ mod dynamic_anthem_tests {
         assert!(power.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
         assert_eq!(power.unhinted(), &Value::PartySize(PlayerFilter::You));
         assert_eq!(clause.toughness, AnthemValue::Fixed(0));
+    }
+
+    #[test]
+    fn color_aggregate_scaled_anthem_keeps_typed_color_count() {
+        let clause = parse_clause(
+            "Equipped creature gets +1/+1 for each color among permanents you control.",
+        );
+
+        for value in [&clause.power, &clause.toughness] {
+            let AnthemValue::Dynamic(value) = value else {
+                panic!("expected dynamic color aggregate, got {value:#?}");
+            };
+            assert!(value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+            let Value::ColorsAmong(filter) = value.unhinted() else {
+                panic!("expected typed colors-among value, got {value:#?}");
+            };
+            assert_eq!(filter.controller, Some(PlayerFilter::You));
+            assert!(
+                filter
+                    .card_types
+                    .contains(&crate::types::CardType::Artifact)
+            );
+            assert!(
+                filter
+                    .card_types
+                    .contains(&crate::types::CardType::Creature)
+            );
+            assert!(filter.card_types.contains(&crate::types::CardType::Land));
+        }
     }
 
     #[test]

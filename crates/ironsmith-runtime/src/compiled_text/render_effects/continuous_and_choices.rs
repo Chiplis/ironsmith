@@ -1840,8 +1840,9 @@ pub(crate) fn describe_look_at_top_then_reveal_put_matching_into_hand_rest_grave
             "Reveal the top {count_text} {noun} of {owner} library and put all of them with that name into {owner} hand. Put the rest into {owner} graveyard"
         ));
     }
-    let matching =
-        pluralize_noun_phrase(&describe_search_selection_with_cards(&filter.description()));
+    let matching = pluralize_noun_phrase(&describe_revealed_selection_with_cards(
+        &filter.description(),
+    ));
 
     Some(format!(
         "Reveal the top {count_text} {noun} of {owner} library. Put all {matching} revealed this way into {owner} hand and the rest into {owner} graveyard"
@@ -1928,8 +1929,9 @@ pub(crate) fn describe_look_at_top_then_reveal_put_matching_into_hand_rest_botto
     if look_at_top.player == PlayerFilter::IteratedPlayer {
         count_text = count_text.replace("that player controls", "they control");
     }
-    let matching =
-        pluralize_noun_phrase(&describe_search_selection_with_cards(&filter.description()));
+    let matching = pluralize_noun_phrase(&describe_revealed_selection_with_cards(
+        &filter.description(),
+    ));
     let order_text = match remainder.order {
         crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
         crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
@@ -2560,7 +2562,7 @@ pub(crate) fn describe_draw_then_lose_life(
     }
     if let Value::Fixed(amount) = draw.count.unhinted() {
         return Some(format!(
-            "You draw {} and lose {amount} life",
+            "You draw {} and you lose {amount} life",
             describe_card_count(&draw.count)
         ));
     }
@@ -2637,7 +2639,19 @@ pub(super) fn describe_target_player_lose_then_you_gain_life(
     if lose.amount == Value::X {
         return Some("Target player loses X life and you gain X life".to_string());
     }
-    let where_x = describe_where_x_basis(&lose.amount)?;
+    let where_x = match lose.amount.unhinted() {
+        Value::PowerOf(spec)
+            if matches!(spec.unhinted(), ChooseSpec::Tagged(_))
+                && matches!(
+                    spec.source_reference_surface(),
+                    Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface))
+                        if surface.eq_ignore_ascii_case("it")
+                ) =>
+        {
+            "its power".to_string()
+        }
+        _ => describe_where_x_basis(&lose.amount)?,
+    };
     Some(format!(
         "Target player loses X life and you gain X life, where X is {where_x}"
     ))
@@ -2996,7 +3010,7 @@ fn describe_put_milled_cards_clause(
         if may { " may" } else { "" },
         if return_verb_surface { "return" } else { "put" },
         if explicit_milled_reference {
-            "the milled cards"
+            "the cards milled this way"
         } else {
             "them"
         }
@@ -3944,6 +3958,85 @@ pub(crate) fn describe_search_reveal_conditional_may_battlefield_else_hand_then_
     ))
 }
 
+pub(crate) fn describe_search_conditional_may_battlefield_else_hand_then_shuffle(
+    choose: &crate::effects::ChooseObjectsEffect,
+    conditional: &crate::effects::ConditionalEffect,
+    shuffle: &crate::effects::ShuffleLibraryEffect,
+) -> Option<String> {
+    if !choose.is_search
+        || choose.reveal
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+        || choose.count.dynamic_x
+        || choose.count_value.is_some()
+        || choose.aggregate_constraint.is_some()
+        || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+    {
+        return None;
+    }
+    let Condition::TaggedObjectMatches(tag, _) = &conditional.condition else {
+        return None;
+    };
+    if tag != &choose.tag {
+        return None;
+    }
+    let [may_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|decider| *decider != PlayerFilter::You)
+    {
+        return None;
+    }
+    let battlefield_move =
+        conditional_search_branch_move(&may.effects, Zone::Battlefield, choose.tag.as_str())?;
+    let hand_move =
+        conditional_search_branch_move(&conditional.if_false, Zone::Hand, choose.tag.as_str())?;
+    if battlefield_move.enters_tapped
+        || battlefield_move.enters_face_down
+        || hand_move.to_top
+        || hand_move.enters_face_down
+    {
+        return None;
+    }
+
+    let search_owner_filter = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
+    if shuffle.player != *search_owner_filter {
+        return None;
+    }
+    let search_origin = describe_search_origin_zones(choose)?;
+    let searched_library =
+        choose_search_zones(choose).is_some_and(|zones| zones.contains(&Zone::Library));
+    let mut display_filter = choose.filter.clone();
+    display_filter.owner = None;
+    if searched_library && display_filter.zone == Some(Zone::Library) {
+        display_filter.zone = None;
+    }
+    let raw_filter_text = if display_filter == ObjectFilter::default() {
+        "card".to_string()
+    } else {
+        normalize_search_descriptor_for_origin(&display_filter.description(), searched_library)
+    };
+    let selection = describe_search_selection_with_cards_preserving_where(
+        &describe_search_selection_from_filter_text(choose, &raw_filter_text),
+    );
+    let condition =
+        describe_condition_for_searched_card(&conditional.condition, choose.tag.as_str());
+    let owner_possessive = describe_possessive_player_filter(search_owner_filter);
+    let battlefield_clause =
+        describe_conditional_search_move_clause(battlefield_move, "it", &owner_possessive)?;
+    let hand_clause =
+        describe_conditional_search_move_clause(hand_move, "that card", &owner_possessive)?;
+
+    Some(format!(
+        "Search {search_origin} for {selection}. If {condition}, you may {battlefield_clause}. Otherwise, {hand_clause}. Then shuffle"
+    ))
+}
+
 pub(super) fn describe_condition_for_searched_card(
     condition: &Condition,
     searched_tag: &str,
@@ -3961,6 +4054,12 @@ pub(super) fn describe_condition_for_searched_card(
         }
         if stripped == "creature" {
             return "it's a creature card".to_string();
+        }
+        if matches!(
+            stripped.as_str(),
+            "artifact" | "battle" | "enchantment" | "instant" | "planeswalker" | "sorcery"
+        ) {
+            return format!("it's a {stripped} card");
         }
     }
     describe_condition(condition)
@@ -4283,6 +4382,66 @@ pub(crate) fn describe_may_search_choose_for_each_with_shuffle(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn mill_selection(
+        prior_action: Option<crate::effect::PriorEffectAction>,
+    ) -> (
+        crate::effects::MillEffect,
+        crate::effects::ChooseObjectsEffect,
+        crate::effects::ForEachTaggedEffect,
+    ) {
+        let source_tag = TagKey::from("milled_0");
+        let chosen_tag = TagKey::from("chosen_0");
+        let mill = crate::effects::MillEffect::new(4, PlayerFilter::You);
+        let mut filter = ObjectFilter::permanent_card().in_zone(Zone::Graveyard);
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: source_tag,
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        filter.set_prior_effect_action_surface(prior_action);
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::up_to(1),
+            PlayerFilter::You,
+            chosen_tag.clone(),
+        )
+        .in_zone(Zone::Graveyard);
+        let move_chosen = crate::effects::ForEachTaggedEffect::new(
+            chosen_tag,
+            vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Iterated,
+                Zone::Hand,
+                false,
+            ))],
+        );
+        (mill, choose, move_chosen)
+    }
+
+    #[test]
+    fn authored_milled_backlink_uses_cards_milled_this_way_surface() {
+        let (mill, choose, move_chosen) =
+            mill_selection(Some(crate::effect::PriorEffectAction::Milled));
+
+        assert_eq!(
+            describe_put_milled_cards_clause("milled_0", &mill, &[&choose], &move_chosen),
+            Some(
+                "You may put a permanent card from among the cards milled this way into your hand"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn generic_tagged_collection_does_not_inherit_authored_milled_backlink() {
+        let (mill, choose, move_chosen) = mill_selection(None);
+
+        assert_eq!(
+            describe_put_milled_cards_clause("milled_0", &mill, &[&choose], &move_chosen),
+            Some("You may put a permanent card from among them into your hand".to_string())
+        );
+    }
 
     #[test]
     fn looked_battlefield_selection_factors_land_or_legendary_permanent_qualifiers() {

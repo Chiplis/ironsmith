@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::color::ColorSet;
-use crate::types::{CardType, Subtype};
+use crate::types::{CardType, Subtype, SubtypeFamily};
 
 use super::super::{leaf, primitives};
 
@@ -43,6 +43,12 @@ pub(crate) struct ChoiceSimpleTypePhrase {
 pub(crate) struct ChoiceLandTypePhrase {
     pub(crate) consumed: usize,
     pub(crate) exclude_basic: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChoiceSubtypeFamilyPhrase {
+    pub(crate) consumed: usize,
+    pub(crate) family: SubtypeFamily,
 }
 
 pub(crate) fn parse_choice_creature_type_phrase_words(
@@ -201,6 +207,30 @@ pub(crate) fn parse_choice_land_type_phrase_words(words: &[&str]) -> Option<Choi
     })
 }
 
+pub(crate) fn parse_choice_subtype_family_phrase_words(
+    words: &[&str],
+) -> Option<ChoiceSubtypeFamilyPhrase> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_choose_prefix(&mut input).ok()?;
+    let family = match take_word(&mut input).ok()? {
+        "land" => SubtypeFamily::Land,
+        "creature" => SubtypeFamily::Creature,
+        "artifact" => SubtypeFamily::Artifact,
+        "enchantment" => SubtypeFamily::Enchantment,
+        "spell" => SubtypeFamily::Spell,
+        "planeswalker" => SubtypeFamily::Planeswalker,
+        "battle" => SubtypeFamily::Battle,
+        _ => return None,
+    };
+    primitives::word_slice_exact("type")
+        .parse_next(&mut input)
+        .ok()?;
+    Some(ChoiceSubtypeFamilyPhrase {
+        consumed: words.len().saturating_sub(input.len()),
+        family,
+    })
+}
+
 fn parse_simple_choice_phrase(
     words: &[&str],
     phrase: &'static [&'static str],
@@ -306,5 +336,21 @@ mod tests {
             parse_choice_land_type_phrase_words(&["choose", "a", "land", "type", "now"]).unwrap();
         assert_eq!(unrestricted.consumed, 4);
         assert!(!unrestricted.exclude_basic);
+
+        let planeswalker = parse_choice_subtype_family_phrase_words(&[
+            "choose",
+            "a",
+            "planeswalker",
+            "type",
+            "now",
+        ])
+        .unwrap();
+        assert_eq!(planeswalker.consumed, 4);
+        assert_eq!(planeswalker.family, SubtypeFamily::Planeswalker);
+        assert_eq!(
+            parse_choice_subtype_family_phrase_words(&["choose", "a", "planeswalker"]),
+            None,
+            "choosing a planeswalker object is not choosing a planeswalker type"
+        );
     }
 }

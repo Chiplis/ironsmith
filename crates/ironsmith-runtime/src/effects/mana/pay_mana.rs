@@ -1,8 +1,6 @@
 //! Pay mana effect implementation.
 
-use crate::ability::ActivatedAbilityRuntimeExt as _;
-use crate::decision::{DecisionMaker, FallbackStrategy};
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+use crate::decision::FallbackStrategy;
 use crate::decisions::{XValueSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
@@ -10,7 +8,6 @@ use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::special_actions::{SpecialAction, can_perform, perform};
 use crate::target::{ChooseSpec, PlayerFilter};
 
 /// Effect that asks a player to pay a mana cost.
@@ -25,6 +22,22 @@ fn payment_reason(ctx: &ExecutionContext<'_>) -> crate::costs::PaymentReason {
         .unwrap_or(crate::costs::PaymentReason::Effect)
 }
 
+fn planner_request(
+    game: &GameState,
+    player_id: PlayerId,
+    source: ObjectId,
+    cost: crate::mana::ManaCost,
+    x_value: u32,
+    reason: crate::costs::PaymentReason,
+) -> crate::mana_payment::ManaPaymentRequest {
+    let mut request = crate::mana_payment::ManaPaymentRequest::new(player_id, source, reason, cost)
+        .with_x(x_value)
+        .with_spend_policy(game.mana_spend_policy(player_id, Some(source)));
+    request.allow_black_life = crate::decision::mana_cost_has_black_symbol(&request.cost)
+        && game.player_can_pay_black_with_life_for_reason(player_id, Some(source), reason);
+    request
+}
+
 fn try_pay_interactively(
     effect: &PayManaEffect,
     game: &mut GameState,
@@ -32,120 +45,68 @@ fn try_pay_interactively(
     player_id: PlayerId,
     x_value: u32,
 ) -> Result<bool, ExecutionError> {
-    const MAX_PAYMENT_STEPS: usize = 32;
+    const MAX_REPLANS: usize = 16;
     let payment_reason = payment_reason(ctx);
-
-    for _ in 0..MAX_PAYMENT_STEPS {
-        let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
-            player_id,
-            Some(ctx.source),
-            &effect.cost,
-            payment_reason,
-        );
-        let can_pay_now = game.can_pay_mana_cost_with_reason(
-            player_id,
-            Some(ctx.source),
-            &adjusted_cost,
-            x_value,
-            payment_reason,
-        );
-        let mana_abilities = get_available_mana_abilities(game, player_id, &mut ctx.decision_maker);
-
-        if !can_pay_now && mana_abilities.is_empty() {
-            return Ok(false);
-        }
-        let mut choices = Vec::new();
-        let mut options = Vec::new();
-
-        if can_pay_now {
-            choices.push(PayManaChoice::PayNow);
-            options.push(SelectableOption::new(choices.len() - 1, "Pay mana cost"));
-        }
-
-        for (permanent_id, ability_index, description) in mana_abilities {
-            choices.push(PayManaChoice::ActivateManaAbility {
-                permanent_id,
-                ability_index,
-            });
-            options.push(SelectableOption::new(
-                choices.len() - 1,
-                format!(
-                    "Tap {}: {}",
-                    describe_permanent(game, permanent_id),
-                    description
-                ),
-            ));
-        }
-
-        if choices.is_empty() {
-            return Ok(false);
-        }
-
-        let source_name = game
-            .object(ctx.source)
-            .map(|obj| obj.name.to_string())
-            .unwrap_or_else(|| "effect".to_string());
-        let decision_ctx =
-            SelectOptionsContext::mana_payment(player_id, ctx.source, source_name, options);
-        let selected = ctx.decision_maker.decide_options(game, &decision_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(false);
-        }
-        let Some(selected_idx) = selected.first().copied() else {
-            if can_pay_now {
-                return Ok(game.try_pay_mana_cost_with_reason(
-                    player_id,
-                    Some(ctx.source),
-                    &adjusted_cost,
-                    x_value,
-                    payment_reason,
-                ));
-            }
-            return Ok(false);
-        };
-        let Some(choice) = choices.get(selected_idx).copied() else {
-            return Ok(false);
-        };
-
-        match choice {
-            PayManaChoice::PayNow => {
-                return Ok(game.try_pay_mana_cost_with_reason(
-                    player_id,
-                    Some(ctx.source),
-                    &adjusted_cost,
-                    x_value,
-                    payment_reason,
-                ));
-            }
-            PayManaChoice::ActivateManaAbility {
-                permanent_id,
-                ability_index,
-            } => {
-                let action = SpecialAction::ActivateManaAbility {
-                    permanent_id,
-                    ability_index,
-                };
-
-                if perform(action, game, player_id, &mut ctx.decision_maker).is_err() {
-                    return Ok(false);
-                }
-            }
-        }
-    }
-
     let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
         player_id,
         Some(ctx.source),
         &effect.cost,
         payment_reason,
     );
-    Ok(game.try_pay_mana_cost_with_reason(
+    let mut request = planner_request(
+        game,
         player_id,
-        Some(ctx.source),
-        &adjusted_cost,
+        ctx.source,
+        adjusted_cost,
         x_value,
         payment_reason,
-    ))
+    );
+    for _ in 0..MAX_REPLANS {
+        let Some(plan) = crate::mana_payment::plan_mana_payment(game, &request)
+            .ok()
+            .and_then(|plans| plans.into_iter().next())
+        else {
+            return Ok(false);
+        };
+        let subject = game
+            .object(ctx.source)
+            .map(|object| object.name.to_string())
+            .unwrap_or_else(|| "effect".to_string());
+        let decision = crate::decisions::context::ManaPaymentContext::new(
+            player_id,
+            ctx.source,
+            subject,
+            request.clone(),
+            plan.clone(),
+        );
+        let response = ctx.decision_maker.decide_mana_payment(game, &decision);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(false);
+        }
+        match response {
+            crate::mana_payment::ManaPaymentResponse::Cancel => return Ok(false),
+            crate::mana_payment::ManaPaymentResponse::Replan { mut preferences } => {
+                preferences.normalize();
+                request.preferences = preferences;
+            }
+            crate::mana_payment::ManaPaymentResponse::Confirm {
+                plan_id,
+                request_hash,
+            } if plan_id == plan.id && request_hash == plan.request_hash => {
+                return Ok(matches!(
+                    crate::mana_payment::execute_mana_payment_plan(
+                        game,
+                        &request,
+                        &plan,
+                        &mut ctx.decision_maker,
+                    ),
+                    Ok(crate::mana_payment::ManaPaymentExecution::Paid)
+                ));
+            }
+            crate::mana_payment::ManaPaymentResponse::Confirm { .. } => return Ok(false),
+        }
+    }
+    Ok(false)
 }
 
 fn maximum_affordable_bounded_x(
@@ -158,15 +119,16 @@ fn maximum_affordable_bounded_x(
     let reason = payment_reason(ctx);
     let adjusted_cost =
         game.adjust_mana_cost_for_payment_reason(player_id, Some(ctx.source), &effect.cost, reason);
-    let view = crate::derived_view::DerivedGameView::new(game);
     let can_pay = |x_value| {
-        view.can_potentially_pay_with_reason(
+        let request = planner_request(
+            game,
             player_id,
-            Some(ctx.source),
-            &adjusted_cost,
+            ctx.source,
+            adjusted_cost.clone(),
             x_value,
             reason,
-        )
+        );
+        crate::mana_payment::plan_mana_payment(game, &request).is_ok()
     };
     if !can_pay(0) {
         return None;
@@ -295,13 +257,15 @@ impl CostExecutableEffect for PayManaEffect {
                 .unwrap_or(0)
                 .max(0) as u32
         };
-        if game.can_pay_mana_cost_with_reason(
+        let request = planner_request(
+            game,
             player_id,
-            Some(source),
-            &adjusted_cost,
+            source,
+            adjusted_cost,
             x_value,
             crate::costs::PaymentReason::Effect,
-        ) {
+        );
+        if crate::mana_payment::plan_mana_payment(game, &request).is_ok() {
             Ok(())
         } else {
             Err(CostValidationError::Other(
@@ -309,99 +273,6 @@ impl CostExecutableEffect for PayManaEffect {
             ))
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PayManaChoice {
-    PayNow,
-    ActivateManaAbility {
-        permanent_id: ObjectId,
-        ability_index: usize,
-    },
-}
-
-fn get_available_mana_abilities(
-    game: &GameState,
-    player: PlayerId,
-    decision_maker: &mut &mut dyn DecisionMaker,
-) -> Vec<(ObjectId, usize, String)> {
-    let mut abilities = Vec::new();
-
-    for &permanent_id in &game.battlefield {
-        let Some(permanent) = game.object(permanent_id) else {
-            continue;
-        };
-
-        if game.controller_of(permanent) != player {
-            continue;
-        }
-
-        for (ability_index, ability) in permanent.abilities.iter().enumerate() {
-            let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind else {
-                continue;
-            };
-            if !mana_ability.is_runtime_mana_ability(game, permanent_id, player) {
-                continue;
-            }
-
-            let action = SpecialAction::ActivateManaAbility {
-                permanent_id,
-                ability_index,
-            };
-            if can_perform(&action, game, player, decision_maker).is_err() {
-                continue;
-            }
-
-            abilities.push((
-                permanent_id,
-                ability_index,
-                describe_mana_ability(game, permanent_id, player, &ability.kind),
-            ));
-        }
-    }
-
-    abilities
-}
-
-fn describe_mana_ability(
-    game: &GameState,
-    source: ObjectId,
-    controller: PlayerId,
-    kind: &crate::ability::AbilityKind,
-) -> String {
-    use crate::ability::AbilityKind;
-    use crate::mana::ManaSymbol;
-
-    if let AbilityKind::Activated(mana_ability) = kind
-        && mana_ability.is_runtime_mana_ability(game, source, controller)
-    {
-        let produced: Vec<&str> = mana_ability
-            .inferred_mana_symbols(game, source, controller)
-            .iter()
-            .map(|symbol| match symbol {
-                ManaSymbol::White => "{W}",
-                ManaSymbol::Blue => "{U}",
-                ManaSymbol::Black => "{B}",
-                ManaSymbol::Red => "{R}",
-                ManaSymbol::Green => "{G}",
-                ManaSymbol::Colorless => "{C}",
-                _ => "mana",
-            })
-            .collect();
-        if produced.is_empty() {
-            "Add mana".to_string()
-        } else {
-            format!("Add {}", produced.join(""))
-        }
-    } else {
-        "Add mana".to_string()
-    }
-}
-
-fn describe_permanent(game: &GameState, id: ObjectId) -> String {
-    game.object(id)
-        .map(|obj| obj.name.to_string())
-        .unwrap_or_else(|| "Unknown".to_string())
 }
 
 #[cfg(test)]
@@ -444,39 +315,16 @@ mod tests {
     }
 
     impl DecisionMaker for ActivateThenPayDecisionMaker {
-        fn decide_options(
+        fn decide_mana_payment(
             &mut self,
             _game: &GameState,
-            ctx: &crate::decisions::context::SelectOptionsContext,
-        ) -> Vec<usize> {
-            if ctx.description.starts_with("Pay mana for") {
-                self.mana_payment_prompts += 1;
-
-                // First prompt: activate a mana ability if available.
-                if self.mana_payment_prompts == 1
-                    && let Some(activation) = ctx
-                        .options
-                        .iter()
-                        .find(|opt| opt.legal && opt.description != "Pay mana cost")
-                {
-                    return vec![activation.index];
-                }
-
-                if let Some(pay) = ctx
-                    .options
-                    .iter()
-                    .find(|opt| opt.legal && opt.description == "Pay mana cost")
-                {
-                    return vec![pay.index];
-                }
+            ctx: &crate::decisions::context::ManaPaymentContext,
+        ) -> crate::mana_payment::ManaPaymentResponse {
+            self.mana_payment_prompts += 1;
+            crate::mana_payment::ManaPaymentResponse::Confirm {
+                plan_id: ctx.plan.id,
+                request_hash: ctx.plan.request_hash,
             }
-
-            ctx.options
-                .iter()
-                .filter(|opt| opt.legal)
-                .map(|opt| opt.index)
-                .take(ctx.min)
-                .collect()
         }
     }
 
@@ -506,14 +354,21 @@ mod tests {
         }
     }
 
-    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn pay_mana_effect_activates_mana_ability_then_pays() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
-        let mountain_def = crate::cards::definitions::basic_mountain();
-        let mountain_id =
-            game.create_object_from_definition(&mountain_def, alice, Zone::Battlefield);
+        let mountain = CardBuilder::new(CardId::new(), "Test Mountain")
+            .card_types(vec![CardType::Land])
+            .build();
+        let mountain_id = game.create_object_from_card(&mountain, alice, Zone::Battlefield);
+        game.object_mut(mountain_id)
+            .expect("mountain should exist")
+            .abilities_mut()
+            .push(Ability::mana(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+                vec![ManaSymbol::Red],
+            ));
 
         let mut dm = ActivateThenPayDecisionMaker::default();
         let mut ctx =
@@ -528,7 +383,7 @@ mod tests {
             .expect("pay mana effect should execute");
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
-        assert_eq!(dm.mana_payment_prompts, 2);
+        assert_eq!(dm.mana_payment_prompts, 1);
         assert!(game.is_tapped(mountain_id));
         assert_eq!(
             game.player(alice)

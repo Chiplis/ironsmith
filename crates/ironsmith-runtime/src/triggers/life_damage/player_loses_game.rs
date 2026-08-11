@@ -53,5 +53,11 @@ mod tests {
     fn test_display() {
         let trigger = PlayerLosesGameTrigger::new(PlayerFilter::NotYou);
         assert_eq!(trigger.display(), "Whenever another player loses the game");
+
+        let chosen = PlayerLosesGameTrigger::new(PlayerFilter::ChosenPlayer);
+        assert_eq!(
+            chosen.display(),
+            "Whenever the chosen player loses the game"
+        );
     }
 }

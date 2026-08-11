@@ -122,23 +122,40 @@ pub(crate) fn parse_become_leading_creature_prefix(words: &[&str]) -> BecomeLead
     let mut card_types = vec![CardType::Creature];
     let mut subtypes = Vec::new();
     let mut colors = ColorSet::new();
-    for word in words {
-        if matches!(*word, "a" | "an" | "the" | "and") {
+    let mut index = 0;
+    while index < words.len() {
+        let word = words[index];
+        if matches!(word, "a" | "an" | "the" | "and") {
+            index += 1;
             continue;
         }
         if let Ok(color) = leaf::parse_leaf_color_complete(word) {
             colors = colors.union(color);
+            index += 1;
             continue;
         }
         if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
             if card_type != CardType::Creature {
                 push_unique(&mut card_types, card_type);
             }
+            index += 1;
             continue;
         }
         if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(word) {
             push_unique(&mut subtypes, subtype);
+            index += 1;
             continue;
+        }
+        // A raw hyphenated type is one lexer token, but document/name
+        // normalization may reconstruct it as two synthetic words. Recover
+        // the same typed subtype before falling back to a bare creature.
+        if let Some(next) = words.get(index + 1) {
+            let compound = format!("{word}-{next}");
+            if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(&compound) {
+                push_unique(&mut subtypes, subtype);
+                index += 2;
+                continue;
+            }
         }
         return BecomeLeadingCreaturePrefix {
             supported: false,
@@ -162,17 +179,29 @@ pub(crate) fn parse_become_creature_descriptor_words(
     let mut subtypes = Vec::new();
     let mut colors = ColorSet::new();
     let mut saw_subtype = false;
-    for word in words {
-        if matches!(*word, "a" | "an" | "the" | "and" | "or") {
+    let mut index = 0;
+    while index < words.len() {
+        let word = words[index];
+        if matches!(word, "a" | "an" | "the" | "and" | "or") {
+            index += 1;
             continue;
         }
         if let Ok(color) = leaf::parse_leaf_color_complete(word) {
             colors = colors.union(color);
+            index += 1;
         } else if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
             push_unique(&mut card_types, card_type);
+            index += 1;
         } else if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(word) {
             push_unique(&mut subtypes, subtype);
             saw_subtype = true;
+            index += 1;
+        } else if let Some(next) = words.get(index + 1) {
+            let compound = format!("{word}-{next}");
+            let subtype = leaf::parse_leaf_subtype_flexible_complete(&compound).ok()?;
+            push_unique(&mut subtypes, subtype);
+            saw_subtype = true;
+            index += 2;
         } else {
             return None;
         }
@@ -432,5 +461,25 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn reconstructed_hyphenated_subtypes_remain_typed_in_animations() {
+        let prefix = parse_become_leading_creature_prefix(&["assembly", "worker", "artifact"]);
+        assert!(prefix.supported, "{prefix:#?}");
+        assert_eq!(prefix.subtypes, [Subtype::AssemblyWorker], "{prefix:#?}");
+        assert!(
+            prefix.card_types.contains(&CardType::Artifact),
+            "{prefix:#?}"
+        );
+
+        let descriptor =
+            parse_become_creature_descriptor_words(&["assembly", "worker", "artifact", "creature"])
+                .expect("synthetic split subtype should remain a typed descriptor");
+        assert_eq!(
+            descriptor.subtypes,
+            [Subtype::AssemblyWorker],
+            "{descriptor:#?}"
+        );
     }
 }

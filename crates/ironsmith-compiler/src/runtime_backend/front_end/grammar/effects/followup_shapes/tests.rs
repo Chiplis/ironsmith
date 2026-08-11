@@ -91,6 +91,30 @@ fn parses_exact_object_followups() {
 }
 
 #[test]
+fn parses_moved_object_entry_modifier_followup_only_with_temporary_grant() {
+    let tokens = lex_line(
+        "It enters tapped and attacking and gains indestructible until end of turn.",
+        0,
+    )
+    .unwrap();
+    let shape = parse_moved_object_entry_followup_shape(&tokens).expect("typed follow-up");
+    assert!(tokens[shape.grant_verb_token_idx].is_word("gains"));
+
+    for near_miss in [
+        "It enters tapped and attacking.",
+        "It enters tapped and gains indestructible until end of turn.",
+        "It enters tapped and attacking and gains indestructible.",
+        "This creature enters tapped and attacking and gains indestructible until end of turn.",
+    ] {
+        let tokens = lex_line(near_miss, 0).unwrap();
+        assert!(
+            parse_moved_object_entry_followup_shape(&tokens).is_none(),
+            "near miss must not claim {near_miss:?}"
+        );
+    }
+}
+
+#[test]
 fn parses_counter_linked_land_subtype_followup_to_typed_facts() {
     let tokens = lex_line(
         "That land is an Island in addition to its other types for as long as it has a flood counter on it.",

@@ -754,6 +754,38 @@ fn compile_each_object_power_damage_iterates_sources_and_keeps_prior_target() {
 }
 
 #[test]
+fn referenced_pair_toughness_damage_reuses_exactly_the_two_prior_targets() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mutual Toughness Damage Probe")
+        .parse_text(
+            "Choose target creature you control and target creature an opponent controls. \
+             Each of those creatures deals damage equal to its toughness to the other.",
+        )
+        .expect("mutual toughness damage should parse");
+    let program = def.spell_effect.expect("spell effect");
+    let debug = format!("{program:#?}");
+    let compact = debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+
+    assert_eq!(
+        compact.matches("TargetOnlyEffect").count(),
+        2,
+        "the reciprocal damage must not announce a third target: {debug}"
+    );
+    assert!(
+        compact.contains("ForEachObject")
+            && compact.contains("ExecuteWithSourceEffect{source:Iterated")
+            && compact.contains("ToughnessOf(Iterated")
+            && compact.contains("target:Object(ObjectFilter")
+            && compact.contains("other:true")
+            && compact.matches("TagKey(\"__chosen_objects__\"").count() >= 2
+            && !compact.contains("target:AnyOtherTarget"),
+        "each selected creature must use its own toughness against the other selected creature: {debug}"
+    );
+}
+
+#[test]
 fn cross_sentence_conditional_fights_expose_two_stable_target_slots() {
     for (name, text) in [
         (
@@ -1557,6 +1589,81 @@ fn quoted_tap_sacrifice_any_color_rule_keeps_both_costs() {
 }
 
 #[test]
+fn builtin_food_blood_and_powerstone_tokens_keep_their_intrinsic_abilities() {
+    for (name, expected_costs, effect_marker) in [
+        ("Food", 3, "GainLifeEffect"),
+        ("Blood", 4, "DrawCardsEffect"),
+        ("Powerstone", 1, "AddManaEffect"),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), format!("{name} Token Probe"))
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(&format!("Create a {name} token."))
+            .unwrap_or_else(|error| panic!("{name} token text should parse: {error}"));
+        let create = def
+            .spell_effect
+            .as_ref()
+            .expect("token probe should have spell effects")
+            .flattened_default_effects()
+            .find_create_token_effect()
+            .unwrap_or_else(|| panic!("{name} should lower to token creation"));
+        let activated = create
+            .token
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{name} should retain its intrinsic activated ability"));
+        assert_eq!(
+            activated.mana_cost.costs().len(),
+            expected_costs,
+            "{name} intrinsic cost was incomplete: {activated:#?}"
+        );
+        assert!(
+            format!("{:#?}", activated.effects).contains(effect_marker),
+            "{name} should retain {effect_marker}: {activated:#?}"
+        );
+        if name == "Powerstone" {
+            assert_eq!(activated.mana_usage_restrictions.len(), 1);
+        }
+    }
+}
+
+#[test]
+fn builtin_sorcerer_role_keeps_its_buff_and_granted_attack_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sorcerer Role Token Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Create a Sorcerer Role token attached to target creature you control.")
+        .expect("Sorcerer Role token text should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("token probe should have spell effects")
+        .flattened_default_effects()
+        .find_create_token_effect()
+        .expect("Sorcerer Role should lower to token creation");
+    let static_ids = create
+        .token
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.id,
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        static_ids.contains(&crate::static_abilities::StaticAbilityId::Anthem),
+        "Sorcerer Role should give the enchanted creature +1/+1: {create:#?}"
+    );
+    assert!(
+        static_ids.contains(&crate::static_abilities::StaticAbilityId::AttachedAbilityGrant),
+        "Sorcerer Role should grant its attack trigger: {create:#?}"
+    );
+    assert!(format!("{create:#?}").contains("ScryEffect"));
+}
+
+#[test]
 fn full_lost_in_the_spirit_world_keeps_reciprocal_spirit_restriction_once() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lost in the Spirit World")
         .card_types(vec![CardType::Instant])
@@ -2279,6 +2386,45 @@ fn optional_exile_from_another_players_hand_does_not_use_controller_hand_imprint
 }
 
 #[test]
+fn singular_untargeted_causative_damage_remains_one_object_choice() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Causative Damage Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, you may have it deal 2 damage to another creature you control. If you do, draw a card.",
+        )
+        .expect("singular causative damage should compile");
+    let debug = format!("{:#?}", definition.abilities);
+
+    assert!(debug.contains("MayEffect"), "{debug}");
+    assert!(debug.contains("DealDamageEffect"), "{debug}");
+    assert!(debug.contains("ExecuteWithSourceEffect"), "{debug}");
+    assert!(debug.contains("other: true"), "{debug}");
+    assert!(debug.contains("target: Object("), "{debug}");
+    assert!(
+        !debug.contains("ForEachObject"),
+        "a singular untargeted object phrase must not widen into a mass effect: {debug}"
+    );
+    assert!(debug.contains("DrawCardsEffect"), "{debug}");
+}
+
+#[test]
+fn plural_untargeted_causative_damage_still_fans_out() {
+    let mut filter = ObjectFilter::creature().you_control();
+    filter.set_plural_object_noun_surface(true);
+    let ast = EffectAst::subject_verb_damage_with_source(
+        TargetAst::Source(None),
+        Value::Fixed(2),
+        TargetAst::Object(filter, None, None),
+    );
+
+    let (compiled, _) = compile_effect(&ast, &mut EffectLoweringContext::new())
+        .expect("plural causative damage should lower");
+    let debug = format!("{compiled:#?}");
+    assert!(debug.contains("ForEachObject"), "{debug}");
+    assert!(debug.contains("DealDamageEffect"), "{debug}");
+}
+
+#[test]
 fn optional_self_prompting_free_cast_does_not_gain_a_second_may_prompt() {
     let ast = EffectAst::MayByPlayer {
         player: PlayerAst::You,
@@ -2766,6 +2912,37 @@ fn relative_cards_in_hand_value_binds_to_target_subject() {
 }
 
 #[test]
+fn relative_hand_owner_does_not_turn_a_chosen_player_into_an_unannounced_target() {
+    let mut value = Value::Count(ObjectFilter::default().in_zone(Zone::Hand).owned_by(
+        PlayerFilter::AliasedTarget(Box::new(PlayerFilter::IteratedPlayer)),
+    ));
+
+    bind_relative_iterated_player_in_value_to_player_filter(
+        &mut value,
+        &PlayerFilter::ChosenPlayer,
+    );
+
+    assert!(matches!(
+        value.unhinted(),
+        Value::Count(filter) if filter.owner == Some(PlayerFilter::ChosenPlayer)
+    ));
+
+    let unresolved = Value::Count(ObjectFilter::default().in_zone(Zone::Hand).owned_by(
+        PlayerFilter::AliasedTarget(Box::new(PlayerFilter::IteratedPlayer)),
+    ));
+    let refs = ReferenceEnv {
+        last_player_filter: RefState::Known(PlayerFilter::ChosenPlayer),
+        ..ReferenceEnv::default()
+    };
+    let resolved = resolve_value_it_tag(&unresolved, &refs)
+        .expect("a relative possessive should resolve against the chosen player");
+    assert!(matches!(
+        resolved.unhinted(),
+        Value::Count(filter) if filter.owner == Some(PlayerFilter::ChosenPlayer)
+    ));
+}
+
+#[test]
 fn explicit_damage_target_binds_same_clause_that_player_value_in_iterated_context() {
     let your_hand = ObjectFilter::default()
         .in_zone(Zone::Hand)
@@ -2869,5 +3046,77 @@ fn nonexplicit_damage_recipient_preserves_outer_iterated_player_value() {
                 .in_zone(Zone::Hand)
                 .owned_by(PlayerFilter::IteratedPlayer)
         )
+    );
+}
+
+#[test]
+fn serial_keyword_filters_survive_trigger_and_effect_comma_boundaries() {
+    use crate::static_abilities::StaticAbilityId::{DoubleStrike, FirstStrike, Haste, Vigilance};
+
+    let filter_tokens = crate::runtime_backend::util::tokenize_line(
+        "creatures that have first strike, double strike, vigilance, and/or haste",
+        0,
+    );
+    let parsed_filter =
+        crate::runtime_backend::families::object_filters::parse_object_filter_lexed(
+            &filter_tokens,
+            false,
+        )
+        .expect("serial keyword object filter should parse");
+    assert_eq!(parsed_filter.any_of.len(), 4, "{parsed_filter:#?}");
+
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Keyword Filter Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, it deals 1 damage to each creature that doesn't have first strike, double strike, vigilance, or haste.\nWhenever you attack with at least two creatures that have first strike, double strike, vigilance, and/or haste, transform this enchantment.",
+        )
+        .expect("serial keyword filters should remain one parsed clause");
+
+    let damage_filter = definition
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .flat_map(|triggered| triggered.effects.flattened_default_effects())
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ForEachObject>()
+                .map(|for_each| &for_each.filter)
+        })
+        .expect("entry damage should lower through one filtered object loop");
+    assert_eq!(
+        damage_filter.excluded_static_abilities,
+        vec![FirstStrike, DoubleStrike, Vigilance, Haste]
+    );
+    assert!(damage_filter.any_of.is_empty());
+
+    let attacks = definition
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => match &triggered.trigger.kind {
+                crate::triggers::TriggerKind::AttacksOneOrMoreWithMinTotal {
+                    filter,
+                    min_total_attackers,
+                } => Some((filter, *min_total_attackers)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .next()
+        .expect("attack-with trigger should retain its typed matcher");
+    assert_eq!(attacks.1, 2);
+    assert_eq!(attacks.0.any_of.len(), 4, "{:#?}", attacks.0);
+    let keyword_branches = attacks
+        .0
+        .any_of
+        .iter()
+        .flat_map(|branch| branch.static_abilities.iter().copied())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        keyword_branches,
+        vec![FirstStrike, DoubleStrike, Vigilance, Haste]
     );
 }

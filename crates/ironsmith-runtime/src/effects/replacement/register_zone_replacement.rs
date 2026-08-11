@@ -20,6 +20,7 @@ pub struct RegisterZoneReplacementEffect {
     pub optional: bool,
     pub choice_description: Option<String>,
     pub counters: Vec<(CounterType, u32)>,
+    pub linked_exile_follow_up: Option<ironsmith_core::LinkedExileFollowUp>,
 }
 
 impl RegisterZoneReplacementEffect {
@@ -40,6 +41,7 @@ impl RegisterZoneReplacementEffect {
             optional: false,
             choice_description: None,
             counters: Vec::new(),
+            linked_exile_follow_up: None,
         }
     }
 
@@ -59,6 +61,14 @@ impl RegisterZoneReplacementEffect {
         placement: ironsmith_core::ZoneReplacementLibraryPlacement,
     ) -> Self {
         self.library_placement = Some(placement);
+        self
+    }
+
+    pub fn with_linked_exile_follow_up(
+        mut self,
+        follow_up: ironsmith_core::LinkedExileFollowUp,
+    ) -> Self {
+        self.linked_exile_follow_up = Some(follow_up);
         self
     }
 
@@ -83,6 +93,7 @@ impl RegisterZoneReplacementEffect {
                     self.optional,
                     self.choice_description.clone(),
                     self.counters.clone(),
+                    self.linked_exile_follow_up,
                 );
                 ReplacementEffect::with_matcher(
                     ctx.source,
@@ -107,6 +118,7 @@ pub(crate) fn zone_replacement_action(
     optional: bool,
     choice_description: Option<String>,
     counters: Vec<(CounterType, u32)>,
+    linked_exile_follow_up: Option<ironsmith_core::LinkedExileFollowUp>,
 ) -> ReplacementAction {
     if optional {
         let mut destinations = Vec::new();
@@ -127,6 +139,28 @@ pub(crate) fn zone_replacement_action(
             zone: replacement_zone,
             counters,
         };
+    }
+
+    if let Some(ironsmith_core::LinkedExileFollowUp::ReturnToHandAtNextEndStep) =
+        linked_exile_follow_up
+    {
+        debug_assert_eq!(replacement_zone, Zone::Exile);
+        debug_assert!(library_placement.is_none());
+        let tag = crate::tag::TagKey::from(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG);
+        let filter = ObjectFilter::tagged(tag.clone()).in_zone(Zone::Exile);
+        let return_to_hand =
+            crate::effect::Effect::new(crate::effects::ReturnToHandEffect::all(filter.clone()));
+        let schedule = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+            crate::triggers::Trigger::beginning_of_end_step(PlayerFilter::Any),
+            vec![return_to_hand],
+            true,
+            tag,
+            PlayerFilter::You,
+        )
+        .with_target_filter(filter);
+        return ReplacementAction::ExileWithSourceLinkThen(vec![crate::effect::Effect::new(
+            schedule,
+        )]);
     }
 
     if replacement_zone == Zone::Library

@@ -229,7 +229,7 @@ fn parse_counter_ability_target_lexed<'a>(
 
     let mut controller = None;
     let mut source_types = Vec::new();
-    let mut targets_only = None;
+    let mut targets_relation = None;
     loop {
         opt(connector).parse_next(input)?;
         let mut controller_probe = input.clone();
@@ -251,18 +251,21 @@ fn parse_counter_ability_target_lexed<'a>(
             .parse_next(&mut targets_probe)
             .is_ok()
         {
+            let only = opt(primitives::kw("only"))
+                .parse_next(&mut targets_probe)?
+                .is_some();
             let rest: Vec<OwnedLexToken> = repeat(
                 1..,
                 winnow::token::any.map(|token: &OwnedLexToken| token.clone()),
             )
             .parse_next(&mut targets_probe)?;
-            if let Ok(filter) =
-                crate::runtime_backend::families::object_filters::parse_object_filter_lexed(
-                    &rest, false,
+            if let Ok((target_player, target_object, targets_any_of)) =
+                crate::runtime_backend::families::keyword_static::parse_cost_modifier_target_spec(
+                    &rest,
                 )
             {
                 *input = targets_probe;
-                targets_only = Some(Box::new(filter));
+                targets_relation = Some((only, target_player, target_object, targets_any_of));
                 continue;
             }
         }
@@ -275,8 +278,17 @@ fn parse_counter_ability_target_lexed<'a>(
         if let Some(controller) = controller.clone() {
             filter.controller = Some(controller);
         }
-        if let Some(targets_only) = targets_only.clone() {
-            filter.targets_only_object = Some(targets_only);
+        if let Some((only, target_player, target_object, targets_any_of)) = targets_relation.clone()
+        {
+            if only {
+                filter.targets_only_player = target_player;
+                filter.targets_only_object = target_object;
+                filter.targets_only_any_of = targets_any_of;
+            } else {
+                filter.targets_player = target_player;
+                filter.targets_object = target_object;
+                filter.targets_any_of = targets_any_of;
+            }
         }
         if *is_ability {
             for card_type in &source_types {
@@ -342,5 +354,51 @@ mod tests {
         let tokens = lex_line("target activated ability from an artifact source", 0).unwrap();
         let shape = parse_counter_ability_target_tokens(&tokens).expect("shape");
         assert_eq!(shape.target_filter.card_types, vec![CardType::Artifact]);
+    }
+
+    #[test]
+    fn ordinary_targets_relation_requires_any_matching_target() {
+        let tokens = lex_line(
+            "target spell or ability that targets a creature you control",
+            0,
+        )
+        .unwrap();
+        let shape = parse_counter_ability_target_tokens(&tokens).expect("shape");
+        assert_eq!(shape.target_filter.any_of.len(), 2);
+        assert!(shape.target_filter.any_of.iter().all(|filter| {
+            filter.targets_object.is_some() && filter.targets_only_object.is_none()
+        }));
+    }
+
+    #[test]
+    fn explicit_targets_only_relation_requires_every_target_to_match() {
+        let tokens = lex_line(
+            "target spell or ability that targets only a creature you control",
+            0,
+        )
+        .unwrap();
+        let shape = parse_counter_ability_target_tokens(&tokens).expect("shape");
+        assert_eq!(shape.target_filter.any_of.len(), 2);
+        assert!(shape.target_filter.any_of.iter().all(|filter| {
+            filter.targets_object.is_none() && filter.targets_only_object.is_some()
+        }));
+    }
+
+    #[test]
+    fn targets_relation_preserves_player_or_controlled_creature_union() {
+        let tokens = lex_line(
+            "target spell or ability that targets you or a creature you control",
+            0,
+        )
+        .unwrap();
+        let shape = parse_counter_ability_target_tokens(&tokens).expect("shape");
+        assert_eq!(shape.target_filter.any_of.len(), 2);
+        assert!(shape.target_filter.any_of.iter().all(|filter| {
+            filter.targets_player == Some(PlayerFilter::You)
+                && filter.targets_object.is_some()
+                && filter.targets_any_of
+                && filter.targets_only_player.is_none()
+                && filter.targets_only_object.is_none()
+        }));
     }
 }

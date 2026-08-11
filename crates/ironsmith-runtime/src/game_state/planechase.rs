@@ -409,6 +409,34 @@ impl GameState {
         }
     }
 
+    pub(crate) fn move_planar_deck_card_to_bottom(
+        &mut self,
+        player: PlayerId,
+        card: ObjectId,
+    ) -> Result<(), String> {
+        let state = self
+            .planechase
+            .as_mut()
+            .ok_or_else(|| "Planechase is not enabled".to_string())?;
+        let deck = if let Some(communal) = state.communal_deck.as_mut() {
+            communal
+        } else {
+            state
+                .decks
+                .get_mut(&player)
+                .ok_or_else(|| "the relevant planar deck is missing".to_string())?
+        };
+        let position = deck
+            .iter()
+            .position(|candidate| *candidate == card)
+            .ok_or_else(|| "the chosen card is not in the relevant planar deck".to_string())?;
+        deck.remove(position);
+        deck.insert(0, card);
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+        Ok(())
+    }
+
     /// Reveal the starting plane without causing encounter or planeswalk triggers.
     pub fn reveal_starting_plane(&mut self) -> Result<ObjectId, String> {
         if self.grand_melee().is_some() {

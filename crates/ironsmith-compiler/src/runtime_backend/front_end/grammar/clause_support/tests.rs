@@ -90,6 +90,29 @@ fn source_trigger_and_delimiter_facts_are_typed() {
 }
 
 #[test]
+fn trigger_delimiters_skip_serial_keyword_filter_commas() {
+    let tokens = lex_line(
+        "you attack with at least two creatures that have first strike, double strike, vigilance, and/or haste, transform this",
+        0,
+    )
+    .unwrap();
+    let effect_comma = tokens
+        .iter()
+        .rposition(|token| token.kind == TokenKind::Comma)
+        .unwrap();
+
+    let facts = parse_trigger_delimiters_tokens(&tokens);
+    assert_eq!(facts.first_comma, Some(effect_comma));
+    assert_eq!(
+        facts.first_comma_or_then,
+        Some(TriggerDelimiter {
+            index: effect_comma,
+            kind: TriggerDelimiterKind::Comma,
+        })
+    );
+}
+
+#[test]
 fn color_only_hexproof_filters_preserve_each_and_disjunction() {
     let each = parse_color_only_hexproof_filter_words(&["each", "color"]).unwrap();
     assert_eq!(each.colors.map(ColorSet::count), Some(5));

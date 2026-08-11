@@ -50,7 +50,7 @@ const CASES: &[(&str, usize, &str)] = &[
     (
         "Viper, Cruel Conspirator",
         2,
-        "{B}: Target attacking creature gets +1/+1 until end of turn.\n{B}: Target attacking creature gains your choice of deathtouch or lifelink until end of turn.",
+        "{B}: Target creature that's attacking alone gets +1/+1 until end of turn.\n{B}: Target creature that's attacking alone gains your choice of deathtouch or lifelink until end of turn.",
     ),
     (
         "Mantis Engine",
@@ -94,6 +94,24 @@ fn identical_cost_activated_abilities_keep_authored_boundaries_and_text() {
             *expected_text,
             "{name} must not merge adjacent abilities merely because their costs match"
         );
+    }
+}
+
+#[test]
+fn viper_activated_targets_keep_attacking_alone_legality() {
+    let definition = parse_oracle_card_definition("Viper, Cruel Conspirator");
+    let activated = definition
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(activated.len(), 2);
+    for ability in activated {
+        let debug = format!("{:#?}", ability.effects);
+        assert!(debug.contains("attacking_alone: true"), "{debug}");
     }
 }
 

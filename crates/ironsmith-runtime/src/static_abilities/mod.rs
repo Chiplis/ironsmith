@@ -83,6 +83,27 @@ pub use ironsmith_core::{
     PregameBeginOnBattlefieldSpec, PregameRevealFromOpeningHandSpec, SpliceQuality, SpliceSpec,
 };
 
+/// Combat-object kind against which a defending player's per-attacker tax is
+/// being evaluated. Keeping this separate from `AttackTarget` lets static
+/// abilities declare their authored scope without depending on a particular
+/// battlefield object ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttackTaxTargetKind {
+    Player,
+    Planeswalker,
+    Battle,
+}
+
+impl From<&crate::combat_state::AttackTarget> for AttackTaxTargetKind {
+    fn from(target: &crate::combat_state::AttackTarget) -> Self {
+        match target {
+            crate::combat_state::AttackTarget::Player(_) => Self::Player,
+            crate::combat_state::AttackTarget::Planeswalker(_) => Self::Planeswalker,
+            crate::combat_state::AttackTarget::Battle(_) => Self::Battle,
+        }
+    }
+}
+
 /// Extra condition for "Cast this spell only ..." restrictions.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ThisSpellCastCondition {
@@ -393,6 +414,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         false
     }
 
+    fn skips_extra_turn_for_player(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+        _player: PlayerId,
+    ) -> bool {
+        false
+    }
+
     // ========================================================================
     // Query methods for specific ability checks
     // These allow checking ability properties without pattern matching.
@@ -583,6 +614,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         _controller: PlayerId,
     ) -> Option<u32> {
         None
+    }
+
+    /// Whether this attack tax applies to the proposed combat-object kind.
+    /// The historical/common wording names only "you"; abilities that also
+    /// name planeswalkers opt into that additional kind explicitly.
+    fn generic_attack_tax_applies_to(&self, target: AttackTaxTargetKind) -> bool {
+        matches!(target, AttackTaxTargetKind::Player)
     }
 
     /// Returns landwalk behavior for unblockable checks.
@@ -799,6 +837,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Candidate filter for a controller-scoped legend-rule exemption.
+    fn legend_rule_exemption_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        None
+    }
+
     /// Get the shared quality for a "bands with other" ability.
     fn bands_with_other_filter(&self) -> Option<&crate::target::ObjectFilter> {
         None
@@ -968,6 +1011,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Get the mandatory life cost paid once for each announced target.
+    fn additional_life_cost_per_target(&self) -> Option<u32> {
+        None
+    }
+
     /// Returns true if this affects the untap step.
     fn affects_untap(&self) -> bool {
         false
@@ -1119,8 +1167,10 @@ pub struct ChooseColorAsEntersSpec {
 pub struct ChooseColorAsBecomesAttachedSpec;
 
 /// Spec for "as this enters, choose a player" abilities.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ChoosePlayerAsEntersSpec;
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ChoosePlayerAsEntersSpec {
+    pub filter: crate::target::PlayerFilter,
+}
 
 /// Spec for "as this enters, note your life total" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1523,6 +1573,17 @@ impl StaticAbility {
             .skips_draw_step_for_player(game, source, controller, player)
     }
 
+    pub fn skips_extra_turn_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.0
+            .skips_extra_turn_for_player(game, source, controller, player)
+    }
+
     /// Generate a replacement effect for this ability.
     pub fn generate_replacement_effect(
         &self,
@@ -1615,6 +1676,10 @@ impl StaticAbility {
     ) -> Option<u32> {
         self.0
             .generic_attack_tax_per_attacker_against_you(game, source, controller)
+    }
+
+    pub fn generic_attack_tax_applies_to(&self, target: AttackTaxTargetKind) -> bool {
+        self.0.generic_attack_tax_applies_to(target)
     }
 
     pub fn can_pay_attack_cost(
@@ -1805,6 +1870,10 @@ impl StaticAbility {
         self.0.hexproof_from_filter()
     }
 
+    pub fn legend_rule_exemption_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        self.0.legend_rule_exemption_filter()
+    }
+
     pub fn bands_with_other_filter(&self) -> Option<&crate::target::ObjectFilter> {
         self.0.bands_with_other_filter()
     }
@@ -1883,6 +1952,10 @@ impl StaticAbility {
 
     pub fn cost_increase_mana_cost_per_additional_target(&self) -> Option<&crate::mana::ManaCost> {
         self.0.cost_increase_mana_cost_per_additional_target()
+    }
+
+    pub fn additional_life_cost_per_target(&self) -> Option<u32> {
+        self.0.additional_life_cost_per_target()
     }
 
     pub fn is_anthem(&self) -> bool {
@@ -2614,6 +2687,21 @@ impl StaticAbility {
         )
     }
 
+    pub fn enters_with_counters_and_subtypes_for_filter_if_otherwise(
+        filter: crate::target::ObjectFilter,
+        counter_type: crate::object::CounterType,
+        count: crate::effect::Value,
+        count_condition: crate::ConditionExpr,
+        otherwise_count: crate::effect::Value,
+        added_subtypes: Vec<crate::types::Subtype>,
+    ) -> Self {
+        Self::new(
+            EnterWithCountersForFilter::new(filter, counter_type, count)
+                .with_count_if_otherwise(count_condition, otherwise_count)
+                .with_added_subtypes(added_subtypes),
+        )
+    }
+
     pub fn enters_with_characteristics_for_filter(
         filter: crate::target::ObjectFilter,
         added_card_types: Vec<crate::types::CardType>,
@@ -2984,6 +3072,12 @@ impl StaticAbility {
         ))
     }
 
+    pub fn prevent_one_damage_to_self_per_removed_counter(
+        counter_type: crate::object::CounterType,
+    ) -> Self {
+        Self::new(PreventDamageToSelfRemoveCounter::new_one_damage_per_counter(counter_type))
+    }
+
     pub fn prevent_damage_to_self_put_counters_instead(
         counter_type: crate::object::CounterType,
         display: impl Into<String>,
@@ -3225,6 +3319,16 @@ impl StaticAbility {
         Self::new(DamageNotRemovedDuringCleanup)
     }
 
+    pub fn counters_remain_across_zone_changes(
+        excluded_destinations: Vec<crate::zone::Zone>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(CountersRemainAcrossZoneChanges::new(
+            excluded_destinations,
+            display,
+        ))
+    }
+
     pub fn choose_color_as_enters(excluded: Option<crate::color::Color>, display: String) -> Self {
         Self::new(ChooseColorAsEnters::new(excluded, display))
     }
@@ -3234,7 +3338,14 @@ impl StaticAbility {
     }
 
     pub fn choose_player_as_enters(display: String) -> Self {
-        Self::new(ChoosePlayerAsEnters::new(display))
+        Self::choose_player_as_enters_matching(crate::target::PlayerFilter::Any, display)
+    }
+
+    pub fn choose_player_as_enters_matching(
+        filter: crate::target::PlayerFilter,
+        display: String,
+    ) -> Self {
+        Self::new(ChoosePlayerAsEnters::new(filter, display))
     }
 
     pub fn note_life_total_as_enters(display: String) -> Self {
@@ -3364,6 +3475,10 @@ impl StaticAbility {
         Self::new(PlayerSkipsDrawStep::new(player))
     }
 
+    pub fn players_skip_extra_turns(player: crate::target::PlayerFilter) -> Self {
+        Self::new(PlayersSkipExtraTurns::new(player))
+    }
+
     pub fn starting_life_bonus(amount: i32) -> Self {
         Self::new(StartingLifeBonus::new(amount))
     }
@@ -3377,7 +3492,15 @@ impl StaticAbility {
     }
 
     pub fn legend_rule_doesnt_apply_to_controller() -> Self {
-        Self::new(LegendRuleDoesntApplyToController)
+        Self::legend_rule_doesnt_apply_to_controller_matching(
+            crate::target::ObjectFilter::permanent(),
+        )
+    }
+
+    pub fn legend_rule_doesnt_apply_to_controller_matching(
+        filter: crate::target::ObjectFilter,
+    ) -> Self {
+        Self::new(LegendRuleDoesntApplyToController::new(filter))
     }
 
     pub fn legend_rule_doesnt_apply_to_tokens_you_control() -> Self {
@@ -3574,6 +3697,20 @@ impl StaticAbility {
         ))
     }
 
+    pub fn player_counter_per_turn_limit_replacement(
+        player_filter: crate::target::PlayerFilter,
+        counter_type: crate::object::CounterType,
+        maximum: u32,
+        display: String,
+    ) -> Self {
+        Self::new(PlayerCounterPerTurnLimitReplacement::new(
+            player_filter,
+            counter_type,
+            maximum,
+            display,
+        ))
+    }
+
     pub fn double_token_creation_replacement(
         controller: crate::target::PlayerFilter,
         display: String,
@@ -3680,9 +3817,26 @@ impl StaticAbility {
         replacement_effects: Vec<crate::effect::Effect>,
         display: impl Into<String>,
     ) -> Self {
+        Self::keyword_action_replacement_with_performer(
+            action,
+            source_filter,
+            None,
+            replacement_effects,
+            display,
+        )
+    }
+
+    pub fn keyword_action_replacement_with_performer(
+        action: crate::events::KeywordActionKind,
+        source_filter: crate::target::ObjectFilter,
+        performer_filter: Option<crate::target::PlayerFilter>,
+        replacement_effects: Vec<crate::effect::Effect>,
+        display: impl Into<String>,
+    ) -> Self {
         Self::new(KeywordActionReplacement::new(
             action,
             source_filter,
+            performer_filter,
             replacement_effects,
             display,
         ))
@@ -3858,6 +4012,18 @@ impl StaticAbility {
         redirect_zone: crate::zone::Zone,
     ) -> Self {
         Self::new(DiscardOrRedirectReplacement::new(filter, redirect_zone))
+    }
+
+    pub fn sacrifice_or_redirect_replacement(
+        filter: crate::target::ObjectFilter,
+        count: u32,
+        redirect_zone: crate::zone::Zone,
+    ) -> Self {
+        Self::new(SacrificeOrRedirectReplacement::new(
+            filter,
+            count,
+            redirect_zone,
+        ))
     }
 
     /// Create a pay-life-or-enter-tapped ETB replacement ability.

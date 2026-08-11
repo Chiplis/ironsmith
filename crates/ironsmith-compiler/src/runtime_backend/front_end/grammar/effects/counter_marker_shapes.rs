@@ -108,6 +108,13 @@ pub(crate) struct PutCounterChoiceShape<'a> {
     pub(crate) target_tokens: &'a [OwnedLexToken],
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PutFixedAndCounterChoiceShape<'a> {
+    pub(crate) fixed: CounterDescriptorShape,
+    pub(crate) counter_types: Vec<CounterType>,
+    pub(crate) target_tokens: &'a [OwnedLexToken],
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PutCounterSequenceShape<'a> {
     Plain,
@@ -613,6 +620,7 @@ pub(crate) fn parse_if_enters_additional_tokens(
 fn tagged_enters_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
         primitives::phrase(&["each", "of", "them", "enters", "with"]),
+        primitives::phrase(&["each", "enters", "with"]),
         primitives::phrase(&["all", "of", "them", "enter", "with"]),
         primitives::phrase(&["that", "card", "enters", "with"]),
         primitives::phrase(&["that", "creature", "enters", "with"]),
@@ -914,7 +922,14 @@ fn choice_single_counter_type<'a>(input: &mut LexStream<'a>) -> WResult<CounterT
 fn parse_put_counter_choice_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<PutCounterChoiceShape<'a>> {
-    primitives::phrase(&["put", "your", "choice", "of"]).parse_next(input)?;
+    // "Put your choice of A, B, or C on ..." or the bare or-joined form
+    // "Put a +0/+1 counter or a +1/+0 counter on ..." — an "or" between
+    // counters is always a mode choice in oracle templating.
+    alt((
+        primitives::phrase(&["put", "your", "choice", "of"]).void(),
+        primitives::kw("put").void(),
+    ))
+    .parse_next(input)?;
     let counter_types =
         separated(2.., choice_counter_type, primitives::comma_or_separator).parse_next(input)?;
     primitives::kw("on").parse_next(input)?;
@@ -933,6 +948,38 @@ pub(crate) fn parse_put_counter_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutCounterChoiceShape<'_>> {
     primitives::parse_all(tokens, parse_put_counter_choice_lexed, "put counter choice").ok()
+}
+
+fn parse_put_fixed_and_counter_choice_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PutFixedAndCounterChoiceShape<'a>> {
+    primitives::kw("put").parse_next(input)?;
+    let fixed = parse_counter_descriptor_lexed(input)?;
+    primitives::phrase(&["and", "a", "counter", "from", "among"]).parse_next(input)?;
+    let counter_types =
+        separated(2.., choice_counter_type, primitives::comma_or_separator).parse_next(input)?;
+    primitives::kw("on").parse_next(input)?;
+    let target_tokens = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(PutFixedAndCounterChoiceShape {
+        fixed,
+        counter_types,
+        target_tokens,
+    })
+}
+
+pub(crate) fn parse_put_fixed_and_counter_choice_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<PutFixedAndCounterChoiceShape<'_>> {
+    primitives::parse_all(
+        tokens,
+        parse_put_fixed_and_counter_choice_lexed,
+        "put fixed and counter choice",
+    )
+    .ok()
 }
 
 fn contains_counter_noun<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -1235,6 +1282,25 @@ mod tests {
                 CounterType::Vigilance
             ]
         );
+
+        let combined = lex_line(
+            "Put a +1/+1 counter and a counter from among flying, first strike, lifelink, or vigilance on it.",
+            0,
+        )
+        .unwrap();
+        let combined = parse_put_fixed_and_counter_choice_tokens(&combined).unwrap();
+        assert_eq!(combined.fixed.counter_type, CounterType::PlusOnePlusOne);
+        assert_eq!(combined.fixed.count, 1);
+        assert_eq!(
+            combined.counter_types,
+            vec![
+                CounterType::Flying,
+                CounterType::FirstStrike,
+                CounterType::Lifelink,
+                CounterType::Vigilance,
+            ]
+        );
+        assert_eq!(render_token_slice(combined.target_tokens), "it");
 
         let each = lex_line(
             "For each kind of counter on target permanent, put another counter of that kind on it or remove one from it.",

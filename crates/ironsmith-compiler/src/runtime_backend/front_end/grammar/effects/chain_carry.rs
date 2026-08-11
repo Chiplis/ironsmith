@@ -211,10 +211,7 @@ pub(crate) fn coordinated_effect_chain_leading_duration(tokens: &[OwnedLexToken]
     // second executable action. The keyword-bundle parser expands that list
     // into one conditional effect per ability; wrapping those effects as an
     // authored conjunction would misclassify the list surface as chain carry.
-    if primitives::find_prefix(tokens, || {
-        primitives::phrase(&["and", "so", "on", "for"])
-    })
-    .is_some()
+    if primitives::find_prefix(tokens, || primitives::phrase(&["and", "so", "on", "for"])).is_some()
     {
         return None;
     }

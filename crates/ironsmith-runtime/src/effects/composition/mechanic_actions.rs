@@ -144,7 +144,7 @@ fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
 }
 
-fn execute_keyword_action_replacement_effects(
+pub(super) fn execute_keyword_action_replacement_effects(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     effects: Vec<Effect>,
@@ -529,11 +529,18 @@ impl EffectExecutor for ExploreEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct OpenAttractionEffect;
+pub struct OpenAttractionEffect {
+    pub reminder: bool,
+}
 
 impl OpenAttractionEffect {
     pub fn new() -> Self {
-        Self
+        Self { reminder: false }
+    }
+
+    pub fn with_reminder(mut self, reminder: bool) -> Self {
+        self.reminder = reminder;
+        self
     }
 }
 
@@ -547,21 +554,45 @@ impl EffectExecutor for OpenAttractionEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(source) = game.object(ctx.source) else {
-            return Ok(EffectOutcome::resolved());
+        let controller = game
+            .object(ctx.source)
+            .map(|source| game.controller_of(source))
+            .unwrap_or(ctx.controller);
+
+        // CR 701.51a-b: only a player with an Attraction deck can open one,
+        // and opening moves that deck's top card face up onto the battlefield
+        // under that player's control.
+        let Some(attraction) = game.top_attraction(controller) else {
+            return Ok(EffectOutcome::count(0));
         };
-        let controller = game.controller_of(source);
-        Ok(
-            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(
-                    KeywordActionKind::OpenAttraction,
-                    controller,
-                    ctx.source,
-                    1,
-                ),
-                ctx.provenance,
-            )),
-        )
+        match move_to_battlefield_with_options(
+            game,
+            ctx,
+            attraction,
+            BattlefieldEntryOptions::specific(controller, false),
+        ) {
+            BattlefieldEntryOutcome::Moved(new_id) => {
+                game.finish_opening_attraction(controller, attraction, Some(new_id));
+                Ok(EffectOutcome::with_objects(vec![new_id]).with_event(
+                    TriggerEvent::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::OpenAttraction,
+                            controller,
+                            ctx.source,
+                            1,
+                        ),
+                        ctx.provenance,
+                    ),
+                ))
+            }
+            BattlefieldEntryOutcome::Prevented => {
+                // The card was moved off the supplementary deck before the
+                // entry attempt (CR 701.51b), even though no open trigger is
+                // created when entry is prevented or replaced (CR 701.51c).
+                game.finish_opening_attraction(controller, attraction, None);
+                Ok(EffectOutcome::count(0))
+            }
+        }
     }
 }
 

@@ -837,6 +837,36 @@ mod tests {
             ]
         ));
     }
+
+    #[test]
+    fn delayed_sacrifice_retains_resolution_time_condition() {
+        let tokens = lex_line(
+            "Sacrifice it at the beginning of the next end step if it has mana value 3 or less.",
+            0,
+        )
+        .expect("conditional delayed sacrifice should lex");
+
+        let parsed =
+            parse_sentence_sacrifice_it_next_end_step(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("conditional delayed sacrifice should not error")
+                .expect("conditional delayed sacrifice should use the registry route");
+        let debug = format!("{parsed:#?}");
+
+        assert!(debug.contains("DelayedUntilNextEndStep"), "{debug}");
+        assert!(debug.contains("TrailingIf"), "{debug}");
+        assert!(debug.contains("mana_value"), "{debug}");
+        assert!(debug.contains("LessThanOrEqual"), "{debug}");
+        assert!(debug.contains("Sacrifice"), "{debug}");
+
+        let full_parse =
+            crate::runtime_backend::sentences::effect_sentences::parse_effect_sentences_lexed(
+                &tokens,
+            )
+            .expect("the full dispatcher should retain the delayed condition");
+        let full_debug = format!("{full_parse:#?}");
+        assert!(full_debug.contains("TrailingIf"), "{full_debug}");
+        assert!(full_debug.contains("mana_value"), "{full_debug}");
+    }
 }
 
 pub(crate) fn parse_sentence_choose_player_to_effect(
@@ -1094,18 +1124,32 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
     } else {
         parse_object_filter(shape.object_tokens, false)?
     };
+    let sacrifice = EffectAst::subject_verb_sacrifice(PlayerAst::Implicit, filter, 1, None);
+    let delayed_effects = if shape.trailing_tokens.is_empty() {
+        vec![sacrifice]
+    } else {
+        let predicate =
+            crate::runtime_backend::front_end::grammar::structure::parse_trailing_if_predicate_lexed(
+                shape.trailing_tokens,
+            )
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported delayed sacrifice condition (clause: '{}')",
+                    clause.text()
+                ))
+            })?;
+        vec![EffectAst::TrailingIf {
+            predicate,
+            effects: vec![sacrifice],
+        }]
+    };
     Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
         player: if shape.your_end_step {
             PlayerFilter::You
         } else {
             PlayerFilter::Any
         },
-        effects: vec![EffectAst::subject_verb_sacrifice(
-            PlayerAst::Implicit,
-            filter,
-            1,
-            None,
-        )],
+        effects: delayed_effects,
     }]))
 }
 
@@ -1141,13 +1185,32 @@ pub(crate) fn parse_sentence_exile_it_next_end_step(
         }
         TargetAst::Object(filter, None, object_clause.span())
     };
+    let exile = EffectAst::subject_verb_exile(target, false);
+    let delayed_effects = if shape.trailing_tokens.is_empty() {
+        vec![exile]
+    } else {
+        let predicate =
+            crate::runtime_backend::front_end::grammar::structure::parse_trailing_if_predicate_lexed(
+                shape.trailing_tokens,
+            )
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported delayed exile condition (clause: '{}')",
+                    clause.text()
+                ))
+            })?;
+        vec![EffectAst::TrailingIf {
+            predicate,
+            effects: vec![exile],
+        }]
+    };
     Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
         player: if shape.your_end_step {
             PlayerFilter::You
         } else {
             PlayerFilter::Any
         },
-        effects: vec![EffectAst::subject_verb_exile(target, false)],
+        effects: delayed_effects,
     }]))
 }
 

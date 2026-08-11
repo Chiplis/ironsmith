@@ -3,7 +3,7 @@
 //! These abilities modify combat rules like blocking restrictions,
 //! attack requirements, etc.
 
-use super::{StaticAbilityId, StaticAbilityKind};
+use super::{AttackTaxTargetKind, StaticAbilityId, StaticAbilityKind};
 use crate::effect::Restriction;
 use crate::effect::RestrictionExt as _;
 use crate::effects::EffectExecutor;
@@ -2078,6 +2078,13 @@ impl StaticAbilityKind for CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAt
     ) -> Option<u32> {
         Some(self.amount)
     }
+
+    fn generic_attack_tax_applies_to(&self, target: AttackTaxTargetKind) -> bool {
+        matches!(
+            target,
+            AttackTaxTargetKind::Player | AttackTaxTargetKind::Planeswalker
+        )
+    }
 }
 
 fn count_basic_land_types_among_lands_you_control(game: &GameState, controller: PlayerId) -> u32 {
@@ -2558,5 +2565,13 @@ mod tests {
             .generic_attack_tax_per_attacker_against_you(&game, ObjectId::new(), bob)
             .expect("fixed attack tax should resolve");
         assert_eq!(tax, 2);
+        assert!(ability.generic_attack_tax_applies_to(AttackTaxTargetKind::Player));
+        assert!(!ability.generic_attack_tax_applies_to(AttackTaxTargetKind::Planeswalker));
+        assert!(!ability.generic_attack_tax_applies_to(AttackTaxTargetKind::Battle));
+
+        let inclusive = CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker::new(2);
+        assert!(inclusive.generic_attack_tax_applies_to(AttackTaxTargetKind::Player));
+        assert!(inclusive.generic_attack_tax_applies_to(AttackTaxTargetKind::Planeswalker));
+        assert!(!inclusive.generic_attack_tax_applies_to(AttackTaxTargetKind::Battle));
     }
 }

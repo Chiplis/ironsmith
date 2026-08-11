@@ -7,6 +7,7 @@ use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_player_from_spec, resolve_players_from_spec, resolve_value,
+    validate_target,
 };
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
@@ -214,7 +215,8 @@ fn apply_processed_damage_results(
                     assignment.amount,
                     source_is_combat,
                     cause.clone(),
-                );
+                )
+                .with_excess_damage(excess_damage);
                 if let Some(snapshot) = target_snapshot {
                     damage_event = damage_event.with_target_snapshot(snapshot);
                 }
@@ -312,6 +314,12 @@ fn excess_damage_to_object(
             (toughness - game.damage_on(target) as i32).max(0) as u32
         };
         return amount.saturating_sub(lethal);
+    }
+    if object.has_card_type(CardType::Planeswalker) {
+        return amount.saturating_sub(object.loyalty().unwrap_or(0));
+    }
+    if object.has_card_type(CardType::Battle) {
+        return amount.saturating_sub(object.defense().unwrap_or(0));
     }
     0
 }
@@ -501,6 +509,59 @@ impl EffectExecutor for DealDamageEffect {
                 ctx.source,
                 ctx.source_snapshot.as_ref(),
                 damage_targets,
+                amount,
+                self.source_is_combat,
+                self.unpreventable,
+                ctx.provenance,
+                ctx.cause.clone(),
+                &mut *ctx.decision_maker,
+            ));
+        }
+
+        // A triggered damage follow-up can refer to the exact participant of
+        // the triggering damage event as "that permanent or player". This is
+        // a reference, not a new announced target choice, so resolve the
+        // correlated event participant before the ordinary ObjectOrPlayer
+        // targeting path.
+        if let ChooseSpec::ObjectOrPlayer(object_filter, PlayerFilter::DamagedPlayer) =
+            self.target.base()
+            && matches!(
+                object_filter.tagged_constraints.as_slice(),
+                [constraint]
+                    if constraint.tag.as_str() == "damaged"
+                        && constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            )
+            && let Some(damage) = ctx
+                .triggering_event
+                .as_ref()
+                .and_then(|event| event.downcast::<DamageEvent>())
+        {
+            let recipient = match damage.target {
+                DamageTarget::Object(object_id)
+                    if game
+                        .object(object_id)
+                        .is_some_and(object_can_be_dealt_damage) =>
+                {
+                    Some(DamageTarget::Object(object_id))
+                }
+                DamageTarget::Player(player_id)
+                    if game
+                        .player(player_id)
+                        .is_some_and(|player| player.is_in_game()) =>
+                {
+                    Some(DamageTarget::Player(player_id))
+                }
+                _ => None,
+            };
+            let Some(recipient) = recipient else {
+                return Ok(EffectOutcome::target_invalid());
+            };
+            return Ok(apply_processed_damage_outcome_opts(
+                game,
+                ctx.source,
+                ctx.source_snapshot.as_ref(),
+                recipient,
                 amount,
                 self.source_is_combat,
                 self.unpreventable,
@@ -705,6 +766,13 @@ impl EffectExecutor for DealDamageEffect {
 
         // Otherwise, use pre-resolved targets from ctx.targets
         for target in &ctx.targets {
+            // A resolution context can contain several independently
+            // announced targets. The fallback must not consume the first one
+            // merely because it can receive damage: it still has to satisfy
+            // this particular damage effect's target specification.
+            if !validate_target(game, target, &self.target, ctx) {
+                continue;
+            }
             match target {
                 ResolvedTarget::Player(player_id) => {
                     return Ok(apply_processed_damage_outcome_opts(
@@ -953,6 +1021,37 @@ mod tests {
                 .execution_facts()
                 .contains(&ExecutionFact::ExcessDamage(3))
         );
+        let event = outcome
+            .events
+            .iter()
+            .find_map(|event| event.downcast::<DamageEvent>())
+            .expect("damage outcome should emit its damage event");
+        assert_eq!(event.excess_damage, 3);
+    }
+
+    #[test]
+    fn damage_to_planeswalker_records_damage_beyond_remaining_loyalty_as_excess() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Overkiller", 5, 5, alice, vec![]);
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), "Low Loyalty")
+            .card_types(vec![CardType::Planeswalker])
+            .loyalty(3)
+            .build();
+        game.add_object(Object::from_card(id, &card, bob, Zone::Battlefield));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = DealDamageEffect::new(5, ChooseSpec::SpecificObject(id))
+            .execute(&mut game, &mut ctx)
+            .expect("planeswalker damage should resolve");
+        let event = outcome
+            .events
+            .iter()
+            .find_map(|event| event.downcast::<DamageEvent>())
+            .expect("damage outcome should emit its damage event");
+        assert_eq!(event.excess_damage, 2);
     }
 
     #[test]

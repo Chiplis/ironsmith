@@ -1,5 +1,6 @@
 use super::*;
 use crate::runtime_backend::front_end::grammar::effects::counter_marker_shapes as counter_shapes;
+use crate::runtime_backend::front_end::grammar::effects::zone_counter_shapes;
 
 fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
@@ -162,6 +163,48 @@ fn parse_put_counter_choice_sequence(
     )]))
 }
 
+pub(crate) fn parse_sentence_put_fixed_and_counter_choice(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = counter_shapes::parse_put_fixed_and_counter_choice_tokens(clause.tokens())
+    else {
+        return Ok(None);
+    };
+    let target = parse_target_phrase(shape.target_tokens)?;
+    let target_phrase =
+        crate::runtime_backend::front_end::lexer::render_token_slice(shape.target_tokens);
+    let mode_texts = shape
+        .counter_types
+        .iter()
+        .map(|counter_type| {
+            format!(
+                "Put {} on {target_phrase}",
+                super::super::zone_counter_helpers::describe_counter_phrase_for_mode(
+                    1,
+                    *counter_type,
+                )
+            )
+        })
+        .collect();
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_put_counters(
+            shape.fixed.counter_type,
+            Value::Fixed(shape.fixed.count as i32),
+            target.clone(),
+            None,
+            false,
+        ),
+        EffectAst::subject_verb_put_counter_choice(
+            shape.counter_types,
+            Value::Fixed(1),
+            mode_texts,
+            target,
+            None,
+        ),
+    ]))
+}
+
 pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -203,6 +246,19 @@ fn lower_counter_placements(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let mut effects = Vec::with_capacity(placements.len());
     for placement in placements {
+        if let Some(filter_tokens) =
+            zone_counter_shapes::strip_each_counter_prefix(placement.target_tokens)
+            && parse_counter_target_count_prefix(placement.target_tokens)?.is_none()
+        {
+            let filter = parse_object_filter(filter_tokens, false)?;
+            effects.push(EffectAst::subject_verb_put_counters_all(
+                placement.descriptor.counter_type,
+                Value::Fixed(placement.descriptor.count as i32),
+                filter,
+            ));
+            continue;
+        }
+
         let (target, target_count) = if let Some((target_count, used)) =
             parse_counter_target_count_prefix(placement.target_tokens)?
         {
@@ -442,9 +498,86 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     Ok(Some(wrapped))
 }
 
+/// Preserve an X-sized entry-counter clause as part of the return event.
+/// The fixed-number return grammar is intentionally separate because its
+/// descriptor parser does not accept dynamic values.
+pub(crate) fn parse_return_with_dynamic_entry_counters_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(clause.tokens());
+    let Some(destination) = words
+        .windows(6)
+        .position(|window| window == ["to", "the", "battlefield", "with", "x", "additional"])
+    else {
+        return Ok(None);
+    };
+    if words.first() != Some(&"return")
+        || destination <= 1
+        || !words.ends_with(&["counters", "on", "it"])
+    {
+        return Ok(None);
+    }
+    let target_words = &words[1..destination];
+    if !target_words.ends_with(&["from", "your", "graveyard"]) {
+        return Ok(None);
+    }
+    let counter_words = &words[destination + 6..words.len() - 3];
+    if counter_words.is_empty() {
+        return Ok(None);
+    }
+    let counter_tokens =
+        crate::runtime_backend::front_end::lexer::synthetic_word_tokens(counter_words);
+    let Some(counter_type) = parse_counter_type_from_tokens(&counter_tokens) else {
+        return Ok(None);
+    };
+    let target_tokens =
+        crate::runtime_backend::front_end::lexer::synthetic_word_tokens(target_words);
+    let mut target = parse_target_phrase(&target_tokens)?;
+
+    fn bind_owned_graveyard(target: &mut TargetAst) -> bool {
+        match target {
+            TargetAst::Object(filter, ..) => {
+                filter.zone = Some(Zone::Graveyard);
+                filter.owner = Some(PlayerFilter::You);
+                true
+            }
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+                bind_owned_graveyard(inner)
+            }
+            _ => false,
+        }
+    }
+    if !bind_owned_graveyard(&mut target) {
+        return Ok(None);
+    }
+
+    let return_effect = EffectAst::subject_verb_return_to_battlefield(
+        target,
+        false,
+        false,
+        false,
+        ReturnControllerAst::Preserve,
+        None,
+    );
+    let counter_amount = Value::X
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter);
+    let counter_effect = EffectAst::subject_verb_put_counters(
+        counter_type,
+        counter_amount,
+        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
+        None,
+        false,
+    );
+    Ok(Some(vec![return_effect, counter_effect]))
+}
+
 pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_optional_put_from_owned_hand_or_graveyard_with_counters(clause)? {
+        return Ok(Some(effects));
+    }
     let Some(shape) =
         counter_shapes::parse_put_onto_battlefield_with_counters_tokens(clause.tokens())
     else {
@@ -506,6 +639,113 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
         ));
     }
 
+    Ok(Some(effects))
+}
+
+/// Parse the reusable cross-zone form
+/// `you may put <card> onto the battlefield from your hand or graveyard with
+/// <counters> on it`. The ordinary move-with-counters grammar has a single
+/// source zone, so treating the trailing origin phrase as part of the entry
+/// counter clause loses the chosen card and leaves only a counter action.
+fn parse_optional_put_from_owned_hand_or_graveyard_with_counters(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(clause.tokens());
+    let put_index = if words.starts_with(&["you", "may", "put"]) {
+        2
+    } else if words.starts_with(&["may", "put"]) {
+        1
+    } else if words.starts_with(&["put"]) {
+        0
+    } else {
+        return Ok(None);
+    };
+    let Some(onto_index) = words[put_index + 1..]
+        .iter()
+        .position(|word| *word == "onto")
+        .map(|offset| put_index + 1 + offset)
+    else {
+        return Ok(None);
+    };
+    let origin = [
+        "onto",
+        "the",
+        "battlefield",
+        "from",
+        "your",
+        "hand",
+        "or",
+        "graveyard",
+        "with",
+    ];
+    if words.get(onto_index..onto_index + origin.len()) != Some(origin.as_slice()) {
+        return Ok(None);
+    }
+    let target_words = &words[put_index + 1..onto_index];
+    if target_words.is_empty() {
+        return Ok(None);
+    }
+    let counter_words = &words[onto_index + origin.len()..];
+    if counter_words.len() < 3 || !counter_words.ends_with(&["on", "it"]) {
+        return Ok(None);
+    }
+
+    let target_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(target_words);
+    let mut filter = parse_object_filter(&target_tokens, false)?;
+    filter.zone = None;
+    filter.owner = Some(PlayerFilter::You);
+
+    let mut counter_probe_words = vec!["put", "it", "onto", "the", "battlefield", "with"];
+    counter_probe_words.extend(counter_words.iter().copied());
+    let counter_probe = crate::runtime_backend::lexer::synthetic_word_tokens(counter_probe_words);
+    let Some(counter_shape) =
+        counter_shapes::parse_put_onto_battlefield_with_counters_tokens(&counter_probe)
+    else {
+        return Ok(None);
+    };
+    if counter_shape.destination.tapped
+        || counter_shape.destination.attacking
+        || counter_shape.destination.transformed
+        || counter_shape.destination.controller != ReturnControllerAst::Preserve
+        || counter_shape.descriptors.is_empty()
+    {
+        return Ok(None);
+    }
+
+    let selected = helper_tag_for_tokens(clause.tokens(), "owned_zone_entry");
+    let mut effects = vec![
+        EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: selected.clone(),
+            zones: vec![Zone::Hand, Zone::Graveyard],
+            search_mode: None,
+        },
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(selected.clone(), clause.span()),
+            Zone::Battlefield,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+    ];
+    for descriptor in counter_shape.descriptors {
+        let count = Value::Fixed(descriptor.count as i32)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
+        effects.push(EffectAst::subject_verb_put_counters(
+            descriptor.counter_type,
+            count,
+            TargetAst::Tagged(selected.clone(), clause.span()),
+            None,
+            false,
+        ));
+    }
+    // The leading-may dispatcher owns optionality. Returning another May here
+    // would produce a nested decision (`You may may put ...`) and hide this
+    // correlated choose/move/entry-counter program from structural lowering.
     Ok(Some(effects))
 }
 
@@ -577,6 +817,7 @@ pub(crate) fn clone_return_effect_with_subtype(
                 count_value,
                 as_aura,
                 top_only,
+                ..
             } => {
                 let mut cloned_target = target.clone();
                 replace_target_subtype(&mut cloned_target, subtype).then(|| {
@@ -868,4 +1109,69 @@ pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
     Ok(Some(vec![EffectAst::ForEachPlayer {
         effects: per_player_effects,
     }]))
+}
+
+#[cfg(test)]
+mod dynamic_entry_counter_tests {
+    use super::*;
+    use crate::CounterType;
+
+    #[test]
+    fn owned_graveyard_return_keeps_x_as_an_inline_entry_counter() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "Return target artifact or non-Aura enchantment card from your graveyard to the battlefield with X additional +1/+1 counters on it.",
+            0,
+        )
+        .expect("dynamic return should lex");
+        let effects = parse_return_with_dynamic_entry_counters_sentence(
+            SubjectVerbPrimitiveClause::new(&tokens),
+        )
+        .expect("dynamic return should parse")
+        .expect("dynamic return shape");
+        let [returned, counter] = effects.as_slice() else {
+            panic!("expected return and entry-counter effects: {effects:#?}");
+        };
+        assert!(matches!(
+            returned,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ReturnToBattlefield {
+                    target: TargetAst::Object(filter, ..),
+                    ..
+                },
+                ..
+            }) if filter.zone == Some(Zone::Graveyard)
+                && filter.owner == Some(PlayerFilter::You)
+        ));
+        assert!(matches!(
+            counter,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutCounters {
+                    counter_type: CounterType::PlusOnePlusOne,
+                    count,
+                    target: TargetAst::Tagged(tag, _),
+                    ..
+                },
+                ..
+            }) if matches!(count.unhinted(), Value::X)
+                && count.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+                && count.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+                && tag.as_str() == IT_TAG
+        ));
+    }
+
+    #[test]
+    fn a_return_from_an_opponents_graveyard_is_not_rebound_to_you() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "Return target artifact card from an opponent's graveyard to the battlefield with X additional +1/+1 counters on it.",
+            0,
+        )
+        .expect("near miss should lex");
+        assert!(
+            parse_return_with_dynamic_entry_counters_sentence(SubjectVerbPrimitiveClause::new(
+                &tokens
+            ))
+            .expect("near miss should not error")
+            .is_none()
+        );
+    }
 }

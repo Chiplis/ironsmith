@@ -106,6 +106,15 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
                 );
                 bind_typed_where_x_references(otherwise, binding.clone());
             }
+            EffectAst::IfEffectResult {
+                effect, if_true, ..
+            } => {
+                bind_typed_where_x_references(
+                    std::slice::from_mut(effect.as_mut()),
+                    binding.clone(),
+                );
+                bind_typed_where_x_references(if_true, binding.clone());
+            }
             EffectAst::TagAffected { effect, .. } => bind_typed_where_x_references(
                 std::slice::from_mut(effect.as_mut()),
                 binding.clone(),
@@ -125,9 +134,17 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     for effect in effects.iter_mut() {
         normalize_nested_effects(effect);
     }
+    // A full-card parse can normalize a named source reference only after the
+    // narrow removal/damage sentence recognizer has run. Recover the same
+    // typed shared-result provenance at this common AST boundary once the
+    // producer is provably a source-bound counter removal and every following
+    // member belongs to the damage fanout.
+    crate::runtime_backend::effect_sentences::bind_removed_counter_damage_fanout(effects);
     bind_explicit_chosen_object_followups(effects);
     correlate_conditional_quantified_choice_followups(effects);
     correlate_split_for_each_player_choice_complements(effects);
+    bind_all_players_subtype_choices_to_destroy_exclusion(effects);
+    bind_all_players_subtype_choices_to_return_inclusion(effects);
     bind_quantified_choice_collections_to_destroy_followups(effects);
     bind_counted_set_followups(effects);
     if let Some(rewritten) = rewrite_repeat_process(effects) {
@@ -143,6 +160,150 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
         *effects = rewritten;
     }
     effects.retain(|effect| !is_noop_effect(effect));
+}
+
+fn single_subtype_choice_family(effect: &EffectAst) -> Option<crate::types::SubtypeFamily> {
+    match effect {
+        EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. } => {
+            let [effect] = effects.as_slice() else {
+                return None;
+            };
+            single_subtype_choice_family(effect)
+        }
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::ChooseCreatureType { family, .. } => Some(*family),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn all_players_choose_one_subtype_family(
+    effect: &EffectAst,
+) -> Option<crate::types::SubtypeFamily> {
+    match effect {
+        EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. } => {
+            let [effect] = effects.as_slice() else {
+                return None;
+            };
+            all_players_choose_one_subtype_family(effect)
+        }
+        EffectAst::ForEachPlayer { effects } => {
+            let [effect] = effects.as_slice() else {
+                return None;
+            };
+            single_subtype_choice_family(effect)
+        }
+        _ => None,
+    }
+}
+
+fn filter_is_misbound_chosen_subtype_result(
+    filter: &crate::filter::ObjectFilter,
+    family: crate::types::SubtypeFamily,
+) -> bool {
+    if family != crate::types::SubtypeFamily::Creature
+        || filter.card_types.as_slice() != [crate::types::CardType::Creature]
+        || filter.tagged_constraints.len() != 1
+    {
+        return false;
+    }
+    let mut expected = crate::filter::ObjectFilter::creature().match_tagged(
+        crate::tag::TagKey::from(IT_TAG),
+        crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+    );
+    // The ordinary object-filter route may leave the implicit permanent zone
+    // unstated until lowering. Treat those two forms as the same exact shape.
+    if filter.zone.is_none() {
+        expected.zone = None;
+    }
+    filter == &expected
+}
+
+/// A subtype chosen "this way" is characteristic data stored on the source,
+/// not an object-result collection. Some public multi-sentence routes see the
+/// terminal words first and temporarily bind `chosen this way` to the generic
+/// object tag. Repair only the exact all-players subtype-choice followed by an
+/// otherwise-plain destroy-all object filter, retaining ordinary chosen-object
+/// procedures unchanged.
+fn bind_all_players_subtype_choices_to_destroy_exclusion(effects: &mut [EffectAst]) {
+    for consumer_index in 1..effects.len() {
+        let Some(family) = all_players_choose_one_subtype_family(&effects[consumer_index - 1])
+        else {
+            continue;
+        };
+        let Some(filter) = direct_destroy_filter_mut(&mut effects[consumer_index]) else {
+            continue;
+        };
+        if !filter_is_misbound_chosen_subtype_result(filter, family) {
+            continue;
+        }
+
+        filter.tagged_constraints.clear();
+        filter.excluded_any_chosen_creature_type = true;
+        filter.set_chosen_type_this_way_surface(true);
+    }
+}
+
+fn all_players_return_all_filter_mut(
+    effect: &mut EffectAst,
+) -> Option<&mut crate::filter::ObjectFilter> {
+    match effect {
+        EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. } => {
+            let [effect] = effects.as_mut_slice() else {
+                return None;
+            };
+            all_players_return_all_filter_mut(effect)
+        }
+        EffectAst::ForEachPlayer { effects } => {
+            let [effect] = effects.as_mut_slice() else {
+                return None;
+            };
+            match effect {
+                EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+                    SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. } => Some(filter),
+                    _ => None,
+                },
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Bind an all-players subtype choice to a following all-players return. The
+/// source stores every simultaneously chosen subtype, so the consumer must
+/// match the union of those choices rather than only the last submitted one.
+fn bind_all_players_subtype_choices_to_return_inclusion(effects: &mut [EffectAst]) {
+    for consumer_index in 1..effects.len() {
+        if all_players_choose_one_subtype_family(&effects[consumer_index - 1])
+            != Some(crate::types::SubtypeFamily::Creature)
+        {
+            continue;
+        }
+        let Some(filter) = all_players_return_all_filter_mut(&mut effects[consumer_index]) else {
+            continue;
+        };
+        if filter.zone != Some(crate::zone::Zone::Graveyard)
+            || filter.owner != Some(crate::target::PlayerFilter::IteratedPlayer)
+            || filter.card_types.as_slice() != [crate::types::CardType::Creature]
+            || filter.prior_effect_action_surface()
+                != Some(ironsmith_core::PriorEffectAction::Chosen)
+        {
+            continue;
+        }
+        filter.chosen_creature_type = true;
+        filter.set_chosen_type_this_way_surface(true);
+    }
 }
 
 fn quantified_player_choice_effects_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
@@ -212,6 +373,7 @@ fn choice_collection_producer_is_quantified(effect: &EffectAst) -> Option<bool> 
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. } => sequence_kind(effects),
         EffectAst::TagAffected { effect, .. } => choice_collection_producer_is_quantified(effect),
@@ -243,6 +405,7 @@ fn choice_collection_producer_has_accumulating_tags(effect: &EffectAst) -> bool 
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. } => {
             !effects.is_empty()
@@ -278,6 +441,7 @@ fn retag_choice_collection_producer(effect: &mut EffectAst, durable_tag: &crate:
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. } => {
             for effect in effects {
@@ -346,6 +510,7 @@ fn choice_collection_producer_matches_object_kind(
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. } => {
             !effects.is_empty()
@@ -593,6 +758,12 @@ fn replace_correlated_filter_tag(
             replaced = true;
         }
     }
+    if let Some(crate::filter::ObjectRef::Tagged(tag)) = &mut filter.in_combat_with
+        && tag == old
+    {
+        *tag = new.clone();
+        replaced = true;
+    }
     for comparison in &mut filter.no_shared_creature_types_with {
         let comparison_replaced = replace_correlated_filter_tag(comparison, old, new);
         if comparison_replaced && comparison.controller.is_none() {
@@ -775,6 +946,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::TrailingIf { effects, .. }
         | EffectAst::TrailingUnless { effects, .. }
         | EffectAst::SourceSentence { effects, .. }
@@ -792,6 +964,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects, .. }
         | EffectAst::ForEachPlayerDoesNot { effects, .. }
         | EffectAst::ForEachOpponentDid { effects, .. }
@@ -809,6 +982,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
         | EffectAst::DelayedUntilNextDrawStep { effects, .. }
         | EffectAst::DelayedUntilNextMainPhase { effects, .. }
+        | EffectAst::DelayedUntilNextFirstMainPhase { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
@@ -838,6 +1012,12 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
             normalize_nested_effects(effect);
             normalize_effects_vec(otherwise);
+        }
+        EffectAst::IfEffectResult {
+            effect, if_true, ..
+        } => {
+            normalize_nested_effects(effect);
+            normalize_effects_vec(if_true);
         }
         EffectAst::TagAffected { effect, .. } => {
             normalize_nested_effects(effect);
@@ -1096,6 +1276,46 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn normalize_treats_all_players_chosen_subtypes_as_characteristics_not_objects() {
+        let choose_type = EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::subject_verb_choose_creature_type(
+                PlayerAst::That,
+                Vec::new(),
+            )],
+        };
+        let misbound = ObjectFilter::creature()
+            .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+
+        let normalized =
+            normalize_effects_ast(&[choose_type, EffectAst::subject_verb_destroy_all(misbound)]);
+        let filter = super::direct_destroy_filter(&normalized[1]).expect("destroy filter");
+        assert!(filter.tagged_constraints.is_empty(), "{filter:#?}");
+        assert!(filter.excluded_any_chosen_creature_type, "{filter:#?}");
+        assert!(filter.has_chosen_type_this_way_surface(), "{filter:#?}");
+    }
+
+    #[test]
+    fn normalize_keeps_all_players_chosen_object_destroy_procedures_tagged() {
+        let choose_object = EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::ChooseObjects {
+                filter: ObjectFilter::creature(),
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::That,
+                tag: TagKey::from(IT_TAG),
+            }],
+        };
+        let chosen = ObjectFilter::creature()
+            .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+
+        let normalized =
+            normalize_effects_ast(&[choose_object, EffectAst::subject_verb_destroy_all(chosen)]);
+        let filter = super::direct_destroy_filter(&normalized[1]).expect("destroy filter");
+        assert!(!filter.excluded_any_chosen_creature_type, "{filter:#?}");
+        assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
     }
 
     #[test]
@@ -1464,6 +1684,7 @@ mod tests {
                                     crate::mana::ManaSymbol::Generic(3),
                                 ]),
                             ),
+                            before_delayed_step: false,
                         },
                         EffectAst::RepeatThisProcess,
                     ],

@@ -245,6 +245,7 @@ pub(crate) struct ParsedModalHeader {
     pub(crate) min: Value,
     pub(crate) max: Option<Value>,
     pub(crate) spree: bool,
+    pub(crate) tiered: bool,
     pub(crate) weighted_mode_points: bool,
     pub(crate) random: bool,
     pub(crate) same_mode_more_than_once: bool,
@@ -259,6 +260,12 @@ pub(crate) struct ParsedModalHeader {
     pub(crate) activated: Option<ParsedModalActivatedHeader>,
     pub(crate) x_replacement: Option<Value>,
     pub(crate) prefix_effects_ast: Vec<EffectAst>,
+    /// Typed effects authored after `choose ... and` and before the mode list.
+    pub(crate) common_prefix_effects_ast: Vec<EffectAst>,
+    /// Typed effects authored after the modal choice sentence but before the
+    /// bullet list. Semantic lowering specializes target-dependent suffixes
+    /// into every mode while retaining their shared presentation boundary.
+    pub(crate) common_suffix_effects_ast: Vec<EffectAst>,
     pub(crate) modal_gate: Option<ParsedModalGate>,
     pub(crate) line_text: String,
 }

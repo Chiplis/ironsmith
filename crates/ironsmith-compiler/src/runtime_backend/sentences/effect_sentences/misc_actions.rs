@@ -8,6 +8,7 @@ use crate::runtime_backend::grammar::effects::misc_action_shapes::{
     self, BecomePlayerSurface, EndActionShape, FlipTargetSurface, SkipActionKind,
     SwitchTargetSurface, UntapActionShape, parse_conjoined_untap_all_tokens,
 };
+use crate::runtime_backend::grammar::effects::parse_inline_creature_type_choice_tokens;
 use crate::runtime_backend::grammar::leaf::parse_leaf_mana_cost_prefix_tokens;
 use crate::runtime_backend::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value;
 use crate::runtime_backend::lexer::token_slice_at_is;
@@ -577,6 +578,32 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         return Err(CardTextError::ParseError(
             "untap clause missing target".to_string(),
         ));
+    }
+    if let Some(choice) = parse_inline_creature_type_choice_tokens(tokens) {
+        let mut cleaned = Vec::with_capacity(
+            choice
+                .before_tokens
+                .len()
+                .saturating_add(choice.after_tokens.len()),
+        );
+        cleaned.extend_from_slice(&trim_commas(choice.before_tokens));
+        cleaned.extend_from_slice(&trim_commas(choice.after_tokens));
+        let UntapActionShape::All { filter_tokens } =
+            misc_action_shapes::parse_untap_action_tokens(&cleaned)
+        else {
+            return Err(CardTextError::ParseError(
+                "creature-type choice untap requires an all/each object set".to_string(),
+            ));
+        };
+        let mut filter = parse_object_filter(filter_tokens, false)?;
+        constrain_untap_filter_to_battlefield(&mut filter);
+        filter.chosen_creature_type = true;
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
+                EffectAst::subject_verb_untap_all(filter),
+            ],
+        });
     }
     if let Some(filter_tokens) = misc_action_shapes::parse_chosen_object_set_filter_tokens(tokens) {
         let mut filter = parse_object_filter(filter_tokens, false)?;

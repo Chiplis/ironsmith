@@ -133,10 +133,12 @@ fn parse_error_message<T>(result: Result<T, CardTextError>) -> String {
     }
 }
 
+mod conditional_target_animation;
 mod draw_step_search_player_provenance;
 mod each_of_any_number;
 mod each_player_unless_pays;
 mod leading_then_discard_provenance;
+mod self_replacement_damage;
 mod shard_00;
 mod shard_01;
 mod shard_02;
@@ -146,3 +148,4 @@ mod shard_05;
 mod shard_06;
 mod shard_07;
 mod shard_08;
+mod target_aggregate_mana_value;

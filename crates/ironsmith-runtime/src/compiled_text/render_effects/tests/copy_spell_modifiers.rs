@@ -87,3 +87,61 @@ fn copied_spell_color_exception_stays_with_retarget_sentence() {
         "Copy target spell, except that the copy is red. You may choose new targets for the copy"
     );
 }
+
+#[test]
+fn copied_spell_fixed_pt_subtype_exception_stays_one_typed_clause() {
+    let copied = TagKey::from("__copied_stack_object__");
+    let copy = Effect::with_id(
+        3,
+        Effect::new(
+            crate::effects::CopySpellEffect::single(ChooseSpec::Tagged(TagKey::from("triggering")))
+                .with_target_reference_kind(StackObjectKind::Spell),
+        ),
+    )
+    .tag(copied.clone());
+    let modifier = Effect::new(
+        crate::effects::ApplyContinuousEffect::with_spec(
+            ChooseSpec::Tagged(copied),
+            crate::continuous::Modification::AddSubtypes(vec![Subtype::Spirit]),
+            Until::Forever,
+        )
+        .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
+            power: Value::Fixed(1),
+            toughness: Value::Fixed(1),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        })
+        .with_type_retention_surface(Some(
+            ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes,
+        )),
+    );
+
+    assert_eq!(
+        describe_effect_list(&[copy.clone(), modifier.clone()]),
+        "Copy that spell, except the copy is a 1/1 Spirit in addition to its other types"
+    );
+
+    let mut wrong_duration = modifier
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .expect("modifier")
+        .clone();
+    wrong_duration.until = Until::EndOfTurn;
+    assert_ne!(
+        describe_effect_list(&[copy, Effect::new(wrong_duration)]),
+        "Copy that spell, except the copy is a 1/1 Spirit in addition to its other types"
+    );
+}
+
+#[test]
+fn copiable_fixed_pt_subtype_exception_renders_directly_on_the_copy_effect() {
+    let copy = Effect::new(
+        crate::effects::CopySpellEffect::single(ChooseSpec::Tagged(TagKey::from("triggering")))
+            .with_target_reference_kind(StackObjectKind::Spell)
+            .with_added_subtypes(vec![Subtype::Spirit])
+            .with_set_base_power_toughness(Some((1, 1))),
+    );
+
+    assert_eq!(
+        describe_effect(&copy),
+        "Copy that spell, except the copy is a 1/1 Spirit in addition to its other types"
+    );
+}

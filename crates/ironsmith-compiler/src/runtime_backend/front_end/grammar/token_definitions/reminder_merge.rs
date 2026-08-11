@@ -70,6 +70,11 @@ pub(crate) fn merge_token_equipment_reminder_definition(
 
 fn merge_creature_rules(base: &mut CreatureTokenRulesShape, reminder: &CreatureTokenRulesShape) {
     merge_token_rules(&mut base.token_rules, &reminder.token_rules);
+    for presentation in &reminder.authored_inline_rules {
+        if !base.authored_inline_rules.contains(presentation) {
+            base.authored_inline_rules.push(presentation.clone());
+        }
+    }
     macro_rules! merge_option {
         ($field:ident) => {
             if reminder.$field.is_some() {

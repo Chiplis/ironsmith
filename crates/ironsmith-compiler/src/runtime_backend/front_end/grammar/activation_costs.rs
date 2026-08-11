@@ -102,6 +102,16 @@ pub(crate) enum ActivationCostSegmentCst {
         choice_count: ChoiceCount,
         filter: ObjectFilter,
         top_only: bool,
+        turn_face_up: bool,
+    },
+    /// A single authored exile cost containing both the source and a
+    /// separately quantified set ("this Vehicle and four other ...").
+    /// Keeping the two selectors distinct preserves both source identity and
+    /// the exact cardinality of the other objects.
+    ExileSourceAndChosen {
+        source_filter: ObjectFilter,
+        choice_count: ChoiceCount,
+        filter: ObjectFilter,
     },
     ExileSelfAndNamedArtifacts {
         names: Vec<String>,
@@ -122,6 +132,9 @@ pub(crate) enum ActivationCostSegmentCst {
     },
     MoveChosenToLibraryTop {
         filter: ObjectFilter,
+    },
+    MoveSelfToLibraryBottom {
+        surface: crate::target::SourceReferenceSurface,
     },
     MoveOpponentOwnedExiledCardToGraveyard,
     ExertSelf {

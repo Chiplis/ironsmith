@@ -1,4 +1,104 @@
 use super::*;
+use crate::target::SourceReferenceSurface;
+
+fn triggered_named_source_resolution_surface(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<&str> {
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [prefix @ .., execute_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    if prefix.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+            .is_none()
+            && effect
+                .downcast_ref::<crate::effects::TagTriggeringDamageTargetEffect>()
+                .is_none()
+            && effect
+                .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
+                .is_none()
+    }) {
+        return None;
+    }
+    let execute = execute_effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+    match execute.source.source_reference_surface()? {
+        SourceReferenceSurface::FullName(text) | SourceReferenceSurface::ShortName(text) => {
+            Some(text)
+        }
+        SourceReferenceSurface::ThisPermanentType(_) => None,
+    }
+}
+
+fn triggered_resolution_clause_case(
+    triggered: &crate::ability::TriggeredAbility,
+    clause: &str,
+) -> String {
+    if triggered_named_source_resolution_surface(triggered).is_some_and(|source| {
+        clause
+            .strip_prefix(source)
+            .is_some_and(|tail| tail.chars().next().is_some_and(char::is_whitespace))
+    }) {
+        clause.to_string()
+    } else {
+        lowercase_first(clause)
+    }
+}
+
+#[cfg(test)]
+mod named_source_resolution_case_tests {
+    use super::*;
+
+    fn fixture(surface: SourceReferenceSurface) -> crate::ability::TriggeredAbility {
+        let source = ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(surface),
+        );
+        crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::this_enters_battlefield(),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::new(crate::effects::TagTriggeringObjectEffect::new("triggering")),
+                Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                    source,
+                    Effect::deal_damage(
+                        Value::Fixed(2),
+                        ChooseSpec::Player(PlayerFilter::Opponent),
+                    ),
+                )),
+            ]),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        }
+    }
+
+    #[test]
+    fn explicit_named_source_keeps_case_but_typed_and_unrelated_heads_do_not() {
+        let named = fixture(SourceReferenceSurface::ShortName(
+            "Ghyrson Starn".to_string(),
+        ));
+        assert_eq!(
+            triggered_resolution_clause_case(&named, "Ghyrson Starn deals 2 damage to that player"),
+            "Ghyrson Starn deals 2 damage to that player"
+        );
+        assert_eq!(
+            triggered_resolution_clause_case(&named, "Draw a card"),
+            "draw a card"
+        );
+
+        let typed = fixture(SourceReferenceSurface::ThisPermanentType(
+            "This creature".to_string(),
+        ));
+        assert_eq!(
+            triggered_resolution_clause_case(&typed, "This creature deals 2 damage"),
+            "this creature deals 2 damage"
+        );
+    }
+}
 
 fn rewrite_removed_counter_type_surface(
     mut effects: String,
@@ -190,6 +290,7 @@ pub(super) fn describe_myriad_keyword(
         || !create.added_subtypes.is_empty()
         || !create.removed_supertypes.is_empty()
         || create.set_base_power_toughness.is_some()
+        || create.set_base_power_toughness_value.is_some()
         || create.set_colors.is_some()
         || create.set_card_types.is_some()
         || create.set_subtypes.is_some()
@@ -369,12 +470,427 @@ pub(super) fn describe_level_up_activation(
     ))
 }
 
+fn describe_attacking_hand_entry_token_copy(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    let trigger = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()?;
+    let mut expected_trigger_filter = ObjectFilter::default();
+    expected_trigger_filter.owner = Some(PlayerFilter::You);
+    if !trigger.this_object
+        || trigger.from != crate::triggers::ZonePattern::Specific(Zone::Hand)
+        || trigger.to != crate::triggers::ZonePattern::Specific(Zone::Battlefield)
+        || trigger.object_filter != expected_trigger_filter
+        || trigger.player != crate::triggers::PlayerRelation::Any
+        || trigger.cause_filter.is_some()
+        || trigger.during_turn.is_some()
+        || trigger.origin_condition.is_some()
+        || trigger.count_mode != crate::triggers::CountMode::Each
+        || triggered.presentation_label.is_some()
+    {
+        return None;
+    }
+    let Condition::TaggedObjectMatches(condition_tag, condition_filter) =
+        triggered.intervening_if.as_ref()?
+    else {
+        return None;
+    };
+    let mut expected_condition = crate::target::ObjectFilter::default();
+    expected_condition.attacking = true;
+    if condition_tag.as_str() != "triggering" || condition_filter != &expected_condition {
+        return None;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if segment.starts_new_source_line || !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let create = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    let [choice] = triggered.choices.as_slice() else {
+        return None;
+    };
+    if choice != &create.target
+        || create.count.unhinted() != &Value::Fixed(1)
+        || create.controller != PlayerFilter::You
+        || !create.enters_tapped
+        || create.has_haste
+        || create.haste_followup_reference_surface.is_some()
+        || !create.enters_attacking
+        || create.attack_target_mode.is_some()
+        || create.exile_at_end_of_combat
+        || create.exile_at_end_of_combat_reference_surface.is_some()
+        || create.loses_soulbond
+        || create.sacrifice_at_next_end_step
+        || create
+            .sacrifice_at_next_end_step_reference_surface
+            .is_some()
+        || create.sacrifice_at_next_end_step_ability_text.is_some()
+        || create.exile_at_next_end_step
+        || create.exile_at_next_end_step_reference_surface.is_some()
+        || create.next_end_step_player != PlayerFilter::Any
+        || create.pt_adjustment.is_some()
+        || create.clear_mana_cost
+        || !create.added_card_types.is_empty()
+        || !create.added_subtypes.is_empty()
+        || !create.removed_supertypes.is_empty()
+        || create.set_base_power_toughness.is_some()
+        || create.set_base_power_toughness_value.is_some()
+        || create.set_colors.is_some()
+        || create.set_card_types.is_some()
+        || create.set_subtypes.is_some()
+        || !create.granted_static_abilities.is_empty()
+    {
+        return None;
+    }
+    let target = describe_choose_spec(&create.target);
+    if target != "another target attacking creature" {
+        return None;
+    }
+    Some(format!(
+        "When this creature enters from your hand, if it's attacking, create a token that's a copy of {target}. The token enters tapped and attacking"
+    ))
+}
+
+fn describe_source_etb_damage_to_opponents_and_their_creatures(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered.presentation_label.is_some()
+    {
+        return None;
+    }
+    let trigger = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()?;
+    if !trigger.this_object
+        || trigger.to != crate::triggers::ZonePattern::Specific(Zone::Battlefield)
+        || trigger.player != crate::triggers::PlayerRelation::Any
+        || trigger.cause_filter.is_some()
+        || trigger.count_mode != crate::triggers::CountMode::Each
+    {
+        return None;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if segment.starts_new_source_line || !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [tag_effect, sequence_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let source_tag = tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+        return None;
+    }
+    let [player_effect, creature_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let for_players = player_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let [player_damage_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let player_damage = player_damage_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if for_players.filter != PlayerFilter::Opponent
+        || for_players.starting_with_controller
+        || for_players.stop_after_first_happened
+        || !matches!(
+            player_damage.target,
+            ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+        )
+        || player_damage.source_is_combat
+        || player_damage.unpreventable
+    {
+        return None;
+    }
+
+    let for_each = creature_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    let mut expected_filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    expected_filter.controller = Some(PlayerFilter::Opponent);
+    let mut semantic_filter = for_each.filter.clone();
+    semantic_filter.union_surface = Default::default();
+    if semantic_filter != expected_filter {
+        return None;
+    }
+    let [iterated_damage_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let iterated_damage_effect = unwrap_basic_tag_wrappers(iterated_damage_effect);
+    let sourced =
+        iterated_damage_effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+    if !matches!(&sourced.source, ChooseSpec::Tagged(tag) if tag == &source_tag.tag) {
+        return None;
+    }
+    let creature_damage = sourced
+        .effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if creature_damage.amount != player_damage.amount
+        || !matches!(creature_damage.target, ChooseSpec::Iterated)
+        || creature_damage.source_is_combat
+        || creature_damage.unpreventable
+    {
+        return None;
+    }
+    let trigger_surface = triggered.trigger.display();
+    if !(trigger_surface.starts_with("When ") || trigger_surface.starts_with("Whenever ")) {
+        return None;
+    }
+    let amount = describe_value(&player_damage.amount);
+    Some(format!(
+        "{trigger_surface}, it deals {amount} damage to each opponent and {amount} damage to each creature your opponents control"
+    ))
+}
+
+fn describe_each_combat_unless_pay_delayed_block_grant(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    let combat = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::BeginningOfCombatTrigger>()?;
+    if combat.player != PlayerFilter::Any
+        || triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+    {
+        return None;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if segment.starts_new_source_line || !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let unless = effect.downcast_ref::<crate::effects::UnlessPaysEffect>()?;
+    if unless.player != PlayerFilter::You
+        || unless.leading_surface
+        || unless.before_delayed_step
+        || describe_total_cost(&unless.cost) != "{R}"
+    {
+        return None;
+    }
+    let [schedule_effect] = unless.effects.as_slice() else {
+        return None;
+    };
+    let schedule =
+        schedule_effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+    if schedule.one_shot
+        || schedule.start_next_turn
+        || schedule.duration != ironsmith_core::DelayedTriggerDuration::EndOfCombat
+        || !schedule.until_end_of_combat
+        || schedule.until_end_of_turn
+        || !schedule.leading_duration_surface
+        || schedule.watch_ability_source
+        || schedule.watch_all_object_targets
+        || schedule.either_of_watched_objects
+        || schedule.while_any_tagged_object_in_zone.is_some()
+        || !schedule.target_objects.is_empty()
+        || schedule.target_tag.is_some()
+        || schedule.target_filter.is_some()
+        || schedule.controller != PlayerFilter::You
+        || schedule.prepayment.is_some()
+        || schedule.event_value_from_prior_prevention
+    {
+        return None;
+    }
+    if describe_this_blocks_or_becomes_blocked_by_trigger(&schedule.trigger).as_deref()
+        != Some("Whenever this creature blocks or becomes blocked by a creature")
+    {
+        return None;
+    }
+    let [delayed_segment] = schedule.effects.segments.as_slice() else {
+        return None;
+    };
+    if delayed_segment.starts_new_source_line || !delayed_segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [participant_effect, grant_effect] = schedule.effects.flattened_default_effects() else {
+        return None;
+    };
+    let participant =
+        participant_effect.downcast_ref::<crate::effects::TagOtherBlockParticipantEffect>()?;
+    if participant.filter.as_ref() != Some(&ObjectFilter::creature())
+        || !super::structural_bundles::describes_first_strike_grant_to_tag(
+            grant_effect,
+            &participant.tag,
+        )
+    {
+        return None;
+    }
+    Some(
+        "At the beginning of each combat, unless you pay {R}, whenever this creature blocks or becomes blocked by a creature this combat, that creature gains first strike until end of turn"
+            .to_string(),
+    )
+}
+
+fn describe_spell_cast_copy_while_source_has_quest_counters(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if !triggered.choices.is_empty() || triggered.presentation_label.is_some() {
+        return None;
+    }
+    let spell_cast = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::SpellCastTrigger>()?;
+    if *spell_cast
+        != crate::triggers::SpellCastTrigger::new(
+            Some(ObjectFilter::instant_or_sorcery()),
+            PlayerFilter::You,
+        )
+        || !matches!(
+            triggered.intervening_if,
+            Some(Condition::SourceHasCounterAtLeast {
+                counter_type: crate::object::CounterType::Quest,
+                count: 2,
+                ..
+            })
+        )
+    {
+        return None;
+    }
+    let resolution = describe_triggered_resolution_text(triggered, "this enchantment", false)?;
+    if resolution != "You may copy that spell. You may choose new targets for the copy" {
+        return None;
+    }
+    Some(format!(
+        "Whenever you cast an instant or sorcery spell while this enchantment has two or more quest counters on it, {resolution}"
+    ))
+}
+
+/// Preserve an authored third-person self reference carried by the typed
+/// damage source. The general permanent-ability pass normally expands
+/// `It deals` to `This creature deals`, but that would erase an explicit
+/// `it` surface retained by `ExecuteWithSourceEffect`.
+fn activated_resolution_has_explicit_it_damage_source(
+    activated: &crate::ability::ActivatedAbility,
+) -> bool {
+    if super::ast_render::resolution_uses_named_artifacts_damage_replacement(&activated.effects) {
+        return true;
+    }
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return false;
+    };
+    let Some(execute) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() else {
+        return false;
+    };
+    matches!(
+        execute.source.source_reference_surface(),
+        Some(SourceReferenceSurface::ThisPermanentType(surface))
+            if surface.trim().eq_ignore_ascii_case("it")
+    ) && execute
+        .effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .is_some()
+}
+
+fn graveyard_self_exile_damage_uses_it_subject(
+    ability: &Ability,
+    activated: &crate::ability::ActivatedAbility,
+) -> bool {
+    if ability.functional_zones.as_slice() != [Zone::Graveyard] {
+        return false;
+    }
+    let cost = normalize_zone_bound_self_exile_cost(
+        Some(describe_total_cost(&activated.mana_cost)),
+        ability,
+    );
+    if !cost
+        .as_deref()
+        .is_some_and(|cost| cost.contains("Exile this card from your graveyard"))
+    {
+        return false;
+    }
+    if activated
+        .effects
+        .segments
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return false;
+    }
+    let flattened = activated.effects.flattened_default_effects();
+    let pair = match flattened {
+        [first, second] => [first, second],
+        [sequence_root] => {
+            let Some(sequence) = sequence_root.downcast_ref::<crate::effects::SequenceEffect>()
+            else {
+                return false;
+            };
+            let [first, second] = sequence.effects.as_slice() else {
+                return false;
+            };
+            [first, second]
+        }
+        _ => return false,
+    };
+    describe_player_or_planeswalker_damage_then_controlled_creature_damage(pair[0], pair[1])
+        .is_some()
+}
+
 pub(crate) fn describe_ability(
     index: usize,
     ability: &Ability,
     subject: &str,
     rewrite_it_deals: bool,
 ) -> Vec<String> {
+    if let AbilityKind::Static(static_ability) = &ability.kind
+        && let Some(model) = static_ability.compiled_model()
+        && let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
+            &model.payload
+        && grant.filter.source
+        && grant.condition == Some(crate::ConditionExpr::YourTurn)
+        && matches!(
+            &grant.ability.kind,
+            ironsmith_core::AbilityKind::Static(granted)
+                if granted.id == Some(crate::static_abilities::StaticAbilityId::FirstStrike)
+        )
+    {
+        return vec![format!(
+            "Static ability {index}: As long as it's your turn, {subject} has first strike"
+        )];
+    }
+    if let AbilityKind::Static(static_ability) = &ability.kind
+        && static_ability.compiled_model().is_some_and(|model| {
+            model.label.starts_with(
+                ironsmith_core::static_ability_model::AS_LONG_AS_ITS_YOUR_TURN_STATIC_LABEL_PREFIX,
+            )
+        })
+        && let Some(rest) = static_ability.display().strip_prefix("During your turn, ")
+    {
+        return vec![format!(
+            "Static ability {index}: As long as it's your turn, {rest}"
+        )];
+    }
+    // Basic-subtype landwalk is both a typed keyword and commonly carries
+    // its standard reminder in Oracle. Its authored-line surface is just the
+    // keyword token, so let the typed keyword renderer restore the reminder
+    // before the general authored-static fallback returns that bare token.
+    if matches!(
+        &ability.kind,
+        AbilityKind::Static(static_ability)
+            if static_ability.id() == crate::static_abilities::StaticAbilityId::Landwalk
+                && matches!(
+                    static_ability.landwalk_kind(),
+                    Some(crate::static_abilities::LandwalkKind::Subtype { subtype, .. })
+                        if subtype.is_basic_land_type()
+                )
+    ) && let Some(keyword) = describe_keyword_ability(ability)
+    {
+        return vec![format!("Keyword ability {index}: {keyword}")];
+    }
+    if let AbilityKind::Static(static_ability) = &ability.kind
+        && let Some(surface) = static_ability.authored_line_surface()
+    {
+        return vec![format!("Static ability {index}: {surface}")];
+    }
     if let Some(keyword) = describe_keyword_ability(ability) {
         return vec![format!("Keyword ability {index}: {keyword}")];
     }
@@ -465,16 +981,42 @@ pub(crate) fn describe_ability(
                 };
                 return vec![format!("Static ability {index}: {granted_cycling_surface}")];
             }
-            vec![format!(
-                "Static ability {index}: {}",
-                describe_static_ability_with_subject(static_ability, subject)
-            )]
+            let mut rendered = describe_static_ability_with_subject(static_ability, subject);
+            if let Some(label) = static_ability.compiled_model().and_then(|model| {
+                model.label.strip_prefix(
+                    ironsmith_core::static_ability_model::EXPLICIT_STATIC_PRESENTATION_LABEL_PREFIX,
+                )
+            }) && !label.is_empty()
+                && !rendered.starts_with(&format!("{label} — "))
+            {
+                rendered = format!("{label} — {}", capitalize_first(&rendered));
+            }
+            vec![format!("Static ability {index}: {rendered}")]
         }
         AbilityKind::Triggered(triggered) => {
+            if let Some(rendered) =
+                describe_spell_cast_copy_while_source_has_quest_counters(triggered)
+            {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) = describe_each_combat_unless_pay_delayed_block_grant(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) =
+                describe_source_etb_damage_to_opponents_and_their_creatures(triggered)
+            {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) = describe_attacking_hand_entry_token_copy(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
             if let Some(rendered) = describe_case_to_solve_triggered_ability(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
             if let Some(rendered) = describe_recover_keyword(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) = describe_kamiz_relational_attacker_sequence(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
             if let Some(rendered) = describe_backup_keyword(triggered) {
@@ -491,6 +1033,14 @@ pub(crate) fn describe_ability(
             {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
+            if let Some(rendered) =
+                describe_targeted_player_or_permanent_counter_unless_life(triggered)
+            {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) = describe_target_opponent_may_copy_triggering_spell(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
             if let Some(rendered) = describe_oath_of_ghouls_triggered_ability(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
@@ -499,11 +1049,28 @@ pub(crate) fn describe_ability(
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
             if let Some(rendered) =
+                describe_convoke_cast_damage_opponents_and_protected_battles(triggered)
+            {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) = describe_optional_copy_plural_keyword_grant(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) =
                 describe_tap_lands_sharing_mana_types_with_triggering_land(triggered)
             {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
             if let Some(rendered) = describe_tap_for_mana_additional_mana_trigger(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) =
+                describe_each_player_first_main_counter_then_scaled_mana(triggered)
+            {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) = describe_each_player_first_main_scaled_artifact_mana(triggered)
+            {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
             if let Some(rendered) =
@@ -539,14 +1106,33 @@ pub(crate) fn describe_ability(
             {
                 trigger_surface = format!("Heroic — {trigger_surface}");
             }
-            if matches!(intervening_condition, Some(Condition::YourTurn))
-                && trigger_surface
-                    .to_ascii_lowercase()
-                    .ends_with("becomes tapped")
+            apply_attacks_while_most_life_surface(
+                triggered,
+                &mut trigger_surface,
+                &mut intervening_condition,
+            );
+            if trigger_surface
+                .to_ascii_lowercase()
+                .ends_with("becomes tapped")
             {
-                trigger_surface.push_str(" during your turn");
-                intervening_condition = None;
+                let mut conjuncts = Vec::new();
+                if let Some(condition) = intervening_condition.take() {
+                    flatten_condition_and_expr(&condition, &mut conjuncts);
+                }
+                let had_your_turn = conjuncts
+                    .iter()
+                    .any(|condition| matches!(condition, Condition::YourTurn));
+                conjuncts.retain(|condition| !matches!(condition, Condition::YourTurn));
+                intervening_condition = fold_condition_exprs(conjuncts);
+                if had_your_turn {
+                    trigger_surface.push_str(" during your turn");
+                }
             }
+            let saga_intervening_condition = if triggered.trigger.saga_chapters().is_some() {
+                intervening_condition.take()
+            } else {
+                None
+            };
             let mut line = format!("Triggered ability {index}: {trigger_surface}");
             if let Some(condition) = intervening_condition {
                 line.push_str(", if ");
@@ -584,7 +1170,14 @@ pub(crate) fn describe_ability(
             }
             if !clauses.is_empty() {
                 // Oracle-style: "Whenever ..., if ..., ..." rather than "Whenever ...: If ..."
-                if clauses.len() == 1 {
+                if let Some(condition) = saga_intervening_condition.as_ref() {
+                    line.push_str(" — If ");
+                    line.push_str(&describe_trigger_intervening_condition(
+                        condition, triggered, None,
+                    ));
+                    line.push_str(", ");
+                    line.push_str(&lowercase_first(&clauses.join(": ")));
+                } else if clauses.len() == 1 {
                     let only = clauses[0].trim_start();
                     if let Some(rest) = only.strip_prefix("If ") {
                         line.push_str(", if ");
@@ -597,10 +1190,10 @@ pub(crate) fn describe_ability(
                         line.push_str(&capitalize_first(only));
                     } else if triggered.presentation_label.is_some() {
                         line.push_str(", ");
-                        line.push_str(&lowercase_first(only));
+                        line.push_str(&triggered_resolution_clause_case(triggered, only));
                     } else {
                         line.push_str(", ");
-                        line.push_str(&lowercase_first(only));
+                        line.push_str(&triggered_resolution_clause_case(triggered, only));
                     }
                 } else {
                     line.push_str(": ");
@@ -844,7 +1437,8 @@ pub(crate) fn describe_ability(
                     let mut effects = rewrite_damage_phrases_for_permanent_abilities(
                         &effects,
                         subject,
-                        rewrite_it_deals,
+                        rewrite_it_deals
+                            && !activated_resolution_has_explicit_it_damage_source(activated),
                     );
                     let flat_costs = activated.mana_cost.as_all().unwrap_or(&[]);
                     effects = rewrite_cost_bound_x_phrases(effects, flat_costs);
@@ -926,11 +1520,18 @@ pub(crate) fn describe_ability(
                     line.push_str(": ");
                 }
                 let effects = super::ast_render::describe_resolution_program(&activated.effects);
-                let mut effects = rewrite_damage_phrases_for_permanent_abilities(
-                    &effects,
-                    subject,
-                    rewrite_it_deals,
-                );
+                let mut effects = if graveyard_self_exile_damage_uses_it_subject(ability, activated)
+                    && let Some(rest) = effects.strip_prefix("Deal ")
+                {
+                    format!("It deals {rest}")
+                } else {
+                    rewrite_damage_phrases_for_permanent_abilities(
+                        &effects,
+                        subject,
+                        rewrite_it_deals
+                            && !activated_resolution_has_explicit_it_damage_source(activated),
+                    )
+                };
                 let flat_costs = activated.mana_cost.as_all().unwrap_or(&[]);
                 effects = rewrite_cost_bound_x_phrases(effects, flat_costs);
                 effects = rewrite_removed_counter_type_surface(effects, flat_costs);
@@ -1060,6 +1661,11 @@ pub(crate) fn normalize_ability_self_reference_surface(line: &str, subject: &str
         "This permanent",
         &capitalized,
     );
+    let normalized = if let Some(rest) = normalized.strip_prefix("Exile this:") {
+        format!("Exile {subject}:{rest}")
+    } else {
+        normalized
+    };
     let normalized = normalize_source_owned_quoted_ability_references(&normalized, subject);
     let normalized = if let Some(source_type) = subject.strip_prefix("this ") {
         let typed_object = with_indefinite_article(source_type);
@@ -1078,10 +1684,26 @@ pub(crate) fn normalize_ability_self_reference_surface(line: &str, subject: &str
     let normalized = rewrite_source_no_counter_resolution_surface(normalized, subject);
     let named_self_exile =
         format!("Exile {subject} and target creature without flying that's attacking you");
-    normalized.replace(
+    let normalized = normalized.replace(
         &named_self_exile,
         "Exile this creature and target creature without flying that's attacking you",
-    )
+    );
+
+    // A proven inline no-regeneration rider inside the failed-payment branch
+    // is authored as one coordinated instruction. The executable
+    // DestroyNoRegeneration effect deliberately renders the reusable default
+    // as two sentences, so rejoin only this exact conditional surface.
+    if normalized.contains("If you don't, destroy ")
+        && normalized.ends_with(". It can't be regenerated")
+    {
+        return normalized.replacen(
+            ". It can't be regenerated",
+            " and it can't be regenerated",
+            1,
+        );
+    }
+
+    normalized
 }
 
 /// Source-reference normalization belongs to the ability that owns `line`.
@@ -1204,6 +1826,28 @@ pub(super) fn normalize_graveyard_source_return_surface(line: &str, ability: &Ab
                 "return this card from your graveyard to the battlefield",
             );
         }
+    }
+    let sole_creature_gate = matches!(
+        &ability.kind,
+        AbilityKind::Triggered(triggered)
+            if matches!(
+                triggered.intervening_if.as_ref(),
+                Some(Condition::ValueComparison {
+                    left,
+                    operator: crate::effect::ValueComparisonOperator::Equal,
+                    right,
+                }) if matches!(left.unhinted(), Value::Count(filter)
+                    if filter.zone == Some(Zone::Graveyard)
+                        && filter.owner == Some(PlayerFilter::You)
+                        && filter.card_types.as_slice() == [CardType::Creature])
+                    && matches!(right.unhinted(), Value::Fixed(1))
+            )
+    );
+    if sole_creature_gate {
+        normalized = normalized.replace(
+            "return this card from your graveyard to the battlefield",
+            "return this card to the battlefield",
+        );
     }
     normalized
 }
@@ -1352,6 +1996,9 @@ pub(crate) fn card_self_reference_phrase_for_card(card: &crate::card::Card) -> &
     }
     if card.subtypes.contains(&Subtype::Vehicle) {
         return "this Vehicle";
+    }
+    if card.subtypes.contains(&Subtype::Spacecraft) {
+        return "this Spacecraft";
     }
 
     let card_types = &card.card_types;
@@ -1518,6 +2165,10 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             ActivationTiming::DuringOpponentsTurn => {
                 "Activate only during an opponent's turn".to_string()
             }
+            ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
+                "Any player may activate this ability but only during their turn before the end step"
+                    .to_string()
+            }
             ActivationTiming::DuringSourceOwnersUpkeep => {
                 "Activate only during this card's owner's upkeep".to_string()
             }
@@ -1525,8 +2176,11 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
         crate::ConditionExpr::MaxActivationsPerTurn(limit) => {
             if *limit == 1 {
                 "Activate only once each turn".to_string()
+            } else if *limit == 2 {
+                "Activate no more than twice each turn".to_string()
             } else {
-                format!("Activate only up to {limit} times each turn")
+                let count = number_word(*limit as i32).unwrap_or_else(|| limit.to_string());
+                format!("Activate no more than {count} times each turn")
             }
         }
         _ => {
@@ -1905,8 +2559,10 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
             OptionalCostKind::Replicate => {
                 if cost_text.trim().is_empty() {
                     label.to_string()
-                } else {
+                } else if cost_text.trim_start().starts_with('{') {
                     format!("{label} {cost_text}")
+                } else {
+                    format!("{label}—{}", cost_text.trim())
                 }
             }
             // Most optional-cost keywords render with a space-separated payload.

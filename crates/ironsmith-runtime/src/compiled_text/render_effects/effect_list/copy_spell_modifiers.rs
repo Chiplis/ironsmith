@@ -24,7 +24,10 @@ pub(super) fn describe_copy_spell_with_characteristic_modifiers(
         return None;
     }
     let copy = copy_spell_from_effect(copy_effect)?;
-    if copy.count != Value::Fixed(1) || !copy.removed_supertypes.is_empty() {
+    if copy.count != Value::Fixed(1)
+        || !copy.removed_supertypes.is_empty()
+        || copy.has_characteristic_modifiers()
+    {
         return None;
     }
 
@@ -32,7 +35,6 @@ pub(super) fn describe_copy_spell_with_characteristic_modifiers(
         .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
     if apply.until != Until::Forever
         || apply.condition.is_some()
-        || !apply.additional_modifications.is_empty()
         || !apply.runtime_modifications.is_empty()
         || !matches!(
             apply.target_spec.as_ref().map(ChooseSpec::base),
@@ -42,8 +44,13 @@ pub(super) fn describe_copy_spell_with_characteristic_modifiers(
         return None;
     }
 
-    let exception = match &apply.modification {
-        Some(crate::continuous::Modification::AddCardTypes(card_types))
+    let modifications = apply
+        .modification
+        .iter()
+        .chain(apply.additional_modifications.iter())
+        .collect::<Vec<_>>();
+    let exception = match modifications.as_slice() {
+        [crate::continuous::Modification::AddCardTypes(card_types)]
             if !card_types.is_empty()
                 && apply.type_retention_surface
                     == Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes) =>
@@ -58,12 +65,32 @@ pub(super) fn describe_copy_spell_with_characteristic_modifiers(
                 with_indefinite_article(&copied_types)
             )
         }
-        Some(crate::continuous::Modification::SetColors(colors))
+        [crate::continuous::Modification::SetColors(colors)]
             if !colors.is_empty() && apply.type_retention_surface.is_none() =>
         {
             format!(
                 "except that the copy is {}",
                 describe_token_color_words(*colors, false)
+            )
+        }
+        [
+            crate::continuous::Modification::AddSubtypes(subtypes),
+            crate::continuous::Modification::SetPowerToughness {
+                power: Value::Fixed(power),
+                toughness: Value::Fixed(toughness),
+                sublayer: crate::continuous::PtSublayer::Setting,
+            },
+        ] if !subtypes.is_empty()
+            && apply.type_retention_surface
+                == Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes) =>
+        {
+            let subtypes = subtypes
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!(
+                "except the copy is a {power}/{toughness} {subtypes} in addition to its other types"
             )
         }
         _ => return None,

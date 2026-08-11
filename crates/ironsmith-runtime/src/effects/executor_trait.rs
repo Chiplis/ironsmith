@@ -30,7 +30,8 @@ pub struct ModalSpec {
     pub allow_repeated_modes: bool,
     /// Point costs for weighted modal choices. Unweighted modes use one point each.
     pub mode_point_costs: Vec<u32>,
-    /// Whether the mode labels are mandatory Spree additional costs.
+    /// Whether the mode labels are mandatory casting-time additional costs
+    /// (for example, Spree or Tiered).
     pub spree: bool,
     /// Additional mana cost associated with each mode.
     pub mode_additional_mana_costs: Vec<crate::mana::ManaCost>,

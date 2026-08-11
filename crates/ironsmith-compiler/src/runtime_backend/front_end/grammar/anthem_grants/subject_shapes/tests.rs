@@ -4,6 +4,22 @@ use crate::runtime_backend::lexer::lex_line;
 use crate::{CardType, Color, Subtype, Supertype, Zone};
 
 #[test]
+fn distributive_literal_pt_subject_keeps_both_exact_characteristics() {
+    let tokens = lex_line("Each 1/1 creature you control", 0)
+        .expect("literal P/T anthem subject should lex");
+    let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+        parse_exact_anthem_subject_grammar(&tokens)
+    else {
+        panic!("literal P/T anthem subject should parse");
+    };
+
+    assert_eq!(filter.card_types, [CardType::Creature], "{filter:#?}");
+    assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+    assert_eq!(filter.power, Some(crate::filter::Comparison::Equal(1)));
+    assert_eq!(filter.toughness, Some(crate::filter::Comparison::Equal(1)));
+}
+
+#[test]
 fn distributive_compound_subtype_subject_preserves_every_subtype() {
     let tokens = lex_line("Each Eldrazi Spawn creature you control", 0)
         .expect("compound subtype anthem subject should lex");

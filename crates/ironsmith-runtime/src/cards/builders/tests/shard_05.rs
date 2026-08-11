@@ -3750,27 +3750,23 @@ pub(super) fn test_parse_this_token_cant_attack_or_block_alone_static_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn render_token_controller_clause_precedes_quoted_ability_sentence() {
+pub(super) fn render_explicit_token_controller_keeps_adjacent_quoted_rules_intrinsic() {
+    let oracle = "Whenever this creature deals combat damage to a player, that player creates a 0/1 colorless Goblin Construct artifact creature token with \"This token can't block\" and \"At the beginning of your upkeep, this token deals 1 damage to you.\"";
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Relic Robber Probe")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
-        .parse_text(
-            "Whenever this creature deals combat damage to a player, that player creates a 0/1 colorless Goblin Construct artifact creature token with \"This token can't block.\"",
-        )
+        .parse_text(oracle)
         .expect("combat-damage token creation should parse");
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ");
-    let rendered_lower = rendered.to_ascii_lowercase();
-    assert!(
-        rendered_lower.contains(
-            "that player creates a 0/1 colorless goblin construct artifact creature token with \"this token can't block.\""
-        ),
-        "expected controller text to attach to token creation before quoted ability, got {rendered}"
+    assert_eq!(canonical_compiled_lines(&def), vec![oracle]);
+    let debug = format!("{:#?}", def.abilities);
+    assert_eq!(
+        debug.matches("DealDamageEffect").count(),
+        1,
+        "the upkeep damage must exist only inside the generated token's triggered ability: {debug}"
     );
-    assert!(
-        !rendered.contains("\"This token can't block.\" under"),
-        "quoted token ability should not absorb the controller clause, got {rendered}"
-    );
+    assert!(debug.contains("CantBlock"), "{debug}");
+    assert!(debug.contains("BeginningOfUpkeepTrigger"), "{debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

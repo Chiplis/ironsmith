@@ -43,7 +43,7 @@ pub(super) fn parse_standalone_choose_player_effect() {
 #[test]
 pub(super) fn opportunistic_dragon_renders_one_leading_source_lifetime_bundle() {
     let def = parse_oracle_card_definition("Opportunistic Dragon");
-    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let rendered = compiled_text_lines(&def).join("\n");
     let rendered_lower = rendered.to_ascii_lowercase();
 
     assert!(
@@ -1004,6 +1004,29 @@ pub(super) fn parse_finale_of_devastation_x_threshold_spell() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn search_threshold_then_library_shuffle_keeps_the_search_antecedent() {
+    let oracle = "Search your library and/or graveyard for an artifact creature card with mana value X or less and put it onto the battlefield with X additional +1/+1 counters on it. If X is 4 or greater, it gains haste until end of turn. If you search your library this way, shuffle.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Search Threshold Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("an intervening X threshold must not discard the earlier library-search result");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let canonical = oracle.replace("X is 4 or greater", "X is 4 or more");
+    assert_eq!(
+        rendered, canonical,
+        "the typed three-sentence program should rejoin; X thresholds use the engine's canonical majority surface"
+    );
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(debug.contains("PutOntoBattlefieldEffect"), "{debug}");
+    assert!(debug.contains("enters_with_counters"), "{debug}");
+    assert!(debug.contains("ValueComparison"), "{debug}");
+    assert!(debug.contains("GrantAbilities"), "{debug}");
+    assert!(debug.contains("ShuffleLibrary"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_station_threshold_reminder_adds_creature_pt_support() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Station Probe")
         .card_types(vec![CardType::Artifact])
@@ -1054,6 +1077,68 @@ pub(super) fn station_threshold_rows_render_as_station_rows() {
             && debug.contains("GreaterThanOrEqual")
             && debug.contains("Fixed(12)"),
         "expected station keyword threshold to remain conditional, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn exploration_broodship_static_threshold_is_exact_and_typed() {
+    let oracle = oracle_text_by_name()
+        .get("Exploration Broodship")
+        .expect("Exploration Broodship oracle text");
+    let definition = parse_oracle_card_definition("Exploration Broodship");
+    let compiled = canonical_compiled_lines(&definition);
+    let rendered = compiled.join("\n");
+    let debug = format!("{:#?}", definition.abilities);
+
+    assert_eq!(rendered, *oracle);
+    assert!(
+        debug.contains(ironsmith_core::static_ability_model::STATION_THRESHOLD_STATIC_LABEL_PREFIX)
+            && debug.contains("CountersOnSource(Charge)")
+            && debug.contains("GreaterThanOrEqual")
+            && debug.contains("Fixed(3)")
+            && debug.contains("AdditionalLandPlays"),
+        "the 3+ row must retain both typed presentation provenance and executable semantics: {debug}"
+    );
+
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            oracle,
+            &compiled,
+            Some(crate::semantic_compare::EmbeddingConfig {
+                dims: 384,
+                mismatch_threshold: 0.99,
+            }),
+        );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "Exploration Broodship must clear the strict floor: score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[test]
+pub(super) fn station_additional_land_play_activates_at_its_charge_threshold() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Station Land Probe")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("Station\n3+ | You may play an additional land on each of your turns.")
+        .expect("station additional-land row should parse");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.player(alice).expect("alice").land_plays_per_turn,
+        1,
+        "the row must be inactive below three charge counters"
+    );
+
+    game.add_counters(source, CounterType::Charge, 3);
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.player(alice).expect("alice").land_plays_per_turn,
+        2,
+        "the row must grant one additional land play at three charge counters"
     );
 }
 
@@ -1724,6 +1809,7 @@ pub(super) fn parse_altar_of_the_lost_renders_flashback_spells_from_a_graveyard(
 pub(super) fn parse_conquerors_flail_condition_maps_attached_equipment_to_equipped() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Conqueror's Flail")
         .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
         .parse_text(
             "As long as this Equipment is attached to a creature, your opponents can't cast spells during your turn.",
         )
@@ -1731,12 +1817,59 @@ pub(super) fn parse_conquerors_flail_condition_maps_attached_equipment_to_equipp
 
     let abilities_debug = format!("{:#?}", def.abilities);
     assert!(
-        abilities_debug.contains("SourceIsEquipped"),
-        "expected equipped condition, got {abilities_debug}"
+        abilities_debug.contains("AttachedToSourceMatches")
+            && abilities_debug.contains("card_types: [Creature]"),
+        "expected the source Equipment's attached creature to be checked, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("SourceIsEquipped"),
+        "the inverse 'a source creature has Equipment attached' condition must not be used: {abilities_debug}"
     );
     assert!(
         abilities_debug.contains("DuringYourTurn"),
         "expected during-your-turn condition, got {abilities_debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join(" "),
+        "As long as this Equipment is attached to a creature, your opponents can't cast spells during your turn."
+    );
+
+    let restriction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::RuleRestriction =>
+            {
+                Some(ability)
+            }
+            _ => None,
+        })
+        .expect("Conqueror's Flail should compile its casting restriction");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let flail = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let host_def = CardDefinitionBuilder::new(CardId::from_raw(2), "Flail Host")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let host = game.create_object_from_definition(&host_def, alice, Zone::Battlefield);
+
+    assert!(
+        !restriction.is_active(&game, flail),
+        "an unattached Equipment must not prohibit the opponent from casting"
+    );
+    game.object_mut(flail).expect("flail").attached_to =
+        Some(crate::object::AttachmentTarget::Object(host));
+    game.object_mut(host).expect("host").attachments.push(flail);
+    assert!(
+        restriction.is_active(&game, flail),
+        "the restriction must turn on while the Equipment is attached during its controller's turn"
+    );
+    game.next_turn_single_lane();
+    assert!(
+        !restriction.is_active(&game, flail),
+        "the restriction must turn off during the opponent's turn"
     );
 }
 
@@ -2404,12 +2537,18 @@ pub(super) fn parse_oracle_synthesis_pod_accepts_that_exiled_card_cast_clause() 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_put_the_rest_on_bottom_with_previous_put_into_hand() {
-    let _def = CardDefinitionBuilder::new(CardId::from_raw(1), "Put Rest Variant")
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Put Rest Variant")
         .card_types(vec![CardType::Sorcery])
         .parse_text(
             "Look at the top three cards of your library. You may reveal a creature card from among them and put it into your hand. Put the rest on the bottom of your library in any order.",
         )
         .expect("put-the-rest-on-bottom follow-up should parse as part of put clause");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered
+            .contains("You may reveal a creature card from among them and put it into your hand"),
+        "expected the singular tagged result to render as the same object, got {rendered}"
+    );
 }
 
 #[test]
@@ -3832,8 +3971,21 @@ pub(super) fn parse_oracle_perch_protection_gift_extra_turn_regression() {
         "expected Perch Protection Gift to grant the chosen player an extra turn, got {raw}"
     );
     assert!(
-        raw.contains("ThisSpellPaidLabel") && raw.contains("Gift"),
+        raw.matches("ConditionalEffect").count() >= 2
+            && raw.contains("ThisSpellPaidLabel")
+            && raw.contains("Gift")
+            && raw.contains("PhaseOutEffect")
+            && raw.contains("spec: All"),
         "expected Perch Protection Gift to preserve the gift-was-promised condition, got {raw}"
+    );
+    assert!(
+        raw.matches("YourNextTurn").count() >= 3 && !raw.contains("duration: Forever"),
+        "expected the life lock and both protection components to expire together, got {raw}"
+    );
+
+    assert_eq!(
+        compiled_text_lines(&def).join("\n"),
+        "Gift an extra turn\nCreate four 2/2 blue Bird creature tokens with flying. If the gift was promised, all permanents you control phase out, and until your next turn, your life total can't change and you gain protection from everything.\nExile Perch Protection."
     );
 }
 
@@ -3857,12 +4009,11 @@ pub(super) fn parse_oracle_octomancer_gift_octopus_regression() {
         "expected Octomancer Gift to be an ETB trigger gated by Gift, got {raw}"
     );
 
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
-    assert!(
-        !rendered.contains("when this creature enters, if the gift was promised, create a 8/8 blue octopus creature token under the chosen player's control"),
-        "expected Octomancer compiled text to hide the synthetic Gift ETB line, got {rendered}"
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Gift an Octopus\nAt the beginning of each end step, create a token that's a copy of target creature token that entered the battlefield this turn",
+        "expected Octomancer compiled text to hide the synthetic Gift ETB line and preserve the authored token history surface"
     );
 }
 

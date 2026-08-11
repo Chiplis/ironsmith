@@ -49,6 +49,34 @@
             idx += 6;
             continue;
         }
+        if idx + 5 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(exile) = unwrap_basic_tag_wrappers(filtered[idx + 2])
+                .downcast_ref::<crate::effects::ExileEffect>()
+            && let Some(rest) = filtered[idx + 3]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
+            && let Some(look_permission) =
+                filtered[idx + 4].downcast_ref::<crate::effects::LookAtObjectsEffect>()
+            && let Some(grant) =
+                filtered[idx + 5].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(compact) =
+                describe_look_at_top_choose_exile_face_down_rest_bottom_then_play_while_exiled(
+                    look_at_top,
+                    choose,
+                    exile,
+                    rest,
+                    Some(look_permission),
+                    grant,
+                )
+        {
+            parts.push(compact);
+            idx += 6;
+            continue;
+        }
         if idx + 4 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -947,7 +975,8 @@
             continue;
         }
         if idx + 1 < filtered.len()
-            && let Some(compact) = describe_return_then_transform(filtered[idx], filtered[idx + 1])
+            && let Some(compact) =
+                describe_return_then_transform_or_convert(filtered[idx], filtered[idx + 1])
         {
             parts.push(compact);
             idx += 2;
@@ -1268,6 +1297,24 @@
         {
             parts.push(compact);
             idx += 4;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(conditional) = structural_unwrap_render_wrappers(filtered[idx + 1])
+                .downcast_ref::<crate::effects::ConditionalEffect>()
+            && let Some(shuffle) = filtered[idx + 2]
+                .downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+            && let Some(compact) =
+                describe_search_conditional_may_battlefield_else_hand_then_shuffle(
+                    choose,
+                    conditional,
+                    shuffle,
+                )
+        {
+            parts.push(compact);
+            idx += 3;
             continue;
         }
         if idx + 2 < filtered.len()
@@ -1980,6 +2027,7 @@
                     choose,
                     exile,
                     rest,
+                    None,
                     grant,
                 )
         {

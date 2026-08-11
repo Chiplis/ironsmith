@@ -376,8 +376,24 @@ fn try_compile_for_each_object_as_damage_source(
 
     let refs = current_reference_env(ctx);
     let resolved_filter = resolve_it_tag(filter, &refs)?;
+    let other_member_of_prior_set = matches!(target, TargetAst::AnyOtherTarget(_))
+        && filter.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Those)
+        && filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints[0].relation == TaggedOpbjectRelation::IsTaggedObject
+        && matches!(
+            filter.tagged_constraints[0].tag.as_str(),
+            IT_TAG | ironsmith_core::CHOSEN_OBJECTS_TAG
+        );
     let (target_spec, choices) = if source == target {
         (ChooseSpec::Iterated, Vec::new())
+    } else if other_member_of_prior_set {
+        // "The other" is an anaphoric member of the already chosen pair, not
+        // a third target. Keep the prior-set tag and exclude the temporarily
+        // rebound damage source while each member is iterated.
+        (
+            ChooseSpec::Object(resolved_filter.clone().other()),
+            Vec::new(),
+        )
     } else {
         resolve_target_spec_with_choices(target, &refs)?
     };
@@ -485,6 +501,14 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             // fall back to the trigger's broad lexical player filter.
             ctx.last_player_filter = if matches!(player_filter, PlayerFilter::IteratedPlayer) {
                 Some(PlayerFilter::IteratedPlayer)
+            } else if matches!(player, PlayerAst::Target | PlayerAst::TargetOpponent) {
+                // The enclosing offer introduced this player as an explicit
+                // target. Keep that target in scope while lowering references
+                // to the same participant inside the offer (for example,
+                // "target opponent may ... They may ..."). This does not
+                // create a second target choice: the MayByPlayer subject owns
+                // the one explicit target declaration.
+                Some(player_filter.clone())
             } else {
                 saved_last_player_filter
             };
@@ -537,6 +561,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             effects,
             player,
             cost,
+            before_delayed_step,
         } => {
             // A trailing "unless they pay" attached to an each-player
             // instruction is evaluated separately for every iterated player.
@@ -553,6 +578,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                             effects: per_player_effects.clone(),
                             player: *player,
                             cost: cost.clone(),
+                            before_delayed_step: *before_delayed_step,
                         }],
                     }),
                     EffectAst::ForEachOpponent {
@@ -562,6 +588,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                             effects: per_player_effects.clone(),
                             player: *player,
                             cost: cost.clone(),
+                            before_delayed_step: *before_delayed_step,
                         }],
                     }),
                     EffectAst::ForEachPlayersFiltered {
@@ -573,6 +600,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                             effects: per_player_effects.clone(),
                             player: *player,
                             cost: cost.clone(),
+                            before_delayed_step: *before_delayed_step,
                         }],
                     }),
                     _ => None,
@@ -594,6 +622,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                         effects: per_object_effects.clone(),
                         player: *player,
                         cost: cost.clone(),
+                        before_delayed_step: *before_delayed_step,
                     }],
                 };
                 return Ok(Some(compile_effect(&rewritten, ctx)?));
@@ -627,8 +656,13 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let mut choices = inner_choices;
             choices.append(&mut player_choices);
             let resolved_cost = resolve_total_cost_it_tags(cost, &current_reference_env(ctx))?;
-            let effect =
-                Effect::unless_pays_total_cost(inner_effects, player_filter, resolved_cost);
+            let effect = Effect::new(crate::effects::UnlessPaysEffect {
+                player: player_filter,
+                effects: inner_effects,
+                cost: resolved_cost,
+                leading_surface: false,
+                before_delayed_step: *before_delayed_step,
+            });
             (vec![effect], choices)
         }
         EffectAst::UnlessAction {
@@ -697,7 +731,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             (vec![effect], choices)
         }
         EffectAst::IfResult { predicate, effects } => {
-            let condition = if matches!(predicate, IfResultPredicate::SearchedLibrary) {
+            let condition = if crate::runtime_backend::reference_resolution::if_result_predicate_is_searched_library(predicate) {
                 ctx.last_library_search_effect_id.or(ctx.last_effect_id)
             } else {
                 ctx.last_effect_id
@@ -909,6 +943,32 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 Some(effective_tag.clone()),
             )?;
             let effect = Effect::for_each_tagged(effective_tag, inner_effects);
+            (vec![effect], inner_choices)
+        }
+        EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+            tag,
+            blocker_tag,
+            effects,
+        } => {
+            let resolve_tag = |tag: &TagKey| {
+                ctx.snapshot_tag_aliases
+                    .iter()
+                    .find(|(alias, _)| alias == tag.as_str())
+                    .map(|(_, concrete)| concrete.clone())
+                    .unwrap_or_else(|| tag.as_str().to_string())
+            };
+            let effective_tag = resolve_tag(tag);
+            let effective_blocker_tag = resolve_tag(blocker_tag);
+            let (inner_effects, inner_choices) = compile_effects_in_iterated_player_context(
+                effects,
+                ctx,
+                Some(effective_tag.clone()),
+            )?;
+            let effect = Effect::for_each_tagged_with_controller_at_last_blocked_by(
+                effective_tag,
+                inner_effects,
+                effective_blocker_tag,
+            );
             (vec![effect], inner_choices)
         }
         EffectAst::MoveTaggedGroupToZone { tag, zone } => {

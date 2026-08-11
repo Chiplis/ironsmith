@@ -63,6 +63,27 @@ fn parses_copy_combat_modifiers() {
 }
 
 #[test]
+fn copy_source_keeps_serial_target_type_commas_but_stops_before_except() {
+    let serial = lex_line("a copy of target artifact, creature, or land", 0).unwrap();
+    let parsed = parse_copy_source_clause_tokens(&serial).unwrap();
+    assert_eq!(
+        token_word_refs(&parsed.source_tokens),
+        ["target", "artifact", "creature", "or", "land"]
+    );
+
+    let modified = lex_line(
+        "a copy of target artifact, creature, or land, except it's blue",
+        0,
+    )
+    .unwrap();
+    let parsed = parse_copy_source_clause_tokens(&modified).unwrap();
+    assert_eq!(
+        token_word_refs(&parsed.source_tokens),
+        ["target", "artifact", "creature", "or", "land"]
+    );
+}
+
+#[test]
 fn parses_pt_words_with_winnow() {
     assert_eq!(
         parse_pt_word("-1/*"),

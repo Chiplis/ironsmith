@@ -29,6 +29,8 @@ pub enum PlayerAst {
     NotYou,
     That,
     ThatPlayerOrTargetController,
+    /// The controller of the event source captured by a triggered ability.
+    TriggeringSourceController,
     ItsController,
     ItsOwner,
     Implicit,

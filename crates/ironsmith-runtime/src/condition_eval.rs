@@ -320,6 +320,35 @@ mod tests {
     }
 
     #[test]
+    fn ability_resolution_ordinal_condition_uses_activated_ability_index() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = ObjectId(8_100);
+        let ability_index = 4;
+        for _ in 0..3 {
+            game.record_activated_ability_resolved(source, ability_index);
+        }
+        let ctx = ExecutionContext::new_default(source, alice).with_ability_index(ability_index);
+
+        assert!(
+            evaluate_condition(
+                &game,
+                &Condition::ThisAbilityResolvedThisTurnExactly(3),
+                &ctx,
+            )
+            .expect("activated ordinal condition should evaluate")
+        );
+        assert!(
+            !evaluate_condition(
+                &game,
+                &Condition::ThisAbilityResolvedThisTurnExactly(2),
+                &ctx,
+            )
+            .expect("activated ordinal near miss should evaluate")
+        );
+    }
+
+    #[test]
     fn attachment_count_is_evaluated_per_matching_host() {
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = game.players[0].id;
@@ -493,6 +522,55 @@ mod tests {
     }
 
     #[test]
+    fn resolution_triggering_tag_conditions_use_the_trigger_event_without_seeded_tags() {
+        for (subtype, expected) in [(Subtype::Plains, true), (Subtype::Island, false)] {
+            let mut game = GameState::new(vec!["Alice".to_string()], 20);
+            let alice = game.players[0].id;
+            let source = game.new_object_id();
+            let land_card = CardBuilder::new(CardId::from_raw(20), "Triggering Land")
+                .card_types(vec![CardType::Land])
+                .subtypes(vec![subtype])
+                .build();
+            let land = game.create_object_from_card(&land_card, alice, Zone::Battlefield);
+            let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+                game.object(land).expect("triggering land should exist"),
+                &game,
+            );
+            let event = TriggerEvent::new_with_provenance(
+                crate::events::ZoneChangeEvent::with_cause(
+                    land,
+                    Zone::Hand,
+                    Zone::Battlefield,
+                    EventCause::effect(),
+                    Some(snapshot),
+                ),
+                ProvNodeId::default(),
+            );
+            let filter = crate::target::ObjectFilter::default().with_subtype(Subtype::Plains);
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            // Stack construction normally seeds both fields, but wrapper and
+            // self-replacement paths may preserve only the triggering event.
+            // Resolution must agree with the external condition evaluator.
+            ctx.triggering_event = Some(event);
+
+            for condition in [
+                Condition::TaggedObjectMatches(crate::TagKey::from("triggering"), filter.clone()),
+                Condition::TaggedObjectMatchedLastKnown(
+                    crate::TagKey::from("triggering"),
+                    filter.clone(),
+                ),
+            ] {
+                assert_eq!(
+                    evaluate_condition(&game, &condition, &ctx)
+                        .expect("triggering-object condition should evaluate"),
+                    expected,
+                    "{subtype:?} should have the same result for current and LKI triggering tags",
+                );
+            }
+        }
+    }
+
+    #[test]
     fn graveyard_cast_or_ability_activation_history_uses_actor_and_origin_zone() {
         let cast_condition = Condition::TurnHistory(
             ironsmith_core::TurnHistoryCondition::PlayerCastSpellFromZoneThisTurn {
@@ -642,6 +720,23 @@ mod tests {
             "another player's visit must not satisfy your visit history"
         );
 
+        let alices_open = RawEvent::new(
+            crate::events::KeywordActionEvent::new(
+                crate::events::KeywordActionKind::OpenAttraction,
+                alice,
+                source,
+                1,
+            ),
+            ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&alices_open, None, None);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx).unwrap(),
+            "opening an Attraction must not be treated as visiting one"
+        );
+
         let alices_visit = RawEvent::new(
             crate::events::KeywordActionEvent::new(
                 crate::events::KeywordActionKind::VisitAttraction,
@@ -657,6 +752,12 @@ mod tests {
         assert!(
             evaluate_condition(&game, &condition, &ctx).unwrap(),
             "your typed visit action must satisfy the condition"
+        );
+
+        game.turn_store.turn_history.clear_for_new_turn();
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx).unwrap(),
+            "the visit condition must reset with ordinary turn history"
         );
     }
 
@@ -1617,8 +1718,17 @@ fn triggering_event_object_matches(
         return false;
     };
     let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+    triggering_event_object_matches_with_filter_context(game, event, filter, &filter_ctx)
+}
+
+fn triggering_event_object_matches_with_filter_context(
+    game: &GameState,
+    event: &TriggerEvent,
+    filter: &crate::target::ObjectFilter,
+    filter_ctx: &crate::filter::FilterContext,
+) -> bool {
     if let Some(snapshot) = event.snapshot()
-        && filter.matches_snapshot(snapshot, &filter_ctx, game)
+        && filter.matches_snapshot(snapshot, filter_ctx, game)
     {
         return true;
     }
@@ -1637,7 +1747,21 @@ fn triggering_event_object_matched_last_known(
         return false;
     };
     let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
-    filter.matches_snapshot(snapshot, &filter_ctx, game)
+    triggering_event_object_matched_last_known_with_filter_context(
+        game,
+        snapshot,
+        filter,
+        &filter_ctx,
+    )
+}
+
+fn triggering_event_object_matched_last_known_with_filter_context(
+    game: &GameState,
+    snapshot: &crate::snapshot::ObjectSnapshot,
+    filter: &crate::target::ObjectFilter,
+    filter_ctx: &crate::filter::FilterContext,
+) -> bool {
+    filter.matches_snapshot(snapshot, filter_ctx, game)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1647,6 +1771,7 @@ struct SharedConditionContext<'a> {
     filter_source: Option<ObjectId>,
     triggering_event: Option<&'a TriggerEvent>,
     trigger_identity: Option<TriggerIdentity>,
+    ability_index: Option<usize>,
 }
 
 fn object_matching_was_put_into_graveyard_from_battlefield_this_turn(
@@ -1978,6 +2103,55 @@ fn triggering_object_had_to_attack_this_combat(
                 .as_ref()
                 .is_some_and(|combat| combat.creature_had_to_attack_this_combat(object_id))
         })
+}
+
+fn triggering_object_became_tapped_first_time_this_turn(
+    game: &GameState,
+    triggering_event: Option<&TriggerEvent>,
+) -> bool {
+    let Some(permanent) = triggering_event
+        .and_then(|event| event.downcast::<crate::events::PermanentTappedEvent>())
+        .map(|event| event.permanent)
+    else {
+        return false;
+    };
+    game.turn_store
+        .turn_history
+        .projected_records()
+        .filter_map(|record| {
+            record
+                .event
+                .downcast::<crate::events::PermanentTappedEvent>()
+        })
+        .filter(|event| event.permanent == permanent)
+        .count()
+        == 1
+}
+
+fn counter_addition_object(event: &TriggerEvent) -> Option<ObjectId> {
+    if let Some(event) = event.downcast::<crate::events::CounterPlacedEvent>() {
+        return Some(event.permanent);
+    }
+    event
+        .downcast::<crate::events::MarkersChangedEvent>()
+        .filter(|event| event.is_added())
+        .and_then(crate::events::MarkersChangedEvent::object)
+}
+
+fn triggering_object_had_counters_put_first_time_this_turn(
+    game: &GameState,
+    triggering_event: Option<&TriggerEvent>,
+) -> bool {
+    let Some(object_id) = triggering_event.and_then(counter_addition_object) else {
+        return false;
+    };
+    game.turn_store
+        .turn_history
+        .projected_records()
+        .filter_map(|record| counter_addition_object(&record.event))
+        .filter(|candidate| *candidate == object_id)
+        .count()
+        == 1
 }
 
 fn player_hand_count_at_turn_start(game: &GameState, player_id: PlayerId) -> Option<i32> {
@@ -2391,6 +2565,7 @@ fn evaluate_condition_shared_core(
             ctx.filter_source,
         )),
         Condition::YourTurn => Some(game.is_active_player(ctx.controller)),
+        Condition::CurrentTurnIsExtra => Some(game.turn_store.current_turn_is_extra),
         Condition::SourceControllersMainPhase => Some(
             game.is_active_player(ctx.controller)
                 && matches!(
@@ -2502,6 +2677,10 @@ fn evaluate_condition_shared_core(
             object_matching_was_put_into_graveyard_from_battlefield_this_turn(game, ctx, filter),
         ),
         Condition::SourceWasCast => Some(source_was_cast(game, ctx.source, ctx.triggering_event)),
+        Condition::ThisSpellWasCastAtSorceryTiming => Some(
+            game.object(ctx.source)
+                .is_some_and(|object| object.optional_costs_paid.was_cast_at_sorcery_timing()),
+        ),
         Condition::TaggedObjectWasCast(_) => None,
         Condition::ThisSpellEscaped => Some(source_escaped(game, ctx.source)),
         Condition::ThisSpellWasCastFromZone(_) => None,
@@ -2649,6 +2828,29 @@ fn evaluate_condition_shared_core(
                     .object_came_under_controller_this_turn(obj.stable_id, ctx.controller)
             }))
         }
+        Condition::SourceInGraveyardWithCardsAbove { filter, count } => {
+            Some(game.object(ctx.source).is_some_and(|source| {
+                if source.zone != crate::zone::Zone::Graveyard {
+                    return false;
+                }
+                let Some(graveyard) = game.player(source.owner).map(|player| &player.graveyard)
+                else {
+                    return false;
+                };
+                let Some(source_index) = graveyard.iter().position(|id| *id == ctx.source) else {
+                    return false;
+                };
+                let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+                graveyard[source_index + 1..]
+                    .iter()
+                    .filter(|id| {
+                        game.object(**id)
+                            .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                    })
+                    .count()
+                    >= *count as usize
+            }))
+        }
         Condition::SourceIsInZone(zone) => Some(
             game.object(ctx.source)
                 .map(|obj| obj.zone == *zone)
@@ -2667,6 +2869,22 @@ fn evaluate_condition_shared_core(
             matching_condition_players_simple(game, ctx.controller, player)
                 .into_iter()
                 .any(|player_id| game.ring_temptations(player_id) >= *count),
+        ),
+        Condition::PlayerRemovedDraftCardMatching {
+            player,
+            filter,
+            with_cards_named,
+        } => Some(
+            matching_condition_players_simple(game, ctx.controller, player)
+                .into_iter()
+                .any(|player_id| {
+                    game.removed_from_draft_card_matches(
+                        player_id,
+                        with_cards_named,
+                        filter,
+                        ctx.filter_source,
+                    )
+                }),
         ),
         Condition::YouControlCommander => {
             if let Some(player) = game.player(ctx.controller) {
@@ -2691,10 +2909,15 @@ fn evaluate_condition_shared_core(
             Some(false)
         }
         Condition::ThisAbilityResolvedThisTurnExactly(count) => {
-            Some(ctx.trigger_identity.is_some_and(|trigger_identity| {
-                game.triggered_ability_resolution_count_this_turn(ctx.source, trigger_identity)
+            Some(if let Some(ability_index) = ctx.ability_index {
+                game.activated_ability_resolution_count_this_turn(ctx.source, ability_index)
                     == *count
-            }))
+            } else {
+                ctx.trigger_identity.is_some_and(|trigger_identity| {
+                    game.triggered_ability_resolution_count_this_turn(ctx.source, trigger_identity)
+                        == *count
+                })
+            })
         }
         Condition::Custom(_) => Some(false),
         _ => None,
@@ -2707,6 +2930,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::OpponentControls(..) => {}
         Condition::PlayerControls { .. } => {}
         Condition::PlayerHasAtLeast { .. } => {}
+        Condition::PlayerRemovedDraftCardMatching { .. } => {}
         Condition::PlayerControlsExactly { .. } => {}
         Condition::PlayerHasAtLeastWithDifferentPowers { .. } => {}
         Condition::PlayerControlsMost { .. } => {}
@@ -2721,6 +2945,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::CardsInHandOrMore(..) => {}
         Condition::YouHaveCardInHandMatching(..) => {}
         Condition::YourTurn => {}
+        Condition::CurrentTurnIsExtra => {}
         Condition::SourceControllersMainPhase => {}
         Condition::SourceControllersEndStep => {}
         Condition::YourFirstTurnsOfTheGameOrFewer(..) => {}
@@ -2742,6 +2967,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::ObjectEnteredBattlefieldLastTurn(..) => {}
         Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(..) => {}
         Condition::SourceWasCast => {}
+        Condition::ThisSpellWasCastAtSorceryTiming => {}
         Condition::ThisSpellEscaped => {}
         Condition::ThisSpellWasCastFromZone(..) => {}
         Condition::ThisSpellWasCastFromNonHand => {}
@@ -2782,6 +3008,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {}
         Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { .. } => {}
         Condition::SourceAttackedOrBlockedThisTurn => {}
+        Condition::SourceInGraveyardWithCardsAbove { .. } => {}
         Condition::SourceIsInZone(..) => {}
         Condition::ManaSpentToCastThisSpellAtLeast { .. } => {}
         Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {}
@@ -2795,6 +3022,8 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::TaggedObjectWasCast(..) => {}
         Condition::TaggedObjectIsSoulbondPaired(..) => {}
         Condition::EnchantedPermanentAttackedThisTurn => {}
+        Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep => {}
+        Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep => {}
         Condition::TargetObjectsHaveDifferentColorSets => {}
         Condition::TargetMatches(..) => {}
         Condition::TargetIsSoulbondPaired => {}
@@ -2807,6 +3036,8 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::MaxTimesEachTurn(..) => {}
         Condition::DoThisMaxTimesEachTurn(..) => {}
         Condition::TriggeringObjectWasEnchanted => {}
+        Condition::TriggeringObjectBecameTappedFirstTimeThisTurn => {}
+        Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn => {}
         Condition::TriggeringObjectHadToAttackThisCombat => {}
         Condition::TriggeringObjectHadCounters { .. } => {}
         Condition::ControlCreaturesTotalPowerAtLeast(..) => {}
@@ -2945,6 +3176,7 @@ pub fn evaluate_condition_external(
             filter_source: ctx.filter_source,
             triggering_event: ctx.triggering_event,
             trigger_identity: ctx.trigger_identity,
+            ability_index: ctx.ability_index,
         },
     ) {
         return result;
@@ -2977,7 +3209,16 @@ pub fn evaluate_condition_external(
     }
 
     match condition {
-        Condition::XValueAtLeast(_) => false, // X not available in static context
+        // A spell on the stack retains the X chosen while it was cast. Static
+        // restrictions such as "if X is five or more, this spell can't be
+        // countered" are evaluated outside resolution, but still have that
+        // source-object value available.
+        Condition::XValueAtLeast(min) => {
+            game.object(ctx.source)
+                .and_then(|object| object.x_value)
+                .unwrap_or(0)
+                >= *min
+        }
         Condition::ItIsNight => game.is_night,
         Condition::FirstCombatPhaseOfTurn => {
             game.turn.phase == crate::game_state::Phase::Combat
@@ -2989,6 +3230,9 @@ pub fn evaluate_condition_external(
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
         Condition::ThisSpellWasCastFromZone(_) => false,
         Condition::ThisSpellWasCastFromNonHand => false,
+        Condition::ThisSpellWasCastAtSorceryTiming => game
+            .object(ctx.source)
+            .is_some_and(|object| object.optional_costs_paid.was_cast_at_sorcery_timing()),
         Condition::ThisSpellPaidLabel(label) => game
             .object(ctx.source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label.clone())),
@@ -3075,6 +3319,7 @@ pub fn evaluate_condition_external(
                     filter_source: ctx.filter_source,
                     triggering_event: ctx.triggering_event,
                     trigger_identity: ctx.trigger_identity,
+                    ability_index: ctx.ability_index,
                 },
                 victim,
                 damager,
@@ -3267,6 +3512,12 @@ pub fn evaluate_condition_external(
             .triggering_event
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted),
+        Condition::TriggeringObjectBecameTappedFirstTimeThisTurn => {
+            triggering_object_became_tapped_first_time_this_turn(game, ctx.triggering_event)
+        }
+        Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn => {
+            triggering_object_had_counters_put_first_time_this_turn(game, ctx.triggering_event)
+        }
         Condition::TriggeringObjectHadToAttackThisCombat => {
             triggering_object_had_to_attack_this_combat(game, ctx.triggering_event)
         }
@@ -3551,6 +3802,10 @@ pub fn evaluate_condition_external(
                 crate::ability::ActivationTiming::DuringOpponentsTurn => {
                     !game.is_active_player(ctx.controller)
                 }
+                crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
+                    game.is_active_player(ctx.controller)
+                        && game.turn.phase != crate::game_state::Phase::Ending
+                }
                 crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
                     game.object(ctx.source)
                         .is_some_and(|object| game.is_active_player(object.owner))
@@ -3762,6 +4017,8 @@ pub fn evaluate_condition_external(
         | Condition::TaggedObjectWasCast(_)
         | Condition::TaggedObjectIsSoulbondPaired(_)
         | Condition::EnchantedPermanentAttackedThisTurn
+        | Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep
+        | Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep
         | Condition::TargetObjectsHaveDifferentColorSets
         | Condition::TargetIsSoulbondPaired
         | Condition::PlayerTaggedObjectMatches { .. }
@@ -3785,6 +4042,7 @@ pub fn evaluate_condition_external(
         | Condition::CardsInHandOrMore(_)
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
+        | Condition::CurrentTurnIsExtra
         | Condition::SourceControllersMainPhase
         | Condition::SourceControllersEndStep
         | Condition::SourceIsRenowned
@@ -3808,6 +4066,7 @@ pub fn evaluate_condition_external(
         | Condition::SpellsWereCastLastTurnOrMore(_)
         | Condition::SourceHasNoCounter(_)
         | Condition::SourceHasCounterAtLeast { .. }
+        | Condition::SourceInGraveyardWithCardsAbove { .. }
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::ColoredManaSpentToCastThisSpellAtLeast(_)
@@ -3817,6 +4076,7 @@ pub fn evaluate_condition_external(
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::SourceIsRingBearer { .. }
         | Condition::PlayerRingTemptedThisGameOrMore { .. }
+        | Condition::PlayerRemovedDraftCardMatching { .. }
         | Condition::ValueComparison { .. }
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
@@ -4021,6 +4281,7 @@ fn evaluate_condition_simple(
             filter_source: Some(source),
             triggering_event: None,
             trigger_identity: None,
+            ability_index: None,
         },
     ) {
         return result;
@@ -4046,6 +4307,9 @@ fn evaluate_condition_simple(
         Condition::ThisSpellEscaped => source_escaped(game, source),
         Condition::ThisSpellWasCastFromZone(_) => false,
         Condition::ThisSpellWasCastFromNonHand => false,
+        Condition::ThisSpellWasCastAtSorceryTiming => game
+            .object(source)
+            .is_some_and(|object| object.optional_costs_paid.was_cast_at_sorcery_timing()),
         Condition::ThisSpellPaidLabel(label) => game
             .object(source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label.clone())),
@@ -4508,6 +4772,7 @@ fn evaluate_condition_simple(
                     filter_source: Some(source),
                     triggering_event: None,
                     trigger_identity: None,
+                    ability_index: None,
                 },
                 victim,
                 damager,
@@ -4536,6 +4801,8 @@ fn evaluate_condition_simple(
         | Condition::MaxTimesEachTurn(_)
         | Condition::DoThisMaxTimesEachTurn(_) => true,
         Condition::TriggeringObjectWasEnchanted
+        | Condition::TriggeringObjectBecameTappedFirstTimeThisTurn
+        | Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn
         | Condition::TriggeringObjectHadToAttackThisCombat
         | Condition::TriggeringObjectHadCounters { .. } => false,
         Condition::ControlCreaturesTotalPowerAtLeast(_)
@@ -4585,6 +4852,8 @@ fn evaluate_condition_simple(
         ),
         Condition::TaggedObjectIsSoulbondPaired(_) => false,
         Condition::EnchantedPermanentAttackedThisTurn => false,
+        Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep => false,
+        Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep => false,
         Condition::TargetObjectsHaveDifferentColorSets => false,
         Condition::TargetMatches(_) => false,
         Condition::TargetIsSoulbondPaired => false,
@@ -4619,6 +4888,7 @@ fn evaluate_condition_simple(
         | Condition::CardsInHandOrMore(_)
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
+        | Condition::CurrentTurnIsExtra
         | Condition::SourceControllersMainPhase
         | Condition::SourceControllersEndStep
         | Condition::SourceIsRenowned
@@ -4643,6 +4913,7 @@ fn evaluate_condition_simple(
         | Condition::SourceHasNoCounter(_)
         | Condition::SourceHasCounterAtLeast { .. }
         | Condition::SourceHasCountersAtLeast(_)
+        | Condition::SourceInGraveyardWithCardsAbove { .. }
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::ColoredManaSpentToCastThisSpellAtLeast(_)
@@ -4652,6 +4923,7 @@ fn evaluate_condition_simple(
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::SourceIsRingBearer { .. }
         | Condition::PlayerRingTemptedThisGameOrMore { .. }
+        | Condition::PlayerRemovedDraftCardMatching { .. }
         | Condition::ValueComparison { .. }
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
@@ -4735,6 +5007,7 @@ fn resolve_condition_player_simple(
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+        | PlayerFilter::ControlsMost { .. }
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = crate::target::FilterContext::new(controller)
                 .with_opponents(
@@ -4753,6 +5026,10 @@ fn resolve_condition_player_simple(
         }
         PlayerFilter::Any
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::AttackedBySourceThisTurn
+        | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::LostLifeThisTurn { .. }
+        | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
         | PlayerFilter::Target(_)
         | PlayerFilter::AliasedTarget(_)
         | PlayerFilter::Teammate
@@ -4883,6 +5160,7 @@ fn evaluate_condition(
             filter_source: Some(ctx.source),
             triggering_event: ctx.triggering_event.as_ref(),
             trigger_identity: ctx.trigger_identity,
+            ability_index: ctx.ability_index,
         },
     ) {
         return Ok(result);
@@ -5269,6 +5547,7 @@ fn evaluate_condition(
                 filter_source: Some(ctx.source),
                 triggering_event: None,
                 trigger_identity: None,
+                ability_index: ctx.ability_index,
             },
             victim,
             damager,
@@ -5313,6 +5592,9 @@ fn evaluate_condition(
         Condition::ThisSpellWasCastFromNonHand => {
             Ok(this_spell_was_cast_from_non_hand(game, ctx.source, ctx))
         }
+        Condition::ThisSpellWasCastAtSorceryTiming => Ok(game
+            .object(ctx.source)
+            .is_some_and(|object| object.optional_costs_paid.was_cast_at_sorcery_timing())),
         Condition::ThisSpellPaidLabel(label) => {
             Ok(resolve_value(game, &Value::WasPaidLabel(label.clone()), ctx)? != 0)
         }
@@ -5538,6 +5820,16 @@ fn evaluate_condition(
                 return Ok(matches);
             }
             let filter_ctx = ctx.filter_context(game);
+            if tag.as_str() == "triggering"
+                && let Some(event) = ctx.triggering_event.as_ref()
+            {
+                return Ok(triggering_event_object_matches_with_filter_context(
+                    game,
+                    event,
+                    filter,
+                    &filter_ctx,
+                ));
+            }
             if let Some(tagged) = ctx.get_tagged_all(tag.as_str()) {
                 return Ok(tagged.iter().any(|snapshot| {
                     let snapshot_matches = filter.matches_snapshot(snapshot, &filter_ctx, game);
@@ -5577,6 +5869,21 @@ fn evaluate_condition(
         }
         Condition::TaggedObjectMatchedLastKnown(tag, filter) => {
             let filter_ctx = ctx.filter_context(game);
+            if tag.as_str() == "triggering"
+                && let Some(snapshot) = ctx
+                    .triggering_event
+                    .as_ref()
+                    .and_then(TriggerEvent::snapshot)
+            {
+                return Ok(
+                    triggering_event_object_matched_last_known_with_filter_context(
+                        game,
+                        snapshot,
+                        filter,
+                        &filter_ctx,
+                    ),
+                );
+            }
             Ok(ctx.get_tagged_all(tag.as_str()).is_some_and(|tagged| {
                 tagged
                     .iter()
@@ -5619,6 +5926,11 @@ fn evaluate_condition(
             .object(ctx.source)
             .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached_to| game.creature_attacked_this_turn(attached_to))),
+        Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep => Ok(game
+            .enchanted_permanent_attacked_or_blocked_since_last_upkeep(ctx.source, ctx.controller)),
+        Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep => {
+            Ok(game.source_blocked_or_became_blocked_since_last_upkeep(ctx.source, ctx.controller))
+        }
         Condition::TargetMatches(filter) => {
             let filter_ctx = ctx.filter_context(game);
             let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() else {
@@ -5701,6 +6013,18 @@ fn evaluate_condition(
             .as_ref()
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted)),
+        Condition::TriggeringObjectBecameTappedFirstTimeThisTurn => {
+            Ok(triggering_object_became_tapped_first_time_this_turn(
+                game,
+                ctx.triggering_event.as_ref(),
+            ))
+        }
+        Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn => {
+            Ok(triggering_object_had_counters_put_first_time_this_turn(
+                game,
+                ctx.triggering_event.as_ref(),
+            ))
+        }
         Condition::TriggeringObjectHadToAttackThisCombat => Ok(
             triggering_object_had_to_attack_this_combat(game, ctx.triggering_event.as_ref()),
         ),
@@ -5879,6 +6203,7 @@ fn evaluate_condition(
         | Condition::CardsInHandOrMore(_)
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
+        | Condition::CurrentTurnIsExtra
         | Condition::SourceControllersMainPhase
         | Condition::SourceControllersEndStep
         | Condition::SourceIsRenowned
@@ -5902,6 +6227,7 @@ fn evaluate_condition(
         | Condition::SpellsWereCastLastTurnOrMore(_)
         | Condition::SourceHasNoCounter(_)
         | Condition::SourceHasCounterAtLeast { .. }
+        | Condition::SourceInGraveyardWithCardsAbove { .. }
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
@@ -5910,6 +6236,7 @@ fn evaluate_condition(
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::SourceIsRingBearer { .. }
         | Condition::PlayerRingTemptedThisGameOrMore { .. }
+        | Condition::PlayerRemovedDraftCardMatching { .. }
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
         | Condition::Not(_)

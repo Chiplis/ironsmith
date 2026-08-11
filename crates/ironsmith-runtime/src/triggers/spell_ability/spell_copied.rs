@@ -3,6 +3,7 @@
 use crate::events::EventKind;
 use crate::events::spells::SpellCopiedEvent;
 use crate::filter::ObjectFilterExt as _;
+use crate::filter::PlayerFilterExt as _;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -28,13 +29,7 @@ impl TriggerMatcher for SpellCopiedTrigger {
             return false;
         };
 
-        let copier_matches = match &self.copier {
-            PlayerFilter::You => e.copier == ctx.controller,
-            PlayerFilter::Opponent => e.copier != ctx.controller,
-            PlayerFilter::Any => true,
-            PlayerFilter::Specific(id) => e.copier == *id,
-            _ => true,
-        };
+        let copier_matches = self.copier.matches_player(e.copier, &ctx.filter_ctx);
         if !copier_matches {
             return false;
         }
@@ -55,6 +50,12 @@ impl TriggerMatcher for SpellCopiedTrigger {
             PlayerFilter::You => "you copy",
             PlayerFilter::Any => "a player copies",
             PlayerFilter::Opponent => "an opponent copies",
+            PlayerFilter::Active => "the active player copies",
+            PlayerFilter::ChosenPlayer => "the chosen player copies",
+            PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+                "enchanted player copies"
+            }
+            PlayerFilter::TaggedPlayer(_) | PlayerFilter::Specific(_) => "that player copies",
             _ => "someone copies",
         };
         let spell_text = self

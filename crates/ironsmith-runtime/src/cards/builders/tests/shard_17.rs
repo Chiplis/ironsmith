@@ -1203,6 +1203,7 @@ pub(super) fn target_assignments_for_requirements(
                 description: requirement.description.clone(),
                 legal_targets: requirement.legal_targets.clone(),
                 legal_target_sets: requirement.legal_target_sets.clone(),
+                aggregate_constraint: requirement.aggregate_constraint.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
                 distinct_player_group: requirement.distinct_player_group,
@@ -2591,6 +2592,18 @@ pub(super) fn rohgahh_declined_upkeep_payment_taps_and_transfers_the_full_coordi
     let source = game.create_object_from_definition(&rohgahh, alice, Zone::Battlefield);
     let first = game.create_object_from_definition(&kobold, alice, Zone::Battlefield);
     let second = game.create_object_from_definition(&kobold, alice, Zone::Battlefield);
+    let opponent_owned = game.create_object_from_definition(&kobold, bob, Zone::Battlefield);
+    let unrelated_kobold = CardDefinitionBuilder::new(CardId::new(), "Other Kobold")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Kobold])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let unrelated = game.create_object_from_definition(&unrelated_kobold, alice, Zone::Battlefield);
+
+    assert_eq!(game.current_power(first), Some(2));
+    assert_eq!(game.current_toughness(first), Some(3));
+    assert_eq!(game.current_power(opponent_owned), Some(0));
+    assert_eq!(game.current_power(unrelated), Some(1));
 
     let mut dm = crate::decision::SelectFirstDecisionMaker;
     let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
@@ -2605,7 +2618,7 @@ pub(super) fn rohgahh_declined_upkeep_payment_taps_and_transfers_the_full_coordi
     )
     .expect("Rohgahh upkeep should resolve when its controller cannot pay");
 
-    for object in [source, first, second] {
+    for object in [source, first, second, opponent_owned] {
         assert!(
             game.is_tapped(object),
             "the full coordinated set should be tapped"
@@ -2614,6 +2627,66 @@ pub(super) fn rohgahh_declined_upkeep_payment_taps_and_transfers_the_full_coordi
             game.controller_of(game.object(object).unwrap()),
             bob,
             "the chosen opponent should gain control of the full tapped set"
+        );
+    }
+    assert!(!game.is_tapped(unrelated));
+    assert_eq!(
+        game.controller_of(game.object(unrelated).unwrap()),
+        alice,
+        "a same-subtype creature with another name must not enter the tapped/transfer set"
+    );
+    assert_eq!(game.current_power(first), Some(2));
+    assert_eq!(game.current_power(opponent_owned), Some(2));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn rohgahh_paid_upkeep_payment_spends_three_red_and_preserves_the_full_set() {
+    let rohgahh = parse_oracle_card_definition("Rohgahh of Kher Keep");
+    let upkeep = rohgahh
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Rohgahh should have an upkeep trigger");
+    let kobold = CardDefinitionBuilder::new(CardId::new(), "Kobolds of Kher Keep")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Kobold])
+        .power_toughness(PowerToughness::fixed(0, 1))
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&rohgahh, alice, Zone::Battlefield);
+    let controlled = game.create_object_from_definition(&kobold, alice, Zone::Battlefield);
+    let opponent_owned = game.create_object_from_definition(&kobold, bob, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 3);
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &upkeep.effects,
+        None,
+        &[],
+    )
+    .expect("Rohgahh upkeep should resolve after its controller pays");
+
+    assert_eq!(game.player(alice).expect("Alice exists").mana_pool.red, 0);
+    for (object, controller) in [(source, alice), (controlled, alice), (opponent_owned, bob)] {
+        assert!(!game.is_tapped(object));
+        assert_eq!(
+            game.controller_of(game.object(object).unwrap()),
+            controller,
+            "paying must prevent every tap and control-change consequence"
         );
     }
 }

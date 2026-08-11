@@ -17,8 +17,18 @@ pub enum ThisSpellCostCondition {
         condition: Condition,
         display: String,
     },
+    /// A continuously checked condition authored with "as long as" rather
+    /// than the ordinary trailing "if" surface.
+    AsLongAsConditionExpr {
+        condition: Condition,
+        display: String,
+    },
     TargetsPlayer(PlayerFilter),
     TargetsObject(ObjectFilter),
+    TargetsObjectWhoseControllerHasCardsInGraveyardOrMore {
+        filter: ObjectFilter,
+        count: u32,
+    },
     YouCastSpellsThisTurnOrMore {
         count: u32,
         card_types: Vec<CardType>,

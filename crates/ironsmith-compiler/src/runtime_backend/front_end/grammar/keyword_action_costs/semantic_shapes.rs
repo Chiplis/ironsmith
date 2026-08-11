@@ -25,8 +25,15 @@ pub(crate) enum KeywordCumulativeUpkeepCostSurface {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeywordGraveyardBottomPaymentScope {
+    SingleOwner,
+    Yours,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct KeywordSingleGraveyardBottomPayment {
     pub(crate) count: u32,
+    pub(crate) scope: KeywordGraveyardBottomPaymentScope,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,35 +201,46 @@ fn parse_single_graveyard_bottom_payment<'a>(
     alt((primitives::kw("card"), primitives::kw("cards")))
         .void()
         .parse_next(input)?;
-    primitives::phrase(&[
-        "from",
-        "a",
-        "single",
-        "graveyard",
-        "on",
-        "the",
-        "bottom",
-        "of",
-    ])
+    primitives::kw("from").parse_next(input)?;
+    let scope = alt((
+        primitives::phrase(&["a", "single", "graveyard", "on", "the", "bottom", "of"])
+            .value(KeywordGraveyardBottomPaymentScope::SingleOwner),
+        primitives::phrase(&[
+            "your",
+            "graveyard",
+            "on",
+            "the",
+            "bottom",
+            "of",
+            "your",
+            "library",
+        ])
+        .value(KeywordGraveyardBottomPaymentScope::Yours),
+    ))
     .parse_next(input)?;
-    alt((primitives::kw("its"), primitives::kw("their")))
-        .void()
-        .parse_next(input)?;
 
-    let mut owner = false;
-    let mut library = false;
-    while !input.is_empty() {
-        let token: &'a OwnedLexToken = any.parse_next(input)?;
-        owner |= token.is_any_word(&["owner", "owners", "owner's", "owners'"]);
-        library |= token.is_word("library");
+    if scope == KeywordGraveyardBottomPaymentScope::SingleOwner {
+        alt((primitives::kw("its"), primitives::kw("their")))
+            .void()
+            .parse_next(input)?;
+
+        let mut owner = false;
+        let mut library = false;
+        while !input.is_empty() {
+            let token: &'a OwnedLexToken = any.parse_next(input)?;
+            owner |= token.is_any_word(&["owner", "owners", "owner's", "owners'"]);
+            library |= token.is_word("library");
+        }
+        if !owner || !library {
+            return Err(primitives::backtrack_err(
+                "single-graveyard payment",
+                "owner's library",
+            ));
+        }
+    } else {
+        eof.parse_next(input)?;
     }
-    if !owner || !library {
-        return Err(primitives::backtrack_err(
-            "single-graveyard payment",
-            "owner's library",
-        ));
-    }
-    Ok(KeywordSingleGraveyardBottomPayment { count })
+    Ok(KeywordSingleGraveyardBottomPayment { count, scope })
 }
 
 pub(crate) fn parse_single_graveyard_bottom_payment_tokens(
@@ -359,7 +377,25 @@ mod tests {
             parse_single_graveyard_bottom_payment_tokens(&lex(
                 "Put two cards from a single graveyard on the bottom of their owner's library"
             )),
-            Some(KeywordSingleGraveyardBottomPayment { count: 2 })
+            Some(KeywordSingleGraveyardBottomPayment {
+                count: 2,
+                scope: KeywordGraveyardBottomPaymentScope::SingleOwner,
+            })
+        );
+        assert_eq!(
+            parse_single_graveyard_bottom_payment_tokens(&lex(
+                "Put three cards from your graveyard on the bottom of your library"
+            )),
+            Some(KeywordSingleGraveyardBottomPayment {
+                count: 3,
+                scope: KeywordGraveyardBottomPaymentScope::Yours,
+            })
+        );
+        assert!(
+            parse_single_graveyard_bottom_payment_tokens(&lex(
+                "Put three cards from your graveyard on the bottom of their library"
+            ))
+            .is_none()
         );
         let surface =
             parse_keyword_cost_action_surface_tokens(&lex("Unearth {2}{B}"), "unearth").unwrap();

@@ -362,6 +362,13 @@ pub struct PlayFromConstraints {
     pub lands_enter_tapped: bool,
 }
 
+/// Identity of one shared deferred-use budget across multiple card grants.
+///
+/// A single resolution of "play one of those cards" grants every card in the
+/// collection the same id, so using any one card exhausts the whole pool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SharedGrantUsageId(u64);
+
 /// A unified grant that can represent either an ability or alternative casting method.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Grant {
@@ -386,6 +393,8 @@ pub struct Grant {
     /// Extra rules that apply only when `grantable` is `PlayFrom` and this
     /// exact grant is used.
     pub play_from_constraints: PlayFromConstraints,
+    /// Shared total-use budget for a tagged play collection.
+    pub shared_usage_id: Option<SharedGrantUsageId>,
     /// How this grant was created.
     pub source: GrantSource,
 }
@@ -395,6 +404,8 @@ pub struct Grant {
 pub struct GrantRegistry {
     /// All grants (unified storage).
     pub grants: Vec<Grant>,
+    next_shared_usage_id: u64,
+    shared_usage_remaining: std::collections::HashMap<SharedGrantUsageId, u32>,
 }
 
 impl GrantRegistry {
@@ -406,6 +417,82 @@ impl GrantRegistry {
     /// Add a grant to the registry.
     pub fn add_grant(&mut self, grant: Grant) {
         self.grants.push(grant);
+    }
+
+    /// Allocate one total-use budget shared by a collection of grants.
+    pub fn create_shared_usage_budget(&mut self, uses: u32) -> SharedGrantUsageId {
+        let id = SharedGrantUsageId(self.next_shared_usage_id);
+        self.next_shared_usage_id = self.next_shared_usage_id.saturating_add(1);
+        self.shared_usage_remaining.insert(id, uses);
+        id
+    }
+
+    /// Grant play permission to one member of a shared tagged collection.
+    pub fn grant_play_from_to_card_in_shared_budget(
+        &mut self,
+        target_id: ObjectId,
+        target_stable_id: Option<StableId>,
+        zone: Zone,
+        player: PlayerId,
+        constraints: PlayFromConstraints,
+        source: GrantSource,
+        shared_usage_id: SharedGrantUsageId,
+    ) {
+        self.grants.push(Grant {
+            target_id: Some(target_id),
+            target_stable_id,
+            filter: None,
+            zone,
+            player,
+            grantable: Grantable::PlayFrom,
+            usage_limit: None,
+            available_starting_turn: None,
+            play_from_constraints: constraints,
+            shared_usage_id: Some(shared_usage_id),
+            source,
+        });
+    }
+
+    fn shared_usage_is_available(&self, id: Option<SharedGrantUsageId>) -> bool {
+        id.is_none_or(|id| self.shared_usage_remaining.get(&id).copied().unwrap_or(0) > 0)
+    }
+
+    /// Select the shared budget used by one concrete play-from action.
+    /// An unlimited matching grant wins, since players may choose that grant
+    /// without spending a limited permission.
+    pub fn shared_usage_to_consume_for_play_from(
+        &self,
+        game: &crate::game_state::GameState,
+        card_id: ObjectId,
+        zone: Zone,
+        player: PlayerId,
+        source_id: Option<ObjectId>,
+    ) -> Option<SharedGrantUsageId> {
+        let mut limited = None;
+        for grant in self
+            .get_grants_for_card(game, card_id, zone, player)
+            .into_iter()
+            .filter(|grant| matches!(grant.grantable, Grantable::PlayFrom))
+            .filter(|grant| source_id.is_none_or(|source| grant.source.source_id() == source))
+        {
+            let Some(shared_usage_id) = grant.shared_usage_id else {
+                return None;
+            };
+            limited.get_or_insert(shared_usage_id);
+        }
+        limited
+    }
+
+    /// Spend one use from a previously selected shared budget.
+    pub fn consume_shared_usage(&mut self, id: SharedGrantUsageId) -> bool {
+        let Some(remaining) = self.shared_usage_remaining.get_mut(&id) else {
+            return false;
+        };
+        if *remaining == 0 {
+            return false;
+        }
+        *remaining -= 1;
+        true
     }
 
     /// Add a grant for a specific card.
@@ -427,6 +514,7 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
+            shared_usage_id: None,
             source,
         });
     }
@@ -451,6 +539,7 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: Some(available_starting_turn),
             play_from_constraints: PlayFromConstraints::default(),
+            shared_usage_id: None,
             source,
         });
     }
@@ -475,6 +564,7 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
+            shared_usage_id: None,
             source,
         });
     }
@@ -500,6 +590,7 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: constraints,
+            shared_usage_id: None,
             source,
         });
     }
@@ -527,6 +618,7 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: constraints,
+            shared_usage_id: None,
             source,
         });
     }
@@ -551,6 +643,7 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
+            shared_usage_id: None,
             source,
         });
     }
@@ -684,6 +777,10 @@ impl GrantRegistry {
 
             // Check if grant is still valid
             if !grant.source.is_valid(game) {
+                continue;
+            }
+
+            if !self.shared_usage_is_available(grant.shared_usage_id) {
                 continue;
             }
 
@@ -875,6 +972,7 @@ impl GrantRegistry {
                 if *sid == source_id
             )
         });
+        self.cleanup_orphaned_shared_usage();
     }
 
     /// Clamp turn-relative grants when their duration player leaves the game.
@@ -899,12 +997,42 @@ impl GrantRegistry {
     pub fn remove_stable_card_grants_for_zone(&mut self, stable_id: StableId, zone: Zone) {
         self.grants
             .retain(|grant| grant.target_stable_id != Some(stable_id) || grant.zone != zone);
+        self.cleanup_orphaned_shared_usage();
     }
 
     /// Clean up expired grants (call at end of turn).
     pub fn cleanup_expired(&mut self, turn_number: u32, battlefield: &[ObjectId]) {
-        self.grants
-            .retain(|grant| grant.source.is_valid_raw(turn_number, battlefield));
+        self.grants.retain(|grant| match &grant.source {
+            GrantSource::Effect {
+                expires_end_of_turn,
+                ..
+            }
+            | GrantSource::EffectUntilPlayerNextTurnEnd {
+                expires_end_of_turn,
+                ..
+            }
+            | GrantSource::EffectWhileStableCardOnTopOfLibrary {
+                expires_end_of_turn,
+                ..
+            } => *expires_end_of_turn > turn_number,
+            GrantSource::StaticAbility { source_id }
+            | GrantSource::EffectWhileControlled { source_id, .. } => {
+                battlefield.contains(source_id)
+            }
+            GrantSource::EffectUntilSourceExilesAnother { .. }
+            | GrantSource::EffectDuringTurnsCounterPutOnSource { .. } => true,
+        });
+        self.cleanup_orphaned_shared_usage();
+    }
+
+    fn cleanup_orphaned_shared_usage(&mut self) {
+        let live = self
+            .grants
+            .iter()
+            .filter_map(|grant| grant.shared_usage_id)
+            .collect::<std::collections::HashSet<_>>();
+        self.shared_usage_remaining
+            .retain(|shared_usage_id, _| live.contains(shared_usage_id));
     }
 
     /// Snapshot currently active grants, including static grants computed on demand.
@@ -915,6 +1043,7 @@ impl GrantRegistry {
             .filter(|grant| {
                 !matches!(grant.source, GrantSource::StaticAbility { .. })
                     && grant.source.is_valid(game)
+                    && self.shared_usage_is_available(grant.shared_usage_id)
                     && grant
                         .available_starting_turn
                         .is_none_or(|turn| game.turn.turn_number >= turn)
@@ -979,6 +1108,7 @@ impl GrantRegistry {
                         usage_limit: spec.usage_limit,
                         available_starting_turn: None,
                         play_from_constraints: PlayFromConstraints::default(),
+                        shared_usage_id: None,
                         source: GrantSource::StaticAbility { source_id },
                     });
                 }
@@ -1201,6 +1331,32 @@ mod tests {
             registry.grants[0].source,
             GrantSource::until_end_of_turn(source_id, 3)
         );
+    }
+
+    #[test]
+    fn cleanup_removes_grants_at_the_end_of_their_expiration_turn() {
+        let mut registry = GrantRegistry::new();
+        let player = PlayerId::from_index(0);
+
+        registry.grant_to_filter(
+            ObjectFilter::default(),
+            Zone::Graveyard,
+            player,
+            Grantable::PlayFrom,
+            GrantSource::until_end_of_turn(ObjectId::from_raw(7), 3),
+        );
+        registry.grant_to_filter(
+            ObjectFilter::default(),
+            Zone::Exile,
+            player,
+            Grantable::PlayFrom,
+            GrantSource::until_end_of_turn(ObjectId::from_raw(8), 4),
+        );
+
+        registry.cleanup_expired(3, &[]);
+
+        assert_eq!(registry.grants.len(), 1);
+        assert_eq!(registry.grants[0].source.source_id(), ObjectId::from_raw(8));
     }
 
     #[test]

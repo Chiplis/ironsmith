@@ -46,6 +46,17 @@ fn spec_target_set_controller_constraint(
     }
 }
 
+fn spec_requires_distinct_creature_types(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => spec_requires_distinct_creature_types(spec),
+        ChooseSpec::Object(filter) => filter.distinct_creature_types,
+        _ => false,
+    }
+}
+
 fn target_count_for_spec(spec: &ChooseSpec) -> Option<usize> {
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. } | ChooseSpec::Target(spec) => {
@@ -91,12 +102,124 @@ fn different_controller_target_sets(grouped: &[Vec<Target>], count: usize) -> Ve
     out
 }
 
+fn distinct_creature_type_target_sets(
+    game: &GameState,
+    legal_targets: &[Target],
+    count: usize,
+    controller_constraint: Option<TargetSetControllerConstraint>,
+) -> Vec<Vec<Target>> {
+    fn recurse(
+        game: &GameState,
+        legal_targets: &[Target],
+        count: usize,
+        controller_constraint: Option<TargetSetControllerConstraint>,
+        cursor: usize,
+        current: &mut Vec<Target>,
+        used_controllers: &mut std::collections::HashSet<PlayerId>,
+        used_creature_types: &mut std::collections::HashSet<crate::types::Subtype>,
+        out: &mut Vec<Vec<Target>>,
+    ) {
+        if current.len() == count {
+            out.push(current.clone());
+            return;
+        }
+        if current.len() + legal_targets.len().saturating_sub(cursor) < count {
+            return;
+        }
+
+        for index in cursor..legal_targets.len() {
+            let target = legal_targets[index];
+            let Target::Object(object_id) = target else {
+                continue;
+            };
+            let Some(object) = game.object(object_id) else {
+                continue;
+            };
+            let controller = game.controller_of(object);
+            let controller_allowed = match controller_constraint {
+                Some(TargetSetControllerConstraint::Same) => used_controllers
+                    .iter()
+                    .next()
+                    .is_none_or(|existing| *existing == controller),
+                Some(TargetSetControllerConstraint::Different) => {
+                    !used_controllers.contains(&controller)
+                }
+                None => true,
+            };
+            if !controller_allowed {
+                continue;
+            }
+
+            let creature_types = game
+                .calculated_subtypes(object_id)
+                .into_iter()
+                .filter(crate::types::Subtype::is_creature_type)
+                .collect::<Vec<_>>();
+            if creature_types
+                .iter()
+                .any(|subtype| used_creature_types.contains(subtype))
+            {
+                continue;
+            }
+
+            let controller_was_new = used_controllers.insert(controller);
+            used_creature_types.extend(creature_types.iter().copied());
+            current.push(target);
+            recurse(
+                game,
+                legal_targets,
+                count,
+                controller_constraint,
+                index + 1,
+                current,
+                used_controllers,
+                used_creature_types,
+                out,
+            );
+            current.pop();
+            for subtype in creature_types {
+                used_creature_types.remove(&subtype);
+            }
+            if controller_was_new {
+                used_controllers.remove(&controller);
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    recurse(
+        game,
+        legal_targets,
+        count,
+        controller_constraint,
+        0,
+        &mut Vec::new(),
+        &mut std::collections::HashSet::new(),
+        &mut std::collections::HashSet::new(),
+        &mut out,
+    );
+    out
+}
+
 pub fn legal_target_sets_for_spec(
     game: &GameState,
     spec: &ChooseSpec,
     legal_targets: &[Target],
 ) -> Vec<Vec<Target>> {
-    let Some(constraint) = spec_target_set_controller_constraint(spec) else {
+    let controller_constraint = spec_target_set_controller_constraint(spec);
+    if spec_requires_distinct_creature_types(spec) {
+        let Some(count) = target_count_for_spec(spec) else {
+            return Vec::new();
+        };
+        return distinct_creature_type_target_sets(
+            game,
+            legal_targets,
+            count,
+            controller_constraint,
+        );
+    }
+
+    let Some(constraint) = controller_constraint else {
         return Vec::new();
     };
 
@@ -126,6 +249,47 @@ pub fn legal_target_sets_for_spec(
     }
 }
 
+/// Resolve a set-wide target restriction for the current announcement and
+/// record each legal target's contribution for decision validation.
+pub fn resolved_target_aggregate_constraint(
+    game: &GameState,
+    spec: &ChooseSpec,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    legal_targets: &[Target],
+) -> Option<crate::targeting::ResolvedTargetAggregateConstraint> {
+    let constraint = spec.target_set_aggregate_constraint()?;
+    let maximum = match constraint.maximum.unhinted() {
+        crate::effect::Value::Fixed(maximum) => *maximum,
+        _ => {
+            let source = source_id?;
+            let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+            let mut ctx =
+                crate::effects::ExecutionContext::new(source, caster, &mut decision_maker);
+            ctx.x_value = game.object(source).and_then(|object| object.x_value);
+            crate::effects::helpers::resolve_value(game, &constraint.maximum, &ctx).ok()?
+        }
+    };
+    let target_values = legal_targets
+        .iter()
+        .map(|target| {
+            let value = match target {
+                Target::Object(id) => {
+                    crate::targeting::aggregate_object_value(game, *id, constraint.metric)
+                }
+                Target::Player(_) => 0,
+            };
+            (*target, value)
+        })
+        .collect();
+
+    Some(crate::targeting::ResolvedTargetAggregateConstraint {
+        metric: constraint.metric,
+        maximum,
+        target_values,
+    })
+}
+
 pub fn has_enough_legal_targets_for_spec(
     game: &GameState,
     spec: &ChooseSpec,
@@ -137,7 +301,13 @@ pub fn has_enough_legal_targets_for_spec(
     }
     let legal_target_sets = legal_target_sets_for_spec(game, spec, legal_targets);
     if legal_target_sets.is_empty() {
-        legal_targets.len() >= min_targets
+        if spec_target_set_controller_constraint(spec).is_some()
+            || spec_requires_distinct_creature_types(spec)
+        {
+            false
+        } else {
+            legal_targets.len() >= min_targets
+        }
     } else {
         legal_target_sets.iter().any(|set| set.len() >= min_targets)
     }
@@ -362,6 +532,50 @@ pub fn has_protection_from_source(
     has_protection_from_source_with_view(game, target_id, source_id, &view)
 }
 
+/// Test protection granted by an attached permanent whose chosen quality is
+/// stored on the granting permanent rather than on the protected object.
+///
+/// The generated protection ability is correctly present in the protected
+/// object's derived characteristics, but `ChosenColor` ordinarily reads the
+/// choice from that object. Auras such as Benevolent Blessing make the choice
+/// on the Aura, so retain that source relationship structurally through the
+/// typed `AttachedAbilityGrant` payload.
+fn attached_grant_protects_from_chosen_color(
+    game: &GameState,
+    target: &Object,
+    source_colors: crate::color::ColorSet,
+) -> bool {
+    target.attachments.iter().copied().any(|grant_source| {
+        let Some(granting_object) = game.object(grant_source) else {
+            return false;
+        };
+        granting_object.abilities.iter().any(|ability| {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                return false;
+            };
+            let Some(model) = static_ability.compiled_model() else {
+                return false;
+            };
+            let ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant) = &model.payload
+            else {
+                return false;
+            };
+            matches!(
+                &grant.ability.kind,
+                ironsmith_core::AbilityKind::Static(granted)
+                    if matches!(
+                        &granted.payload,
+                        ironsmith_core::StaticAbilityPayload::Protection(
+                            ironsmith_core::ProtectionFrom::ChosenColor
+                        )
+                    )
+            ) && game
+                .chosen_color(grant_source)
+                .is_some_and(|chosen| source_colors.contains(chosen))
+        })
+    })
+}
+
 pub(crate) fn has_protection_from_source_with_view(
     game: &GameState,
     target_id: ObjectId,
@@ -388,9 +602,15 @@ pub(crate) fn has_protection_from_source_with_view(
                 crate::ability::ProtectionFrom::ChosenPlayer => game
                     .chosen_player(target_id)
                     .is_some_and(|chosen| game.controller_of(source) == chosen),
-                crate::ability::ProtectionFrom::ChosenColor => game
-                    .chosen_color(target_id)
-                    .is_some_and(|chosen| view.object_colors(source_id).contains(chosen)),
+                crate::ability::ProtectionFrom::ChosenColor => {
+                    game.chosen_color(target_id)
+                        .is_some_and(|chosen| view.object_colors(source_id).contains(chosen))
+                        || attached_grant_protects_from_chosen_color(
+                            game,
+                            target,
+                            view.object_colors(source_id),
+                        )
+                }
                 crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
                     source_mana_value_matches_scope(game, target_id, source, filter)
                 }
@@ -427,9 +647,15 @@ fn has_protection_from_source_snapshot_with_view(
                 crate::ability::ProtectionFrom::ChosenPlayer => game
                     .chosen_player(target_id)
                     .is_some_and(|chosen| source_snapshot.controller == chosen),
-                crate::ability::ProtectionFrom::ChosenColor => game
-                    .chosen_color(target_id)
-                    .is_some_and(|chosen| source_snapshot.colors.contains(chosen)),
+                crate::ability::ProtectionFrom::ChosenColor => {
+                    game.chosen_color(target_id)
+                        .is_some_and(|chosen| source_snapshot.colors.contains(chosen))
+                        || attached_grant_protects_from_chosen_color(
+                            game,
+                            target,
+                            source_snapshot.colors,
+                        )
+                }
                 crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
                     source_snapshot_mana_value_matches_scope(
                         game,
@@ -1615,6 +1841,106 @@ mod tests {
         assert!(!legal_targets.contains(&Target::Object(source_id)));
         assert!(!legal_targets.contains(&Target::Object(creature_id)));
         assert!(!legal_targets.contains(&Target::Player(alice)));
+    }
+
+    #[test]
+    fn price_of_betrayal_target_union_keeps_all_types_and_only_opponents() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(10, "Price Source", alice);
+        let artifact = create_artifact(11, "Eligible Artifact", bob, 2);
+        let creature = create_creature(12, "Eligible Creature", bob);
+        let planeswalker = create_planeswalker(13, "Eligible Planeswalker", bob);
+        let land = create_land(14, "Ineligible Land", bob);
+        let source_id = source.id;
+        let artifact_id = artifact.id;
+        let creature_id = creature.id;
+        let planeswalker_id = planeswalker.id;
+        let land_id = land.id;
+        game.add_object(source);
+        game.add_object(artifact);
+        game.add_object(creature);
+        game.add_object(planeswalker);
+        game.add_object(land);
+
+        let spec = ChooseSpec::target(ChooseSpec::ObjectOrPlayer(
+            ObjectFilter::default()
+                .in_zone(Zone::Battlefield)
+                .with_type(CardType::Artifact)
+                .with_type(CardType::Creature)
+                .with_type(CardType::Planeswalker),
+            PlayerFilter::Opponent,
+        ));
+        let legal_targets = compute_legal_targets(&game, &spec, alice, Some(source_id));
+
+        assert!(legal_targets.contains(&Target::Object(artifact_id)));
+        assert!(legal_targets.contains(&Target::Object(creature_id)));
+        assert!(legal_targets.contains(&Target::Object(planeswalker_id)));
+        assert!(legal_targets.contains(&Target::Player(bob)));
+        assert!(!legal_targets.contains(&Target::Object(land_id)));
+        assert!(!legal_targets.contains(&Target::Player(alice)));
+    }
+
+    #[test]
+    fn endless_detour_target_union_keeps_stack_battlefield_and_graveyard_domains() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(20, "Detour Source", alice);
+        let spell_card = CardBuilder::new(CardId::from_raw(21), "Eligible Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let graveyard_land_card = CardBuilder::new(CardId::from_raw(22), "Eligible Graveyard Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let hand_card = CardBuilder::new(CardId::from_raw(23), "Ineligible Hand Card")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let permanent = create_creature(24, "Eligible Permanent", bob);
+        let battlefield_land = create_land(25, "Ineligible Battlefield Land", bob);
+        let spell = Object::from_card(ObjectId::from_raw(21), &spell_card, bob, Zone::Stack);
+        let graveyard_land = Object::from_card(
+            ObjectId::from_raw(22),
+            &graveyard_land_card,
+            bob,
+            Zone::Graveyard,
+        );
+        let hand_object = Object::from_card(ObjectId::from_raw(23), &hand_card, bob, Zone::Hand);
+        let source_id = source.id;
+        let spell_id = spell.id;
+        let permanent_id = permanent.id;
+        let graveyard_land_id = graveyard_land.id;
+        let battlefield_land_id = battlefield_land.id;
+        let hand_id = hand_object.id;
+        game.add_object(source);
+        game.add_object(spell);
+        game.add_object(permanent);
+        game.add_object(graveyard_land);
+        game.add_object(battlefield_land);
+        game.add_object(hand_object);
+        game.push_to_stack(crate::game_state::StackEntry::new(spell_id, bob));
+
+        let filter = ObjectFilter {
+            any_of: vec![
+                ObjectFilter::spell(),
+                ObjectFilter::nonland_permanent(),
+                ObjectFilter::default().in_zone(Zone::Graveyard),
+            ],
+            ..ObjectFilter::default()
+        };
+        let spec = ChooseSpec::target(ChooseSpec::Object(filter));
+        let legal_targets = compute_legal_targets(&game, &spec, alice, Some(source_id));
+
+        assert!(legal_targets.contains(&Target::Object(spell_id)));
+        assert!(legal_targets.contains(&Target::Object(permanent_id)));
+        assert!(legal_targets.contains(&Target::Object(graveyard_land_id)));
+        assert!(!legal_targets.contains(&Target::Object(battlefield_land_id)));
+        assert!(!legal_targets.contains(&Target::Object(hand_id)));
     }
 
     #[test]

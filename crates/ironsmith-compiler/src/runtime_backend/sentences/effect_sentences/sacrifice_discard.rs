@@ -223,16 +223,35 @@ pub(crate) fn parse_sacrifice(
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    if let Some(half) = sacrifice_discard_grammar::parse_sacrifice_half_rounded_up_shape(tokens) {
-        let mut filter = parse_object_filter_lexed(half.filter_tokens, false)?;
+    if let Some(fraction) =
+        sacrifice_discard_grammar::parse_sacrifice_fraction_rounded_shape(tokens)
+    {
+        let mut filter = parse_object_filter_lexed(fraction.filter_tokens, false)?;
         filter.zone = Some(Zone::Battlefield);
-        let count_value = if half.rounded_up {
-            Value::HalfRoundedDown(Box::new(Value::Add(
-                Box::new(Value::Count(filter.clone())),
-                Box::new(Value::Fixed(1)),
-            )))
+        let basis = Value::Count(filter.clone());
+        let count_value = if fraction.denominator == 2 {
+            let basis = if fraction.rounded_up {
+                Value::Add(Box::new(basis), Box::new(Value::Fixed(1)))
+            } else {
+                basis
+            };
+            Value::HalfRoundedDown(Box::new(basis))
         } else {
-            Value::HalfRoundedDown(Box::new(Value::Count(filter.clone())))
+            let denominator = i32::try_from(fraction.denominator).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "sacrifice fraction denominator is too large (clause: '{}')",
+                    normalized_words.join(" ")
+                ))
+            })?;
+            let basis = if fraction.rounded_up {
+                Value::Add(
+                    Box::new(basis),
+                    Box::new(Value::Fixed(denominator.saturating_sub(1))),
+                )
+            } else {
+                basis
+            };
+            Value::DividedRoundedDown(Box::new(basis), denominator)
         };
         let tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
             tokens,
@@ -330,6 +349,7 @@ pub(crate) fn parse_sacrifice(
             sacrifice_discard_grammar::SacrificeQuantityShape::AllOrEach {
                 filter_tokens,
                 other,
+                each_surface,
             } => {
                 let mut filter = parse_object_filter_lexed(filter_tokens, other)?;
                 preserve_branch_scoped_card_type_union(&mut filter, filter_tokens, other);
@@ -337,8 +357,58 @@ pub(crate) fn parse_sacrifice(
                 if other {
                     filter.other = true;
                 }
+                if each_surface {
+                    filter.set_set_quantifier_surface(Some(
+                        ironsmith_core::SetQuantifierSurface::Each,
+                    ));
+                }
                 return Ok(wrap_unless_escaped(
                     EffectAst::subject_verb_sacrifice_all(player, filter),
+                    unless_escaped,
+                ));
+            }
+            sacrifice_discard_grammar::SacrificeQuantityShape::AllExcept {
+                filter_tokens,
+                keep_count,
+                other,
+            } => {
+                let mut filter = parse_object_filter_lexed(filter_tokens, other)?;
+                preserve_branch_scoped_card_type_union(&mut filter, filter_tokens, other);
+                preserve_terminal_nonbasic_land_union(filter_tokens, &mut filter);
+                filter.zone = Some(Zone::Battlefield);
+                if other {
+                    filter.other = true;
+                }
+                let keep_count = i32::try_from(keep_count).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "sacrifice exception count is too large (clause: '{}')",
+                        normalized_words.join(" ")
+                    ))
+                })?;
+                let count_value = Value::Add(
+                    Box::new(Value::Count(filter.clone())),
+                    Box::new(Value::Fixed(-keep_count)),
+                );
+                let tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                    tokens,
+                    "sacrificed",
+                );
+                return Ok(wrap_unless_escaped(
+                    EffectAst::Sequence {
+                        effects: vec![
+                            EffectAst::ChooseObjects {
+                                filter,
+                                count: crate::effect::ChoiceCount::dynamic_x(),
+                                count_value: Some(count_value),
+                                player,
+                                tag: tag.clone(),
+                            },
+                            EffectAst::subject_verb_sacrifice_all(
+                                PlayerAst::That,
+                                ObjectFilter::tagged(tag),
+                            ),
+                        ],
+                    },
                     unless_escaped,
                 ));
             }
@@ -855,5 +925,99 @@ mod selected_sacrifice_tests {
             branch.card_types == [crate::types::CardType::Land]
                 && branch.excluded_supertypes == [crate::types::Supertype::Basic]
         }));
+    }
+
+    #[test]
+    fn unit_fraction_rounded_up_sacrifice_chooses_the_exact_dynamic_set() {
+        let tokens = lex_line(
+            "Sacrifices a tenth of the creatures they control of their choice, rounded up.",
+            0,
+        )
+        .expect("fractional sacrifice clause should lex");
+        let parsed = parse_sacrifice(&tokens, Some(SubjectAst::Player(PlayerAst::That)), None)
+            .expect("fractional sacrifice clause should parse");
+        let EffectAst::Sequence { effects } = parsed else {
+            panic!("fractional sacrifice must lower to a chosen-set sequence");
+        };
+        let [choose, sacrifice] = effects.as_slice() else {
+            panic!("fractional sacrifice must have one choice and one consumer");
+        };
+        let EffectAst::ChooseObjects {
+            filter,
+            count,
+            count_value: Some(count_value),
+            player,
+            tag,
+        } = choose
+        else {
+            panic!("fractional sacrifice must choose a dynamic object set");
+        };
+        assert!(count.is_dynamic_x());
+        assert_eq!(*player, PlayerAst::That);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+
+        let Value::DividedRoundedDown(numerator, 10) = count_value else {
+            panic!("a tenth rounded up must use exact ceil-division: {count_value:#?}");
+        };
+        let Value::Add(left, right) = numerator.as_ref() else {
+            panic!("ceil-division must add denominator minus one: {numerator:#?}");
+        };
+        assert!(
+            matches!(
+                (left.as_ref(), right.as_ref()),
+                (Value::Count(count_filter), Value::Fixed(9))
+                    | (Value::Fixed(9), Value::Count(count_filter))
+                    if count_filter == filter
+            ),
+            "ceil-division must count exactly the selectable set: {count_value:#?}"
+        );
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action: SubjectVerbActionAst::SacrificeAll { filter: sacrificed },
+        }) = sacrifice
+        else {
+            panic!("chosen set must feed the typed sacrifice consumer");
+        };
+        assert_eq!(subject.player, PlayerAst::That);
+        assert_eq!(sacrificed, &ObjectFilter::tagged(tag.clone()));
+    }
+
+    #[test]
+    fn sacrifice_all_except_kept_count_chooses_count_minus_keep_set() {
+        let tokens = lex_line("Sacrifices all lands they control except for three.", 0)
+            .expect("all-except sacrifice clause should lex");
+        let parsed = parse_sacrifice(&tokens, Some(SubjectAst::Player(PlayerAst::That)), None)
+            .expect("all-except sacrifice clause should parse");
+        let EffectAst::Sequence { effects } = parsed else {
+            panic!("all-except sacrifice must lower to a chosen-set sequence");
+        };
+        let [
+            EffectAst::ChooseObjects {
+                filter,
+                count,
+                count_value: Some(Value::Add(left, right)),
+                player: PlayerAst::That,
+                tag,
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject,
+                action: SubjectVerbActionAst::SacrificeAll { filter: sacrificed },
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected exact dynamic choice and sacrifice: {effects:#?}");
+        };
+        assert!(count.is_dynamic_x());
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.card_types, [crate::types::CardType::Land]);
+        assert!(matches!(
+            (left.as_ref(), right.as_ref()),
+            (Value::Count(count_filter), Value::Fixed(-3))
+                | (Value::Fixed(-3), Value::Count(count_filter))
+                if count_filter == filter
+        ));
+        assert_eq!(subject.player, PlayerAst::That);
+        assert_eq!(sacrificed, &ObjectFilter::tagged(tag.clone()));
     }
 }

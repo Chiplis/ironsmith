@@ -54,6 +54,15 @@ impl FlipCoinEffect {
 }
 
 impl EffectExecutor for FlipCoinEffect {
+    fn is_read_only_simultaneous_player_action(&self) -> bool {
+        // A flip consumes randomness and records presentation events, but it
+        // does not change cards, life totals, counters, or any other game
+        // object inspected by another player's action. ForPlayers may
+        // therefore collect every player's result in APNAP order before a
+        // later result-correlated action mutates the game.
+        true
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -281,6 +290,44 @@ mod tests {
         assert_eq!(
             outcome.as_count(),
             Some(i32::from(event.face == ironsmith_core::CoinFace::Heads))
+        );
+    }
+
+    #[test]
+    fn each_player_face_only_flips_keep_per_player_heads_and_tails_results() {
+        fn run(face: ironsmith_core::CoinFace) -> Vec<(PlayerId, i32)> {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let source = game.new_object_id();
+            let mut decisions = NoCallAllowed;
+            let mut ctx =
+                ExecutionContext::new_default(source, alice).with_decision_maker(&mut decisions);
+            let flip = Effect::new(
+                FlipCoinEffect::face_only(PlayerFilter::IteratedPlayer).with_forced_face(face),
+            );
+            let each_player = Effect::new(crate::effects::ForPlayersEffect::new(
+                PlayerFilter::Any,
+                vec![flip],
+            ));
+
+            let outcome = execute_effect(&mut game, &each_player, &mut ctx)
+                .expect("face-only flips should execute for every player");
+            assert_eq!(outcome.events.len(), 2);
+            outcome
+                .player_counts()
+                .expect("each-player flips retain one result per player")
+                .to_vec()
+        }
+
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        assert_eq!(
+            run(ironsmith_core::CoinFace::Heads),
+            vec![(alice, 1), (bob, 1)]
+        );
+        assert_eq!(
+            run(ironsmith_core::CoinFace::Tails),
+            vec![(alice, 0), (bob, 0)]
         );
     }
 

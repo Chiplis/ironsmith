@@ -3,16 +3,20 @@
 mod apply_replacement;
 mod register_damaged_by_source_zone_replacement;
 mod register_draw_replacement;
+mod register_enter_tapped;
 mod register_future_zone_replacement;
 mod register_mana_replacement;
+mod register_next_batch_enter_with_counters;
 mod register_zone_replacement;
 
 pub use apply_replacement::{ApplyReplacementEffect, ReplacementApplyMode};
 pub use register_damaged_by_source_zone_replacement::RegisterDamagedBySourceZoneReplacementEffect;
 pub use register_draw_replacement::RegisterDrawReplacementEffect;
+pub use register_enter_tapped::RegisterEnterTappedReplacementEffect;
 pub use register_enter_under_control::RegisterEnterUnderControlReplacementEffect;
 pub use register_future_zone_replacement::RegisterFutureZoneReplacementEffect;
 pub use register_mana_replacement::RegisterManaReplacementEffect;
+pub use register_next_batch_enter_with_counters::RegisterNextBatchEnterWithCountersEffect;
 pub use register_zone_replacement::RegisterZoneReplacementEffect;
 
 mod register_enter_under_control;

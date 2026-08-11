@@ -262,6 +262,9 @@ impl StaticAbility {
             Some(StaticAbilityId::PlayerSkipsDrawStep) => {
                 Self::player_skips_draw_step(crate::target::PlayerFilter::You)
             }
+            Some(StaticAbilityId::PlayersSkipExtraTurns) => {
+                Self::players_skip_extra_turns(crate::target::PlayerFilter::Any)
+            }
             Some(StaticAbilityId::AffinityForArtifacts) => Self::affinity_for_artifacts(),
             Some(StaticAbilityId::Delve) => Self::delve(),
             Some(StaticAbilityId::Convoke) => Self::convoke(),

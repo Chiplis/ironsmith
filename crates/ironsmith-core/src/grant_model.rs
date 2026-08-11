@@ -1,6 +1,6 @@
 use crate::{
     AlternativeCastingMethod, CardType, CostComponent, ManaCost, ObjectFilter, PlayerFilter,
-    ThisSpellCostCondition, Zone,
+    SourceReferenceSurface, ThisSpellCostCondition, Zone,
 };
 
 pub trait GrantStaticAbility: Clone + PartialEq {
@@ -74,6 +74,18 @@ impl<C> DerivedAlternativeCast<C> {
 pub enum GrantUsageLimit {
     OnceEachTurn,
     OnceDuringEachOfYourTurns,
+}
+
+/// Oracle-facing surface for a persistent permission tied to cards exiled by
+/// the granting source. Runtime identity is carried by `SOURCE_EXILED_TAG`;
+/// this value only preserves the authored source noun and plural spell/pool
+/// wording.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceExiledGrantSurface {
+    pub source: SourceReferenceSurface,
+    pub plural_spell_subject: bool,
+    pub generic_card_pool: bool,
+    pub generic_cast_this_way_subject: bool,
 }
 
 impl<C: CostComponent> DerivedAlternativeCast<C> {
@@ -337,6 +349,8 @@ pub struct GrantSpec<SA, E, C, Cond> {
     /// `filter`, which matters for permissions that include lands or
     /// noncreature spells but only modify creature spells cast this way.
     pub cast_this_way_filter: Option<ObjectFilter>,
+    /// Presentation metadata for a persistent source-linked exile grant.
+    pub source_exiled_surface: Option<SourceExiledGrantSurface>,
 }
 
 impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
@@ -350,6 +364,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             usage_limit: None,
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
+            source_exiled_surface: None,
         }
     }
 
@@ -371,6 +386,11 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
 
     pub fn with_cast_this_way_filter(mut self, filter: ObjectFilter) -> Self {
         self.cast_this_way_filter = Some(filter);
+        self
+    }
+
+    pub fn with_source_exiled_surface(mut self, surface: SourceExiledGrantSurface) -> Self {
+        self.source_exiled_surface = Some(surface);
         self
     }
 
@@ -412,6 +432,7 @@ where
             usage_limit: None,
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
+            source_exiled_surface: None,
         }
     }
 
@@ -471,6 +492,7 @@ where
             usage_limit: None,
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
+            source_exiled_surface: None,
         }
     }
 }
@@ -568,6 +590,17 @@ where
         fn castable_filter_description(filter: &ObjectFilter) -> String {
             if *filter == ObjectFilter::noncreature_spell() {
                 return "noncreature spells".to_string();
+            }
+            if filter.subtypes.as_slice() == [crate::Subtype::Aura]
+                && filter.ability_markers.len() == 1
+                && filter.ability_markers[0].eq_ignore_ascii_case("enchant creature")
+            {
+                let mut normalized = filter.clone();
+                normalized.subtypes.clear();
+                normalized.ability_markers.clear();
+                if normalized == ObjectFilter::default() {
+                    return "Aura spells with enchant creature".to_string();
+                }
             }
             if filter.excluded_card_types.contains(&CardType::Land) {
                 let mut spell_filter = filter.clone();
@@ -695,7 +728,7 @@ where
         }
 
         fn cast_this_way_entered_object_subject(filter: &ObjectFilter) -> Option<String> {
-            if !is_simple_card_type_filter(filter) || filter.card_types.len() != 1 {
+            if filter.card_types.len() != 1 {
                 return None;
             }
             match filter.card_types[0] {
@@ -813,11 +846,24 @@ where
                     "Any player who cast one or more {} spells this turn may",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::AttackedBySourceThisTurn => {
+                    "A player this creature attacked this turn may".to_string()
+                }
+                PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
+                    "A player this source has dealt damage to this game may".to_string()
+                }
+                PlayerFilter::LostLifeThisTurn { .. } => {
+                    "A player who lost life this turn may".to_string()
+                }
+                PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+                    "That player may".to_string()
+                }
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => "That player may".to_string(),
                 PlayerFilter::HasMoreLifeThanYou { .. } => "That player may".to_string(),
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     "That player may".to_string()
                 }
+                PlayerFilter::ControlsMost { .. } => "That player may".to_string(),
                 PlayerFilter::MaxSpeed { .. } => "That player may".to_string(),
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
                 PlayerFilter::TaggedPlayer(_)
@@ -838,6 +884,7 @@ where
         fn source_exiled_cast_subject(
             filter: &ObjectFilter,
             beneficiary: &PlayerFilter,
+            surface: Option<&SourceExiledGrantSurface>,
         ) -> Option<String> {
             if filter.zone != Some(Zone::Exile) {
                 return None;
@@ -863,10 +910,18 @@ where
                     "they don't own ".to_string()
                 }
                 Some(PlayerFilter::NotYou) => "you don't own ".to_string(),
+                Some(PlayerFilter::You) => "you own ".to_string(),
                 Some(_) => return None,
             };
 
-            let (spell_subject, card_subject) = if normalized == ObjectFilter::default() {
+            let (spell_subject, mut card_subject) = if surface
+                .is_some_and(|surface| surface.plural_spell_subject)
+            {
+                (
+                    unlimited_zone_castable_filter_description(&normalized),
+                    normalized.description().replace("permanent", "card"),
+                )
+            } else if normalized == ObjectFilter::default() {
                 ("a spell".to_string(), "cards".to_string())
             } else if is_simple_card_type_filter(&normalized) && normalized.card_types.len() == 1 {
                 let type_text = normalized.card_types[0].to_string().to_ascii_lowercase();
@@ -883,9 +938,21 @@ where
             } else {
                 return None;
             };
-            let article = if owner_words.is_empty() { "" } else { "the " };
+            if surface.is_some_and(|surface| surface.generic_card_pool) {
+                card_subject = "cards".to_string();
+            }
+            let article = if owner_words.is_empty()
+                || surface.is_some_and(|surface| surface.generic_card_pool)
+            {
+                ""
+            } else {
+                "the "
+            };
+            let source = surface
+                .map(|surface| surface.source.display_text())
+                .unwrap_or_else(|| "this permanent".to_string());
             Some(format!(
-                "{spell_subject} from among {article}{card_subject} {owner_words}exiled with this permanent"
+                "{spell_subject} from among {article}{card_subject} {owner_words}exiled with {source}"
             ))
         }
 
@@ -960,6 +1027,10 @@ where
                 if source_linked {
                     return None;
                 }
+                let excluded_lands = normalized
+                    .excluded_card_types
+                    .iter()
+                    .any(|card_type| *card_type == CardType::Land);
                 normalized
                     .excluded_card_types
                     .retain(|card_type| *card_type != CardType::Land);
@@ -967,6 +1038,18 @@ where
                     return None;
                 }
                 let owner_clause = owner_clause(owner.as_ref())?;
+                if !excluded_lands {
+                    // Lands stay playable, so the authored surface says
+                    // "play cards": "you may play cards you don't own with
+                    // stash counters on them from exile" (Tinybones).
+                    if owner_clause.is_empty() {
+                        return None;
+                    }
+                    return Some(format!(
+                        "{may_prefix} play cards {owner_clause} with {} from exile",
+                        counter_clause(counter_type)
+                    ));
+                }
                 let owner_clause = if owner_clause.is_empty() {
                     String::new()
                 } else {
@@ -988,8 +1071,40 @@ where
             }
             let first = countered_exile_filter_facts(&filter.any_of[0])?;
             let second = countered_exile_filter_facts(&filter.any_of[1])?;
-            if first.0 != second.0 || first.1 != second.1 || first.2 != second.2 || !first.2 {
+            if first.0 != second.0 || first.1 != second.1 || first.2 != second.2 {
                 return None;
+            }
+            // Unlinked lands-plus-spells over an owned countered exile pool:
+            // "play lands and cast spells from among cards you own in exile
+            // with <type> counters on them" (Grolnok, the Omnivore).
+            if !first.2 {
+                let (land_branch, spell_branch) =
+                    if first.3.card_types.as_slice() == [CardType::Land] {
+                        (&first.3, &second.3)
+                    } else if second.3.card_types.as_slice() == [CardType::Land] {
+                        (&second.3, &first.3)
+                    } else {
+                        return None;
+                    };
+                let mut normalized_spells = spell_branch.clone();
+                normalized_spells
+                    .excluded_card_types
+                    .retain(|card_type| *card_type != CardType::Land);
+                if land_branch != &ObjectFilter::default().with_type(CardType::Land)
+                    || normalized_spells != ObjectFilter::default()
+                {
+                    return None;
+                }
+                let owner_clause = owner_clause(first.1.as_ref())?;
+                let owner_clause = if owner_clause.is_empty() {
+                    String::new()
+                } else {
+                    format!(" {owner_clause}")
+                };
+                return Some(format!(
+                    "{may_prefix} play lands and cast spells from among cards{owner_clause} in exile with {}",
+                    counter_clause(first.0)
+                ));
             }
             let (land_branch, spell_branch) = if first.3.card_types.as_slice() == [CardType::Land] {
                 (&first.3, &second.3)
@@ -1040,8 +1155,31 @@ where
                 .map(GrantStaticAbility::grant_display)
                 .collect::<Vec<_>>();
             let cast_filter = self.cast_this_way_filter.as_ref().unwrap_or(&self.filter);
+            let entered_object_filter = if self
+                .source_exiled_surface
+                .as_ref()
+                .is_some_and(|surface| surface.generic_cast_this_way_subject)
+            {
+                // A generic authored rider such as "If you cast a spell this
+                // way, that creature ..." inherits its permanent kind from
+                // the permission's subject, not from the word `spell`.
+                &self.filter
+            } else {
+                cast_filter
+            };
+            let cast_spell_text = || {
+                if self
+                    .source_exiled_surface
+                    .as_ref()
+                    .is_some_and(|surface| surface.generic_cast_this_way_subject)
+                {
+                    "a spell".to_string()
+                } else {
+                    cast_this_way_spell_subject(cast_filter)
+                }
+            };
             if grants.len() == 1 && grants[0].eq_ignore_ascii_case("haste") {
-                let spell_text = cast_this_way_spell_subject(cast_filter);
+                let spell_text = cast_spell_text();
                 return format!(
                     ". If you cast {spell_text} this way, it gains haste until end of turn"
                 );
@@ -1055,8 +1193,8 @@ where
                 if self.filter == ObjectFilter::source() {
                     return ". If you do, it enters tapped".to_string();
                 }
-                let spell_text = cast_this_way_spell_subject(cast_filter);
-                if let Some(subject) = cast_this_way_entered_object_subject(cast_filter) {
+                let spell_text = cast_spell_text();
+                if let Some(subject) = cast_this_way_entered_object_subject(entered_object_filter) {
                     return format!(
                         ". If you cast {spell_text} this way, that {subject} enters tapped"
                     );
@@ -1068,11 +1206,11 @@ where
                     .strip_prefix("Enters the battlefield with ")
                     .or_else(|| grants[0].strip_prefix("enters the battlefield with "))
             {
-                let spell_text = cast_this_way_spell_subject(cast_filter);
+                let spell_text = cast_spell_text();
                 if self.filter == ObjectFilter::source() {
                     return format!(". If you do, it enters with {rest}");
                 }
-                if let Some(subject) = cast_this_way_entered_object_subject(cast_filter) {
+                if let Some(subject) = cast_this_way_entered_object_subject(entered_object_filter) {
                     return format!(
                         ". If you cast {spell_text} this way, that {subject} enters with {rest}"
                     );
@@ -1102,7 +1240,11 @@ where
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Exile
-            && let Some(cast_subject) = source_exiled_cast_subject(&self.filter, &self.beneficiary)
+            && let Some(cast_subject) = source_exiled_cast_subject(
+                &self.filter,
+                &self.beneficiary,
+                self.source_exiled_surface.as_ref(),
+            )
         {
             let prefix = if matches!(self.beneficiary, PlayerFilter::Any)
                 && matches!(self.filter.owner, Some(PlayerFilter::NotYou))
@@ -1488,7 +1630,8 @@ where
 fn describe_cast_condition(condition: &ThisSpellCostCondition) -> Option<String> {
     match condition {
         ThisSpellCostCondition::Always => None,
-        ThisSpellCostCondition::ConditionExpr { display, .. } => Some(display.clone()),
+        ThisSpellCostCondition::ConditionExpr { display, .. }
+        | ThisSpellCostCondition::AsLongAsConditionExpr { display, .. } => Some(display.clone()),
         ThisSpellCostCondition::YourTurn => Some("it's your turn".to_string()),
         ThisSpellCostCondition::NotYourTurn => Some("it isn't your turn".to_string()),
         _ => Some("the condition is true".to_string()),

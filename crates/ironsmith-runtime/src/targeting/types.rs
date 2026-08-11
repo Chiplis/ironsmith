@@ -1,7 +1,72 @@
 //! Targeting system types.
 
 use crate::cost::TotalCost;
+use crate::effect::ChoiceAggregateMetric;
+use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
+
+/// A target-set aggregate restriction with its dynamic maximum and candidate
+/// contributions resolved for the current announcement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedTargetAggregateConstraint {
+    pub metric: ChoiceAggregateMetric,
+    pub maximum: i32,
+    pub target_values: Vec<(Target, i32)>,
+}
+
+impl ResolvedTargetAggregateConstraint {
+    pub fn value_for(&self, target: Target) -> i32 {
+        self.target_values
+            .iter()
+            .find_map(|(candidate, value)| (*candidate == target).then_some(*value))
+            .unwrap_or(0)
+    }
+
+    pub fn allows(&self, targets: &[Target]) -> bool {
+        targets
+            .iter()
+            .map(|target| self.value_for(*target))
+            .sum::<i32>()
+            <= self.maximum
+    }
+
+    pub fn supports_minimum(&self, minimum: usize) -> bool {
+        if minimum == 0 {
+            return true;
+        }
+        let mut values = self
+            .target_values
+            .iter()
+            .map(|(_, value)| *value)
+            .collect::<Vec<_>>();
+        values.sort_unstable();
+        values.len() >= minimum && values.into_iter().take(minimum).sum::<i32>() <= self.maximum
+    }
+}
+
+pub(crate) fn aggregate_object_value(
+    game: &GameState,
+    id: ObjectId,
+    metric: ChoiceAggregateMetric,
+) -> i32 {
+    let Some(object) = game.object(id) else {
+        return 0;
+    };
+    match metric {
+        ChoiceAggregateMetric::Power => game
+            .calculated_power(id)
+            .or_else(|| object.power())
+            .unwrap_or(0),
+        ChoiceAggregateMetric::Toughness => game
+            .calculated_toughness(id)
+            .or_else(|| object.toughness())
+            .unwrap_or(0),
+        ChoiceAggregateMetric::ManaValue => object
+            .mana_cost
+            .as_ref()
+            .map_or(0, |cost| cost.mana_value() as i32),
+    }
+}
 
 /// The result of attempting to target something.
 #[derive(Debug, Clone, PartialEq)]

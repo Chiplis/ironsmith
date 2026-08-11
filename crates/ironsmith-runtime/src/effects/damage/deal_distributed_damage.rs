@@ -17,6 +17,8 @@ use crate::target::PlayerFilter;
 use crate::types::CardType;
 use std::collections::HashMap;
 
+pub use ironsmith_core::DamageDistributionMode;
+
 /// Effect that deals a total amount of damage divided among chosen targets.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DealDistributedDamageEffect {
@@ -28,6 +30,8 @@ pub struct DealDistributedDamageEffect {
     pub source: ChooseSpec,
     /// The player who chooses the distribution.
     pub chooser: PlayerFilter,
+    /// How the announced targets divide the total.
+    pub distribution: DamageDistributionMode,
 }
 
 impl DealDistributedDamageEffect {
@@ -38,6 +42,7 @@ impl DealDistributedDamageEffect {
             target,
             source: ChooseSpec::Source,
             chooser: PlayerFilter::You,
+            distribution: DamageDistributionMode::Chosen,
         }
     }
 
@@ -50,6 +55,12 @@ impl DealDistributedDamageEffect {
     /// Let the indicated player choose how the damage is divided.
     pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
         self.chooser = chooser;
+        self
+    }
+
+    /// Use the authored distribution rule instead of player-assigned shares.
+    pub fn with_distribution(mut self, distribution: DamageDistributionMode) -> Self {
+        self.distribution = distribution;
         self
     }
 
@@ -115,7 +126,13 @@ impl DealDistributedDamageEffect {
 
         let announced_distribution = ctx.take_target_distribution(&self.target);
         let uses_announced_distribution = announced_distribution.is_some();
-        let distribution = if let Some(distribution) = announced_distribution {
+        let distribution = if self.distribution == DamageDistributionMode::EvenRoundedDown {
+            available_targets
+                .iter()
+                .copied()
+                .map(|target| (target, 1))
+                .collect()
+        } else if let Some(distribution) = announced_distribution {
             distribution.allocations
         } else {
             let chooser = crate::effects::helpers::resolve_player_filter_as_chooser(
@@ -147,14 +164,26 @@ impl DealDistributedDamageEffect {
             }
         }
 
-        let distributed_total: u32 = allocations.values().copied().sum();
-        if distributed_total > total {
+        let assigned_total: u32 = allocations.values().copied().sum();
+        if self.distribution == DamageDistributionMode::Chosen && assigned_total > total {
             return Ok(EffectOutcome::impossible());
         }
 
+        if self.distribution == DamageDistributionMode::EvenRoundedDown && !allocations.is_empty() {
+            let share = total / allocations.len() as u32;
+            for amount in allocations.values_mut() {
+                *amount = share;
+            }
+        }
+
+        let distributed_total: u32 = allocations.values().copied().sum();
+
         // CR 608.2b does not let a resolving spell reassign damage that was
         // announced for a target that has since become illegal.
-        if !uses_announced_distribution && distributed_total < total {
+        if self.distribution == DamageDistributionMode::Chosen
+            && !uses_announced_distribution
+            && distributed_total < total
+        {
             let remaining = total - distributed_total;
             if let Some(first_target) = available_targets.first().copied() {
                 *allocations.entry(first_target).or_insert(0) += remaining;
@@ -185,7 +214,9 @@ impl DealDistributedDamageEffect {
             ));
         }
 
-        if outcomes.is_empty() {
+        if outcomes.is_empty() && self.distribution == DamageDistributionMode::EvenRoundedDown {
+            Ok(EffectOutcome::count(0))
+        } else if outcomes.is_empty() {
             Ok(EffectOutcome::target_invalid())
         } else {
             Ok(EffectOutcome::aggregate_summing_counts(outcomes))
@@ -215,7 +246,7 @@ impl EffectExecutor for DealDistributedDamageEffect {
     }
 
     fn get_target_distribution_value(&self) -> Option<&Value> {
-        Some(&self.amount)
+        (self.distribution == DamageDistributionMode::Chosen).then_some(&self.amount)
     }
 
     fn target_reuse_policy(&self) -> crate::effects::TargetReusePolicy {
@@ -332,5 +363,45 @@ mod tests {
         assert_eq!(game.damage_on(first_wolf), 1);
         assert_eq!(game.damage_on(second_wolf), 2);
         assert_eq!(game.damage_on(untagged_wolf), 0);
+    }
+
+    #[test]
+    fn even_rounded_down_uses_selected_targets_not_authored_allocations() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let source = creature(&mut game, "Even Damage Source", alice, 1, None);
+        let target = ChooseSpec::WithCount(
+            Box::new(ChooseSpec::Target(Box::new(ChooseSpec::Player(
+                PlayerFilter::Opponent,
+            )))),
+            ChoiceCount::any_number(),
+        );
+        let effect = DealDistributedDamageEffect::new(5, target)
+            .with_distribution(DamageDistributionMode::EvenRoundedDown);
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_targets(vec![
+            crate::effects::ResolvedTarget::Player(bob),
+            crate::effects::ResolvedTarget::Player(charlie),
+        ]);
+
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(
+            outcome.count_or_zero(),
+            4,
+            "one point is lost to rounded-down division"
+        );
+        assert_eq!(game.player(bob).unwrap().life, 18);
+        assert_eq!(game.player(charlie).unwrap().life, 18);
+        assert!(effect.get_target_distribution_value().is_none());
     }
 }

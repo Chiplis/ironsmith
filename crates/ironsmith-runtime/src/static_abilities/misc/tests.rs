@@ -659,6 +659,72 @@ fn test_exile_to_countered_exile_instead_of_graveyard_generates_replacement() {
 }
 
 #[test]
+fn exile_would_die_follow_up_exiles_matching_creature_and_creates_token_only_then() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let zombie = CardDefinitionBuilder::new(CardId::new(), "Zombie")
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let source_card = CardDefinitionBuilder::new(CardId::new(), "Exile Replacement Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 4))
+        .with_ability(Ability::static_ability(
+            StaticAbility::exile_would_die_instead_with_damage_source_and_follow_up(
+                ObjectFilter::creature()
+                    .nontoken()
+                    .controlled_by(PlayerFilter::Opponent)
+                    .in_zone(Zone::Battlefield),
+                None,
+                vec![crate::effect::Effect::create_tokens(zombie, 1)],
+            ),
+        ))
+        .build();
+    let source = game.create_object_from_definition(&source_card, alice, Zone::Battlefield);
+    let creature_card = CardDefinitionBuilder::new(CardId::new(), "Doomed Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let opposing_creature =
+        game.create_object_from_definition(&creature_card, bob, Zone::Battlefield);
+    let own_creature = game.create_object_from_definition(&creature_card, alice, Zone::Battlefield);
+    let zombie_count = |game: &GameState| {
+        game.objects_in_zone(Zone::Battlefield)
+            .into_iter()
+            .filter_map(|id| game.object(id))
+            .filter(|object| object.name == "Zombie")
+            .count()
+    };
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let matching = crate::events::processing::process_zone_change(
+        &mut game,
+        opposing_creature,
+        Zone::Battlefield,
+        Zone::Graveyard,
+        EventCause::from_effect(source, alice),
+        &mut dm,
+    );
+    assert!(matching.is_replaced(), "matching death={matching:?}");
+    assert_eq!(game.objects_in_zone(Zone::Exile).len(), 1);
+    assert_eq!(zombie_count(&game), 1);
+
+    let nonmatching = crate::events::processing::process_zone_change(
+        &mut game,
+        own_creature,
+        Zone::Battlefield,
+        Zone::Graveyard,
+        EventCause::from_effect(source, alice),
+        &mut dm,
+    );
+    assert_eq!(nonmatching, EventOutcome::Proceed(Zone::Graveyard));
+    assert_eq!(zombie_count(&game), 1, "nonmatching death created a token");
+}
+
+#[test]
 fn exile_cycling_card_to_graveyard_replacement_matches_battlefield_zone_change() {
     let mut game = GameState::new(vec!["Alice".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -701,6 +767,27 @@ fn test_keyword_marker() {
     let ability = KeywordMarker::new("test marker");
     assert_eq!(ability.id(), StaticAbilityId::KeywordMarker);
     assert_eq!(ability.display(), "test marker");
+}
+
+#[test]
+fn more_than_meets_the_eye_marker_has_canonical_keyword_casing_for_any_cost() {
+    for (marker, expected) in [
+        (
+            "more than meets the eye {2}{u}{r}{w}",
+            "More Than Meets the Eye {2}{u}{r}{w}",
+        ),
+        (
+            "MORE THAN MEETS THE EYE {1}{r}{w}{b}",
+            "More Than Meets the Eye {1}{r}{w}{b}",
+        ),
+    ] {
+        assert_eq!(KeywordMarker::new(marker).display(), expected);
+    }
+
+    assert_eq!(
+        KeywordMarker::new("more than meets the eyesight").display(),
+        "more than meets the eyesight"
+    );
 }
 
 #[test]
@@ -1712,6 +1799,18 @@ fn test_prevent_damage_to_self_remove_counter_generates_replacement() {
         .downcast_ref::<crate::effects::RemoveCountersEffect>()
         .expect("expected dynamic remove counters effect");
     assert_eq!(remove.count, Value::EventValue(EventValueSpec::Amount));
+
+    let per_damage =
+        PreventDamageToSelfRemoveCounter::new_one_damage_per_counter(CounterType::PlusOnePlusOne);
+    let replacement = per_damage
+        .generate_replacement_effect(src, alice)
+        .expect("per-damage prevention should generate a replacement effect");
+    assert!(matches!(
+        replacement.replacement,
+        ReplacementAction::PreventDamageByRemovingSourceCounters {
+            counter_type: CounterType::PlusOnePlusOne,
+        }
+    ));
 }
 
 #[test]
@@ -1889,6 +1988,69 @@ fn creatures_you_control_filter() -> ObjectFilter {
     filter
 }
 
+fn entering_mana_value_four_or_less() -> Condition {
+    Condition::ValueComparison {
+        left: Value::ManaValueOf(Box::new(ChooseSpec::Source)),
+        operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+        right: Value::Fixed(4),
+    }
+}
+
+#[test]
+fn filtered_enters_counters_if_otherwise_renders_and_uses_entering_mana_value() {
+    let mut subject = creatures_you_control_filter();
+    subject.other = true;
+    let ability =
+        EnterWithCountersForFilter::new(subject, CounterType::PlusOnePlusOne, Value::Fixed(1))
+            .with_count_if_otherwise(entering_mana_value_four_or_less(), Value::Fixed(3));
+    assert_eq!(
+        ability.display(),
+        "Each other creature you control enters with an additional +1/+1 counter on it if its mana value is 4 or less. Otherwise, it enters with three additional +1/+1 counters on it"
+    );
+
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = CardDefinitionBuilder::new(CardId::from_raw(6210), "Counter Branch Source")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::static_ability(StaticAbility::new(ability)))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let creature_with_mana_value = |id, name, mana_value| {
+        CardDefinitionBuilder::new(CardId::from_raw(id), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![
+                crate::mana::ManaSymbol::Generic(mana_value),
+            ]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::new(PtValue::Fixed(2), PtValue::Fixed(2)))
+            .build()
+    };
+    let low = creature_with_mana_value(6211, "Low Mana Creature", 4);
+    let high = creature_with_mana_value(6212, "High Mana Creature", 5);
+    let low_id = game.create_object_from_definition(&low, alice, Zone::Stack);
+    let high_id = game.create_object_from_definition(&high, alice, Zone::Stack);
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let low_result = game
+        .move_object_with_etb_processing_with_dm(low_id, Zone::Battlefield, &mut decision_maker)
+        .expect("low-mana creature should enter");
+    let high_result = game
+        .move_object_with_etb_processing_with_dm(high_id, Zone::Battlefield, &mut decision_maker)
+        .expect("high-mana creature should enter");
+
+    assert_eq!(
+        game.object(low_result.new_id)
+            .and_then(|object| object.counters.get(&CounterType::PlusOnePlusOne))
+            .copied(),
+        Some(1)
+    );
+    assert_eq!(
+        game.object(high_result.new_id)
+            .and_then(|object| object.counters.get(&CounterType::PlusOnePlusOne))
+            .copied(),
+        Some(3)
+    );
+}
+
 #[test]
 fn filtered_enters_counters_render_for_each_land_entered_this_turn() {
     let mut lands = ObjectFilter::land();
@@ -1952,6 +2114,7 @@ fn filtered_enters_counters_render_mana_source_provenance_basis() {
     let coin_count = Value::ManaFromSourceSpentToCastThisSpell {
         source_filter: ObjectFilter::artifact(),
         include_source_noun: true,
+        reference: ironsmith_core::ManaSpentCastReferenceSurface::It,
     }
     .with_surface_hint(ValueSurfaceHint::ForEach);
     let coin = EnterWithCountersForFilter::new(
@@ -1969,6 +2132,7 @@ fn filtered_enters_counters_render_mana_source_provenance_basis() {
     let kalain_count = Value::ManaFromSourceSpentToCastThisSpell {
         source_filter: ObjectFilter::artifact().with_subtype(Subtype::Treasure),
         include_source_noun: false,
+        reference: ironsmith_core::ManaSpentCastReferenceSurface::It,
     }
     .with_surface_hint(ValueSurfaceHint::ForEach);
     let kalain =
@@ -1986,6 +2150,7 @@ fn filtered_enters_counters_count_matching_mana_source_snapshots_on_entering_spe
     let count = Value::ManaFromSourceSpentToCastThisSpell {
         source_filter: ObjectFilter::artifact(),
         include_source_noun: true,
+        reference: ironsmith_core::ManaSpentCastReferenceSurface::It,
     }
     .with_surface_hint(ValueSurfaceHint::ForEach);
     let coin = CardDefinitionBuilder::new(CardId::from_raw(6200), "Coin")

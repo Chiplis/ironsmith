@@ -3,6 +3,21 @@ use crate::{
     SourceReferenceSurface, Value,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceCounterPronounSurface {
+    Him,
+    Her,
+}
+
+impl SourceCounterPronounSurface {
+    pub const fn object_pronoun(self) -> &'static str {
+        match self {
+            Self::Him => "him",
+            Self::Her => "her",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnthemCountExpression {
     MatchingFilter(ObjectFilter),
@@ -15,6 +30,10 @@ pub enum AnthemCountExpression {
     CountersOnSourceWithSurface {
         counter_type: CounterType,
         surface: SourceReferenceSurface,
+    },
+    CountersOnSourceWithPronoun {
+        counter_type: CounterType,
+        pronoun: SourceCounterPronounSurface,
     },
     StickersOnSource {
         action: KeywordActionKind,

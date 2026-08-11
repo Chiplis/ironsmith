@@ -99,6 +99,13 @@ pub(crate) struct SourceGraveyardDieRollCastFact {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SourceGraveyardDynamicSurchargeFact<'a> {
+    pub(crate) source_tokens: &'a [OwnedLexToken],
+    pub(crate) cost_tokens: &'a [OwnedLexToken],
+    pub(crate) repetition_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OnceEachTurnTopLibrarySharedTypeFact<'a> {
     pub(crate) subject_tokens: &'a [OwnedLexToken],
     pub(crate) source_reference_tokens: &'a [OwnedLexToken],
@@ -279,6 +286,44 @@ fn parse_source_graveyard_die_roll_cast_lexed(
     let result = semantic_number_token.parse_next(input)?;
     semantic_phrase(DIE_ROLL_PERMISSION_TAIL).parse_next(input)?;
     Ok(SourceGraveyardDieRollCastFact { result })
+}
+
+pub(crate) fn parse_source_graveyard_dynamic_surcharge_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceGraveyardDynamicSurchargeFact<'_>> {
+    parse_semantic_all(tokens, parse_source_graveyard_dynamic_surcharge_lexed)
+}
+
+fn parse_source_graveyard_dynamic_surcharge_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<SourceGraveyardDynamicSurchargeFact<'a>> {
+    semantic_phrase(&["you", "may", "cast"]).parse_next(input)?;
+    let source_tokens = (
+        semantic_kw("this"),
+        alt((
+            semantic_kw("card"),
+            semantic_kw("spell"),
+            semantic_kw("permanent"),
+            semantic_kw("creature"),
+            semantic_kw("artifact"),
+            semantic_kw("enchantment"),
+        )),
+    )
+        .void()
+        .take()
+        .parse_next(input)?;
+    semantic_phrase(&["from", "your", "graveyard", "if", "you", "pay"]).parse_next(input)?;
+    let cost_tokens = take_until_semantic_phrase(input, &["more", "to", "cast", "it"])?;
+    semantic_phrase(&["more", "to", "cast", "it"]).parse_next(input)?;
+    let repetition_tokens = (semantic_phrase(&["for", "each"]), take_semantic_rest)
+        .void()
+        .take()
+        .parse_next(input)?;
+    Ok(SourceGraveyardDynamicSurchargeFact {
+        source_tokens: trim_lexed_commas(source_tokens),
+        cost_tokens: trim_lexed_commas(cost_tokens),
+        repetition_tokens: trim_lexed_commas(repetition_tokens),
+    })
 }
 
 pub(crate) fn parse_once_each_turn_top_library_shared_type_tokens(
@@ -481,6 +526,25 @@ mod tests {
             parse_source_graveyard_die_roll_cast_tokens(&tokens),
             Some(SourceGraveyardDieRollCastFact { result: 6 })
         );
+    }
+
+    #[test]
+    fn parses_source_graveyard_dynamic_surcharge_without_claiming_plain_permissions() {
+        let tokens = lex_line(
+            "You may cast this creature from your graveyard if you pay {1} more to cast it for each other creature card in your graveyard.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_source_graveyard_dynamic_surcharge_tokens(&tokens).unwrap();
+        assert_eq!(render_token_slice(parsed.source_tokens), "this creature");
+        assert_eq!(render_token_slice(parsed.cost_tokens), "{1}");
+        assert_eq!(
+            render_token_slice(parsed.repetition_tokens),
+            "for each other creature card in your graveyard"
+        );
+
+        let plain = lex_line("You may cast this creature from your graveyard.", 0).unwrap();
+        assert!(parse_source_graveyard_dynamic_surcharge_tokens(&plain).is_none());
     }
 
     #[test]

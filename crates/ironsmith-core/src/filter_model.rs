@@ -1,8 +1,8 @@
 use crate::{
-    CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, EffectMetric,
-    KeywordActionKind, ObjectId, PlayerId, PriorEffectAction, SourceReferenceSurface,
-    StaticAbilityId, Subtype, SubtypeFamily, Supertype, TagKey, Value, Zone,
-    effect_model::EventValueSpec,
+    CardType, ChoiceAggregateConstraint, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType,
+    EffectMetric, KeywordActionKind, ManaSymbol, ObjectId, PlayerId, PriorEffectAction,
+    SourceReferenceSurface, StaticAbilityId, Subtype, SubtypeFamily, Supertype, TagKey, Value,
+    Zone, effect_model::EventValueSpec,
 };
 
 fn ensure_indefinite_article(text: String) -> String {
@@ -177,6 +177,46 @@ impl SameNameAntecedentSurface {
     }
 }
 
+/// Authored source noun in a chosen-name relationship such as "a name chosen
+/// for this enchantment."
+///
+/// The tagged same-name constraint remains the executable relationship. This
+/// equality-transparent value only preserves which source noun Oracle used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChosenNameSourceSurface {
+    Artifact,
+    Card,
+    Creature,
+    Enchantment,
+    Permanent,
+    Source,
+}
+
+impl ChosenNameSourceSurface {
+    pub fn from_noun(noun: &str) -> Option<Self> {
+        match noun {
+            "artifact" => Some(Self::Artifact),
+            "card" => Some(Self::Card),
+            "creature" => Some(Self::Creature),
+            "enchantment" => Some(Self::Enchantment),
+            "permanent" => Some(Self::Permanent),
+            "source" => Some(Self::Source),
+            _ => None,
+        }
+    }
+
+    pub const fn phrase(self) -> &'static str {
+        match self {
+            Self::Artifact => "this artifact",
+            Self::Card => "this card",
+            Self::Creature => "this creature",
+            Self::Enchantment => "this enchantment",
+            Self::Permanent => "this permanent",
+            Self::Source => "this source",
+        }
+    }
+}
+
 /// Authored noun in a demonstrative condition subject such as "that land."
 ///
 /// Tagged-object identity remains the runtime source of truth. This value is
@@ -299,6 +339,15 @@ pub enum GraveyardEntryHistorySurface {
     PutThereFromBattlefieldThisTurn,
 }
 
+/// Oracle-facing domain for a characteristic rule whose executable filter is
+/// intentionally global. The filter still selects objects by its ordinary
+/// semantic fields; this distinguishes the authored object categories that
+/// jointly cover that global set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlobalCharacteristicDomainSurface {
+    CardsOutsideBattlefieldSpellsAndPermanents,
+}
+
 /// Presentation metadata for an [`ObjectFilter`].
 ///
 /// `PartialEq` is intentionally semantic-transparent: `ObjectFilter` derives
@@ -344,6 +393,17 @@ pub struct ObjectFilterUnionSurface {
     /// turn." Runtime matching excludes spells cast by the active player;
     /// this hint retains the equivalent authored exception surface.
     except_during_controller_turn: bool,
+    /// A cost modifier authored the candidate restriction as a trailing
+    /// "if it has ..." clause. Ability markers remain the executable filter.
+    trailing_candidate_ability_condition: bool,
+    /// Oracle referred to a creature type selected by the current resolving
+    /// instruction as "a type chosen this way" rather than the source's
+    /// persistent singular "chosen type".
+    chosen_type_this_way: bool,
+    /// Oracle used the compact relational surface "with equal or lesser mana
+    /// value" for a comparison against the object established by the prior
+    /// instruction. The tagged constraint remains the executable relation.
+    equal_or_lesser_mana_value: bool,
     one_or_more: bool,
     /// Oracle repeated an indefinite article for every arm of an explicit
     /// object-filter union (for example, "a Doctor card, a card with ..., or
@@ -384,6 +444,19 @@ pub struct ObjectFilterUnionSurface {
     counter_requirement_one_or_more: bool,
     counter_requirement_plural_noun: bool,
     counter_requirement_plural_subject: bool,
+    /// Oracle placed the ownership clause before a nonbattlefield zone, as in
+    /// "cards you own in exile", rather than using the canonical possessive
+    /// zone surface "cards in your exile".
+    owner_before_zone: bool,
+    /// Oracle placed a counter requirement after the zone clause, as in
+    /// "cards in exile with a memory counter on them". Counter matching and
+    /// zone matching remain ordinary semantic filter fields.
+    counter_requirement_after_zone: bool,
+    /// The enclosing distributive instruction began with an authored `Then`.
+    /// This is retained on the iterated filter because source-sentence
+    /// grouping may be flattened after a later lifecycle sentence is folded
+    /// into the iteration payload.
+    for_each_leading_then: bool,
     counter_exclusion_plural_noun: bool,
     counter_exclusion_plural_subject: bool,
     /// Oracle expressed an intrinsic attachment state postpositively, as in
@@ -397,6 +470,10 @@ pub struct ObjectFilterUnionSurface {
     /// `... this way`. The generated runtime tag retains identity; this field
     /// preserves the authored action without deriving semantics from tag text.
     prior_effect_action: Option<PriorEffectAction>,
+    /// Oracle described this result as a card "put into a graveyard this
+    /// way". A mill producer has the same executable result set, so its tag
+    /// cannot preserve this authored wording by itself.
+    put_into_graveyard_this_way: bool,
     /// Explicit noun/action for a reference to an additional-cost object.
     /// This is deliberately equality-transparent with the rest of this
     /// presentation metadata.
@@ -404,10 +481,27 @@ pub struct ObjectFilterUnionSurface {
     /// Authored noun for a `SameNameAsTagged` antecedent. The tagged relation
     /// carries identity; this field only preserves the unambiguous noun.
     same_name_antecedent: Option<SameNameAntecedentSurface>,
+    /// Authored source noun in a chosen-name relationship. The tagged
+    /// constraint remains the executable name comparison.
+    chosen_name_source: Option<ChosenNameSourceSurface>,
     /// Authored noun for an explicit demonstrative condition subject.
     demonstrative_antecedent: Option<DemonstrativeAntecedentSurface>,
     /// Authored relative clause for current-turn graveyard entry.
     graveyard_entry_history: Option<GraveyardEntryHistorySurface>,
+    /// Authored multi-zone/domain expansion for a global characteristic rule.
+    global_characteristic_domain: Option<GlobalCharacteristicDomainSurface>,
+    /// Oracle explicitly named the battlefield in a current-turn entry
+    /// relative clause. The ordinary zone and history predicate remain the
+    /// executable semantics; this retains only the authored surface.
+    entered_battlefield_explicit_surface: bool,
+    /// Oracle placed a mana-source cast predicate after a granted ability as
+    /// an `if` clause ("has split second if mana from ... was spent") rather
+    /// than inside the affected-spell noun phrase. The ordinary
+    /// `mana_from_source_spent_to_cast` filter remains executable.
+    mana_source_spent_trailing_if_surface: bool,
+    /// Oracle framed this turn-long stack-object grant as
+    /// "as you cast ... this turn, they gain ...".
+    as_you_cast_this_turn_surface: bool,
 }
 
 impl ObjectFilterUnionSurface {
@@ -424,6 +518,9 @@ impl ObjectFilterUnionSurface {
             iterated_actor_pronoun: false,
             played_by_opponent: None,
             except_during_controller_turn: false,
+            trailing_candidate_ability_condition: false,
+            chosen_type_this_way: false,
+            equal_or_lesser_mana_value: false,
             one_or_more: false,
             explicit_branch_articles: false,
             one_of_tagged_set: false,
@@ -436,15 +533,24 @@ impl ObjectFilterUnionSurface {
             counter_requirement_one_or_more: false,
             counter_requirement_plural_noun: false,
             counter_requirement_plural_subject: false,
+            owner_before_zone: false,
+            counter_requirement_after_zone: false,
+            for_each_leading_then: false,
             counter_exclusion_plural_noun: false,
             counter_exclusion_plural_subject: false,
             relative_attachment_state: false,
             relative_characteristic_list: false,
             prior_effect_action: None,
+            put_into_graveyard_this_way: false,
             additional_cost_object: None,
             same_name_antecedent: None,
+            chosen_name_source: None,
             demonstrative_antecedent: None,
             graveyard_entry_history: None,
+            global_characteristic_domain: None,
+            entered_battlefield_explicit_surface: false,
+            mana_source_spent_trailing_if_surface: false,
+            as_you_cast_this_turn_surface: false,
         }
     }
 
@@ -548,6 +654,33 @@ impl ObjectFilterUnionSurface {
 
     pub const fn except_during_controller_turn(self) -> bool {
         self.except_during_controller_turn
+    }
+
+    pub const fn with_trailing_candidate_ability_condition(mut self, trailing: bool) -> Self {
+        self.trailing_candidate_ability_condition = trailing;
+        self
+    }
+
+    pub const fn trailing_candidate_ability_condition(self) -> bool {
+        self.trailing_candidate_ability_condition
+    }
+
+    pub const fn with_chosen_type_this_way(mut self, this_way: bool) -> Self {
+        self.chosen_type_this_way = this_way;
+        self
+    }
+
+    pub const fn chosen_type_this_way(self) -> bool {
+        self.chosen_type_this_way
+    }
+
+    pub const fn with_equal_or_lesser_mana_value(mut self, compact: bool) -> Self {
+        self.equal_or_lesser_mana_value = compact;
+        self
+    }
+
+    pub const fn equal_or_lesser_mana_value(self) -> bool {
+        self.equal_or_lesser_mana_value
     }
 
     pub const fn one_or_more(self) -> bool {
@@ -654,6 +787,33 @@ impl ObjectFilterUnionSurface {
         )
     }
 
+    pub const fn with_owner_before_zone(mut self, owner_before_zone: bool) -> Self {
+        self.owner_before_zone = owner_before_zone;
+        self
+    }
+
+    pub const fn owner_before_zone(self) -> bool {
+        self.owner_before_zone
+    }
+
+    pub const fn with_counter_requirement_after_zone(mut self, after_zone: bool) -> Self {
+        self.counter_requirement_after_zone = after_zone;
+        self
+    }
+
+    pub const fn counter_requirement_after_zone(self) -> bool {
+        self.counter_requirement_after_zone
+    }
+
+    pub const fn with_for_each_leading_then(mut self, leading_then: bool) -> Self {
+        self.for_each_leading_then = leading_then;
+        self
+    }
+
+    pub const fn for_each_leading_then(self) -> bool {
+        self.for_each_leading_then
+    }
+
     pub const fn with_counter_exclusion_surface(
         mut self,
         plural_noun: bool,
@@ -698,6 +858,15 @@ impl ObjectFilterUnionSurface {
         self.prior_effect_action
     }
 
+    pub const fn with_put_into_graveyard_this_way(mut self, authored: bool) -> Self {
+        self.put_into_graveyard_this_way = authored;
+        self
+    }
+
+    pub const fn put_into_graveyard_this_way(self) -> bool {
+        self.put_into_graveyard_this_way
+    }
+
     pub const fn with_additional_cost_object(
         mut self,
         surface: Option<AdditionalCostObjectSurface>,
@@ -720,6 +889,18 @@ impl ObjectFilterUnionSurface {
 
     pub const fn same_name_antecedent(self) -> Option<SameNameAntecedentSurface> {
         self.same_name_antecedent
+    }
+
+    pub const fn with_chosen_name_source(
+        mut self,
+        surface: Option<ChosenNameSourceSurface>,
+    ) -> Self {
+        self.chosen_name_source = surface;
+        self
+    }
+
+    pub const fn chosen_name_source(self) -> Option<ChosenNameSourceSurface> {
+        self.chosen_name_source
     }
 
     pub const fn with_demonstrative_antecedent(
@@ -745,6 +926,45 @@ impl ObjectFilterUnionSurface {
     pub const fn graveyard_entry_history(self) -> Option<GraveyardEntryHistorySurface> {
         self.graveyard_entry_history
     }
+
+    pub const fn with_global_characteristic_domain(
+        mut self,
+        surface: Option<GlobalCharacteristicDomainSurface>,
+    ) -> Self {
+        self.global_characteristic_domain = surface;
+        self
+    }
+
+    pub const fn global_characteristic_domain(self) -> Option<GlobalCharacteristicDomainSurface> {
+        self.global_characteristic_domain
+    }
+
+    pub const fn with_entered_battlefield_explicit_surface(mut self, explicit: bool) -> Self {
+        self.entered_battlefield_explicit_surface = explicit;
+        self
+    }
+
+    pub const fn entered_battlefield_explicit_surface(self) -> bool {
+        self.entered_battlefield_explicit_surface
+    }
+
+    pub const fn with_mana_source_spent_trailing_if_surface(mut self, trailing: bool) -> Self {
+        self.mana_source_spent_trailing_if_surface = trailing;
+        self
+    }
+
+    pub const fn mana_source_spent_trailing_if_surface(self) -> bool {
+        self.mana_source_spent_trailing_if_surface
+    }
+
+    pub const fn with_as_you_cast_this_turn_surface(mut self, authored: bool) -> Self {
+        self.as_you_cast_this_turn_surface = authored;
+        self
+    }
+
+    pub const fn as_you_cast_this_turn_surface(self) -> bool {
+        self.as_you_cast_this_turn_surface
+    }
 }
 
 impl PartialEq for ObjectFilterUnionSurface {
@@ -768,6 +988,7 @@ pub enum PtReference {
 pub enum PowerToughnessRelation {
     PowerGreaterThanToughness,
     ToughnessGreaterThanPower,
+    NotEqual,
 }
 
 /// Relationship an object may have with a tagged object set.
@@ -793,6 +1014,10 @@ pub enum TaggedOpbjectRelation {
     DifferentNameFromTagged,
     SameControllerAsTagged,
     SameManaValueAsTagged,
+    /// The candidate shares a mana value with a different object in the
+    /// tagged set. Unlike `SameManaValueAsTagged`, membership in the set does
+    /// not make this relation vacuously true for the candidate itself.
+    SameManaValueAsAnotherTagged,
     ManaValueLteTagged,
     ManaValueLtTagged,
     AttachedToTaggedObject,
@@ -988,6 +1213,37 @@ pub enum PlayerFilter {
     LowestLifeTied,
     MostCardsInHand,
     CastCardTypeThisTurn(CardType),
+    /// A player the source creature attacked this turn.
+    ///
+    /// This is source-relative rather than controller-relative: it matches
+    /// the player named by a `CreatureAttackedEvent` whose attacker is the
+    /// current resolving source.
+    AttackedBySourceThisTurn,
+    /// A player matching `base` that the current source object has dealt
+    /// positive damage to at any earlier point in this game.
+    ///
+    /// Source identity is object-instance-relative: a permanent that leaves
+    /// and returns does not inherit the earlier object's damage history.
+    WasDealtDamageBySourceThisGame {
+        base: Box<PlayerFilter>,
+    },
+    /// A player matching `base` who has lost life during the current turn.
+    ///
+    /// This is a target-legality fact as well as a resolution-time filter:
+    /// effects such as "target player who lost life this turn" must reject a
+    /// player before the target is announced when their history does not
+    /// satisfy the qualifier.
+    LostLifeThisTurn {
+        base: Box<PlayerFilter>,
+    },
+    /// A player matching `base` who was dealt positive combat damage this
+    /// turn by at least `minimum` distinct objects matching `sources` at the
+    /// time they dealt that damage.
+    WasDealtCombatDamageByDistinctSourcesThisTurn {
+        base: Box<PlayerFilter>,
+        sources: Box<ObjectFilter>,
+        minimum: u32,
+    },
     CardsInHandAtLeastMoreThanYou {
         base: Box<PlayerFilter>,
         count: u32,
@@ -999,6 +1255,12 @@ pub enum PlayerFilter {
     /// `filter` than that player controls.
     OpponentWithMoreControlledObjectsThan {
         player: Box<PlayerFilter>,
+        filter: Box<ObjectFilter>,
+    },
+    /// The unique in-game player who controls more objects matching `filter`
+    /// than every other in-game player. No player matches when the lead is
+    /// tied.
+    ControlsMost {
         filter: Box<ObjectFilter>,
     },
     MaxSpeed {
@@ -1055,6 +1317,18 @@ impl PlayerFilter {
         )
     }
 
+    /// Returns the otherwise-legal player filter for an authored relational
+    /// target such as "another target player." The referenced earlier target
+    /// is enforced by target-assignment distinctness, not by independently
+    /// matching that unresolved reference as part of the new target's domain.
+    pub fn relative_target_exclusion_base(&self) -> Option<&Self> {
+        let Self::Excluding { base, excluded } = self else {
+            return None;
+        };
+        matches!(excluded.as_ref(), Self::Target(_) | Self::AliasedTarget(_))
+            .then_some(base.as_ref())
+    }
+
     pub fn with_max_speed(base: PlayerFilter) -> Self {
         Self::MaxSpeed {
             base: Box::new(base),
@@ -1069,15 +1343,45 @@ impl PlayerFilter {
         }
     }
 
+    pub fn was_dealt_damage_by_source_this_game(base: PlayerFilter) -> Self {
+        Self::WasDealtDamageBySourceThisGame {
+            base: Box::new(base),
+        }
+    }
+
+    pub fn lost_life_this_turn(base: PlayerFilter) -> Self {
+        Self::LostLifeThisTurn {
+            base: Box::new(base),
+        }
+    }
+
+    pub fn was_dealt_combat_damage_by_distinct_sources_this_turn(
+        base: PlayerFilter,
+        sources: ObjectFilter,
+        minimum: u32,
+    ) -> Self {
+        Self::WasDealtCombatDamageByDistinctSourcesThisTurn {
+            base: Box::new(base),
+            sources: Box::new(sources),
+            minimum,
+        }
+    }
+
     pub fn mentions_iterated_player(&self) -> bool {
         match self {
             Self::IteratedPlayer => true,
             Self::Target(inner) | Self::AliasedTarget(inner) => inner.mentions_iterated_player(),
             Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_iterated_player(),
+            Self::WasDealtDamageBySourceThisGame { base } => base.mentions_iterated_player(),
+            Self::LostLifeThisTurn { base } => base.mentions_iterated_player(),
+            Self::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
+                base.mentions_iterated_player() || sources.mentions_iterated_player()
+            }
             Self::HasMoreLifeThanYou { base } => base.mentions_iterated_player(),
             Self::OpponentWithMoreControlledObjectsThan { player, filter } => {
                 player.mentions_iterated_player() || filter.mentions_iterated_player()
             }
+            Self::ControlsMost { filter } => filter.mentions_iterated_player(),
             Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
@@ -1099,6 +1403,7 @@ impl PlayerFilter {
             | Self::LowestLifeTied
             | Self::MostCardsInHand
             | Self::CastCardTypeThisTurn(_)
+            | Self::AttackedBySourceThisTurn
             | Self::ChosenPlayer
             | Self::TaggedPlayer(_)
             | Self::TargetPlayerOrControllerOfTarget
@@ -1133,6 +1438,25 @@ impl PlayerFilter {
                 "a player who cast one or more {} spells this turn",
                 card_type.to_string().to_ascii_lowercase()
             ),
+            Self::AttackedBySourceThisTurn => {
+                "a player this creature attacked this turn".to_string()
+            }
+            Self::WasDealtDamageBySourceThisGame { base } => format!(
+                "{} this source has dealt damage to this game",
+                base.description()
+            ),
+            Self::LostLifeThisTurn { base } => {
+                format!("{} who lost life this turn", base.description())
+            }
+            Self::WasDealtCombatDamageByDistinctSourcesThisTurn {
+                base,
+                sources,
+                minimum,
+            } => format!(
+                "{} who was dealt combat damage by {} this turn",
+                base.description(),
+                describe_distinct_source_threshold(sources, *minimum)
+            ),
             Self::CardsInHandAtLeastMoreThanYou { base, count } => {
                 let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
                 format!(
@@ -1150,6 +1474,10 @@ impl PlayerFilter {
             Self::OpponentWithMoreControlledObjectsThan { player, filter } => format!(
                 "an opponent of {} who controls more {} than they do",
                 player.description(),
+                pluralize_count_terminal_word(&filter.description())
+            ),
+            Self::ControlsMost { filter } => format!(
+                "the player who controls the most {}",
                 pluralize_count_terminal_word(&filter.description())
             ),
             Self::MaxSpeed {
@@ -1230,6 +1558,36 @@ impl Comparison {
     }
 }
 
+/// Turn-scoped counter-placement provenance required by an object filter.
+///
+/// This is intentionally distinct from [`CounterConstraint`]. A permanent can
+/// still have a counter that was placed on an earlier turn or by a different
+/// player; this constraint asks which player controlled the source of the
+/// counter-placement event for this exact object during the current turn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CountersPutOnThisTurnConstraint {
+    /// `None` matches counters of any type.
+    pub counter_type: Option<CounterType>,
+    /// The controller recorded on the source of the counter-placement event.
+    pub source_controller: PlayerFilter,
+    /// Minimum total number placed by matching sources this turn.
+    pub minimum: u32,
+}
+
+impl CountersPutOnThisTurnConstraint {
+    pub fn new(
+        counter_type: Option<CounterType>,
+        source_controller: PlayerFilter,
+        minimum: u32,
+    ) -> Self {
+        Self {
+            counter_type,
+            source_controller,
+            minimum,
+        }
+    }
+}
+
 /// Oracle spelling retained for an excluded literal card name.
 ///
 /// The normalized value in [`ObjectFilter::excluded_name`] remains the
@@ -1270,6 +1628,10 @@ pub struct ObjectFilter {
     pub excluded_cast_origin_zone: Option<Zone>,
     pub cast_this_turn: bool,
     pub first_spell_cast_each_turn: bool,
+    /// A stack spell must have had mana produced by a matching source spent
+    /// to cast it. The runtime evaluates this against the source snapshots
+    /// recorded on the spell as each mana unit is paid.
+    pub mana_from_source_spent_to_cast: Option<Box<ObjectFilter>>,
     pub owner: Option<PlayerFilter>,
     pub single_graveyard: bool,
     pub targets_player: Option<PlayerFilter>,
@@ -1279,6 +1641,12 @@ pub struct ObjectFilter {
     pub target_count: Option<ChoiceCount>,
     pub target_set_same_controller: bool,
     pub target_set_different_controllers: bool,
+    /// Constraint on the selected target set rather than on each candidate.
+    ///
+    /// This is boxed because an aggregate maximum may itself contain a
+    /// [`Value`] that references a [`ChooseSpec`], which contains an
+    /// `ObjectFilter` in turn.
+    pub target_set_aggregate_constraint: Option<Box<ChoiceAggregateConstraint>>,
     pub targets_only_player: Option<PlayerFilter>,
     pub targets_only_object: Option<Box<ObjectFilter>>,
     pub targets_only_any_of: bool,
@@ -1299,6 +1667,9 @@ pub struct ObjectFilter {
     pub colors: Option<ColorSet>,
     pub required_colors: Option<ColorSet>,
     pub chosen_color: bool,
+    /// Candidate shares at least one color with the pregame draft choices
+    /// recorded for the indicated named card group.
+    pub colors_chosen_while_drafting_named: Option<String>,
     pub chosen_land_type: bool,
     /// Requires at least one of the five basic land subtypes.  This is not
     /// the same as requiring the Basic supertype: nonbasic dual lands can
@@ -1309,6 +1680,9 @@ pub struct ObjectFilter {
     pub chosen_creature_type: bool,
     pub chosen_card_type: bool,
     pub excluded_chosen_creature_type: bool,
+    /// Excludes every creature type accumulated by choices made during the
+    /// current source's resolution, rather than only its last singular type.
+    pub excluded_any_chosen_creature_type: bool,
     pub excluded_colors: ColorSet,
     pub colorless: bool,
     pub multicolored: bool,
@@ -1332,13 +1706,30 @@ pub struct ObjectFilter {
     pub tapped: bool,
     pub untapped: bool,
     pub attacking: bool,
+    /// Requires this creature to be its controller's only declared attacker
+    /// in the current combat.
+    pub attacking_alone: bool,
     pub attacked_this_turn: bool,
+    /// Requires an object that was the source of an activated ability this
+    /// turn. For planeswalkers, Oracle conventionally phrases this as a
+    /// planeswalker "that was activated this turn."
+    pub ability_activated_this_turn: bool,
+    /// Requires a creature that was declared as a blocker during this turn.
+    pub blocked_this_turn: bool,
     pub didnt_attack_this_turn: bool,
+    /// Requires a creature that is legally able to attack. This is used with
+    /// turn history for instructions that affect creatures that did not
+    /// attack, except for creatures that couldn't attack.
+    pub could_have_attacked_this_turn: bool,
     pub attacking_player_or_planeswalker_controlled_by: Option<PlayerFilter>,
     /// When set with `attacking_player_or_planeswalker_controlled_by`, require
     /// the attack target itself to be that player rather than a planeswalker
     /// they control.
     pub attacking_player_only: bool,
+    /// Requires a Battle whose current designated protector matches this
+    /// player. This is distinct from controller/owner: Sieges are normally
+    /// controlled by the player who cast them and protected by an opponent.
+    pub protected_by: Option<PlayerFilter>,
     /// The battlefield object this object is attached to must match this
     /// filter. Unlike a tagged-object relation, this is an intrinsic selector
     /// and is valid without a prior effect establishing a tag.
@@ -1347,6 +1738,10 @@ pub struct ObjectFilter {
     /// At least one attachment on this object must match the inner filter
     /// ("a creature with a legendary Equipment attached to it").
     pub with_attached_object: Option<Box<ObjectFilter>>,
+    /// No attachment on this object may match the inner filter. This is the
+    /// executable complement of `with_attached_object` for selectors such as
+    /// "creatures that aren't enchanted."
+    pub without_attached_object: Option<Box<ObjectFilter>>,
     pub nonattacking: bool,
     pub enlist_eligible: bool,
     pub blocking: bool,
@@ -1360,7 +1755,16 @@ pub struct ObjectFilter {
     /// last known information after it leaves the battlefield.
     pub blocked_or_was_blocked_by_this_turn: Option<Box<ObjectFilter>>,
     pub unblocked: bool,
+    /// Requires the candidate to be one of the object targets in the current
+    /// resolution context. This is an identity relation, not merely the
+    /// Oracle-facing `target` determiner used by a choice specification.
+    pub is_target_object: bool,
     pub in_combat_with_source: bool,
+    /// Requires the candidate creature to be in the current combat with the
+    /// referenced creature: either it blocks that creature or that creature
+    /// blocks it. This is distinct from `in_combat_with_source` because some
+    /// spells select a creature and then affect the creatures fighting it.
+    pub in_combat_with: Option<ObjectRef>,
     pub entered_since_your_last_turn_ended: bool,
     /// Requires an object that has not entered the battlefield during the
     /// current turn.
@@ -1383,13 +1787,22 @@ pub struct ObjectFilter {
     pub created_with_source_surface: Option<SourceReferenceSurface>,
     pub entered_graveyard_this_turn: bool,
     pub entered_graveyard_from_battlefield_this_turn: bool,
+    /// The object moved from a library to a graveyard during the current turn.
+    /// This is stable-identity history, not merely a present-zone qualifier.
+    pub entered_graveyard_from_library_this_turn: bool,
     pub surveilled_this_turn: bool,
+    /// Requires this exact object to have received matching counters this turn
+    /// from a source controlled by the matching player.
+    pub counters_put_on_this_turn: Option<CountersPutOnThisTurnConstraint>,
     pub discarded_or_cycled_this_turn_by: Option<PlayerFilter>,
     pub was_dealt_damage_this_turn: bool,
     /// Active voice: the object itself DEALT damage this turn
     /// ("target creature that dealt damage this turn").
     pub dealt_damage_this_turn: bool,
     pub dealt_damage_by_source_this_turn: Option<crate::DamagedBySource>,
+    /// The current source object has dealt positive damage to this exact
+    /// object at any earlier point in the game.
+    pub was_dealt_damage_by_source_this_game: bool,
     pub dealt_damage_to_player_this_turn: Option<PlayerFilter>,
     pub drawn_this_turn: bool,
     pub power: Option<Comparison>,
@@ -1405,6 +1818,14 @@ pub struct ObjectFilter {
     pub mana_value_parity: Option<ParityRequirement>,
     pub mana_value_eq_counters_on_source: Option<CounterType>,
     pub has_mana_cost: bool,
+    /// Requires at least one printed mana-cost pip that can be paid with life
+    /// (a Phyrexian mana symbol). Oracle represents this family as `{H}` in
+    /// characteristic filters even though actual card costs use `{W/P}`, etc.
+    pub has_phyrexian_mana_symbol: bool,
+    /// Requires an object with a mana ability capable of producing at least
+    /// one of these symbols. This is a capability predicate, not a mana-cost
+    /// or color-characteristic constraint.
+    pub could_produce_mana: Vec<ManaSymbol>,
     pub has_tap_activated_ability: bool,
     pub no_abilities: bool,
     pub no_x_in_cost: bool,
@@ -1419,6 +1840,9 @@ pub struct ObjectFilter {
     /// earliest eligible paper printing was in this expansion.
     pub name_originally_printed_in_set: Option<String>,
     pub distinct_names: bool,
+    /// Selection-set constraint: chosen objects must have pairwise distinct
+    /// mana values. This does not change whether an individual object matches.
+    pub distinct_mana_values: bool,
     pub distinct_powers: bool,
     pub distinct_creature_types: bool,
     /// Selection-set constraint: chosen cards must be assignable to distinct
@@ -1534,6 +1958,24 @@ impl ObjectFilter {
         self.union_surface.except_during_controller_turn()
     }
 
+    pub fn set_trailing_candidate_ability_condition_surface(&mut self, trailing: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_trailing_candidate_ability_condition(trailing);
+    }
+
+    pub const fn has_trailing_candidate_ability_condition_surface(&self) -> bool {
+        self.union_surface.trailing_candidate_ability_condition()
+    }
+
+    pub fn set_chosen_type_this_way_surface(&mut self, this_way: bool) {
+        self.union_surface = self.union_surface.with_chosen_type_this_way(this_way);
+    }
+
+    pub const fn has_chosen_type_this_way_surface(&self) -> bool {
+        self.union_surface.chosen_type_this_way()
+    }
+
     pub fn mentions_iterated_player(&self) -> bool {
         [
             self.controller.as_ref(),
@@ -1542,8 +1984,12 @@ impl ObjectFilter {
             self.targets_player.as_ref(),
             self.targets_only_player.as_ref(),
             self.attacking_player_or_planeswalker_controlled_by.as_ref(),
+            self.protected_by.as_ref(),
             self.attached_to_player.as_ref(),
             self.entered_battlefield_controller.as_ref(),
+            self.counters_put_on_this_turn
+                .as_ref()
+                .map(|constraint| &constraint.source_controller),
             self.discarded_or_cycled_this_turn_by.as_ref(),
             self.dealt_damage_to_player_this_turn.as_ref(),
         ]
@@ -1552,6 +1998,10 @@ impl ObjectFilter {
         .any(PlayerFilter::mentions_iterated_player)
             || self
                 .targets_object
+                .as_deref()
+                .is_some_and(ObjectFilter::mentions_iterated_player)
+            || self
+                .mana_from_source_spent_to_cast
                 .as_deref()
                 .is_some_and(ObjectFilter::mentions_iterated_player)
             || self
@@ -1749,6 +2199,32 @@ impl ObjectFilter {
         self.union_surface.counter_requirement_surface()
     }
 
+    pub fn set_owner_before_zone_surface(&mut self, owner_before_zone: bool) {
+        self.union_surface = self.union_surface.with_owner_before_zone(owner_before_zone);
+    }
+
+    pub const fn has_owner_before_zone_surface(&self) -> bool {
+        self.union_surface.owner_before_zone()
+    }
+
+    pub fn set_counter_requirement_after_zone_surface(&mut self, after_zone: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_counter_requirement_after_zone(after_zone);
+    }
+
+    pub const fn has_counter_requirement_after_zone_surface(&self) -> bool {
+        self.union_surface.counter_requirement_after_zone()
+    }
+
+    pub fn set_for_each_leading_then_surface(&mut self, leading_then: bool) {
+        self.union_surface = self.union_surface.with_for_each_leading_then(leading_then);
+    }
+
+    pub const fn has_for_each_leading_then_surface(&self) -> bool {
+        self.union_surface.for_each_leading_then()
+    }
+
     /// Preserve whether Oracle used `counter`/`counters` and `it`/`them` for
     /// a negative counter requirement. This changes rendering only.
     pub fn set_counter_exclusion_surface(&mut self, plural_noun: bool, plural_subject: bool) {
@@ -1791,6 +2267,18 @@ impl ObjectFilter {
         self.union_surface.prior_effect_action()
     }
 
+    /// Preserve "put into a graveyard this way" independently from the
+    /// producer action used for executable result correlation.
+    pub fn set_put_into_graveyard_this_way_surface(&mut self, authored: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_put_into_graveyard_this_way(authored);
+    }
+
+    pub const fn has_put_into_graveyard_this_way_surface(&self) -> bool {
+        self.union_surface.put_into_graveyard_this_way()
+    }
+
     /// Preserve the authored additional-cost noun without changing runtime
     /// filter matching.
     pub fn set_additional_cost_object_surface(
@@ -1808,6 +2296,16 @@ impl ObjectFilter {
 
     pub const fn same_name_antecedent_surface(&self) -> Option<SameNameAntecedentSurface> {
         self.union_surface.same_name_antecedent()
+    }
+
+    /// Preserve the authored source noun of a chosen-name relationship
+    /// without changing the tagged runtime comparison.
+    pub fn set_chosen_name_source_surface(&mut self, surface: Option<ChosenNameSourceSurface>) {
+        self.union_surface = self.union_surface.with_chosen_name_source(surface);
+    }
+
+    pub const fn chosen_name_source_surface(&self) -> Option<ChosenNameSourceSurface> {
+        self.union_surface.chosen_name_source()
     }
 
     /// Preserve the authored noun of an explicit demonstrative condition
@@ -1834,6 +2332,56 @@ impl ObjectFilter {
 
     pub const fn graveyard_entry_history_surface(&self) -> Option<GraveyardEntryHistorySurface> {
         self.union_surface.graveyard_entry_history()
+    }
+
+    /// Preserve the authored categories of an executable global
+    /// characteristic rule. This is equality-transparent presentation data;
+    /// the ordinary filter fields remain the runtime selector.
+    pub fn set_global_characteristic_domain_surface(
+        &mut self,
+        surface: Option<GlobalCharacteristicDomainSurface>,
+    ) {
+        self.union_surface = self
+            .union_surface
+            .with_global_characteristic_domain(surface);
+    }
+
+    pub const fn global_characteristic_domain_surface(
+        &self,
+    ) -> Option<GlobalCharacteristicDomainSurface> {
+        self.union_surface.global_characteristic_domain()
+    }
+
+    /// Preserve whether Oracle explicitly named the battlefield in this
+    /// current-turn entry clause without changing filter matching.
+    pub fn set_entered_battlefield_explicit_surface(&mut self, explicit: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_entered_battlefield_explicit_surface(explicit);
+    }
+
+    pub const fn has_entered_battlefield_explicit_surface(&self) -> bool {
+        self.union_surface.entered_battlefield_explicit_surface()
+    }
+
+    pub fn set_mana_source_spent_trailing_if_surface(&mut self, trailing: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_mana_source_spent_trailing_if_surface(trailing);
+    }
+
+    pub const fn has_mana_source_spent_trailing_if_surface(&self) -> bool {
+        self.union_surface.mana_source_spent_trailing_if_surface()
+    }
+
+    pub fn set_as_you_cast_this_turn_surface(&mut self, authored: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_as_you_cast_this_turn_surface(authored);
+    }
+
+    pub const fn has_as_you_cast_this_turn_surface(&self) -> bool {
+        self.union_surface.as_you_cast_this_turn_surface()
     }
 
     pub const fn additional_cost_object_surface(&self) -> Option<AdditionalCostObjectSurface> {
@@ -1883,12 +2431,14 @@ impl ObjectFilter {
             || self.colors.is_some()
             || self.required_colors.is_some()
             || self.chosen_color
+            || self.colors_chosen_while_drafting_named.is_some()
             || self.chosen_land_type
             || self.has_basic_land_type
             || self.has_nonbasic_land_type
             || self.chosen_creature_type
             || self.chosen_card_type
             || self.excluded_chosen_creature_type
+            || self.excluded_any_chosen_creature_type
             || !self.excluded_colors.is_empty()
             || self.colorless
             || self.multicolored
@@ -1905,12 +2455,15 @@ impl ObjectFilter {
             || self.blocked_or_was_blocked_by_this_turn.is_some()
             || self.attached_to_player.is_some()
             || self.surveilled_this_turn
+            || self.counters_put_on_this_turn.is_some()
             || self.discarded_or_cycled_this_turn_by.is_some()
             || self.drawn_this_turn
             || self.mana_value.is_some()
             || self.mana_value_parity.is_some()
             || self.mana_value_eq_counters_on_source.is_some()
             || self.has_mana_cost
+            || self.has_phyrexian_mana_symbol
+            || !self.could_produce_mana.is_empty()
             || self.has_tap_activated_ability
             || self.no_abilities
             || self.no_x_in_cost
@@ -1918,6 +2471,7 @@ impl ObjectFilter {
             || self.name.is_some()
             || self.excluded_name.is_some()
             || self.name_originally_printed_in_set.is_some()
+            || self.distinct_mana_values
             || self.one_per_card_type
             || self.alternative_cast.is_some()
             || !self.static_abilities.is_empty()
@@ -2179,6 +2733,11 @@ impl ObjectFilter {
         self
     }
 
+    pub fn protected_by(mut self, player: PlayerFilter) -> Self {
+        self.protected_by = Some(player);
+        self
+    }
+
     pub fn cast_by(mut self, caster: PlayerFilter) -> Self {
         self.cast_by = Some(caster);
         self
@@ -2378,6 +2937,11 @@ impl ObjectFilter {
         self
     }
 
+    pub fn of_colors_chosen_while_drafting_named(mut self, card_name: impl Into<String>) -> Self {
+        self.colors_chosen_while_drafting_named = Some(card_name.into());
+        self
+    }
+
     pub fn of_chosen_land_type(mut self) -> Self {
         self.chosen_land_type = true;
         self
@@ -2393,6 +2957,14 @@ impl ObjectFilter {
         self
     }
 
+    pub fn with_counters_put_on_this_turn(
+        mut self,
+        constraint: CountersPutOnThisTurnConstraint,
+    ) -> Self {
+        self.counters_put_on_this_turn = Some(constraint);
+        self
+    }
+
     pub fn of_chosen_card_type(mut self) -> Self {
         self.chosen_card_type = true;
         self
@@ -2400,6 +2972,11 @@ impl ObjectFilter {
 
     pub fn not_of_chosen_creature_type(mut self) -> Self {
         self.excluded_chosen_creature_type = true;
+        self
+    }
+
+    pub fn not_of_any_chosen_creature_type(mut self) -> Self {
+        self.excluded_any_chosen_creature_type = true;
         self
     }
 
@@ -2649,6 +3226,9 @@ impl ObjectFilter {
         if let Some(description) = describe_relative_characteristic_list_filter(self) {
             return description;
         }
+        if let Some(description) = describe_characteristic_or_mana_production_union(self) {
+            return description;
+        }
         if let Some(description) = describe_branch_scoped_card_type_union(self) {
             return description;
         }
@@ -2740,6 +3320,9 @@ impl ObjectFilter {
             // phrase "... other than this permanent".
             parts.push("another".to_string());
         }
+        if self.is_target_object {
+            parts.push("target".to_string());
+        }
         let has_target_tag = self.tagged_constraints.iter().any(|constraint| {
             matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                 && constraint.tag.as_str().starts_with("targeted")
@@ -2768,7 +3351,8 @@ impl ObjectFilter {
             parts.push("suspected".to_string());
         }
 
-        let has_leading_determiner = self.other || has_target_tag || has_chosen_tag || self.source;
+        let has_leading_determiner =
+            self.other || self.is_target_object || has_target_tag || has_chosen_tag || self.source;
 
         if let Some(ref ctrl) = self.controller {
             match ctrl {
@@ -2809,6 +3393,21 @@ impl ObjectFilter {
                     "a player who cast one or more {} spells this turn's",
                     card_type.to_string().to_ascii_lowercase()
                 )),
+                PlayerFilter::AttackedBySourceThisTurn => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
+                PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
+                PlayerFilter::LostLifeThisTurn { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
+                PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    post_noun_qualifiers.push(format!("controlled by {}", ctrl.description()));
+                }
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -2816,6 +3415,9 @@ impl ObjectFilter {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
+                PlayerFilter::ControlsMost { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::MaxSpeed { .. } => {
@@ -2884,7 +3486,11 @@ impl ObjectFilter {
                         parts.insert(0, "a".to_string());
                     }
                     let inner_desc = describe_player_filter(inner.as_ref());
-                    controller_suffix = Some(format!("target {inner_desc} controls"));
+                    let target_kind = inner_desc
+                        .strip_prefix("a ")
+                        .or_else(|| inner_desc.strip_prefix("an "))
+                        .unwrap_or(&inner_desc);
+                    controller_suffix = Some(format!("target {target_kind} controls"));
                 }
                 PlayerFilter::AliasedTarget(_) => {
                     if !has_leading_determiner {
@@ -2928,11 +3534,18 @@ impl ObjectFilter {
         if self.first_spell_cast_each_turn {
             post_noun_qualifiers.push("first spell cast each turn".to_string());
         }
+        if let Some(source_filter) = &self.mana_from_source_spent_to_cast {
+            post_noun_qualifiers.push(format!(
+                "that mana from {} was spent to cast",
+                ensure_indefinite_article(source_filter.description())
+            ));
+        }
 
         let owner_conveyed_by_zone = matches!(
             self.zone,
             Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile | Zone::Command)
-        ) && !self.foretold;
+        ) && !self.foretold
+            && !self.has_owner_before_zone_surface();
         if !owner_conveyed_by_zone && let Some(ref owner) = self.owner {
             if controller_suffix.is_none() && !has_leading_determiner {
                 parts.insert(0, "a".to_string());
@@ -2958,6 +3571,18 @@ impl ObjectFilter {
                     "a player who cast one or more {} spells this turn owns",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::AttackedBySourceThisTurn => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::LostLifeThisTurn { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
@@ -2965,6 +3590,9 @@ impl ObjectFilter {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::ControlsMost { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::MaxSpeed { .. } => {
@@ -3063,6 +3691,11 @@ impl ObjectFilter {
         if self.chosen_color {
             post_noun_qualifiers.push("of the chosen color".to_string());
         }
+        if let Some(card_name) = &self.colors_chosen_while_drafting_named {
+            post_noun_qualifiers.push(format!(
+                "that's one or more of the colors chosen as you drafted cards named {card_name}"
+            ));
+        }
         if let Some(sticker) = self.sticker {
             let sticker = match sticker {
                 KeywordActionKind::ArtSticker => "an art sticker",
@@ -3089,10 +3722,15 @@ impl ObjectFilter {
         let defer_chosen_qualifiers = controller_suffix.is_some() || owner_suffix.is_some();
         let mut chosen_trailing_qualifiers: Vec<String> = Vec::new();
         if self.chosen_creature_type {
-            if defer_chosen_qualifiers {
-                chosen_trailing_qualifiers.push("of the chosen type".to_string());
+            let qualifier = if self.has_chosen_type_this_way_surface() {
+                "of a type chosen this way"
             } else {
-                post_noun_qualifiers.push("of the chosen type".to_string());
+                "of the chosen type"
+            };
+            if defer_chosen_qualifiers {
+                chosen_trailing_qualifiers.push(qualifier.to_string());
+            } else {
+                post_noun_qualifiers.push(qualifier.to_string());
             }
         }
         if self.chosen_card_type {
@@ -3107,18 +3745,23 @@ impl ObjectFilter {
                 "with a name originally printed in the {set_name} expansion"
             ));
         }
-        if self.excluded_chosen_creature_type {
-            if defer_chosen_qualifiers {
-                chosen_trailing_qualifiers.push("that aren't of the chosen type".to_string());
+        if self.excluded_chosen_creature_type || self.excluded_any_chosen_creature_type {
+            let qualifier = if self.has_chosen_type_this_way_surface() {
+                "that aren't of a type chosen this way"
             } else {
-                post_noun_qualifiers.push("that aren't of the chosen type".to_string());
+                "that aren't of the chosen type"
+            };
+            if defer_chosen_qualifiers {
+                chosen_trailing_qualifiers.push(qualifier.to_string());
+            } else {
+                post_noun_qualifiers.push(qualifier.to_string());
             }
         }
         if !self.no_shared_creature_types_with.is_empty() {
             let comparison = self
                 .no_shared_creature_types_with
                 .iter()
-                .map(ObjectFilter::description)
+                .map(|filter| ensure_indefinite_article(filter.description()))
                 .collect::<Vec<_>>()
                 .join(" or ");
             post_noun_qualifiers.push(format!(
@@ -3218,8 +3861,14 @@ impl ObjectFilter {
                         post_noun_qualifiers.push("with the same mana value as it".to_string());
                     }
                 }
+                TaggedOpbjectRelation::SameManaValueAsAnotherTagged => {
+                    post_noun_qualifiers
+                        .push("with the same mana value as another tagged object".to_string());
+                }
                 TaggedOpbjectRelation::ManaValueLteTagged => {
-                    if constraint.tag.as_str() == "triggering" {
+                    if self.union_surface.equal_or_lesser_mana_value() {
+                        post_noun_qualifiers.push("with equal or lesser mana value".to_string());
+                    } else if constraint.tag.as_str() == "triggering" {
                         post_noun_qualifiers
                             .push("with equal or lesser mana value than that spell".to_string());
                     } else {
@@ -3318,8 +3967,13 @@ impl ObjectFilter {
             }
         }
         if !self.excluded_card_types.is_empty() {
-            for card_type in &self.excluded_card_types {
-                parts.push(format!("non{}", describe_card_type_word(*card_type)));
+            for (index, card_type) in self.excluded_card_types.iter().enumerate() {
+                let comma = (index + 1 < self.excluded_card_types.len()).then_some(",");
+                parts.push(format!(
+                    "non{}{}",
+                    describe_card_type_word(*card_type),
+                    comma.unwrap_or_default()
+                ));
             }
         }
         if !self.excluded_supertypes.is_empty() {
@@ -3459,53 +4113,101 @@ impl ObjectFilter {
             parts.push("attacking/blocking".to_string());
         } else {
             if self.attacking
+                && !self.attacking_alone
                 && self
                     .attacking_player_or_planeswalker_controlled_by
                     .is_none()
             {
                 parts.push("attacking".to_string());
             }
-            if self.blocking {
+            if self.blocking && !self.in_combat_with_source && self.in_combat_with.is_none() {
                 parts.push("blocking".to_string());
             }
+        }
+        if self.attacking_alone {
+            post_noun_qualifiers.push("that's attacking alone".to_string());
         }
         if self.attacked_this_turn {
             post_noun_qualifiers.push("that attacked this turn".to_string());
         }
+        if self.ability_activated_this_turn {
+            let clause = if self.card_types == [CardType::Planeswalker] {
+                "that was activated this turn"
+            } else {
+                "that had an ability activated this turn"
+            };
+            post_noun_qualifiers.push(clause.to_string());
+        }
+        if self.blocked_this_turn {
+            post_noun_qualifiers.push("that blocked this turn".to_string());
+        }
         if self.didnt_attack_this_turn {
-            let clause = if self.didnt_enter_battlefield_this_turn {
+            let clause = if self.could_have_attacked_this_turn {
+                "that didn't attack this turn, except for creatures that couldn't attack"
+            } else if self.didnt_enter_battlefield_this_turn {
                 "that didn't attack or enter this turn"
             } else {
                 "that didn't attack this turn"
             };
             post_noun_qualifiers.push(clause.to_string());
+        } else if self.could_have_attacked_this_turn {
+            post_noun_qualifiers.push("that could have attacked this turn".to_string());
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
-            let player_text = if matches!(player_filter, PlayerFilter::ChosenPlayer) {
-                "the last chosen player".to_string()
+            if matches!(player_filter, PlayerFilter::Opponent) && !self.attacking_player_only {
+                post_noun_qualifiers
+                    .push("attacking your opponents and/or planeswalkers they control".to_string());
             } else {
-                player_filter.description()
-            };
-            if self.attacking_player_only {
-                let relation = if matches!(player_filter, PlayerFilter::ChosenPlayer) {
-                    format!("attacking {player_text}")
+                let player_text = if matches!(player_filter, PlayerFilter::ChosenPlayer) {
+                    "the last chosen player".to_string()
                 } else {
-                    format!("that's attacking {player_text}")
+                    player_filter.description()
                 };
-                post_noun_qualifiers.push(relation);
-            } else {
-                let controller_pronoun = if matches!(player_filter, PlayerFilter::You) {
-                    "you"
+                if self.attacking_player_only {
+                    let relation = if matches!(player_filter, PlayerFilter::ChosenPlayer) {
+                        format!("attacking {player_text}")
+                    } else {
+                        format!("that's attacking {player_text}")
+                    };
+                    post_noun_qualifiers.push(relation);
                 } else {
-                    "they"
-                };
-                post_noun_qualifiers.push(format!(
-                    "that's attacking {player_text} or a planeswalker {controller_pronoun} control"
-                ));
+                    let controller_pronoun = if matches!(player_filter, PlayerFilter::You) {
+                        "you"
+                    } else {
+                        "they"
+                    };
+                    post_noun_qualifiers.push(format!(
+                        "that's attacking {player_text} or a planeswalker {controller_pronoun} control"
+                    ));
+                }
             }
         }
+        if let Some(player_filter) = &self.protected_by {
+            let player = match player_filter {
+                PlayerFilter::IteratedPlayer => "that player".to_string(),
+                other => other.description(),
+            };
+            post_noun_qualifiers.push(format!("{player} protects"));
+        }
         if self.in_combat_with_source {
-            post_noun_qualifiers.push("blocking or blocked by this creature".to_string());
+            post_noun_qualifiers.push(if self.blocking {
+                "blocking this creature".to_string()
+            } else {
+                "blocking or blocked by this creature".to_string()
+            });
+        }
+        if let Some(reference) = &self.in_combat_with {
+            let reference = match reference {
+                ObjectRef::Target => "target creature",
+                ObjectRef::Specific(_) => "that creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
+                ObjectRef::Tagged(_) => "that creature",
+            };
+            post_noun_qualifiers.push(if self.blocking {
+                format!("blocking {reference}")
+            } else {
+                format!("blocking or blocked by {reference}")
+            });
         }
         if self.nonattacking && self.nonblocking {
             parts.push("nonattacking, nonblocking".to_string());
@@ -3528,6 +4230,12 @@ impl ObjectFilter {
         }
         if self.no_abilities {
             post_noun_qualifiers.push("with no abilities".to_string());
+        }
+        if !self.could_produce_mana.is_empty() {
+            post_noun_qualifiers.push(format!(
+                "that could produce {}",
+                describe_mana_symbol_list(&self.could_produce_mana)
+            ));
         }
 
         let subtype_implies_type = (!self.subtypes.is_empty() || !self.all_subtypes.is_empty())
@@ -3602,7 +4310,13 @@ impl ObjectFilter {
                                 StackObjectKind::SpellOrAbility
                             }
                         });
-                        describe_stack_object_kind(kind)
+                        if kind == StackObjectKind::SpellOrAbility
+                            && self.has_conjunctive_set_surface()
+                        {
+                            "spell and ability"
+                        } else {
+                            describe_stack_object_kind(kind)
+                        }
                     }
                     Some(Zone::Graveyard)
                     | Some(Zone::Hand)
@@ -3659,11 +4373,15 @@ impl ObjectFilter {
             Vec::new()
         };
         let subtype_phrase = (!subtype_parts.is_empty()).then(|| {
-            let description = describe_filter_union_list(
-                subtype_parts.clone(),
-                self.union_connective(),
-                self.has_serial_or_list_surface(),
-            );
+            let description = if self.has_conjunctive_set_surface() {
+                describe_conjunctive_filter_list(subtype_parts.clone())
+            } else {
+                describe_filter_union_list(
+                    subtype_parts.clone(),
+                    self.union_connective(),
+                    self.has_serial_or_list_surface(),
+                )
+            };
             if self.has_shared_indefinite_article_surface() {
                 ensure_indefinite_article(description)
             } else {
@@ -3826,6 +4544,11 @@ impl ObjectFilter {
                 parts.push("you control but don't own".to_string());
             }
             (Some(controller), Some(owner))
+                if controller == "you don't control" && owner == "you don't own" =>
+            {
+                parts.push("you neither own nor control".to_string());
+            }
+            (Some(controller), Some(owner))
                 if controller == "that player controls" && owner == "that player owns" =>
             {
                 parts.push("that player both owns and controls".to_string());
@@ -3845,15 +4568,18 @@ impl ObjectFilter {
             // but do not repeat an identical English qualifier when those
             // aliases describe the same relation.
             let mut rendered_qualifiers = Vec::with_capacity(post_noun_qualifiers.len());
-            for qualifier in post_noun_qualifiers {
-                if !rendered_qualifiers.contains(&qualifier) {
-                    rendered_qualifiers.push(qualifier);
+            for qualifier in &post_noun_qualifiers {
+                if !rendered_qualifiers.contains(qualifier) {
+                    rendered_qualifiers.push(qualifier.clone());
                 }
             }
             parts.extend(rendered_qualifiers);
         }
         if self.distinct_names {
             parts.push("with different names".to_string());
+        }
+        if self.distinct_mana_values {
+            parts.push("with different mana values".to_string());
         }
         if self.distinct_powers {
             parts.push("with different powers".to_string());
@@ -3966,6 +4692,9 @@ impl ObjectFilter {
                     PowerToughnessRelation::ToughnessGreaterThanPower => {
                         parts.push("with toughness greater than its power".to_string());
                     }
+                    PowerToughnessRelation::NotEqual => {
+                        parts.push("with power and toughness that aren't equal".to_string());
+                    }
                 }
             }
             if let Some(relation) = self.power_relative_to_source {
@@ -4005,6 +4734,30 @@ impl ObjectFilter {
                 ),
             );
         }
+        if let Some(constraint) = self.target_set_aggregate_constraint.as_deref() {
+            let metric = match constraint.metric {
+                crate::ChoiceAggregateMetric::Power => "power",
+                crate::ChoiceAggregateMetric::Toughness => "toughness",
+                crate::ChoiceAggregateMetric::ManaValue => "mana value",
+            };
+            if let Some(minimum) = constraint.minimum.as_ref() {
+                let minimum = match minimum.unhinted() {
+                    Value::Fixed(minimum) => format!("{minimum} or greater"),
+                    _ => describe_comparison(&Comparison::GreaterThanOrEqualExpr(Box::new(
+                        minimum.clone(),
+                    ))),
+                };
+                parts.push(format!("with total {metric} {minimum}"));
+            } else {
+                let maximum = match constraint.maximum.unhinted() {
+                    Value::Fixed(maximum) => format!("{maximum} or less"),
+                    _ => describe_comparison(&Comparison::LessThanOrEqualExpr(Box::new(
+                        constraint.maximum.clone(),
+                    ))),
+                };
+                parts.push(format!("with total {metric} {maximum}"));
+            }
+        }
         if let Some(ref color_count) = self.color_count {
             parts.push(format!(
                 "with color count {}",
@@ -4019,6 +4772,9 @@ impl ObjectFilter {
                 "with mana value equal to the number of {} counters on this artifact",
                 counter_type.description()
             ));
+        }
+        if self.has_phyrexian_mana_symbol {
+            parts.push("with {H} in its mana cost".to_string());
         }
         if let Some(clause) = any_of_keyword_clause {
             parts.push(format!("with {clause}"));
@@ -4058,7 +4814,10 @@ impl ObjectFilter {
         for marker in &self.excluded_ability_markers {
             parts.push(format!("without {}", marker.to_ascii_lowercase()));
         }
-        if let Some(counter_requirement) = self.with_counter {
+        if let Some(counter_requirement) = self
+            .with_counter
+            .filter(|_| !self.has_counter_requirement_after_zone_surface())
+        {
             let (one_or_more, plural_noun, plural_subject) = self.counter_requirement_surface();
             parts.push(format!(
                 "with {}{} on {}",
@@ -4113,6 +4872,8 @@ impl ObjectFilter {
             } else if let Some(zone_name) = zone_name {
                 if self.foretold && zone == Zone::Exile {
                     parts.push("in exile".to_string());
+                } else if self.has_owner_before_zone_surface() {
+                    parts.push(format!("in {}", zone_name));
                 } else if let Some(owner) = &self.owner {
                     parts.push(format!(
                         "in {} {}",
@@ -4127,6 +4888,19 @@ impl ObjectFilter {
                     parts.push(format!("in {}", zone_name));
                 }
             }
+        }
+
+        if let Some(counter_requirement) = self
+            .with_counter
+            .filter(|_| self.has_counter_requirement_after_zone_surface())
+        {
+            let (one_or_more, plural_noun, plural_subject) = self.counter_requirement_surface();
+            parts.push(format!(
+                "with {}{} on {}",
+                if one_or_more { "one or more " } else { "" },
+                describe_counter_constraint(counter_requirement, plural_noun),
+                if plural_subject { "them" } else { "it" }
+            ));
         }
 
         let has_entered_battlefield_this_turn_clause = (self.entered_battlefield_this_turn
@@ -4156,6 +4930,8 @@ impl ObjectFilter {
                         describe_possessive_player_filter(other)
                     ),
                 }
+            } else if self.has_entered_battlefield_explicit_surface() {
+                "that entered the battlefield this turn".to_string()
             } else {
                 "that entered this turn".to_string()
             };
@@ -4180,7 +4956,11 @@ impl ObjectFilter {
             parts.push(format!("created with {source}"));
         }
 
-        if self.entered_graveyard_from_battlefield_this_turn && self.zone == Some(Zone::Graveyard) {
+        if self.entered_graveyard_from_library_this_turn && self.zone == Some(Zone::Graveyard) {
+            parts.push("that was put there from their library this turn".to_string());
+        } else if self.entered_graveyard_from_battlefield_this_turn
+            && self.zone == Some(Zone::Graveyard)
+        {
             parts.push("that was put there from the battlefield this turn".to_string());
         } else if self.entered_graveyard_this_turn && self.zone == Some(Zone::Graveyard) {
             let clause = match self.graveyard_entry_history_surface() {
@@ -4193,6 +4973,9 @@ impl ObjectFilter {
         }
         if self.surveilled_this_turn {
             parts.push("you've surveilled this turn".to_string());
+        }
+        if let Some(constraint) = &self.counters_put_on_this_turn {
+            parts.push(describe_counters_put_on_this_turn_constraint(constraint));
         }
         if let Some(player) = &self.discarded_or_cycled_this_turn_by {
             let actor = describe_player_filter(player);
@@ -4212,6 +4995,9 @@ impl ObjectFilter {
                 crate::DamagedBySource::EnchantedCreature => "enchanted creature",
             };
             parts.push(format!("that was dealt damage by {source} this turn"));
+        }
+        if self.was_dealt_damage_by_source_this_game {
+            parts.push("that this source has dealt damage to this game".to_string());
         }
         if let Some(player) = &self.dealt_damage_to_player_this_turn {
             parts.push(format!(
@@ -4239,6 +5025,26 @@ impl ObjectFilter {
                 ensure_indefinite_article(inner)
             };
             parts.push(format!("with {surfaced} attached to it"));
+        }
+        if let Some(without_attached) = &self.without_attached_object {
+            let is_aura = without_attached.zone == Some(Zone::Battlefield)
+                && without_attached.card_types == [CardType::Enchantment]
+                && without_attached.subtypes == [Subtype::Aura]
+                && {
+                    let mut semantic = (**without_attached).clone();
+                    semantic.zone = None;
+                    semantic.card_types.clear();
+                    semantic.subtypes.clear();
+                    semantic == ObjectFilter::default()
+                };
+            if is_aura {
+                parts.push("that isn't enchanted".to_string());
+            } else {
+                parts.push(format!(
+                    "without {} attached to it",
+                    ensure_indefinite_article(without_attached.description())
+                ));
+            }
         }
         if let Some(attached_to_player) = &self.attached_to_player {
             parts.push(format!("attached to {}", attached_to_player.description()));
@@ -4356,6 +5162,79 @@ impl ObjectFilter {
 
         correct_leading_indefinite_article(parts.join(" "))
     }
+}
+
+fn describe_mana_symbol_for_filter(symbol: ManaSymbol) -> String {
+    match symbol {
+        ManaSymbol::White => "{W}".to_string(),
+        ManaSymbol::Blue => "{U}".to_string(),
+        ManaSymbol::Black => "{B}".to_string(),
+        ManaSymbol::Red => "{R}".to_string(),
+        ManaSymbol::Green => "{G}".to_string(),
+        ManaSymbol::Colorless => "{C}".to_string(),
+        ManaSymbol::Generic(value) => format!("{{{value}}}"),
+        ManaSymbol::Snow => "{S}".to_string(),
+        ManaSymbol::Life(_) => "{P}".to_string(),
+        ManaSymbol::X => "{X}".to_string(),
+    }
+}
+
+fn describe_mana_symbol_list(symbols: &[ManaSymbol]) -> String {
+    describe_filter_union_list(
+        symbols
+            .iter()
+            .copied()
+            .map(describe_mana_symbol_for_filter)
+            .collect(),
+        ObjectFilterUnionConnective::Or,
+        false,
+    )
+}
+
+/// Factor a shared object domain around a characteristic/capability union.
+///
+/// This is the executable shape of phrases such as "land that is snow or
+/// could produce {C}": the land domain applies to both arms, while being snow
+/// and mana-production capability remain independent predicates.
+fn describe_characteristic_or_mana_production_union(filter: &ObjectFilter) -> Option<String> {
+    let [first, second] = filter.any_of.as_slice() else {
+        return None;
+    };
+
+    fn supertype_branch(branch: &ObjectFilter) -> Option<Supertype> {
+        let [supertype] = branch.supertypes.as_slice() else {
+            return None;
+        };
+        let mut remainder = branch.clone();
+        remainder.supertypes.clear();
+        (remainder == ObjectFilter::default()).then_some(*supertype)
+    }
+
+    fn mana_branch(branch: &ObjectFilter) -> Option<&[ManaSymbol]> {
+        if branch.could_produce_mana.is_empty() {
+            return None;
+        }
+        let mut remainder = branch.clone();
+        remainder.could_produce_mana.clear();
+        (remainder == ObjectFilter::default()).then_some(branch.could_produce_mana.as_slice())
+    }
+
+    let (supertype, mana) = supertype_branch(first)
+        .zip(mana_branch(second))
+        .or_else(|| supertype_branch(second).zip(mana_branch(first)))?;
+    let mut shared = filter.clone();
+    shared.any_of.clear();
+    let subject = shared.description();
+    let copula = if shared.has_plural_object_noun_surface() {
+        "are"
+    } else {
+        "is"
+    };
+    Some(format!(
+        "{subject} that {copula} {} or could produce {}",
+        supertype.name(),
+        describe_mana_symbol_list(mana)
+    ))
 }
 
 fn source_reference_surface_text(surface: &SourceReferenceSurface) -> String {
@@ -4569,6 +5448,7 @@ fn describe_possessive_commander_subject(filter: &ObjectFilter) -> Option<String
         || filter.without_counter.is_some()
         || filter.colors.is_some()
         || filter.attacking
+        || filter.attacking_alone
         || filter.blocking
         || filter.tapped
         || filter.untapped
@@ -4718,6 +5598,22 @@ pub fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<S
         return None;
     }
 
+    // A source exclusion can belong to only one independently nouned arm,
+    // as in `another creature you control or a land you control`. Factoring
+    // the shared controller onto a single suffix would render that semantic
+    // distinction ambiguously as `another creature or land you control`.
+    // Let the general union renderer materialize the common scope on each arm
+    // so the authored branch-local determiner remains explicit.
+    let first_other = filter.any_of.first()?.other;
+    if filter
+        .any_of
+        .iter()
+        .skip(1)
+        .any(|branch| branch.other != first_other)
+    {
+        return None;
+    }
+
     let mut outer = filter.clone();
     outer.any_of.clear();
     let mut branches = filter.any_of.clone();
@@ -4776,13 +5672,42 @@ pub fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<S
             branch.has_mana_cost = false;
         }
     }
+    if branches
+        .iter()
+        .all(|branch| branch.has_phyrexian_mana_symbol)
+    {
+        outer.has_phyrexian_mana_symbol = true;
+        for branch in &mut branches {
+            branch.has_phyrexian_mana_symbol = false;
+        }
+    }
 
+    let shared_card_noun = outer.has_explicit_card_noun()
+        || matches!(
+            outer.zone,
+            Some(
+                Zone::Graveyard
+                    | Zone::Hand
+                    | Zone::Library
+                    | Zone::Exile
+                    | Zone::Command
+                    | Zone::OutsideGame
+            )
+        );
     let mut selectors = Vec::new();
     for branch in &branches {
         if !branch_scoped_union_arm_is_characteristic_selector(branch) {
             return None;
         }
-        selectors.push(branch.description());
+        if shared_card_noun
+            && branch.supertypes.len() == 1
+            && branch.card_types.is_empty()
+            && branch.subtypes.is_empty()
+        {
+            selectors.push(branch.supertypes[0].to_string());
+        } else {
+            selectors.push(branch.description());
+        }
     }
 
     if !outer.card_types.is_empty()
@@ -4854,9 +5779,19 @@ pub fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<S
 }
 
 fn branch_scoped_union_arm_is_characteristic_selector(filter: &ObjectFilter) -> bool {
+    let single_characteristic =
+        filter.card_types.len() + filter.subtypes.len() + filter.supertypes.len() == 1
+            && filter.all_card_types.is_empty();
+    // The leaf parser currently preserves an intersecting phrase such as
+    // `artifact creature` in both its permissive card-type list and its exact
+    // all-types list. Treat that redundant representation as the same typed
+    // selector instead of falling back to per-branch rendering, which loses
+    // shared outer modifiers such as `nontoken`.
+    let intersecting_card_types = filter.subtypes.is_empty()
+        && filter.all_card_types.len() >= 2
+        && (filter.card_types.is_empty() || filter.card_types == filter.all_card_types);
     if !filter.any_of.is_empty()
-        || filter.card_types.len() + filter.subtypes.len() != 1
-        || !filter.all_card_types.is_empty()
+        || (!single_characteristic && !intersecting_card_types)
         || !filter.all_subtypes.is_empty()
         || filter.type_or_subtype_union
         || filter.zone.is_some()
@@ -4874,8 +5809,10 @@ fn branch_scoped_union_arm_is_characteristic_selector(filter: &ObjectFilter) -> 
         return false;
     }
     remainder.card_types.clear();
+    remainder.all_card_types.clear();
     remainder.subtypes.clear();
     remainder.all_subtypes.clear();
+    remainder.supertypes.clear();
     remainder.excluded_card_types.clear();
     remainder.excluded_subtypes.clear();
     remainder.excluded_supertypes.clear();
@@ -4952,6 +5889,38 @@ fn describe_simple_any_of_keyword_clause(
     Some(describe_filter_union_list(labels, connective, false))
 }
 
+fn describe_distinct_source_threshold(sources: &ObjectFilter, minimum: u32) -> String {
+    let sources = if let [subtype] = sources.subtypes.as_slice() {
+        let mut remainder = sources.clone();
+        remainder.subtypes.clear();
+        if remainder.card_types == [CardType::Creature] {
+            remainder.card_types.clear();
+        }
+        if remainder.zone == Some(Zone::Battlefield) {
+            remainder.zone = None;
+        }
+        if remainder == ObjectFilter::default() {
+            pluralize_count_terminal_word(&subtype.to_string())
+        } else {
+            let source = sources.description();
+            let source = source
+                .strip_prefix("an ")
+                .or_else(|| source.strip_prefix("a "))
+                .unwrap_or(&source);
+            pluralize_count_terminal_word(source)
+        }
+    } else {
+        let source = sources.description();
+        let source = source
+            .strip_prefix("an ")
+            .or_else(|| source.strip_prefix("a "))
+            .unwrap_or(&source);
+        pluralize_count_terminal_word(source)
+    };
+    let minimum = crate::cardinal_word(minimum).unwrap_or_else(|| minimum.to_string());
+    format!("{minimum} or more {sources}")
+}
+
 fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::Any => "a player's".to_string(),
@@ -4974,6 +5943,19 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             "a player who cast one or more {} spells this turn's",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::AttackedBySourceThisTurn => {
+            "a player this creature attacked this turn's".to_string()
+        }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
+            "{} this source has dealt damage to this game's",
+            describe_player_filter(base)
+        ),
+        PlayerFilter::LostLifeThisTurn { base } => {
+            format!("{} who lost life this turn's", describe_player_filter(base))
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+            format!("{}'s", describe_player_filter(filter))
+        }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
             format!(
@@ -4992,6 +5974,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             describe_player_filter(player),
             pluralize_count_terminal_word(&filter.description())
         ),
+        PlayerFilter::ControlsMost { .. } => format!("{}'s", filter.description()),
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -5060,6 +6043,25 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::AttackedBySourceThisTurn => {
+            "player this creature attacked this turn".to_string()
+        }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
+            "{} this source has dealt damage to this game",
+            describe_player_filter(base)
+        ),
+        PlayerFilter::LostLifeThisTurn { base } => {
+            format!("{} who lost life this turn", describe_player_filter(base))
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+            base,
+            sources,
+            minimum,
+        } => format!(
+            "{} who was dealt combat damage by {} this turn",
+            describe_player_filter(base),
+            describe_distinct_source_threshold(sources, *minimum)
+        ),
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
             format!(
@@ -5076,6 +6078,10 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } => format!(
             "opponent of {} who controls more {} than they do",
             describe_player_filter(player),
+            pluralize_count_terminal_word(&filter.description())
+        ),
+        PlayerFilter::ControlsMost { filter } => format!(
+            "the player who controls the most {}",
             pluralize_count_terminal_word(&filter.description())
         ),
         PlayerFilter::MaxSpeed {
@@ -5111,6 +6117,29 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "that player".to_string()
         }
     }
+}
+
+fn describe_counters_put_on_this_turn_constraint(
+    constraint: &CountersPutOnThisTurnConstraint,
+) -> String {
+    let actor = match &constraint.source_controller {
+        PlayerFilter::You => "you've put".to_string(),
+        PlayerFilter::Opponent => "an opponent has put".to_string(),
+        PlayerFilter::Any => "a player has put".to_string(),
+        PlayerFilter::IteratedPlayer | PlayerFilter::AliasedTarget(_) => {
+            "that player has put".to_string()
+        }
+        player => format!("{} has put", describe_player_filter(player)),
+    };
+    let quantity = match constraint.minimum {
+        1 => "one or more".to_string(),
+        minimum => format!("{minimum} or more"),
+    };
+    let counter = constraint
+        .counter_type
+        .map(|counter_type| counter_type.description().into_owned())
+        .unwrap_or_else(|| "counter".to_string());
+    format!("that {actor} {quantity} {counter} counters on this turn")
 }
 
 fn describe_card_type_word(card_type: CardType) -> &'static str {
@@ -5479,6 +6508,14 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     describe_count_filter_subject(filter)
                 )
             }
+            Value::GreatestCount(filter) => format!(
+                "the greatest number of {}",
+                describe_count_filter_subject(filter)
+            ),
+            Value::GreatestSharedCreatureTypeCount(filter) => format!(
+                "the greatest number of {} that have a creature type in common",
+                describe_count_filter_subject(filter)
+            ),
             Value::DividedRoundedDown(value, divisor) => {
                 format!(
                     "{} divided by {divisor}, rounded down",
@@ -5632,6 +6669,11 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 };
                 format!("the amount of unspent mana {subject} {verb}")
             }
+            Value::Devotion { player, color } => format!(
+                "{} devotion to {}",
+                describe_possessive_player_filter(player),
+                color.name()
+            ),
             Value::Add(left, right) => {
                 format!(
                     "{} plus {}",
@@ -5651,12 +6693,16 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::ManaFromSourceSpentToCastThisSpell {
                 source_filter,
                 include_source_noun,
+                reference,
             } => {
                 let mut source = source_filter.description();
                 if *include_source_noun {
                     source.push_str(" source");
                 }
-                format!("the amount of mana from {source} spent to cast this spell")
+                format!(
+                    "the amount of mana from {source} spent to cast {}",
+                    reference.text()
+                )
             }
             Value::EffectMetric {
                 metric: EffectMetric::OtherNumber,
@@ -5791,8 +6837,8 @@ mod tests {
         describe_comparison, describe_mana_value_comparison,
     };
     use crate::{
-        CardType, ColorSet, CounterConstraint, CounterType, ObjectId, Subtype, TagKey, Value,
-        ValueSurfaceHint, Zone,
+        CardType, ColorSet, CounterConstraint, CounterType, ManaSymbol, ObjectId, Subtype,
+        Supertype, TagKey, Value, ValueSurfaceHint, Zone,
     };
 
     #[test]
@@ -6012,6 +7058,23 @@ mod tests {
     }
 
     #[test]
+    fn flat_subtype_set_uses_its_conjunctive_list_surface() {
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            controller: Some(PlayerFilter::You),
+            subtypes: vec![Subtype::Spider, Subtype::Boar, Subtype::Bat],
+            other: true,
+            ..ObjectFilter::default()
+        };
+        filter.set_conjunctive_set_surface(true);
+
+        assert_eq!(
+            filter.description(),
+            "another Spider, Boar, and Bat you control"
+        );
+    }
+
+    #[test]
     fn shared_outer_controller_qualifies_union_with_spell_fields_on_branches() {
         let spell_branch = |card_type| ObjectFilter {
             stack_kind: Some(StackObjectKind::Spell),
@@ -6060,6 +7123,8 @@ mod tests {
             other: true,
             any_of: vec![
                 ObjectFilter::default()
+                    .with_type(CardType::Artifact)
+                    .with_type(CardType::Creature)
                     .with_all_type(CardType::Artifact)
                     .with_all_type(CardType::Creature)
                     .nontoken(),
@@ -6190,6 +7255,27 @@ mod tests {
     }
 
     #[test]
+    fn branch_scoped_conjunctive_union_accepts_intersecting_card_type_selector() {
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            controller: Some(PlayerFilter::You),
+            any_of: vec![
+                ObjectFilter::default()
+                    .with_all_type(CardType::Artifact)
+                    .with_all_type(CardType::Creature),
+                ObjectFilter::default().with_subtype(Subtype::Hero),
+            ],
+            ..ObjectFilter::default()
+        };
+        filter.set_conjunctive_set_surface(true);
+
+        assert_eq!(
+            filter.description(),
+            "an artifact creature and Hero you control"
+        );
+    }
+
+    #[test]
     fn branch_scoped_characteristic_union_keeps_other_on_one_arm() {
         let mut filter = ObjectFilter {
             zone: Some(Zone::Battlefield),
@@ -6307,6 +7393,30 @@ mod tests {
     }
 
     #[test]
+    fn branch_scoped_supertype_or_subtype_union_uses_one_shared_card_noun() {
+        let filter = ObjectFilter {
+            zone: Some(Zone::Graveyard),
+            owner: Some(PlayerFilter::You),
+            any_of: vec![
+                ObjectFilter {
+                    supertypes: vec![Supertype::Legendary],
+                    ..Default::default()
+                },
+                ObjectFilter {
+                    subtypes: vec![Subtype::Rat],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            filter.description(),
+            "legendary or Rat card in your graveyard"
+        );
+    }
+
+    #[test]
     fn branch_scoped_type_union_factors_shared_battlefield_domain() {
         let filter = ObjectFilter {
             zone: Some(Zone::Battlefield),
@@ -6398,6 +7508,24 @@ mod tests {
     }
 
     #[test]
+    fn shared_creature_type_comparison_domains_each_keep_an_article() {
+        let filter = ObjectFilter::spell()
+            .with_type(CardType::Creature)
+            .sharing_no_creature_types_with(ObjectFilter::creature().you_control())
+            .sharing_no_creature_types_with(
+                ObjectFilter::default()
+                    .with_type(CardType::Creature)
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You),
+            );
+
+        assert_eq!(
+            filter.description(),
+            "creature spell that doesn't share a creature type with a creature you control or a creature card in your graveyard"
+        );
+    }
+
+    #[test]
     fn explicit_land_type_noun_is_surface_only_for_subtyped_lands() {
         let semantic_filter = ObjectFilter::land()
             .with_subtype(Subtype::Urzas)
@@ -6446,6 +7574,75 @@ mod tests {
         assert_eq!(
             filter.description(),
             "creature that's attacking that player or a planeswalker they control"
+        );
+    }
+
+    #[test]
+    fn opponent_attack_destination_uses_authored_group_surface() {
+        let filter = ObjectFilter::creature()
+            .attacking_player_or_planeswalker_controlled_by(PlayerFilter::Opponent);
+
+        assert_eq!(
+            filter.description(),
+            "creature attacking your opponents and/or planeswalkers they control"
+        );
+    }
+
+    #[test]
+    fn characteristic_or_mana_capability_union_factors_the_shared_domain() {
+        let filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            card_types: vec![CardType::Land],
+            any_of: vec![
+                ObjectFilter {
+                    supertypes: vec![Supertype::Snow],
+                    ..Default::default()
+                },
+                ObjectFilter {
+                    could_produce_mana: vec![ManaSymbol::Colorless],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert!(filter.uses_non_pt_battlefield_characteristics());
+        assert_eq!(
+            filter.description(),
+            "land that is snow or could produce {C}"
+        );
+    }
+
+    #[test]
+    fn entered_battlefield_history_surface_preserves_explicit_zone_only_when_authored() {
+        let mut abbreviated = ObjectFilter::creature().in_zone(Zone::Battlefield);
+        abbreviated.entered_battlefield_this_turn = true;
+        assert_eq!(abbreviated.description(), "creature that entered this turn");
+
+        let mut explicit = abbreviated.clone();
+        explicit.set_entered_battlefield_explicit_surface(true);
+        assert_eq!(
+            explicit.description(),
+            "creature that entered the battlefield this turn"
+        );
+        assert_eq!(abbreviated, explicit);
+    }
+
+    #[test]
+    fn owned_zone_then_counter_order_is_equality_transparent() {
+        let semantic = ObjectFilter::creature()
+            .in_zone(Zone::Exile)
+            .owned_by(PlayerFilter::You)
+            .with_counter_type(CounterType::Named("memory"));
+        let mut surfaced = semantic.clone();
+        surfaced.set_owner_before_zone_surface(true);
+        surfaced.set_counter_requirement_after_zone_surface(true);
+        surfaced.set_for_each_leading_then_surface(true);
+
+        assert_eq!(semantic, surfaced);
+        assert_eq!(
+            surfaced.description(),
+            "a creature card you own in exile with a memory counter on it"
         );
     }
 }

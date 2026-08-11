@@ -5,7 +5,6 @@ use winnow::token::any;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{leaf, primitives, static_keyword_cost_shapes};
-use super::nearby_primitives::semantic_kw;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CostPrefixCondition<'a> {
@@ -160,6 +159,7 @@ pub(crate) fn parse_that_much_value_marker_tokens(tokens: &[OwnedLexToken]) -> b
 pub(crate) enum LegendRuleScopeShape {
     Global,
     Controller,
+    ControllerCreatures,
     ControllerTokens,
 }
 
@@ -180,8 +180,16 @@ pub(crate) fn parse_legend_rule_doesnt_apply_tokens(
             .is_some()
         && primitives::find_prefix(tokens, || primitives::kw("apply").void()).is_some())
     .then(|| {
-        if primitives::find_prefix(tokens, || primitives::kw("tokens").void()).is_some()
-            && primitives::find_prefix(tokens, || primitives::kw("you").void()).is_some()
+        if primitives::find_prefix(tokens, || {
+            primitives::phrase(&["creatures", "you", "control"]).void()
+        })
+        .is_some()
+        {
+            LegendRuleScopeShape::ControllerCreatures
+        } else if primitives::find_prefix(tokens, || {
+            primitives::phrase(&["tokens", "you", "control"]).void()
+        })
+        .is_some()
         {
             LegendRuleScopeShape::ControllerTokens
         } else if primitives::find_prefix(tokens, || primitives::kw("you").void()).is_some() {
@@ -193,10 +201,27 @@ pub(crate) fn parse_legend_rule_doesnt_apply_tokens(
 }
 
 pub(crate) fn parse_all_cards_spells_permanents_colorless_tokens(tokens: &[OwnedLexToken]) -> bool {
-    primitives::find_prefix(tokens, || semantic_kw("colorless")).is_some()
-        && primitives::find_prefix(tokens, || semantic_kw("cards")).is_some()
-        && primitives::find_prefix(tokens, || semantic_kw("spells")).is_some()
-        && primitives::find_prefix(tokens, || semantic_kw("permanents")).is_some()
+    let words = tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>();
+    matches!(
+        words.as_slice(),
+        [
+            "all",
+            "cards",
+            "that",
+            "aren't" | "arent",
+            "on",
+            "the",
+            "battlefield",
+            "spells",
+            "and",
+            "permanents",
+            "are",
+            "colorless"
+        ]
+    )
 }
 
 fn parse_starting_life_bonus_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
@@ -249,6 +274,43 @@ mod tests {
             parse_legend_rule_doesnt_apply_tokens(&tokens),
             Some(LegendRuleScopeShape::ControllerTokens)
         );
+        let tokens = lex_line(
+            "The \"legend rule\" doesn't apply to creatures you control.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_legend_rule_doesnt_apply_tokens(&tokens),
+            Some(LegendRuleScopeShape::ControllerCreatures)
+        );
+        let tokens = lex_line(
+            "The \"legend rule\" doesn't apply to permanents you control.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_legend_rule_doesnt_apply_tokens(&tokens),
+            Some(LegendRuleScopeShape::Controller)
+        );
+    }
+
+    #[test]
+    fn global_colorless_domain_requires_the_exact_three_authored_categories() {
+        let exact = lex_line(
+            "All cards that aren't on the battlefield, spells, and permanents are colorless.",
+            0,
+        )
+        .unwrap();
+        assert!(parse_all_cards_spells_permanents_colorless_tokens(&exact));
+
+        let near_miss = lex_line(
+            "All artifact cards that aren't on the battlefield, spells, and permanents are colorless.",
+            0,
+        )
+        .unwrap();
+        assert!(!parse_all_cards_spells_permanents_colorless_tokens(
+            &near_miss
+        ));
     }
 
     #[test]

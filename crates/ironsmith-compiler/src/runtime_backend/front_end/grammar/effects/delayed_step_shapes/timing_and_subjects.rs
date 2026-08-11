@@ -40,11 +40,18 @@ fn static_player<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> {
             alt((primitives::kw("player"), primitives::kw("players"))),
         )
             .value(PlayerAst::Target),
-        (
-            primitives::kw("any"),
-            alt((primitives::kw("player"), primitives::kw("players"))),
-        )
-            .value(PlayerAst::Any),
+        alt((
+            (
+                primitives::kw("any"),
+                alt((primitives::kw("player"), primitives::kw("players"))),
+            )
+                .value(PlayerAst::Any),
+            (
+                primitives::kw("any"),
+                alt((primitives::kw("opponent"), primitives::kw("opponents"))),
+            )
+                .value(PlayerAst::Opponent),
+        )),
         primitives::kw("they").value(PlayerAst::That),
         (
             primitives::kw("defending"),

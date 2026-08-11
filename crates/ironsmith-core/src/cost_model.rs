@@ -16,6 +16,10 @@ impl Default for DynamicManaDisplayHint {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DynamicManaCost {
     pub base: ManaCost,
+    /// Resolve the base portion from the object whose spell or ability is
+    /// being paid for. This preserves colored and hybrid pips, unlike a mana
+    /// value expression, and intentionally fails for cards with no mana cost.
+    pub source_mana_cost: bool,
     pub x_value: Option<Value>,
     pub additional_generic: Option<Value>,
     pub multiplier: Option<Value>,
@@ -32,6 +36,7 @@ impl DynamicManaCost {
     ) -> Self {
         Self {
             base,
+            source_mana_cost: false,
             x_value,
             additional_generic,
             multiplier,
@@ -59,8 +64,22 @@ impl DynamicManaCost {
         )
     }
 
+    pub fn from_source_mana_cost() -> Self {
+        Self {
+            base: ManaCost::new(),
+            source_mana_cost: true,
+            x_value: None,
+            additional_generic: None,
+            multiplier: None,
+            display_hint: DynamicManaDisplayHint::Default,
+        }
+    }
+
     pub fn resolved_static_base(&self) -> Option<ManaCost> {
-        if self.x_value.is_none() && self.additional_generic.is_none() && self.multiplier.is_none()
+        if !self.source_mana_cost
+            && self.x_value.is_none()
+            && self.additional_generic.is_none()
+            && self.multiplier.is_none()
         {
             return Some(self.base.clone());
         }
@@ -68,6 +87,13 @@ impl DynamicManaCost {
     }
 
     pub fn display(&self) -> String {
+        if self.source_mana_cost
+            && self.x_value.is_none()
+            && self.additional_generic.is_none()
+            && self.multiplier.is_none()
+        {
+            return "its mana cost".to_string();
+        }
         match self.display_hint {
             DynamicManaDisplayHint::ManaEqualTo => {
                 if let Some(value) = self.additional_generic.as_ref() {
@@ -1127,18 +1153,24 @@ impl<C> OptionalCost<C> {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct OptionalCostsPaid {
     pub costs: Vec<(OptionalCostRef, u32)>,
+    /// Cast-proposal provenance: this spell was announced while its controller
+    /// could normally cast a sorcery (their main phase, with an empty stack).
+    /// This is a timing fact, not an optional cost.
+    pub cast_at_sorcery_timing: bool,
 }
 
 impl OptionalCostsPaid {
     pub fn new(num_optional_costs: usize) -> Self {
         Self {
             costs: vec![(OptionalCostRef::from(""), 0); num_optional_costs],
+            cast_at_sorcery_timing: false,
         }
     }
 
     pub fn from_costs<C>(costs: &[OptionalCost<C>]) -> Self {
         Self {
             costs: costs.iter().map(|c| (c.cost_ref(), 0)).collect(),
+            cast_at_sorcery_timing: false,
         }
     }
 
@@ -1196,6 +1228,14 @@ impl OptionalCostsPaid {
         } else {
             self.costs.push((label, 1));
         }
+    }
+
+    pub fn mark_cast_at_sorcery_timing(&mut self) {
+        self.cast_at_sorcery_timing = true;
+    }
+
+    pub fn was_cast_at_sorcery_timing(&self) -> bool {
+        self.cast_at_sorcery_timing
     }
 
     pub fn was_kicked(&self) -> bool {

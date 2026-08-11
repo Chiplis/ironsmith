@@ -109,6 +109,57 @@ fn parse_triggered_line_cst_inner(
         return Err(err);
     }
 
+    // The preprocessing pass may simplify possessive/value references in a
+    // trigger's effect tail. For the small correlated bundles below, those
+    // authored references are executable provenance rather than presentation:
+    // e.g. `its power`, `its owner's library`, and a quoted Aura grant. Prove
+    // and retain the original tail before probing the normalized split.
+    let (source_tokens_without_cap, _) =
+        strip_trailing_trigger_cap_suffix_tokens(&line.info.source_tokens);
+    if parse_trigger_intro_tokens(source_tokens_without_cap).is_some()
+        && let Some((leading_tokens, effect_tokens)) =
+            grammar::split_lexed_once_on_comma(source_tokens_without_cap)
+        && leading_tokens.len() > 1
+        && (crate::runtime_backend::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(
+            effect_tokens,
+        ) || crate::runtime_backend::semantic_line_parsing::is_authored_dynamic_exile_permission_bundle(
+            effect_tokens,
+        ) || crate::runtime_backend::semantic_line_parsing::is_authored_look_hand_optional_cast_bundle(
+            effect_tokens,
+        ))
+        && let Some(candidate) = render_triggered_split_candidate(
+            &leading_tokens[1..],
+            effect_tokens,
+            None,
+            trailing_cap,
+        )
+    {
+        parse_trace::event("trigger split: authored correlated multi-sentence body");
+        return Ok(candidate.into_cst(line, source_tokens_without_cap));
+    }
+
+    // A small set of fully typed trigger bodies carry executable provenance
+    // across their authored sentence boundary. Claim the exact full tail
+    // before the ordinary split probes can independently accept the return or
+    // exile producer and peel the linked Aura/permission sentence into a
+    // separate generic program.
+    if let Some((leading_tokens, effect_tokens)) =
+        grammar::split_lexed_once_on_comma(tokens_without_cap)
+        && leading_tokens.len() > 1
+        && crate::runtime_backend::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(
+            effect_tokens,
+        )
+        && let Some(candidate) = render_triggered_split_candidate(
+            &leading_tokens[1..],
+            effect_tokens,
+            None,
+            trailing_cap,
+        )
+    {
+        parse_trace::event("trigger split: exact correlated multi-sentence body");
+        return Ok(candidate.into_cst(line, tokens_without_cap));
+    }
+
     if let Some(rewritten_tokens) =
         rewrite_count_that_number_life_total_trigger_tokens(tokens_without_cap)
     {
@@ -124,7 +175,14 @@ fn parse_triggered_line_cst_inner(
         split_nested_combat_whenever_clause_lexed(tokens_without_cap)
     {
         let nested_line = rewrite_line_tokens(line, nested_trigger_tokens);
-        if let Ok(parsed) = parse_triggered_line_cst(&nested_line) {
+        if let Ok(mut parsed) = parse_triggered_line_cst(&nested_line) {
+            // The semantic lowering pass needs the complete outer beginning-
+            // of-combat/payment envelope in order to register the nested
+            // trigger only when the payment is declined. Keep the nested
+            // trigger/effect token split, but do not discard the authored
+            // full-line tokens that prove that envelope.
+            parsed.full_text = normalized.clone();
+            parsed.full_parse_tokens = tokens_without_cap.to_vec();
             return Ok(parsed);
         }
     }
@@ -392,7 +450,11 @@ pub(super) fn parse_static_line_cst(
     {
         return Ok(None);
     }
+    let is_flash_with_cleanup_sacrifice = super::super::grammar::abilities::is_cast_as_though_flash_with_next_cleanup_sacrifice_line_lexed(
+        &parse_tokens,
+    );
     if line_starts_with_effect_statement_sentence(&parse_tokens)
+        && !is_flash_with_cleanup_sacrifice
         && !matches!(
             parse_static_ability_ast_line_lexed(&parse_tokens),
             Ok(Some(_))
@@ -400,32 +462,15 @@ pub(super) fn parse_static_line_cst(
     {
         return Ok(None);
     }
-    // Preprocessing strips an ability-word label ("Threshold — ") from
-    // line.tokens; recover it from the source tokens so conditional statics
-    // keep their authored label (Mystic Visionary family).
-    let presentation = super::activated_presentation_from_preprocessed_line(line);
-    let make_static = |chosen_option: Option<ChosenOptionContext>| {
-        let mut static_line = StaticLineCst {
-            info: line.info.clone(),
-            parse_tokens: parse_tokens.clone(),
-            chosen_option,
-            parsed: None,
-        };
-        if static_line
-            .info
-            .semantic_facts
-            .static_ability
-            .presentation_label
-            .is_none()
-        {
-            static_line
-                .info
-                .semantic_facts
-                .static_ability
-                .presentation_label = presentation.clone();
-        }
-        static_line
+    let make_static = |chosen_option: Option<ChosenOptionContext>| StaticLineCst {
+        info: line.info.clone(),
+        parse_tokens: parse_tokens.clone(),
+        chosen_option,
+        parsed: None,
     };
+    if is_flash_with_cleanup_sacrifice {
+        return Ok(Some(make_static(None)));
+    }
     let lexed = &parse_tokens;
     if super::super::families::keyword_static::parse_double_counters_replacement_line(lexed)?
         .is_some()
@@ -475,6 +520,9 @@ pub(super) fn parse_static_line_cst(
     }
 
     if parse_if_this_spell_costs_less_to_cast_line_lexed(&lexed)?.is_some() {
+        return Ok(Some(make_static(None)));
+    }
+    if parse_spell_additional_life_cost_per_target_line(&lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
     if parse_spell_cost_increase_per_target_beyond_first_line(&lexed)?.is_some() {
@@ -553,6 +601,10 @@ fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usiz
     let mut item_count = 0usize;
     for sentence in sentences {
         if parse_if_this_spell_costs_less_to_cast_line_lexed(sentence)?.is_some() {
+            item_count += 1;
+            continue;
+        }
+        if parse_spell_additional_life_cost_per_target_line(sentence)?.is_some() {
             item_count += 1;
             continue;
         }
@@ -665,16 +717,25 @@ pub(super) fn parse_level_item_cst(
 
 pub(super) fn parse_modal_mode_cst(line: &PreprocessedLine) -> Result<ModalModeCst, CardTextError> {
     let spree_prefix = parse_spree_mode_prefix(&line.tokens);
+    let tiered_prefix = parse_tiered_mode_prefix(&line.tokens);
     let point_cost = spree_prefix
         .as_ref()
+        .or(tiered_prefix.as_ref())
         .map_or_else(|| leading_modal_point_cost_tokens(&line.tokens), |_| None);
     let parse_tokens = if let Some((_, body_first)) = spree_prefix.as_ref() {
+        line.tokens.get(*body_first..).unwrap_or_default()
+    } else if let Some((_, body_first)) = tiered_prefix.as_ref() {
         line.tokens.get(*body_first..).unwrap_or_default()
     } else {
         strip_non_keyword_label_prefix_lexed(strip_modal_bullet_prefix_tokens(&line.tokens))
     };
-    let mode_text = render_original_text_for_token_slice(line, parse_tokens)
-        .unwrap_or_else(|| render_token_slice(parse_tokens))
+    let surface_tokens = if tiered_prefix.is_some() {
+        strip_modal_bullet_prefix_tokens(&line.tokens)
+    } else {
+        parse_tokens
+    };
+    let mode_text = render_original_text_for_token_slice(line, surface_tokens)
+        .unwrap_or_else(|| render_token_slice(surface_tokens))
         .trim()
         .to_string();
     let effects_ast = parse_effect_sentences_lexed(parse_tokens)?;
@@ -682,9 +743,32 @@ pub(super) fn parse_modal_mode_cst(line: &PreprocessedLine) -> Result<ModalModeC
         info: line.info.clone(),
         text: mode_text,
         point_cost,
-        additional_mana_cost: spree_prefix.map(|(cost, _)| cost),
+        additional_mana_cost: spree_prefix.or(tiered_prefix).map(|(cost, _)| cost),
         effects_ast,
     })
+}
+
+fn parse_tiered_mode_prefix(tokens: &[OwnedLexToken]) -> Option<(crate::mana::ManaCost, usize)> {
+    if !tokens
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::Bullet)
+    {
+        return None;
+    }
+    let label_delimiter = tokens.iter().enumerate().skip(2).find_map(|(idx, token)| {
+        matches!(token.kind, TokenKind::Dash | TokenKind::EmDash).then_some(idx)
+    })?;
+    let mana = super::super::grammar::leaf::parse_leaf_mana_cost_prefix_tokens(
+        tokens.get(label_delimiter + 1..)?,
+    )?;
+    let body_delimiter = label_delimiter + 1 + mana.consumed;
+    if !tokens
+        .get(body_delimiter)
+        .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+    {
+        return None;
+    }
+    Some((mana.cost, body_delimiter + 1))
 }
 
 fn parse_spree_mode_prefix(tokens: &[OwnedLexToken]) -> Option<(crate::mana::ManaCost, usize)> {

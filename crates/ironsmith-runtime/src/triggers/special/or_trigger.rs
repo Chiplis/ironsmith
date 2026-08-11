@@ -5,9 +5,9 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::triggers::{
     AbilityActivatedTrigger, AttacksTrigger, AttacksYouTrigger, BlocksTrigger, CountMode,
     DealsDamageToTrigger, DealsDamageTrigger, PermanentBecomesTappedTrigger, PlayerRelation,
-    SpellCastTrigger, ThisAttacksTrigger, ThisBlocksTrigger, ThisDealsDamageToTrigger,
-    ThisDealsDamageTrigger, TransformsTrigger, Trigger, TriggerEvent, ZoneChangeTrigger,
-    ZonePattern,
+    SpellCastTrigger, SpellCopiedTrigger, ThisAttacksTrigger, ThisBlocksTrigger,
+    ThisDealsDamageToTrigger, ThisDealsDamageTrigger, TransformsTrigger, Trigger, TriggerEvent,
+    ZoneChangeTrigger, ZonePattern,
 };
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -55,6 +55,7 @@ fn is_this_enters_battlefield_trigger(trigger: &ZoneChangeTrigger) -> bool {
         && trigger.cause_filter.is_none()
         && trigger.origin_condition.is_none()
         && trigger.during_turn.is_none()
+        && trigger.timing.is_none()
         && trigger.count_mode == CountMode::Each
 }
 
@@ -65,6 +66,7 @@ fn is_this_dies_trigger(trigger: &ZoneChangeTrigger) -> bool {
         && trigger.player == PlayerRelation::Any
         && trigger.cause_filter.is_none()
         && trigger.during_turn.is_none()
+        && trigger.timing.is_none()
         && trigger.count_mode == CountMode::Each
 }
 
@@ -143,6 +145,53 @@ impl OrTrigger {
     /// Create an OrTrigger from exactly two triggers.
     pub fn two(a: Trigger, b: Trigger) -> Self {
         Self::new(vec![a, b])
+    }
+
+    fn serial_zone_change_disjunction_display(&self) -> Option<String> {
+        fn collect(trigger: &Trigger, displays: &mut Vec<String>) -> bool {
+            if let Some(or_trigger) = trigger.downcast_ref::<OrTrigger>() {
+                return or_trigger
+                    .triggers
+                    .iter()
+                    .all(|branch| collect(branch, displays));
+            }
+            if trigger.downcast_ref::<ZoneChangeTrigger>().is_none()
+                && trigger
+                    .downcast_ref::<crate::triggers::CardsLeaveYourGraveyardTrigger>()
+                    .is_none()
+            {
+                return false;
+            }
+            displays.push(trigger.display());
+            true
+        }
+
+        let mut displays = Vec::new();
+        if !self
+            .triggers
+            .iter()
+            .all(|trigger| collect(trigger, &mut displays))
+            || displays.len() < 3
+        {
+            return None;
+        }
+        let intro = if displays[0].starts_with("Whenever ") {
+            "Whenever"
+        } else if displays[0].starts_with("When ") {
+            "When"
+        } else {
+            return None;
+        };
+        let bodies = displays
+            .iter()
+            .map(|display| {
+                display
+                    .strip_prefix("Whenever ")
+                    .or_else(|| display.strip_prefix("When "))
+                    .unwrap_or(display)
+            })
+            .collect::<Vec<_>>();
+        Some(format!("{intro} {}", bodies.join(", or ")))
     }
 
     fn reciprocal_enchanted_opponent_attacks_display(&self) -> Option<String> {
@@ -243,28 +292,48 @@ impl OrTrigger {
         let [first, second] = self.triggers.as_slice() else {
             return None;
         };
-        let (zone_change, attacks_first) = if let (Some(zone_change), Some(_)) = (
+        let (zone_change, attacks_first, named_attacks) = if let (Some(zone_change), Some(_)) = (
             first.downcast_ref::<ZoneChangeTrigger>(),
             second.downcast_ref::<ThisAttacksTrigger>(),
         ) {
-            (zone_change, false)
+            (zone_change, false, None)
         } else if let (Some(_), Some(zone_change)) = (
             first.downcast_ref::<ThisAttacksTrigger>(),
             second.downcast_ref::<ZoneChangeTrigger>(),
         ) {
-            (zone_change, true)
+            (zone_change, true, None)
+        } else if let (Some(zone_change), Some(attacks)) = (
+            first.downcast_ref::<ZoneChangeTrigger>(),
+            second.downcast_ref::<AttacksTrigger>(),
+        ) {
+            (zone_change, false, Some(attacks))
+        } else if let (Some(attacks), Some(zone_change)) = (
+            first.downcast_ref::<AttacksTrigger>(),
+            second.downcast_ref::<ZoneChangeTrigger>(),
+        ) {
+            (zone_change, true, Some(attacks))
         } else {
             return None;
         };
 
-        if !zone_change.this_object
-            || zone_change.from != ZonePattern::Any
-            || zone_change.to != ZonePattern::Specific(Zone::Battlefield)
-            || zone_change.player != crate::triggers::PlayerRelation::Any
-            || zone_change.cause_filter.is_some()
-            || zone_change.origin_condition.is_some()
-        {
+        if !is_this_enters_battlefield_trigger(zone_change) {
             return None;
+        }
+        if let Some(attacks) = named_attacks {
+            if attacks.one_or_more
+                || attacks.min_total_attackers != 1
+                || attacks.max_total_attackers.is_some()
+            {
+                return None;
+            }
+            let mut attack_filter = attacks.filter.clone();
+            let attack_surface = attack_filter.source_surface.take();
+            attack_filter.source = false;
+            if attack_filter != ObjectFilter::default()
+                || attack_surface != zone_change.this_object_surface
+            {
+                return None;
+            }
         }
 
         let subject = zone_change.this_subject_text("creature");
@@ -327,6 +396,7 @@ impl OrTrigger {
             || zone_change.cause_filter.is_some()
             || zone_change.origin_condition.is_some()
             || zone_change.during_turn.is_some()
+            || zone_change.timing.is_some()
             || zone_change.count_mode != CountMode::Each
             || zone_change.this_object_surface.is_some()
             || !object_filter_is_your_commander(&zone_change.object_filter, &[])
@@ -435,6 +505,74 @@ impl OrTrigger {
         ))
     }
 
+    /// Factor the shared enters verb when the two typed subjects cannot be
+    /// the same permanent. Unlike the `another` form above, Oracle omits
+    /// `another` for disjoint domains such as "this enchantment or a
+    /// legendary creature you control". Requiring a single explicit card
+    /// type on both sides keeps this compaction from hiding a genuinely
+    /// overlapping trigger branch.
+    fn this_or_disjoint_matching_enters_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let (this_enters, matching_enters) = if let (Some(first_zone), Some(second_zone)) = (
+            first.downcast_ref::<ZoneChangeTrigger>(),
+            second.downcast_ref::<ZoneChangeTrigger>(),
+        ) {
+            if first_zone.this_object && !second_zone.this_object {
+                (first_zone, second_zone)
+            } else if second_zone.this_object && !first_zone.this_object {
+                (second_zone, first_zone)
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
+
+        if !is_this_enters_battlefield_trigger(this_enters)
+            || matching_enters.from != ZonePattern::Any
+            || matching_enters.to != ZonePattern::Specific(Zone::Battlefield)
+            || matching_enters.player != PlayerRelation::Any
+            || matching_enters.cause_filter.is_some()
+            || matching_enters.origin_condition.is_some()
+            || matching_enters.during_turn.is_some()
+            || matching_enters.timing.is_some()
+            || matching_enters.count_mode != CountMode::Each
+            || matching_enters.object_filter.other
+        {
+            return None;
+        }
+
+        let crate::target::SourceReferenceSurface::ThisPermanentType(this_surface) =
+            this_enters.this_object_surface.as_ref()?
+        else {
+            return None;
+        };
+        let source_type = [
+            CardType::Land,
+            CardType::Creature,
+            CardType::Artifact,
+            CardType::Enchantment,
+            CardType::Planeswalker,
+            CardType::Battle,
+        ]
+        .into_iter()
+        .find(|card_type| this_surface == &format!("this {}", card_type.name()))?;
+        let [matching_type] = matching_enters.object_filter.card_types.as_slice() else {
+            return None;
+        };
+        if *matching_type == source_type {
+            return None;
+        }
+
+        let this_subject = this_enters.this_subject_text("permanent");
+        let other_description = matching_enters.object_filter.description();
+        Some(format!(
+            "Whenever {this_subject} or {other_description} enters"
+        ))
+    }
+
     fn this_or_another_zone_change_display(&self) -> Option<String> {
         let [first, second] = self.triggers.as_slice() else {
             return None;
@@ -462,6 +600,7 @@ impl OrTrigger {
             || source_change.cause_filter != another_change.cause_filter
             || source_change.origin_condition != another_change.origin_condition
             || source_change.during_turn != another_change.during_turn
+            || source_change.timing != another_change.timing
             || source_change.count_mode != CountMode::Each
             || another_change.count_mode != CountMode::Each
         {
@@ -543,6 +682,7 @@ impl OrTrigger {
             && graveyard.player == exile.player
             && graveyard.cause_filter == exile.cause_filter
             && graveyard.during_turn == exile.during_turn
+            && graveyard.timing == exile.timing
             && graveyard.origin_condition == exile.origin_condition
             && graveyard.count_mode == CountMode::Each
             && exile.count_mode == CountMode::Each
@@ -560,6 +700,7 @@ impl OrTrigger {
             || graveyard.player != exile.player
             || graveyard.cause_filter != exile.cause_filter
             || graveyard.during_turn != exile.during_turn
+            || graveyard.timing != exile.timing
             || graveyard.count_mode != CountMode::Each
             || exile.count_mode != CountMode::Each
             || graveyard.this_object != exile.this_object
@@ -642,6 +783,78 @@ impl OrTrigger {
             "Whenever you cast an instant spell, cast a sorcery spell, or activate a loyalty ability"
                 .to_string(),
         )
+    }
+
+    fn spell_other_than_first_or_copy_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let (cast, copied) = if let (Some(cast), Some(copied)) = (
+            first.downcast_ref::<SpellCastTrigger>(),
+            second.downcast_ref::<SpellCopiedTrigger>(),
+        ) {
+            (cast, copied)
+        } else if let (Some(copied), Some(cast)) = (
+            first.downcast_ref::<SpellCopiedTrigger>(),
+            second.downcast_ref::<SpellCastTrigger>(),
+        ) {
+            (cast, copied)
+        } else {
+            return None;
+        };
+        if cast.caster != copied.copier
+            || cast.filter.is_some()
+            || copied.filter.is_some()
+            || cast.mana_source_filter.is_some()
+            || cast.timing.is_some()
+            || cast.during_turn.is_some()
+            || cast.min_spells_this_turn != Some(2)
+            || cast.exact_spells_this_turn.is_some()
+            || cast.count_all_spells_this_turn
+            || cast.from_not_hand
+            || cast.first_spell_of_game
+        {
+            return None;
+        }
+
+        let (actor, cast_verb, copy_verb, first_spell) = match &cast.caster {
+            PlayerFilter::You => ("you", "cast", "copy", "your first spell"),
+            PlayerFilter::Any => ("a player", "casts", "copies", "the first spell they cast"),
+            PlayerFilter::Opponent => (
+                "an opponent",
+                "casts",
+                "copies",
+                "the first spell they cast",
+            ),
+            PlayerFilter::Active => (
+                "the active player",
+                "casts",
+                "copies",
+                "the first spell they cast",
+            ),
+            PlayerFilter::ChosenPlayer => (
+                "the chosen player",
+                "casts",
+                "copies",
+                "the first spell they cast",
+            ),
+            PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => (
+                "enchanted player",
+                "casts",
+                "copies",
+                "the first spell they cast",
+            ),
+            PlayerFilter::TaggedPlayer(_) | PlayerFilter::Specific(_) => (
+                "that player",
+                "casts",
+                "copies",
+                "the first spell they cast",
+            ),
+            _ => return None,
+        };
+        Some(format!(
+            "Whenever {actor} {cast_verb} a spell other than {first_spell} each turn or {copy_verb} a spell"
+        ))
     }
 
     fn spell_or_activated_ability_x_cost_display(&self) -> Option<String> {
@@ -956,10 +1169,16 @@ impl TriggerMatcher for OrTrigger {
         if let Some(display) = self.this_or_another_enters_display() {
             return display;
         }
+        if let Some(display) = self.this_or_disjoint_matching_enters_display() {
+            return display;
+        }
         if let Some(display) = self.this_or_another_zone_change_display() {
             return display;
         }
         if let Some(display) = self.battlefield_graveyard_or_exile_display() {
+            return display;
+        }
+        if let Some(display) = self.spell_other_than_first_or_copy_display() {
             return display;
         }
         if let Some(display) = self.you_cast_or_activate_display() {
@@ -980,6 +1199,9 @@ impl TriggerMatcher for OrTrigger {
         if let Some(display) = self.reciprocal_enchanted_opponent_attacks_display() {
             return display;
         }
+        if let Some(display) = self.serial_zone_change_disjunction_display() {
+            return display;
+        }
         let displays: Vec<String> = self.triggers.iter().map(|t| t.display()).collect();
         let mut parts = vec![displays[0].clone()];
         for (idx, d) in displays[1..].iter().enumerate() {
@@ -994,7 +1216,6 @@ impl TriggerMatcher for OrTrigger {
             if self.triggers[idx + 1].intro_surface().is_some()
                 && first_intro.is_some()
                 && next_intro.is_some()
-                && first_intro != next_intro
             {
                 let mut chars = d.chars();
                 let lowered = chars
@@ -1019,7 +1240,11 @@ impl TriggerMatcher for OrTrigger {
         } else {
             " or "
         };
-        parts.join(joiner)
+        if joiner == " or " && parts.len() >= 3 {
+            parts.join(", or ")
+        } else {
+            parts.join(joiner)
+        }
     }
 
     fn uses_snapshot(&self) -> bool {
@@ -1047,6 +1272,25 @@ mod tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn identical_explicit_intros_preserve_repeated_and_surface() {
+        let mut gods = ObjectFilter::default()
+            .with_subtype(crate::types::Subtype::God)
+            .controlled_by(PlayerFilter::You);
+        gods.set_union_one_or_more(true);
+        let trigger = OrTrigger::two(
+            Trigger::attacks_one_or_more(gods)
+                .with_intro_surface(crate::triggers::TriggerIntroSurface::Whenever),
+            Trigger::dies(ObjectFilter::default().with_subtype(crate::types::Subtype::God))
+                .with_intro_surface(crate::triggers::TriggerIntroSurface::Whenever),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever you attack with one or more Gods and whenever a God dies"
+        );
     }
 
     fn etb_event(source_id: ObjectId) -> ZoneChangeEvent {
@@ -1079,6 +1323,31 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever your commander enters or attacks"
+        );
+    }
+
+    #[test]
+    fn display_compacts_matching_named_source_enters_or_attacks() {
+        let surface = crate::target::SourceReferenceSurface::FullName("Kang Prime".to_string());
+        let enters = Trigger::new(
+            ZoneChangeTrigger::this_enters_battlefield().this_surface(surface.clone()),
+        );
+        let attacks = Trigger::attacks(ObjectFilter::source_with_surface(surface.clone()));
+        let trigger = Trigger::or(vec![enters, attacks])
+            .with_intro_surface(crate::triggers::TriggerIntroSurface::Whenever);
+
+        assert_eq!(trigger.display(), "Whenever Kang Prime enters or attacks");
+
+        let changed = Trigger::or(vec![
+            Trigger::new(ZoneChangeTrigger::this_enters_battlefield().this_surface(surface)),
+            Trigger::attacks(ObjectFilter::source_with_surface(
+                crate::target::SourceReferenceSurface::FullName("Other Name".to_string()),
+            )),
+        ])
+        .with_intro_surface(crate::triggers::TriggerIntroSurface::Whenever);
+        assert_eq!(
+            changed.display(),
+            "Whenever Kang Prime enters or Other Name attacks"
         );
     }
 
@@ -1132,6 +1401,28 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "When you attack enchanted opponent or a planeswalker they control or when they attack you or a planeswalker you control"
+        );
+    }
+
+    #[test]
+    fn display_compacts_shared_enchanted_player_cast_or_copy_branches() {
+        let enchanted = PlayerFilter::TaggedPlayer(crate::tag::TagKey::from("enchanted"));
+        let trigger = Trigger::either(
+            Trigger::spell_cast_qualified(
+                None,
+                enchanted.clone(),
+                None,
+                None,
+                Some(2),
+                None,
+                false,
+            ),
+            Trigger::spell_copied(None, enchanted),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever enchanted player casts a spell other than the first spell they cast each turn or copies a spell"
         );
     }
 
@@ -1324,6 +1615,62 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever this artifact or another nontoken artifact you control is put into a graveyard from the battlefield or is put into exile from the battlefield"
+        );
+    }
+
+    #[test]
+    fn display_factors_enters_for_disjoint_source_and_matching_types_without_another() {
+        let source = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(ZonePattern::Any)
+                .to(Zone::Battlefield)
+                .this()
+                .this_surface(crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this enchantment".to_string(),
+                )),
+        );
+        let legendary_creature = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(ZonePattern::Any)
+                .to(Zone::Battlefield)
+                .filter(
+                    ObjectFilter::creature()
+                        .with_supertype(crate::types::Supertype::Legendary)
+                        .controlled_by(PlayerFilter::You),
+                ),
+        );
+
+        assert_eq!(
+            OrTrigger::two(source, legendary_creature).display(),
+            "Whenever this enchantment or a legendary creature you control enters"
+        );
+    }
+
+    #[test]
+    fn display_does_not_factor_overlapping_source_and_matching_types_without_another() {
+        let source = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(ZonePattern::Any)
+                .to(Zone::Battlefield)
+                .this()
+                .this_surface(crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this creature".to_string(),
+                )),
+        );
+        let legendary_creature = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(ZonePattern::Any)
+                .to(Zone::Battlefield)
+                .filter(
+                    ObjectFilter::creature()
+                        .with_supertype(crate::types::Supertype::Legendary)
+                        .controlled_by(PlayerFilter::You),
+                ),
+        );
+
+        assert_ne!(
+            OrTrigger::two(source, legendary_creature).display(),
+            "Whenever this creature or a legendary creature you control enters"
         );
     }
 

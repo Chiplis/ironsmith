@@ -231,13 +231,21 @@ where
             payload.allow_repeat,
         );
         converted.choose_count = payload.choose_count.clone();
+        converted.common_prefix_effects = payload
+            .common_prefix_effects
+            .iter()
+            .cloned()
+            .map(|effect| interpret_effect_model(effect, hooks))
+            .collect::<Result<Vec<_>, _>>()?;
         converted.chooser = payload.chooser.clone();
         converted.min_choose_count = payload.min_choose_count.clone();
         converted.allow_repeated_modes = payload.allow_repeated_modes;
         converted.random = payload.random;
         converted.mode_point_costs = payload.mode_point_costs.clone();
         converted.spree = payload.spree;
+        converted.tiered = payload.tiered;
         converted.mode_additional_mana_costs = payload.mode_additional_mana_costs.clone();
+        converted.common_suffix_effect_count = payload.common_suffix_effect_count;
         converted.disallow_previously_chosen_modes = payload.disallow_previously_chosen_modes;
         converted.disallow_previously_chosen_modes_this_turn =
             payload.disallow_previously_chosen_modes_this_turn;
@@ -271,12 +279,16 @@ where
         ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::IfEffect<M::Effect>>(&effect) {
-        return Ok(Effect::new(crate::effects::IfEffect::new(
-            payload.condition,
-            payload.predicate.clone(),
-            convert_effects(payload.then.iter().cloned(), hooks)?,
-            convert_effects(payload.else_.iter().cloned(), hooks)?,
-        )));
+        return Ok(Effect::new(
+            crate::effects::IfEffect::new(
+                payload.condition,
+                payload.predicate.clone(),
+                convert_effects(payload.then.iter().cloned(), hooks)?,
+                convert_effects(payload.else_.iter().cloned(), hooks)?,
+            )
+            .with_per_player_result(payload.per_player_result)
+            .with_prior_result_replacement_surface(payload.prior_result_replacement_surface),
+        ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::WithIdEffect<M::Effect>>(&effect) {
         return Ok(Effect::with_id(
@@ -326,6 +338,9 @@ where
         }
         if payload.enters_attacking {
             converted = converted.attacking();
+        }
+        if let Some(attack_target_mode) = &payload.attack_target_mode {
+            converted = converted.attack_target_mode(attack_target_mode.clone());
         }
         if payload.suppress_aura_attachment_choice {
             converted = converted.suppress_aura_attachment_choice();
@@ -430,6 +445,15 @@ where
         if payload.leading_duration_surface {
             converted = converted.with_leading_duration_surface();
         }
+        if let Some(prepayment) = &payload.prepayment {
+            converted = converted.unless_paid_before_trigger(
+                prepayment.player.clone(),
+                interpret_core_total_cost_model::<M, H>(prepayment.cost.clone(), hooks)?,
+            );
+        }
+        if payload.event_value_from_prior_prevention {
+            converted = converted.with_prior_prevention_event_value();
+        }
         converted = match payload.duration {
             ironsmith_core::DelayedTriggerDuration::Forever => converted,
             ironsmith_core::DelayedTriggerDuration::EndOfTurn => converted.until_end_of_turn(),
@@ -498,6 +522,8 @@ where
             added_subtypes: payload.added_subtypes.clone(),
             removed_supertypes: payload.removed_supertypes.clone(),
             set_base_power_toughness: payload.set_base_power_toughness,
+            set_base_power_toughness_value: payload.set_base_power_toughness_value.clone(),
+            starting_loyalty: payload.starting_loyalty,
             set_colors: payload.set_colors,
             set_card_types: payload.set_card_types.clone(),
             set_subtypes: payload.set_subtypes.clone(),
@@ -614,7 +640,8 @@ where
             return Err(hooks.unsupported_effect(
                 "destroy-no-regeneration effect without target or filter".to_string(),
             ));
-        };
+        }
+        .with_creature_destroyed_this_way_surface(payload.creature_destroyed_this_way_surface);
         return Ok(Effect::new(converted));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RegenerateEffect<M::Effect>>(&effect) {
@@ -677,6 +704,11 @@ where
         return Ok(converted);
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::RestartGameEffect>(&effect) {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::ReverseTurnOrderEffect>(&effect)
+    {
         return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PlaySubgameEffect<M::Effect>>(&effect)
@@ -820,6 +852,11 @@ where
         return Ok(converted);
     }
     if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::TagTriggeringAttackerEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
         clone_direct_effect::<M, crate::effects::TagTriggeringSourceEffect>(&effect)
     {
         return Ok(converted);
@@ -841,7 +878,7 @@ where
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SequenceEffect<M::Effect>>(&effect) {
         let effects = convert_effects(payload.effects.iter().cloned(), hooks)?;
-        let sequence = match payload.surface {
+        let mut sequence = match payload.surface {
             ironsmith_core::SequenceSurface::Sequential => {
                 crate::effects::SequenceEffect::new(effects)
             }
@@ -861,6 +898,7 @@ where
                 crate::effects::SequenceEffect::result_conjunction(effects, leading_duration)
             }
         };
+        sequence.result_label = payload.result_label.clone();
         return Ok(Effect::new(sequence));
     }
     if let Some(payload) =
@@ -921,10 +959,14 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachTaggedEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(crate::effects::ForEachTaggedEffect::new(
+        let mut converted = crate::effects::ForEachTaggedEffect::new(
             payload.tag.clone(),
             convert_effects(payload.effects.iter().cloned(), hooks)?,
-        )));
+        );
+        if let Some(blocker_tag) = &payload.controller_at_last_blocked_by {
+            converted = converted.with_controller_at_last_blocked_by(blocker_tag.clone());
+        }
+        return Ok(Effect::new(converted));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachControllerOfTaggedEffect<M::Effect>>(&effect)
@@ -1019,6 +1061,13 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<
+        M,
+        crate::effects::ReturnFromGraveyardOrExileToBattlefieldEffect,
+    >(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::ReturnFromGraveyardToHandEffect>(&effect)
     {
@@ -1057,6 +1106,11 @@ where
         return Ok(Effect::new(converted));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::LookAtTopCardsEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::ReorderTopPlanarDeckEffect>(&effect)
     {
         return Ok(converted);
     }
@@ -1129,6 +1183,18 @@ where
             payload.predicate.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<
+        ironsmith_core::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect<M::Effect>,
+    >(&effect)
+    {
+        return Ok(Effect::new(
+            crate::effects::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect::new(
+                payload.player.clone(),
+                payload.cost.clone(),
+                convert_effects(payload.effects.iter().cloned(), hooks)?,
+            ),
+        ));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RepeatProcessPromptEffect>(&effect) {
         return Ok(Effect::new(crate::effects::RepeatProcessPromptEffect::new(
             payload.kind,
@@ -1163,7 +1229,8 @@ where
                 payload.target.clone(),
             )
             .with_source(payload.source.clone())
-            .with_chooser(payload.chooser.clone()),
+            .with_chooser(payload.chooser.clone())
+            .with_distribution(payload.distribution),
         ));
     }
     if let Some(payload) =
@@ -1206,6 +1273,16 @@ where
             effect = effect.reflecting_to_source_controller();
         }
         return Ok(Effect::new(effect));
+    }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::ReplaceNextDamageToTargetEffect<M::Effect>>(&effect)
+    {
+        return Ok(Effect::new(
+            crate::effects::ReplaceNextDamageToTargetEffect::new(
+                payload.target.clone(),
+                convert_effects(payload.replacement_effects.iter().cloned(), hooks)?,
+            ),
+        ));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RedirectNextDamageToTargetEffect>(&effect)
@@ -1348,7 +1425,8 @@ where
             payload.mana_spend_mode,
         )
         .while_on_top_of_library_if(payload.while_on_top_of_library)
-        .cast_pool_is_plural(payload.cast_pool_is_plural);
+        .cast_pool_is_plural(payload.cast_pool_is_plural)
+        .with_max_plays(payload.max_plays);
         if let Some(surface) = payload.surface.clone() {
             grant = grant.with_surface(surface);
         }
@@ -1454,7 +1532,8 @@ where
         let cost = interpret_core_total_cost_model::<M, H>(payload.cost.clone(), hooks)?;
         return Ok(Effect::new(
             crate::effects::UnlessPaysEffect::new_total_cost(effects, payload.player.clone(), cost)
-                .with_leading_surface(payload.leading_surface),
+                .with_leading_surface(payload.leading_surface)
+                .before_delayed_step(payload.before_delayed_step),
         ));
     }
     if let Some(payload) =
@@ -1483,6 +1562,9 @@ where
         .with_counters(payload.counters.clone());
         if let Some(placement) = payload.library_placement {
             converted = converted.with_library_placement(placement);
+        }
+        if let Some(follow_up) = payload.linked_exile_follow_up {
+            converted = converted.with_linked_exile_follow_up(follow_up);
         }
         if payload.optional {
             converted.optional = true;
@@ -1521,6 +1603,16 @@ where
         return Ok(converted);
     }
     if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterEnterTappedReplacementEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterNextBatchEnterWithCountersEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RegisterManaReplacementEffect>(&effect)
     {
         return Ok(converted);
@@ -1550,8 +1642,10 @@ where
             payload.target.clone(),
         )));
     }
-    if M::downcast_ref::<ironsmith_core::OpenAttractionEffect>(&effect).is_some() {
-        return Ok(Effect::new(crate::effects::OpenAttractionEffect::new()));
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::OpenAttractionEffect>(&effect) {
+        return Ok(Effect::new(
+            crate::effects::OpenAttractionEffect::new().with_reminder(payload.reminder),
+        ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::AdaptEffect>(&effect) {
         return Ok(Effect::new(crate::effects::AdaptEffect::new(
@@ -1643,10 +1737,12 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseCreatureTypeEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::ChooseCreatureTypeEffect::new(
+        let mut runtime = crate::effects::ChooseCreatureTypeEffect::for_family(
             payload.chooser.clone(),
-            payload.excluded_subtypes.clone(),
-        )));
+            payload.family,
+        );
+        runtime.excluded_subtypes = payload.excluded_subtypes.clone();
+        return Ok(Effect::new(runtime));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::FlipCoinEffect>(&effect) {
         let mut runtime = match payload.kind {
@@ -2021,6 +2117,7 @@ where
         crate::effects::SearchLibrarySlotsEffect,
         crate::effects::SoulbondPairEffect,
         crate::effects::TagMatchingObjectsEffect,
+        crate::effects::TagOtherBlockParticipantEffect,
         crate::effects::TargetOnlyEffect,
         crate::effects::TapEffect,
         crate::effects::UntapEffect,

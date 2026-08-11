@@ -38,6 +38,11 @@ fn setup_three_player_game() -> GameState {
     )
 }
 
+mod activated_counter_removal_damage;
+#[cfg(ironsmith_runtime_parser_tests)]
+mod coordinated_draw_token_trigger;
+#[cfg(ironsmith_runtime_parser_tests)]
+mod quantified_player_sequence_execution;
 mod shard_00;
 mod shard_01;
 mod shard_02;
@@ -58,4 +63,6 @@ mod shard_16;
 mod shard_17;
 mod shard_18;
 mod shard_19;
+mod source_linked_exile_permissions;
+mod target_announcement_conditions;
 mod valkyries_call;

@@ -2,6 +2,7 @@
 
 use super::battlefield_entry::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
+    resolve_battlefield_entry_counters,
 };
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::EffectExecutor;
@@ -35,6 +36,25 @@ pub use ironsmith_core::PutOntoBattlefieldEffect;
 /// );
 /// ```
 impl EffectExecutor for PutOntoBattlefieldEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        // A tagged result set was already fixed by an earlier action.  Defer
+        // the battlefield move so quantified-player sequences can finish the
+        // action for every player before beginning the next one (Living
+        // Death/Living End/Scrap Mastery).
+        matches!(self.target.base(), ChooseSpec::Tagged(_))
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
+            effect: crate::effect::Effect::new(self.clone()),
+            iterated_player: ctx.iteration.iterated_player,
+        }))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -48,26 +68,34 @@ impl EffectExecutor for PutOntoBattlefieldEffect {
 
         let entries = object_ids
             .into_iter()
-            .filter_map(|object_id| {
-                game.object(object_id).map(|object| {
-                    (
-                        object_id,
-                        OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(
-                            object, game,
-                        )),
-                    )
-                })
+            .map(|object_id| {
+                let Some(object) = game.object(object_id) else {
+                    return Ok(None);
+                };
+                let memory =
+                    OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(object, game));
+                let counters = resolve_battlefield_entry_counters(
+                    game,
+                    ctx,
+                    object_id,
+                    &self.enters_with_counters,
+                )?;
+                Ok(Some((object_id, memory, counters)))
             })
+            .collect::<Result<Vec<_>, ExecutionError>>()?
+            .into_iter()
+            .flatten()
             .collect::<Vec<_>>();
         let outcomes = move_to_battlefield_batch_with_options(
             game,
             ctx,
             entries
                 .iter()
-                .map(|(object, _)| {
+                .map(|(object, _, counters)| {
                     (
                         *object,
-                        BattlefieldEntryOptions::specific(controller_id, self.tapped),
+                        BattlefieldEntryOptions::specific(controller_id, self.tapped)
+                            .with_initial_counters(counters.clone()),
                     )
                 })
                 .collect(),
@@ -76,7 +104,7 @@ impl EffectExecutor for PutOntoBattlefieldEffect {
         let mut moved_ids = Vec::new();
         let mut affected_memory = Vec::new();
         let mut prevented = false;
-        for ((_, memory), outcome) in entries.into_iter().zip(outcomes) {
+        for ((_, memory, _), outcome) in entries.into_iter().zip(outcomes) {
             match outcome {
                 BattlefieldEntryOutcome::Moved(new_id) => {
                     moved_ids.push(new_id);
@@ -224,6 +252,39 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn put_onto_battlefield_applies_initial_counters_during_entry() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature_in_library(&mut game, "Stunned Arrival", alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)]);
+
+        let effect = PutOntoBattlefieldEffect::you_control(
+            ChooseSpec::Object(ObjectFilter::creature()),
+            true,
+        )
+        .with_entry_counter(ironsmith_core::BattlefieldEntryCounterSpec::new(
+            crate::object::CounterType::Stun,
+            crate::effect::Value::Fixed(1),
+            ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+        ));
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("expected moved object result");
+        };
+        let [entered] = ids.as_slice() else {
+            panic!("expected exactly one entered object");
+        };
+
+        assert!(game.is_tapped(*entered));
+        assert_eq!(
+            game.counter_count(*entered, crate::object::CounterType::Stun),
+            1
+        );
     }
 
     #[test]

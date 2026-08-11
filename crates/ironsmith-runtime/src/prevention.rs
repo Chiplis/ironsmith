@@ -187,6 +187,10 @@ pub struct PreventionEffectManager {
 
     /// Follow-ups produced by shields selected in the unified CR 616 loop.
     pending_follow_ups: Vec<PendingPreventionFollowUp>,
+
+    /// Damage actually prevented by each shield. Entries outlive exhausted
+    /// shields so delayed "prevented this way" effects can read the total.
+    prevented_totals: HashMap<PreventionShieldId, u32>,
 }
 
 /// A follow-up to run after a prevention shield is applied to damage.
@@ -239,6 +243,17 @@ impl PreventionEffectManager {
         self.current_turn
     }
 
+    /// Total damage actually prevented by one shield so far.
+    pub fn prevented_by_shield(&self, id: PreventionShieldId) -> u32 {
+        self.prevented_totals.get(&id).copied().unwrap_or(0)
+    }
+
+    fn record_prevented(&mut self, id: PreventionShieldId, amount: u32) {
+        if amount > 0 {
+            *self.prevented_totals.entry(id).or_default() += amount;
+        }
+    }
+
     /// Apply one specifically chosen shield to a damage amount.
     pub fn apply_chosen_shield(
         &mut self,
@@ -273,6 +288,7 @@ impl PreventionEffectManager {
         } else {
             Vec::new()
         };
+        self.record_prevented(id, prevented);
         if can_prevent {
             self.cleanup_exhausted();
         }
@@ -308,6 +324,7 @@ impl PreventionEffectManager {
         shield.id = id;
         shield.created_turn = self.current_turn;
         self.shields.push(shield);
+        self.prevented_totals.insert(id, 0);
         id
     }
 
@@ -330,6 +347,29 @@ impl PreventionEffectManager {
     pub fn cleanup_end_of_turn(&mut self) {
         self.shields
             .retain(|s| !matches!(s.duration, Until::EndOfTurn));
+        let active = self
+            .shields
+            .iter()
+            .map(|shield| shield.id)
+            .collect::<Vec<_>>();
+        self.prevented_totals.retain(|id, _| active.contains(id));
+    }
+
+    /// Clean up end-of-turn shields while preserving metrics referenced by
+    /// delayed registrations that have not fired yet.
+    pub fn cleanup_end_of_turn_retaining_metrics(
+        &mut self,
+        retained_metrics: &std::collections::HashSet<PreventionShieldId>,
+    ) {
+        self.shields
+            .retain(|s| !matches!(s.duration, Until::EndOfTurn));
+        let active = self
+            .shields
+            .iter()
+            .map(|shield| shield.id)
+            .collect::<Vec<_>>();
+        self.prevented_totals
+            .retain(|id, _| active.contains(id) || retained_metrics.contains(id));
     }
 
     /// Set the current turn number.
@@ -455,11 +495,13 @@ impl PreventionEffectManager {
                 break;
             }
 
+            let mut prevented_by_shield = 0;
             if let Some(shield) = self.get_shield_mut(id)
                 && can_be_prevented
             {
                 // Normal prevention - reduce damage and consume shield
                 let prevented = shield.reduce(remaining);
+                prevented_by_shield = prevented;
                 remaining -= prevented;
                 if prevented > 0 && !shield.follow_up_effects.is_empty() {
                     follow_ups.push(PreventionFollowUp {
@@ -472,6 +514,7 @@ impl PreventionEffectManager {
                     });
                 }
             }
+            self.record_prevented(id, prevented_by_shield);
             // If can't be prevented: shield is "applied" but doesn't prevent
             // and doesn't get consumed (per Rule 615.12)
         }
@@ -557,10 +600,12 @@ impl PreventionEffectManager {
                 break;
             }
 
+            let mut prevented_by_shield = 0;
             if let Some(shield) = self.get_shield_mut(id)
                 && can_be_prevented
             {
                 let prevented = shield.reduce(remaining);
+                prevented_by_shield = prevented;
                 remaining -= prevented;
                 if prevented > 0 && !shield.follow_up_effects.is_empty() {
                     follow_ups.push(PreventionFollowUp {
@@ -573,6 +618,7 @@ impl PreventionEffectManager {
                     });
                 }
             }
+            self.record_prevented(id, prevented_by_shield);
         }
 
         // Clean up exhausted shields
@@ -622,6 +668,48 @@ mod tests {
         assert_eq!(prevented, 2);
         assert_eq!(shield.amount_remaining, Some(0));
         assert!(shield.is_exhausted());
+    }
+
+    #[test]
+    fn prevention_manager_accumulates_actual_amount_after_shield_exhaustion() {
+        let mut manager = PreventionEffectManager::new();
+        let shield_id = manager.add_shield(PreventionShield::prevent_next_n(
+            ObjectId::from_raw(1),
+            PlayerId::from_index(0),
+            PreventionTarget::You,
+            3,
+        ));
+
+        let first = manager.apply_chosen_shield(shield_id, 1, true, None);
+        assert_eq!(first.remaining, 0);
+        assert_eq!(manager.prevented_by_shield(shield_id), 1);
+
+        let second = manager.apply_chosen_shield(shield_id, 4, true, None);
+        assert_eq!(second.remaining, 2);
+        assert!(
+            manager.shields().is_empty(),
+            "the shield should be exhausted"
+        );
+        assert_eq!(
+            manager.prevented_by_shield(shield_id),
+            3,
+            "the delayed metric must survive removal of the exhausted shield"
+        );
+
+        let retained = std::collections::HashSet::from([shield_id]);
+        manager.cleanup_end_of_turn_retaining_metrics(&retained);
+        assert_eq!(
+            manager.prevented_by_shield(shield_id),
+            3,
+            "a pending delayed trigger must retain the metric across cleanup"
+        );
+
+        manager.cleanup_end_of_turn_retaining_metrics(&std::collections::HashSet::new());
+        assert_eq!(
+            manager.prevented_by_shield(shield_id),
+            0,
+            "the metric should be released once no delayed trigger references it"
+        );
     }
 
     #[test]

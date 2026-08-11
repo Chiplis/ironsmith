@@ -170,14 +170,29 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Surveil => parse_surveil(tokens, subject),
         Verb::Shuffle => parse_shuffle(tokens, subject),
         Verb::Reorder => parse_reorder(tokens, subject),
+        Verb::Reverse => parse_reverse(tokens),
         Verb::Pay => parse_pay(tokens, subject),
         Verb::Take => parse_take(tokens, subject),
         Verb::Detain => parse_detain(tokens),
+        Verb::Assign => Err(CardTextError::ParseError(format!(
+            "unsupported generic assign clause (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        ))),
         Verb::Goad => parse_goad(tokens),
         Verb::Suspect => parse_suspect(tokens),
         Verb::Note => parse_note(tokens),
         Verb::End => parse_end(tokens, subject),
     }
+}
+
+fn parse_reverse(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if resource_grammar::parse_resource_reverse_turn_order_shape(tokens) {
+        return Ok(EffectAst::subject_verb_reverse_turn_order());
+    }
+    Err(CardTextError::ParseError(format!(
+        "unsupported reverse clause: '{}'",
+        crate::runtime_backend::token_word_refs(tokens).join(" ")
+    )))
 }
 
 fn parse_note(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -500,20 +515,24 @@ fn parse_chosen_name_goad_target(
         return Ok(None);
     };
     let mut target = parse_target_phrase(shape.base_tokens)?;
-    add_chosen_name_constraint_to_target(&mut target);
+    add_chosen_name_constraint_to_target(&mut target, shape.chosen_name_source);
     Ok(Some(target))
 }
 
-fn add_chosen_name_constraint_to_target(target: &mut TargetAst) {
+fn add_chosen_name_constraint_to_target(
+    target: &mut TargetAst,
+    chosen_name_source: ironsmith_core::ChosenNameSourceSurface,
+) {
     match target {
         TargetAst::Object(filter, _, _) => {
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: TagKey::from("__chosen_name__"),
                 relation: TaggedOpbjectRelation::SameNameAsTagged,
             });
+            filter.set_chosen_name_source_surface(Some(chosen_name_source));
         }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
-            add_chosen_name_constraint_to_target(inner);
+            add_chosen_name_constraint_to_target(inner, chosen_name_source);
         }
         _ => {}
     }

@@ -16,6 +16,36 @@ pub struct ThisBlocksObjectTrigger {
     pub min_blocked_objects: Option<usize>,
 }
 
+fn with_indefinite_article(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return "a permanent".to_string();
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("a ")
+        || lower.starts_with("an ")
+        || lower.starts_with("the ")
+        || lower.starts_with("another ")
+        || lower.starts_with("each ")
+        || lower.starts_with("all ")
+        || lower.starts_with("this ")
+        || lower.starts_with("that ")
+        || lower.starts_with("those ")
+        || lower.starts_with("target ")
+        || lower.starts_with("any ")
+        || lower.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+    {
+        return trimmed.to_string();
+    }
+    let first = trimmed.chars().next().unwrap_or('a').to_ascii_lowercase();
+    let article = if matches!(first, 'a' | 'e' | 'i' | 'o' | 'u') {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {trimmed}")
+}
+
 impl ThisBlocksObjectTrigger {
     pub fn new(blocked_filter: ObjectFilter) -> Self {
         Self {
@@ -103,9 +133,10 @@ impl TriggerMatcher for ThisBlocksObjectTrigger {
                 .unwrap_or_else(|| minimum.to_string());
             return format!("Whenever this creature blocks {minimum} or more {subject}");
         }
+        let description = self.blocked_filter.description();
         format!(
             "Whenever this creature blocks {}",
-            self.blocked_filter.description()
+            with_indefinite_article(&description)
         )
     }
 

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use manabrew_protocol::game::{
-    CardDto, CardIdentity, CardView, CombatAssignmentDto, DayTime, GameViewDto, ManaColor,
+    CardDto, CardIdentity, CardView, CombatAssignmentDto, DayTime, GameViewDto, Mana, ManaColor,
     PlayerCounterKind, PlayerDto, PlayerStatus, StackObjectDto, StepKind, ZoneDto, ZoneKind,
 };
 use manabrew_protocol::prompts::choose_attackers::AttackerOptionDto;
@@ -67,7 +67,6 @@ enum ManabrewResponseAction {
         input: PromptInput,
         binding: ManabrewPromptBinding,
     },
-    Cancel,
 }
 
 const MANABREW_TEXT_OPTIONS_PER_PROMPT: usize = 100;
@@ -438,6 +437,192 @@ fn color_code(color: Color) -> &'static str {
     }
 }
 
+fn manabrew_mana_pool_entries(pool: &ironsmith::player::ManaPool) -> Vec<Mana> {
+    [
+        (ManaColor::White, pool.white),
+        (ManaColor::Blue, pool.blue),
+        (ManaColor::Black, pool.black),
+        (ManaColor::Red, pool.red),
+        (ManaColor::Green, pool.green),
+        (ManaColor::Colorless, pool.colorless),
+    ]
+    .into_iter()
+    .filter(|(_, amount)| *amount > 0)
+    .map(|(color, amount)| Mana {
+        color,
+        amount: amount.min(i32::MAX as u32) as i32,
+    })
+    .collect()
+}
+
+fn manabrew_replan_command(
+    mut preferences: ironsmith::mana_payment::ManaPaymentPreferences,
+) -> ManaPaymentCommand {
+    preferences.normalize();
+    ManaPaymentCommand::Replan {
+        required_source_ids: preferences
+            .required_sources
+            .into_iter()
+            .map(|source| source.0.to_string())
+            .collect(),
+        required_activations: preferences
+            .required_activations
+            .into_iter()
+            .map(|activation| ManaPaymentActivationCommand {
+                source_id: activation.source.0.to_string(),
+                ability_index: activation.ability_index,
+                color_restriction: activation.color_restriction.map(|colors| {
+                    colors
+                        .into_iter()
+                        .map(|color| color.name().to_string())
+                        .collect()
+                }),
+            })
+            .collect(),
+        required_alternatives: preferences
+            .required_alternatives
+            .into_iter()
+            .filter_map(|alternative| {
+                let payment_kind = match alternative.kind {
+                    ironsmith::mana_payment::ManaPaymentSourceKind::Convoke => "convoke",
+                    ironsmith::mana_payment::ManaPaymentSourceKind::Improvise => "improvise",
+                    ironsmith::mana_payment::ManaPaymentSourceKind::ManaAbility => return None,
+                };
+                Some(ManaPaymentAlternativeCommand {
+                    source_id: alternative.source.0.to_string(),
+                    payment_kind: payment_kind.to_string(),
+                })
+            })
+            .collect(),
+        excluded_source_ids: preferences
+            .excluded_sources
+            .into_iter()
+            .map(|source| source.0.to_string())
+            .collect(),
+        preserved_source_ids: preferences
+            .preserve_sources
+            .into_iter()
+            .map(|source| source.0.to_string())
+            .collect(),
+        prefer_life: preferences.prefer_life,
+    }
+}
+
+fn selected_activation_matches(
+    selected: &ironsmith::mana_payment::RequiredManaActivation,
+    option: &ironsmith::mana_payment::ManaPaymentActivationOption,
+) -> bool {
+    selected.source == option.source
+        && selected.ability_index == option.ability_index
+        && selected.color_restriction == option.color_restriction
+}
+
+fn selected_alternative_matches(
+    selected: &ironsmith::mana_payment::RequiredAlternativePayment,
+    source: ObjectId,
+    kind: ironsmith::mana_payment::ManaPaymentSourceKind,
+) -> bool {
+    selected.source == source && selected.kind == kind
+}
+
+fn manabrew_plan_is_fully_selected(
+    context: &ironsmith::decisions::context::ManaPaymentContext,
+) -> bool {
+    let preferences = &context.request.preferences;
+    let mut matched_activations = vec![false; preferences.required_activations.len()];
+    let activations_selected = context.plan.mana_ability_steps.iter().all(|step| {
+        let Some((index, _)) =
+            preferences
+                .required_activations
+                .iter()
+                .enumerate()
+                .find(|(index, selected)| {
+                    !matched_activations[*index]
+                        && selected.source == step.source
+                        && selected.ability_index == step.ability_index
+                        && selected.color_restriction == step.color_restriction
+                })
+        else {
+            return false;
+        };
+        matched_activations[index] = true;
+        true
+    });
+    activations_selected
+        && context
+            .plan
+            .allocations
+            .iter()
+            .all(|allocation| match allocation.payment {
+                ironsmith::mana_payment::PlannedPipPayment::Mana(_) => true,
+                ironsmith::mana_payment::PlannedPipPayment::Life(_) => preferences.prefer_life,
+                ironsmith::mana_payment::PlannedPipPayment::Convoke(source) => {
+                    preferences.required_alternatives.iter().any(|selected| {
+                        selected_alternative_matches(
+                            selected,
+                            source,
+                            ironsmith::mana_payment::ManaPaymentSourceKind::Convoke,
+                        )
+                    })
+                }
+                ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => {
+                    preferences.required_alternatives.iter().any(|selected| {
+                        selected_alternative_matches(
+                            selected,
+                            source,
+                            ironsmith::mana_payment::ManaPaymentSourceKind::Improvise,
+                        )
+                    })
+                }
+                ironsmith::mana_payment::PlannedPipPayment::Assist { .. } => false,
+            })
+}
+
+fn manabrew_remaining_mana_cost(
+    context: &ironsmith::decisions::context::ManaPaymentContext,
+) -> String {
+    let preferences = &context.request.preferences;
+    context
+        .plan
+        .allocations
+        .iter()
+        .filter(|allocation| match allocation.payment {
+            ironsmith::mana_payment::PlannedPipPayment::Mana(_) => true,
+            ironsmith::mana_payment::PlannedPipPayment::Life(_) => !preferences.prefer_life,
+            ironsmith::mana_payment::PlannedPipPayment::Convoke(source) => {
+                !preferences.required_alternatives.iter().any(|selected| {
+                    selected_alternative_matches(
+                        selected,
+                        source,
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Convoke,
+                    )
+                })
+            }
+            ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => {
+                !preferences.required_alternatives.iter().any(|selected| {
+                    selected_alternative_matches(
+                        selected,
+                        source,
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Improvise,
+                    )
+                })
+            }
+            ironsmith::mana_payment::PlannedPipPayment::Assist { .. } => true,
+        })
+        .map(|allocation| {
+            format!(
+                "{{{}}}",
+                allocation
+                    .alternatives
+                    .iter()
+                    .map(mana_symbol_display_code)
+                    .collect::<Vec<_>>()
+                    .join("/")
+            )
+        })
+        .collect()
+}
+
 fn protocol_step(game: &GameState) -> StepKind {
     use ironsmith::game_state::{Phase, Step};
     match (game.turn.phase, game.turn.step) {
@@ -778,11 +963,62 @@ impl WasmGame {
         zones
     }
 
+    fn manabrew_projected_payment_state(
+        &self,
+        player: PlayerId,
+    ) -> Option<(ironsmith::player::ManaPool, i32)> {
+        let Some(DecisionContext::ManaPayment(context)) = self.pending_decision.as_ref() else {
+            return None;
+        };
+        if context.request.payer != player {
+            return None;
+        }
+        let mut pool = context.plan.pool_before.clone();
+        let mut selected = context.request.preferences.required_activations.clone();
+        let mut selected_prefix = true;
+        for step in &context.plan.mana_ability_steps {
+            let Some(index) = selected.iter().position(|activation| {
+                activation.source == step.source
+                    && activation.ability_index == step.ability_index
+                    && activation.color_restriction == step.color_restriction
+            }) else {
+                selected_prefix = false;
+                continue;
+            };
+            selected.remove(index);
+            if selected_prefix {
+                pool = step.expected_pool_after.clone();
+            } else {
+                pool.white = pool.white.saturating_add(step.expected_mana.white);
+                pool.blue = pool.blue.saturating_add(step.expected_mana.blue);
+                pool.black = pool.black.saturating_add(step.expected_mana.black);
+                pool.red = pool.red.saturating_add(step.expected_mana.red);
+                pool.green = pool.green.saturating_add(step.expected_mana.green);
+                pool.colorless = pool.colorless.saturating_add(step.expected_mana.colorless);
+            }
+        }
+        let life_paid = if context.request.preferences.prefer_life {
+            context.plan.life_to_pay.min(i32::MAX as u32) as i32
+        } else {
+            0
+        };
+        let life = self
+            .game
+            .player(player)
+            .map(|player| player.life.saturating_sub(life_paid))?;
+        Some((pool, life))
+    }
+
     fn manabrew_players(&self) -> Vec<PlayerDto> {
         self.game
             .players
             .iter()
             .map(|player| {
+                let projected = self.manabrew_projected_payment_state(player.id);
+                let mana_pool_view = projected
+                    .as_ref()
+                    .map(|(pool, _)| pool)
+                    .unwrap_or(&player.mana_pool);
                 let mut counters = BTreeMap::new();
                 if player.poison_counters > 0 {
                     counters.insert(PlayerCounterKind::Poison, player.poison_counters);
@@ -807,12 +1043,12 @@ impl WasmGame {
                     }
                 }
                 let mana_pool = [
-                    (ManaColor::White, player.mana_pool.white),
-                    (ManaColor::Blue, player.mana_pool.blue),
-                    (ManaColor::Black, player.mana_pool.black),
-                    (ManaColor::Red, player.mana_pool.red),
-                    (ManaColor::Green, player.mana_pool.green),
-                    (ManaColor::Colorless, player.mana_pool.colorless),
+                    (ManaColor::White, mana_pool_view.white),
+                    (ManaColor::Blue, mana_pool_view.blue),
+                    (ManaColor::Black, mana_pool_view.black),
+                    (ManaColor::Red, mana_pool_view.red),
+                    (ManaColor::Green, mana_pool_view.green),
+                    (ManaColor::Colorless, mana_pool_view.colorless),
                 ]
                 .into_iter()
                 .collect();
@@ -836,7 +1072,7 @@ impl WasmGame {
                         .get(player.id.index())
                         .copied()
                         .unwrap_or(true),
-                    life: player.life,
+                    life: projected.map(|(_, life)| life).unwrap_or(player.life),
                     counters,
                     mana_pool,
                     commander_damage,
@@ -959,8 +1195,11 @@ impl WasmGame {
                 | SpecialAction::ActivateManaAbility { permanent_id, .. } => Some(*permanent_id),
                 SpecialAction::UnlockRoomDoor { room_id } => Some(*room_id),
                 SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => Some(*conspiracy_id),
-                SpecialAction::IgnoreAttachedRestriction { source_id, .. } => Some(*source_id),
-                SpecialAction::RollPlanarDie => None,
+                SpecialAction::IgnoreAttachedRestriction { source_id, .. }
+                | SpecialAction::IgnoreSourceEffect { source_id, .. } => Some(*source_id),
+                SpecialAction::RollPlanarDie
+                | SpecialAction::PayDelayedTrigger { .. }
+                | SpecialAction::PerformRepeatableManaPaymentAction { .. } => None,
             },
             LegalAction::PassPriority
             | LegalAction::KeepOpeningHand
@@ -1231,6 +1470,227 @@ impl WasmGame {
         ))
     }
 
+    fn manabrew_payment_actions(
+        &self,
+        context: &ironsmith::decisions::context::ManaPaymentContext,
+    ) -> (
+        Vec<PaymentAction>,
+        HashMap<String, ManaPaymentCommand>,
+        bool,
+    ) {
+        let mut payment_actions = Vec::new();
+        let mut commands = HashMap::new();
+        let mut next_action_id = 0usize;
+        let mut add_action =
+            |kind: PaymentActionKind,
+             preferences: ironsmith::mana_payment::ManaPaymentPreferences| {
+                let id = format!("payment-action-{next_action_id}");
+                next_action_id += 1;
+                commands.insert(id.clone(), manabrew_replan_command(preferences));
+                payment_actions.push(PaymentAction { id, kind });
+            };
+
+        let activation_inventory = ironsmith::mana_payment::mana_payment_activation_inventory(
+            &self.game,
+            &context.request,
+        );
+        for option in &activation_inventory {
+            let selected_index = context
+                .request
+                .preferences
+                .required_activations
+                .iter()
+                .position(|selected| selected_activation_matches(selected, option));
+            let source_has_blocking_activation = context
+                .request
+                .preferences
+                .required_activations
+                .iter()
+                .filter(|selected| selected.source == option.source)
+                .any(|selected| {
+                    activation_inventory
+                        .iter()
+                        .find(|candidate| selected_activation_matches(selected, candidate))
+                        .is_none_or(|candidate| !candidate.repeatable)
+                });
+            let source_has_selected_alternative = context
+                .request
+                .preferences
+                .required_alternatives
+                .iter()
+                .any(|selected| selected.source == option.source);
+            let has_specific_color_action = activation_inventory.iter().any(|candidate| {
+                candidate.source == option.source
+                    && candidate.ability_index == option.ability_index
+                    && candidate.color_restriction.is_some()
+            });
+            if source_has_selected_alternative
+                || (source_has_blocking_activation && selected_index.is_none())
+                || (option.color_restriction.is_none() && has_specific_color_action)
+            {
+                continue;
+            }
+
+            let card_id = object_id(&self.game, option.source);
+            let source_name = self
+                .game
+                .object(option.source)
+                .map(|object| object.name.to_string())
+                .unwrap_or_else(|| format!("Mana source #{}", option.source.0));
+            if let Some(selected_index) = selected_index {
+                let mut preferences = context.request.preferences.clone();
+                preferences.required_activations.remove(selected_index);
+                add_action(
+                    PaymentActionKind::UndoMana {
+                        card_id: card_id.clone(),
+                    },
+                    preferences,
+                );
+            }
+            if selected_index.is_none() || option.repeatable {
+                let mut preferences = context.request.preferences.clone();
+                preferences
+                    .excluded_sources
+                    .retain(|source| *source != option.source);
+                preferences.required_activations.push(
+                    ironsmith::mana_payment::RequiredManaActivation {
+                        source: option.source,
+                        ability_index: option.ability_index,
+                        color_restriction: option.color_restriction.clone(),
+                    },
+                );
+                let produced_mana = manabrew_mana_pool_entries(&option.expected_mana);
+                add_action(
+                    PaymentActionKind::ActivateManaAbility(ActivatableAbilityInfo {
+                        card_id,
+                        ability_index: option.ability_index,
+                        description: source_name,
+                        is_mana_ability: true,
+                        cost: None,
+                        produced_mana: (!produced_mana.is_empty()).then_some(produced_mana),
+                    }),
+                    preferences,
+                );
+            }
+        }
+
+        for source_option in
+            ironsmith::mana_payment::mana_payment_source_inventory(&self.game, &context.request)
+        {
+            let source_has_blocking_activation = context
+                .request
+                .preferences
+                .required_activations
+                .iter()
+                .filter(|selected| selected.source == source_option.source)
+                .any(|selected| {
+                    activation_inventory
+                        .iter()
+                        .find(|candidate| selected_activation_matches(selected, candidate))
+                        .is_none_or(|candidate| !candidate.repeatable)
+                });
+            if source_has_blocking_activation {
+                continue;
+            }
+            let has_convoke = source_option
+                .kinds
+                .contains(&ironsmith::mana_payment::ManaPaymentSourceKind::Convoke);
+            for kind in source_option.kinds.into_iter().filter(|kind| {
+                matches!(
+                    kind,
+                    ironsmith::mana_payment::ManaPaymentSourceKind::Convoke
+                        | ironsmith::mana_payment::ManaPaymentSourceKind::Improvise
+                ) && !(*kind == ironsmith::mana_payment::ManaPaymentSourceKind::Improvise
+                    && has_convoke)
+            }) {
+                let selected = context
+                    .request
+                    .preferences
+                    .required_alternatives
+                    .iter()
+                    .find(|selected| {
+                        selected_alternative_matches(selected, source_option.source, kind)
+                    });
+                let source_has_selected_alternative = context
+                    .request
+                    .preferences
+                    .required_alternatives
+                    .iter()
+                    .any(|selected| selected.source == source_option.source);
+                if source_has_selected_alternative && selected.is_none() {
+                    continue;
+                }
+
+                let card_id = object_id(&self.game, source_option.source);
+                let mut preferences = context.request.preferences.clone();
+                if let Some(selected) = selected {
+                    preferences
+                        .required_alternatives
+                        .retain(|candidate| candidate != selected);
+                    let resource = match kind {
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Convoke => {
+                            PaymentResourceKind::Convoke
+                        }
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Improvise => {
+                            PaymentResourceKind::Improvise
+                        }
+                        ironsmith::mana_payment::ManaPaymentSourceKind::ManaAbility => continue,
+                    };
+                    add_action(
+                        PaymentActionKind::ReleaseResource { card_id, resource },
+                        preferences,
+                    );
+                } else {
+                    preferences
+                        .excluded_sources
+                        .retain(|source| *source != source_option.source);
+                    preferences.required_alternatives.push(
+                        ironsmith::mana_payment::RequiredAlternativePayment {
+                            source: source_option.source,
+                            kind,
+                        },
+                    );
+                    let resource = match kind {
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Convoke => {
+                            PaymentResourceKind::Convoke
+                        }
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Improvise => {
+                            PaymentResourceKind::Improvise
+                        }
+                        ironsmith::mana_payment::ManaPaymentSourceKind::ManaAbility => continue,
+                    };
+                    add_action(
+                        PaymentActionKind::UseResource { card_id, resource },
+                        preferences,
+                    );
+                }
+            }
+        }
+
+        if !context.request.preferences.prefer_life {
+            let mut life_request = context.request.clone();
+            life_request.preferences.prefer_life = true;
+            if let Ok(life_plans) =
+                ironsmith::mana_payment::plan_mana_payment(&self.game, &life_request)
+                && let Some(life_plan) = life_plans.first()
+                && life_plan.life_to_pay > 0
+            {
+                add_action(
+                    PaymentActionKind::PayLife {
+                        amount: life_plan.life_to_pay,
+                    },
+                    life_request.preferences,
+                );
+            }
+        }
+
+        (
+            payment_actions,
+            commands,
+            manabrew_plan_is_fully_selected(context),
+        )
+    }
+
     fn build_manabrew_prompt(
         &self,
         context: &DecisionContext,
@@ -1244,6 +1704,52 @@ impl WasmGame {
             )
         };
         match context {
+            DecisionContext::ManaPayment(ctx) => {
+                let source_name = self
+                    .game
+                    .object(ctx.source)
+                    .map(|object| object.name.to_string())
+                    .unwrap_or_else(|| ctx.subject.clone());
+                let source_id = object_id(&self.game, ctx.source);
+                let (actions, action_commands, can_confirm_manually) =
+                    self.manabrew_payment_actions(ctx);
+                let selected_action_count = ctx.request.preferences.required_activations.len()
+                    + ctx.request.preferences.required_alternatives.len()
+                    + usize::from(ctx.request.preferences.prefer_life);
+                Ok((
+                    PromptInput::PayManaCost(PayManaCostInput {
+                        presentation: presentation(
+                            "Pay mana",
+                            Some(format!(
+                                "Selected {selected_action_count} payment action(s); the current authoritative plan uses {} action(s).",
+                                ctx.plan.mana_ability_steps.len()
+                                    + ctx
+                                        .plan
+                                        .allocations
+                                        .iter()
+                                        .filter(|allocation| matches!(
+                                            allocation.payment,
+                                            ironsmith::mana_payment::PlannedPipPayment::Convoke(_)
+                                                | ironsmith::mana_payment::PlannedPipPayment::Improvise(_)
+                                        ))
+                                        .count()
+                            )),
+                            Some(source_id.clone()),
+                        ),
+                        card_id: source_id,
+                        card_name: source_name,
+                        mana_cost: manabrew_remaining_mana_cost(ctx),
+                        can_confirm_from_pool: can_confirm_manually,
+                        actions,
+                    }),
+                    ManabrewPromptBinding::AuthoritativePayment {
+                        plan_id: ctx.plan.id.to_string(),
+                        request_hash: ctx.plan.request_hash.to_string(),
+                        actions: action_commands,
+                        can_confirm_manually,
+                    },
+                ))
+            }
             DecisionContext::Priority(ctx) => {
                 let keep_index = ctx
                     .actions
@@ -1335,109 +1841,6 @@ impl WasmGame {
             )),
             DecisionContext::SelectOptions(ctx) => {
                 let legal: Vec<_> = ctx.options.iter().filter(|option| option.legal).collect();
-                if ctx.description.to_ascii_lowercase().contains("mana pip") {
-                    let mut actions = HashMap::new();
-                    let mut payment_actions = Vec::new();
-                    let mut pay_index = None;
-                    for option in &legal {
-                        let Some(pending) = self.priority_state.pending_cast.as_ref() else {
-                            break;
-                        };
-                        let Some(payment) = pending
-                            .current_pip_payment_options
-                            .iter()
-                            .find(|payment| payment.index == option.index)
-                        else {
-                            continue;
-                        };
-                        use ironsmith::decision::{AlternativePaymentEffect, ManaPipPaymentAction};
-                        match &payment.action {
-                            ManaPipPaymentAction::UseFromPool(_) => pay_index = Some(option.index),
-                            ManaPipPaymentAction::ActivateManaAbility {
-                                source_id,
-                                ability_index,
-                            } => {
-                                let id = format!("payment-{}", option.index);
-                                actions.insert(id.clone(), option.index);
-                                payment_actions.push(PaymentAction {
-                                    id,
-                                    kind: PaymentActionKind::ActivateManaAbility(
-                                        ActivatableAbilityInfo {
-                                            card_id: object_id(&self.game, *source_id),
-                                            ability_index: *ability_index,
-                                            description: option.description.clone(),
-                                            is_mana_ability: true,
-                                            cost: None,
-                                            produced_mana: None,
-                                        },
-                                    ),
-                                });
-                            }
-                            ManaPipPaymentAction::PayLife(amount) => {
-                                let id = format!("payment-{}", option.index);
-                                actions.insert(id.clone(), option.index);
-                                payment_actions.push(PaymentAction {
-                                    id,
-                                    kind: PaymentActionKind::PayLife { amount: *amount },
-                                });
-                            }
-                            ManaPipPaymentAction::PayViaAlternative {
-                                permanent_id,
-                                effect,
-                            } => {
-                                let id = format!("payment-{}", option.index);
-                                actions.insert(id.clone(), option.index);
-                                payment_actions.push(PaymentAction {
-                                    id,
-                                    kind: PaymentActionKind::UseResource {
-                                        card_id: object_id(&self.game, *permanent_id),
-                                        resource: match effect {
-                                            AlternativePaymentEffect::Convoke => {
-                                                PaymentResourceKind::Convoke
-                                            }
-                                            AlternativePaymentEffect::Improvise => {
-                                                PaymentResourceKind::Improvise
-                                            }
-                                        },
-                                    },
-                                });
-                            }
-                        }
-                    }
-                    if pay_index.is_some() || !payment_actions.is_empty() {
-                        let source_id = ctx.source.unwrap_or(ObjectId::from_raw(0));
-                        let view = self.current_mana_payment_view();
-                        return Ok((
-                            PromptInput::PayManaCost(PayManaCostInput {
-                                presentation: presentation(
-                                    "Pay mana",
-                                    Some(ctx.description.clone()),
-                                    source.clone(),
-                                ),
-                                card_id: object_id(&self.game, source_id),
-                                card_name: view
-                                    .as_ref()
-                                    .map(|view| view.source_name.clone())
-                                    .unwrap_or_else(|| ctx.description.clone()),
-                                mana_cost: view
-                                    .as_ref()
-                                    .map(|view| {
-                                        view.pips
-                                            .iter()
-                                            .map(|pip| format!("{{{}}}", pip.join("/")))
-                                            .collect()
-                                    })
-                                    .unwrap_or_default(),
-                                can_confirm_from_pool: pay_index.is_some(),
-                                actions: payment_actions,
-                            }),
-                            ManabrewPromptBinding::Payment { actions, pay_index },
-                        ));
-                    }
-                    return Err(unsupported(
-                        "mana payment without typed Ironsmith payment actions",
-                    ));
-                }
                 Ok((
                     PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
                         presentation: presentation("Choose", Some(ctx.description.clone()), source),
@@ -2442,24 +2845,41 @@ impl WasmGame {
                 }))
             }
             (
-                ManabrewPromptBinding::Payment { actions, pay_index },
+                ManabrewPromptBinding::AuthoritativePayment {
+                    plan_id,
+                    request_hash,
+                    actions,
+                    can_confirm_manually,
+                },
                 PromptOutput::PayManaCost(output),
             ) => match output {
+                PayManaCostOutput::Pay { auto } => {
+                    if auto || *can_confirm_manually {
+                        Ok(ManabrewResponseAction::Dispatch(UiCommand::ManaPayment {
+                            response: ManaPaymentCommand::Confirm {
+                                plan_id: plan_id.clone(),
+                                request_hash: request_hash.clone(),
+                            },
+                        }))
+                    } else {
+                        Err(invalid(
+                            "manual payment is incomplete; select the remaining actions or use auto pay"
+                                .to_string(),
+                        ))
+                    }
+                }
+                PayManaCostOutput::Cancel => {
+                    Ok(ManabrewResponseAction::Dispatch(UiCommand::ManaPayment {
+                        response: ManaPaymentCommand::Cancel,
+                    }))
+                }
                 PayManaCostOutput::Act { action_id } => {
-                    Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
-                        option_indices: vec![*actions.get(&action_id).ok_or_else(|| {
+                    Ok(ManabrewResponseAction::Dispatch(UiCommand::ManaPayment {
+                        response: actions.get(&action_id).cloned().ok_or_else(|| {
                             invalid(format!("unknown payment action {action_id}"))
-                        })?],
+                        })?,
                     }))
                 }
-                PayManaCostOutput::Pay { .. } => {
-                    Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
-                        option_indices: vec![pay_index.ok_or_else(|| {
-                            invalid("mana pool cannot pay the current pip".to_string())
-                        })?],
-                    }))
-                }
-                PayManaCostOutput::Cancel => Ok(ManabrewResponseAction::Cancel),
             },
             _ => Err(protocol_error(
                 ProtocolErrorCode::WrongPromptType,
@@ -2624,7 +3044,6 @@ impl WasmGame {
                 let result = self.manabrew_result(Some(player), None);
                 return manabrew_to_js(&result, "Manabrew response");
             }
-            ManabrewResponseAction::Cancel => self.cancel_decision(),
         };
         if let Err(error) = engine_result {
             let result = self.manabrew_result(
@@ -3114,6 +3533,170 @@ mod manabrew_tests {
     }
 
     #[test]
+    fn manabrew_payment_act_replans_and_manual_pay_requires_selected_steps() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = game();
+        let alice = PlayerId::from_index(0);
+        let land =
+            ironsmith::card::CardBuilder::new(ironsmith::ids::CardId::new(), "Protocol Island")
+                .card_types(vec![ironsmith::types::CardType::Land])
+                .build();
+        let land = game
+            .game
+            .create_object_from_card(&land, alice, Zone::Battlefield);
+        game.game
+            .object_mut(land)
+            .expect("land should exist")
+            .abilities_mut()
+            .push(ironsmith::ability::Ability::mana(
+                ironsmith::cost::TotalCost::from_cost(ironsmith::costs::Cost::tap()),
+                vec![ironsmith::mana::ManaSymbol::Blue],
+            ));
+        let source = game.game.new_object_id();
+        let request = ironsmith::mana_payment::ManaPaymentRequest::new(
+            alice,
+            source,
+            ironsmith::costs::PaymentReason::Effect,
+            ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::mana::ManaSymbol::Blue]),
+        )
+        .with_spend_policy(game.game.mana_spend_policy(alice, Some(source)));
+        let plan = ironsmith::mana_payment::plan_mana_payment(&game.game, &request)
+            .expect("payment should be plannable")
+            .remove(0);
+        let context =
+            DecisionContext::ManaPayment(ironsmith::decisions::context::ManaPaymentContext::new(
+                alice,
+                source,
+                "Protocol payment",
+                request.clone(),
+                plan,
+            ));
+        let (input, binding) = game
+            .build_manabrew_prompt(&context)
+            .expect("payment should map");
+        let PromptInput::PayManaCost(payment) = &input else {
+            panic!("payment should use payManaCost");
+        };
+        assert!(!payment.can_confirm_from_pool);
+        let activate_id = payment
+            .actions
+            .iter()
+            .find(|action| matches!(action.kind, PaymentActionKind::ActivateManaAbility(_)))
+            .expect("the island activation should be offered")
+            .id
+            .clone();
+        let open = open_prompt(input, binding);
+        assert!(
+            game.manabrew_response_action(
+                &open,
+                PromptOutput::PayManaCost(PayManaCostOutput::Pay { auto: false }),
+            )
+            .is_err(),
+            "manual confirmation must not auto-select an advertised activation"
+        );
+        assert!(matches!(
+            game.manabrew_response_action(
+                &open,
+                PromptOutput::PayManaCost(PayManaCostOutput::Pay { auto: true }),
+            )
+            .expect("auto pay should confirm the authoritative remainder"),
+            ManabrewResponseAction::Dispatch(UiCommand::ManaPayment {
+                response: ManaPaymentCommand::Confirm { .. }
+            })
+        ));
+
+        let ManabrewResponseAction::Dispatch(UiCommand::ManaPayment { response }) = game
+            .manabrew_response_action(
+                &open,
+                PromptOutput::PayManaCost(PayManaCostOutput::Act {
+                    action_id: activate_id,
+                }),
+            )
+            .expect("the advertised activation should map to a replan")
+        else {
+            panic!("Act should dispatch a typed mana-payment command");
+        };
+        let ironsmith::mana_payment::ManaPaymentResponse::Replan { preferences } = response
+            .into_runtime()
+            .expect("generated replan constraints should parse")
+        else {
+            panic!("Act should replan");
+        };
+        assert_eq!(preferences.required_activations.len(), 1);
+        assert_eq!(preferences.required_activations[0].source, land);
+        assert_eq!(preferences.required_activations[0].ability_index, 0);
+
+        let mut selected_request = request;
+        selected_request.preferences = preferences;
+        let selected_plan =
+            ironsmith::mana_payment::plan_mana_payment(&game.game, &selected_request)
+                .expect("selected payment should remain plannable")
+                .remove(0);
+        let selected_context =
+            DecisionContext::ManaPayment(ironsmith::decisions::context::ManaPaymentContext::new(
+                alice,
+                source,
+                "Protocol payment",
+                selected_request,
+                selected_plan,
+            ));
+        game.pending_decision = Some(selected_context.clone());
+        let projected_state = game.manabrew_state(Some(alice));
+        let projected_alice = projected_state
+            .game_view
+            .players
+            .iter()
+            .find(|player| player.id == player_id(alice))
+            .expect("Alice should be present in the projected state");
+        assert_eq!(
+            projected_alice.mana_pool.get(&ManaColor::Blue),
+            Some(&1),
+            "selected activations should be reflected in the protocol mana pool"
+        );
+        let (selected_input, selected_binding) = game
+            .build_manabrew_prompt(&selected_context)
+            .expect("selected payment should map");
+        let PromptInput::PayManaCost(selected_payment) = &selected_input else {
+            panic!("selected payment should use payManaCost");
+        };
+        assert!(selected_payment.can_confirm_from_pool);
+        let undo_id = selected_payment
+            .actions
+            .iter()
+            .find(|action| matches!(action.kind, PaymentActionKind::UndoMana { .. }))
+            .expect("the selected activation should be reversible")
+            .id
+            .clone();
+        let selected_open = open_prompt(selected_input, selected_binding);
+        assert!(matches!(
+            game.manabrew_response_action(
+                &selected_open,
+                PromptOutput::PayManaCost(PayManaCostOutput::Pay { auto: false }),
+            )
+            .expect("manual confirmation should now be legal"),
+            ManabrewResponseAction::Dispatch(UiCommand::ManaPayment {
+                response: ManaPaymentCommand::Confirm { .. }
+            })
+        ));
+        let ManabrewResponseAction::Dispatch(UiCommand::ManaPayment { response }) = game
+            .manabrew_response_action(
+                &selected_open,
+                PromptOutput::PayManaCost(PayManaCostOutput::Act { action_id: undo_id }),
+            )
+            .expect("undo should map to a replan")
+        else {
+            panic!("undo should dispatch a typed mana-payment command");
+        };
+        let ironsmith::mana_payment::ManaPaymentResponse::Replan { preferences } = response
+            .into_runtime()
+            .expect("generated undo constraints should parse")
+        else {
+            panic!("undo should replan");
+        };
+        assert!(preferences.required_activations.is_empty());
+    }
+
+    #[test]
     fn known_card_name_input_uses_bounded_selection_prompts_and_dispatches_text() {
         let _id_guard = crate::test_id_counter_guard();
         let mut game = game();
@@ -3246,7 +3829,7 @@ mod manabrew_tests {
             DecisionContext::Counters(ironsmith::decisions::context::CountersContext::new(
                 PlayerId::from_index(0),
                 None,
-                ObjectId::from_raw(900_001),
+                ironsmith::Target::Object(ObjectId::from_raw(900_001)),
                 "Counter Test Permanent",
                 0,
                 3,

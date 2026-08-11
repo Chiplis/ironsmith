@@ -192,6 +192,8 @@ const ATTACKING_THEM_PHRASE: &[&str] = &["attacking", "them"];
 const ATTACKING_OPPONENT_PHRASES: &[&[&str]] = &[
     &["attacking", "opponent"],
     &["attacking", "opponents"],
+    &["attacking", "your", "opponent"],
+    &["attacking", "your", "opponents"],
     &["attacking", "one", "of", "your", "opponents"],
 ];
 const EQUIPPED_WORD: &str = "equipped";
@@ -623,15 +625,20 @@ pub(super) fn try_apply_pt_literal_prefix(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
 ) -> bool {
+    let pt_index = usize::from(
+        all_words
+            .first()
+            .is_some_and(|word| matches!(*word, "all" | "each")),
+    );
     let Some((power, toughness)) = all_words
-        .first()
+        .get(pt_index)
         .and_then(|word| parse_unsigned_pt_word(word))
     else {
         return false;
     };
     filter.power = Some(crate::filter::Comparison::Equal(power));
     filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
-    all_words.remove(0);
+    all_words.remove(pt_index);
     true
 }
 
@@ -914,6 +921,25 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         }
 
         let word = words[idx];
+        // `permanent` is an aggregate spell characteristic rather than a
+        // literal card type. Preserve its complete executable domain before
+        // applying trailing relative qualifiers such as `that have an
+        // Adventure`; otherwise the qualifier survives while the permanent
+        // restriction is silently discarded.
+        if matches!(word, "permanent" | "permanents") {
+            for card_type in [
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Battle,
+            ] {
+                push_unique_filter_value(&mut filter.card_types, card_type);
+            }
+            idx += 1;
+            continue;
+        }
         if word == "non"
             && let Some(subtype) = words.get(idx + 1).copied().and_then(parse_subtype_flexible)
         {
@@ -1259,6 +1285,25 @@ fn find_blocking_or_blocked_by_source_phrase(words: &[&str]) -> Option<usize> {
     })
 }
 
+/// Find the directional combat relation in object phrases such as
+/// "creature blocking it" and "creature blocking this creature".
+///
+/// `blocking` by itself only means that the candidate is blocking *some*
+/// attacker.  The following source reference narrows it to the current
+/// grammatical source.  Keep that direction separate from the existing
+/// symmetric "blocking or blocked by" spelling: combining `blocking` with
+/// `in_combat_with_source` represents exactly a blocker of the source.
+fn find_blocking_source_phrase(words: &[&str]) -> Option<usize> {
+    words.iter().enumerate().find_map(|(idx, word)| {
+        if *word != "blocking" {
+            return None;
+        }
+        let reference = &words[idx + 1..];
+        (!reference.is_empty() && (reference == ["it"] || is_source_reference_words(reference)))
+            .then_some(idx)
+    })
+}
+
 fn source_reference_prefix_surface(
     words: &[&str],
     segment_tokens: &[OwnedLexToken],
@@ -1273,6 +1318,17 @@ fn source_reference_prefix_surface(
         else {
             continue;
         };
+        // In object-filter grammar, a valid subtype noun outranks a coincident
+        // short alias of the current source. This matters for names beginning
+        // with a subtype (for example, "Time Lord Regeneration"): "target
+        // Time Lord you control" and "a Time Lord creature card" describe a
+        // typed object, not the named source. A complete longer source name is
+        // unaffected because its prefix length is greater than the subtype.
+        if super::reference_tag_stage::compound_filter_subtype_prefix_word_len(words)
+            == Some(prefix_len)
+        {
+            continue;
+        }
         if source_reference_prefix_is_unquoted(prefix, segment_tokens) {
             return Some((prefix_len, surface));
         }
@@ -1401,6 +1457,32 @@ pub(super) fn apply_reference_and_tag_stage(
             } else {
                 attached_idx
             };
+            // The attachment host is an independently referenced object, not
+            // another characteristic of the attachment being selected. Keep
+            // the token-backed characteristic pass in sync with `all_words`;
+            // otherwise its later scan can re-add the host noun (for example,
+            // turning "Equipment attached to that creature" into an
+            // Equipment creature filter).
+            let segment_words = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
+            let segment_word_refs = segment_words.to_word_refs();
+            if let Some(segment_attached_idx) = segment_word_refs
+                .iter()
+                .position(|word| *word == ATTACHED_WORD)
+            {
+                let segment_trim_start = if segment_attached_idx >= 2
+                    && segment_word_refs[segment_attached_idx - 2] == THAT_WORD
+                    && word_is_any(segment_word_refs[segment_attached_idx - 1], BE_VERB_WORDS)
+                {
+                    segment_attached_idx - 2
+                } else {
+                    segment_attached_idx
+                };
+                if let Some(token_start) =
+                    segment_words.token_boundary_for_word_or_end(segment_trim_start)
+                {
+                    segment_tokens.truncate(token_start);
+                }
+            }
             all_words.truncate(trim_start);
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: IT_TAG.into(),
@@ -1410,6 +1492,12 @@ pub(super) fn apply_reference_and_tag_stage(
     }
 
     if let Some(relation_idx) = find_blocking_or_blocked_by_source_phrase(all_words) {
+        filter.in_combat_with_source = true;
+        all_words.truncate(relation_idx);
+    }
+
+    if let Some(relation_idx) = find_blocking_source_phrase(all_words) {
+        filter.blocking = true;
         filter.in_combat_with_source = true;
         all_words.truncate(relation_idx);
     }

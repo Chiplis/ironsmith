@@ -1,15 +1,19 @@
 //! Create token effect implementation.
 
 use crate::cards::CardDefinition;
+use crate::combat_state::{AttackTarget, AttackerInfo};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_value;
+use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::{ChooseSpec, SourceReferenceSurface};
 use crate::zone::Zone;
 
+use super::create_token_copy::{
+    CopyAttackTargetMode, attack_targets_for_player, choose_attack_target,
+};
 use super::lifecycle::{
     TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry,
     create_replacement_additional_tokens, remaining_token_slots, schedule_token_cleanup,
@@ -195,7 +199,20 @@ impl EffectExecutor for CreateTokenEffect {
             self.exile_at_next_end_step,
             self.next_end_step_player.clone(),
         );
-        let entry_options = TokenEntryOptions::new(self.enters_tapped, self.enters_attacking);
+        let (configured_attack_player, attack_player_only) = match &self.attack_target_mode {
+            Some(CopyAttackTargetMode::Player(player_filter)) => {
+                (Some(resolve_player_filter(game, player_filter, ctx)?), true)
+            }
+            Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => (
+                Some(resolve_player_filter(game, player_filter, ctx)?),
+                false,
+            ),
+            None => (None, false),
+        };
+        let entry_options = TokenEntryOptions::new(
+            self.enters_tapped,
+            self.enters_attacking && configured_attack_player.is_none(),
+        );
 
         let mut created_ids = Vec::with_capacity(count);
         let mut events = Vec::with_capacity(count);
@@ -247,6 +264,27 @@ impl EffectExecutor for CreateTokenEffect {
                     effective_tapped,
                     &mut events,
                 )?;
+
+                if let Some(attack_player) = configured_attack_player {
+                    let chosen_target = if attack_player_only {
+                        game.player(attack_player)
+                            .is_some_and(|player| player.is_in_game())
+                            .then_some(AttackTarget::Player(attack_player))
+                    } else {
+                        let targets = attack_targets_for_player(game, attack_player);
+                        (!targets.is_empty())
+                            .then(|| choose_attack_target(game, ctx, attack_player, &targets))
+                            .flatten()
+                    };
+                    if let Some(chosen_target) = chosen_target
+                        && let Some(combat) = game.combat.as_mut()
+                    {
+                        combat.attackers.push(AttackerInfo {
+                            creature: entered_id,
+                            target: chosen_target,
+                        });
+                    }
+                }
 
                 schedule_token_cleanup(
                     game,

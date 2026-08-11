@@ -167,10 +167,18 @@ pub(crate) fn parse_combat_attach_object_shape_lexed(
 }
 
 fn last_to_marker(tokens: &[OwnedLexToken]) -> Option<usize> {
-    let (idx, (), after) = primitives::find_prefix(tokens, || primitives::kw("to").void())?;
-    last_to_marker(after)
-        .map(|next| idx + 1 + next)
-        .or(Some(idx))
+    tokens.iter().enumerate().rev().find_map(|(idx, token)| {
+        (token.as_word() == Some("to")
+            // In "attach ... to up to one target ...", the final `to` is
+            // part of the target-count prefix rather than the attachment
+            // separator. Splitting there silently widens 0..1 to exactly 1.
+            && idx
+                .checked_sub(1)
+                .and_then(|previous| tokens.get(previous))
+                .and_then(OwnedLexToken::as_word)
+                != Some("up"))
+        .then_some(idx)
+    })
 }
 
 pub(crate) fn parse_combat_attach_clause_shape_lexed(

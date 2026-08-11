@@ -340,6 +340,9 @@ fn player_filter_for_library_count(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::MostCardsInHand => PlayerFilter::MostCardsInHand,
         PlayerAst::MostLifeTied => PlayerFilter::MostLifeTied,
         PlayerAst::LowestLifeTied => PlayerFilter::LowestLifeTied,
+        PlayerAst::TriggeringSourceController => {
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged("triggering_source"))
+        }
         PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => return None,
     })
 }

@@ -13,18 +13,24 @@ use super::super::{filters, primitives};
 pub(crate) enum ExileCounterPermissionFamily {
     CastNonlandCards,
     PlayLandsAndCastNoncreatureCardsExiledBySource,
+    PlayLandsAndCastSpellsOwnedInExile,
+    PlayCardsNotOwnedInExile,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExileCounterPermissionOwner {
     Any,
     Opponent,
+    You,
+    NotYou,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExileCounterManaPermission {
     AnyMana,
+    AnyTypeCanBeSpent,
     SnowSources,
+    None,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +39,7 @@ pub(crate) struct ExileCounterPermissionSpec {
     pub(crate) owner: ExileCounterPermissionOwner,
     pub(crate) counter_type: CounterType,
     pub(crate) mana_permission: ExileCounterManaPermission,
+    pub(crate) during_your_turn: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +58,8 @@ pub(crate) fn parse_exile_counter_permission_tokens(
         alt((
             parse_cast_countered_exile_cards_lexed,
             parse_play_source_exiled_countered_cards_lexed,
+            parse_play_owned_countered_exile_cards_lexed,
+            parse_play_not_owned_countered_exile_during_turn_lexed,
         )),
         "countered exile-card permission",
     )
@@ -97,6 +106,7 @@ fn parse_cast_countered_exile_cards_lexed<'a>(
         owner,
         counter_type,
         mana_permission,
+        during_your_turn: false,
     })
 }
 
@@ -128,6 +138,61 @@ fn parse_play_source_exiled_countered_cards_lexed<'a>(
         owner: ExileCounterPermissionOwner::Any,
         counter_type,
         mana_permission,
+        during_your_turn: false,
+    })
+}
+
+/// "You may play lands and cast spells from among cards you own in exile
+/// with <type> counters on them" — an unrestricted play permission over the
+/// player's own countered exile pool (Grolnok, the Omnivore).
+fn parse_play_owned_countered_exile_cards_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ExileCounterPermissionSpec> {
+    primitives::phrase(&[
+        "you", "may", "play", "lands", "and", "cast", "spells", "from", "among", "cards", "you",
+        "own", "in", "exile", "with",
+    ])
+    .parse_next(input)?;
+    let counter_type = parse_counter_type_before_on_them(input)?;
+    let mana_permission = alt((
+        parse_countered_exile_mana_permission,
+        primitives::sentence_end().value(ExileCounterManaPermission::None),
+    ))
+    .parse_next(input)?;
+    Ok(ExileCounterPermissionSpec {
+        family: ExileCounterPermissionFamily::PlayLandsAndCastSpellsOwnedInExile,
+        owner: ExileCounterPermissionOwner::You,
+        counter_type,
+        mana_permission,
+        during_your_turn: false,
+    })
+}
+
+/// "During your turn, you may play cards you don't own with <type> counters
+/// on them from exile, and mana of any type can be spent to cast those
+/// spells" — the stolen-stash permission (Tinybones, Bauble Burglar).
+fn parse_play_not_owned_countered_exile_during_turn_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ExileCounterPermissionSpec> {
+    primitives::phrase(&["during", "your", "turn"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["you", "may", "play", "cards", "you"]).parse_next(input)?;
+    alt((primitives::kw("don't"), primitives::kw("dont"))).parse_next(input)?;
+    primitives::phrase(&["own", "with"]).parse_next(input)?;
+    let counter_type = parse_counter_type_before_on_them(input)?;
+    primitives::phrase(&["from", "exile"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&[
+        "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "those", "spells",
+    ])
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ExileCounterPermissionSpec {
+        family: ExileCounterPermissionFamily::PlayCardsNotOwnedInExile,
+        owner: ExileCounterPermissionOwner::NotYou,
+        counter_type,
+        mana_permission: ExileCounterManaPermission::AnyTypeCanBeSpent,
+        during_your_turn: true,
     })
 }
 

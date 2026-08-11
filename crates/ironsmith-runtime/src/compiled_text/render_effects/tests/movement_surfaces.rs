@@ -27,6 +27,26 @@ fn typed_move_surface_preserves_put_return_and_actor_agreement() {
     assert!(you_put_text.ends_with(" into exile"), "{you_put_text}");
 }
 
+#[test]
+fn heterogeneous_target_union_uses_owner_first_library_choice_surface() {
+    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter {
+        any_of: vec![
+            ObjectFilter::spell(),
+            ObjectFilter::nonland_permanent(),
+            ObjectFilter::default().in_zone(Zone::Graveyard),
+        ],
+        ..ObjectFilter::default()
+    }));
+    let effect = Effect::new(crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(
+        target,
+    ));
+
+    assert_eq!(
+        describe_effect(&effect),
+        "The owner of target spell, nonland permanent, or card in a graveyard puts it on their choice of the top or bottom of their library"
+    );
+}
+
 fn source_exile_transformed_finality_surface(
     verb_surface: ironsmith_core::MoveToZoneVerbSurface,
 ) -> String {
@@ -47,13 +67,13 @@ fn source_exile_transformed_finality_surface(
     .with_verb_surface(verb_surface)
     .under_owner_control();
     move_back.enters_transformed = true;
-    move_back.enters_with_counters.push(
-        ironsmith_core::BattlefieldEntryCounterSpec::new(
+    move_back
+        .enters_with_counters
+        .push(ironsmith_core::BattlefieldEntryCounterSpec::new(
             crate::object::CounterType::Finality,
             1,
             ironsmith_core::BattlefieldEntryCounterSurface::Inline,
-        ),
-    );
+        ));
 
     describe_effect_list(&[exile, Effect::new(move_back).tag(TagKey::from("moved"))])
 }
@@ -61,9 +81,7 @@ fn source_exile_transformed_finality_surface(
 #[test]
 fn source_exile_sequence_preserves_put_onto_transformed_surface() {
     assert_eq!(
-        source_exile_transformed_finality_surface(
-            ironsmith_core::MoveToZoneVerbSurface::Put
-        ),
+        source_exile_transformed_finality_surface(ironsmith_core::MoveToZoneVerbSurface::Put),
         "Exile it, then put it onto the battlefield transformed under its owner's control with a finality counter on it"
     );
 }
@@ -71,11 +89,74 @@ fn source_exile_sequence_preserves_put_onto_transformed_surface() {
 #[test]
 fn source_exile_sequence_does_not_rewrite_return_surface_to_put() {
     assert_eq!(
-        source_exile_transformed_finality_surface(
-            ironsmith_core::MoveToZoneVerbSurface::Return
-        ),
+        source_exile_transformed_finality_surface(ironsmith_core::MoveToZoneVerbSurface::Return),
         "Exile it, then return it to the battlefield transformed under its owner's control with a finality counter on it"
     );
+}
+
+#[test]
+fn return_to_owner_preserves_an_authored_gendered_source_pronoun() {
+    let move_back = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType("him".to_string()),
+            ),
+        ),
+        Zone::Battlefield,
+        false,
+    )
+    .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
+    .under_owner_control();
+
+    assert_eq!(
+        describe_effect(&Effect::new(move_back)),
+        "Return him to the battlefield under his owner's control"
+    );
+}
+
+#[test]
+fn return_then_face_change_compacts_transform_and_convert_for_the_same_object() {
+    let triggering = TagKey::from("triggering");
+    let move_back = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Tagged(triggering.clone()),
+        Zone::Battlefield,
+        false,
+    )
+    .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
+    .under_owner_control();
+
+    for (face_change, surface) in [
+        (
+            Effect::transform(ChooseSpec::Tagged(triggering.clone())),
+            "transformed",
+        ),
+        (
+            Effect::convert(ChooseSpec::Tagged(triggering.clone())),
+            "converted",
+        ),
+    ] {
+        assert_eq!(
+            describe_effect_list(&[Effect::new(move_back.clone()), face_change]),
+            format!("Return it to the battlefield {surface} under its owner's control")
+        );
+    }
+}
+
+#[test]
+fn return_then_convert_does_not_compact_an_unrelated_object() {
+    let move_back = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Tagged(TagKey::from("triggering")),
+        Zone::Battlefield,
+        false,
+    )
+    .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
+    .under_owner_control();
+    let text = describe_effect_list(&[
+        Effect::new(move_back),
+        Effect::convert(ChooseSpec::Tagged(TagKey::from("unrelated"))),
+    ]);
+
+    assert!(!text.contains("battlefield converted"), "{text}");
 }
 
 #[test]

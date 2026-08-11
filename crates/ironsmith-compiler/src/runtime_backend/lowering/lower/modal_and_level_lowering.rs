@@ -54,6 +54,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
     effects.push(crate::effect::Effect::new(
         crate::effects::ChooseModeEffect {
             modes,
+            common_prefix_effects: choose_mode.common_prefix_effects.clone(),
             chooser: choose_mode.chooser.clone(),
             min: choose_mode.min.clone(),
             max: choose_mode.max.clone(),
@@ -64,7 +65,9 @@ pub(crate) fn try_merge_modal_into_remove_mode(
             allow_repeated_modes: choose_mode.allow_repeated_modes,
             mode_point_costs: choose_mode.mode_point_costs.clone(),
             spree: choose_mode.spree,
+            tiered: choose_mode.tiered,
             mode_additional_mana_costs: choose_mode.mode_additional_mana_costs.clone(),
+            common_suffix_effect_count: choose_mode.common_suffix_effect_count,
             disallow_previously_chosen_modes: choose_mode.disallow_previously_chosen_modes,
             disallow_previously_chosen_modes_this_turn: choose_mode
                 .disallow_previously_chosen_modes_this_turn,
@@ -83,12 +86,14 @@ pub(crate) fn rewrite_lower_parsed_modal(
     let NormalizedModalAst {
         header,
         prepared_prefix,
+        prepared_common_prefix,
         modes,
     } = pending_modal;
     let crate::cards::builders::ParsedModalHeader {
         min: header_min,
         max: header_max,
         spree,
+        tiered,
         weighted_mode_points,
         random: random_mode_choice,
         same_mode_more_than_once,
@@ -103,11 +108,14 @@ pub(crate) fn rewrite_lower_parsed_modal(
         activated,
         x_replacement,
         prefix_effects_ast: _,
+        common_prefix_effects_ast: _,
+        common_suffix_effects_ast,
         modal_gate,
         line_text,
     } = header;
+    let common_suffix_effect_count = common_suffix_effects_ast.len();
 
-    let (prefix_effects, prefix_choices) = if prepared_prefix.is_none() {
+    let (prefix_effects, mut prefix_choices) = if prepared_prefix.is_none() {
         (crate::resolution::ResolutionProgram::default(), Vec::new())
     } else if trigger.is_some() || activated.is_some() {
         match materialize_prepared_effects_with_trigger_context(
@@ -137,6 +145,37 @@ pub(crate) fn rewrite_lower_parsed_modal(
         }
     };
 
+    let (common_prefix_effects, common_prefix_choices) = if prepared_common_prefix.is_none() {
+        (crate::resolution::ResolutionProgram::default(), Vec::new())
+    } else if trigger.is_some() || activated.is_some() {
+        match materialize_prepared_effects_with_trigger_context(
+            prepared_common_prefix
+                .as_ref()
+                .expect("prepared common prefix exists when checked above"),
+        ) {
+            Ok(lowered) => (lowered.effects, lowered.choices),
+            Err(err) if allow_unsupported => {
+                builder = push_unsupported_marker(builder, line_text.as_str(), format!("{err:?}"));
+                return Ok(builder);
+            }
+            Err(err) => return Err(err),
+        }
+    } else {
+        match rewrite_lower_prepared_statement_effects(
+            prepared_common_prefix
+                .as_ref()
+                .expect("prepared common prefix exists when checked above"),
+        ) {
+            Ok(lowered) => (lowered.effects, lowered.choices),
+            Err(err) if allow_unsupported => {
+                builder = push_unsupported_marker(builder, line_text.as_str(), format!("{err:?}"));
+                return Ok(builder);
+            }
+            Err(err) => return Err(err),
+        }
+    };
+    prefix_choices.extend(common_prefix_choices);
+
     let mut compiled_modes = Vec::new();
     let mut mode_point_costs = Vec::new();
     let mut mode_additional_mana_costs = Vec::new();
@@ -160,10 +199,10 @@ pub(crate) fn rewrite_lower_parsed_modal(
             effects: effects.to_vec(),
         });
         mode_point_costs.push(point_cost);
-        if spree {
+        if spree || tiered {
             mode_additional_mana_costs.push(additional_mana_cost.ok_or_else(|| {
                 CardTextError::ParseError(format!(
-                    "Spree mode '{}' is missing its typed additional mana cost",
+                    "Costed modal mode '{}' is missing its typed additional mana cost",
                     mode.info.raw_line
                 ))
             })?);
@@ -210,6 +249,8 @@ pub(crate) fn rewrite_lower_parsed_modal(
         }
         if spree {
             choose_mode = choose_mode.with_spree_mana_costs(mode_additional_mana_costs.clone());
+        } else if tiered {
+            choose_mode = choose_mode.with_tiered_mana_costs(mode_additional_mana_costs.clone());
         }
         if mode_must_be_unchosen {
             choose_mode = if mode_must_be_unchosen_this_turn {
@@ -220,6 +261,12 @@ pub(crate) fn rewrite_lower_parsed_modal(
         }
         if distinct_player_targets_per_mode {
             choose_mode = choose_mode.with_distinct_player_targets_per_mode();
+        }
+        if !common_prefix_effects.is_empty() {
+            choose_mode = choose_mode.with_common_prefix_effects(common_prefix_effects.to_vec());
+        }
+        if common_suffix_effect_count > 0 {
+            choose_mode = choose_mode.with_common_suffix_effect_count(common_suffix_effect_count);
         }
         if if_kicked_choose_any_number {
             choose_mode =

@@ -31,6 +31,7 @@ pub(crate) struct AnthemModifierShape<'a> {
     pub(crate) modifier_word: &'a str,
     pub(crate) modifier_token: usize,
     pub(crate) tail_tokens: &'a [OwnedLexToken],
+    pub(crate) additional_surface: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +101,7 @@ pub(crate) fn parse_modifier_shape(
         modifier_word,
         modifier_token,
         tail_tokens,
+        additional_surface: article_additional,
     })
 }
 

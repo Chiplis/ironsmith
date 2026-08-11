@@ -32,6 +32,7 @@ pub(crate) struct ForEachTargetPlayersShape<'a> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ForEachSpentManaEffectShape<'a> {
     pub(crate) source_tokens: &'a [OwnedLexToken],
+    pub(crate) reference: ironsmith_core::ManaSpentCastReferenceSurface,
     pub(crate) effect_tokens: &'a [OwnedLexToken],
 }
 
@@ -98,6 +99,29 @@ fn normalized_filter_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     trim_lexed_commas(tokens.get(..attached).unwrap_or_default())
 }
 
+fn contains_effect_verb_outside_filter_zone(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::front_end::lexer::parser_token_word_refs(tokens);
+    let Some(found) = super::super::chain_splitting::find_chain_verb_words(&words) else {
+        return false;
+    };
+
+    // `exile` is both an action verb and a zone noun. Inside an object filter,
+    // the exact prepositional form `in exile` is a zone constraint, so it must
+    // not make a complete `For each ..., ...` subject look like an orphaned
+    // action clause. Still reject any later action verb in the same subject.
+    if found.kind == super::super::chain_splitting::ChainVerbKind::Exile
+        && found.word_index > 0
+        && words.get(found.word_index - 1) == Some(&"in")
+    {
+        return super::super::chain_splitting::find_chain_verb_words(
+            words.get(found.word_index + 1..).unwrap_or_default(),
+        )
+        .is_some();
+    }
+
+    true
+}
+
 pub(crate) fn parse_for_each_object_subject_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachObjectSubjectShape<'_>> {
@@ -108,7 +132,7 @@ pub(crate) fn parse_for_each_object_subject_shape(
     let filter_tokens = normalized_filter_tokens(rest);
     if filter_tokens.is_empty()
         || primitives::parse_prefix(filter_tokens, participant_prefix).is_some()
-        || super::super::chain_splitting::find_chain_verb_tokens(filter_tokens).is_some()
+        || contains_effect_verb_outside_filter_zone(filter_tokens)
     {
         return None;
     }
@@ -122,10 +146,11 @@ pub(crate) fn parse_for_each_object_effect_shape(
     // "Each creature that isn't an Insect, Rat, Spider, or Squirrel gets ...").
     // Treat only an explicit "For each ...," prefix as an iterator sentence;
     // otherwise a subtype-list comma can be mistaken for the effect boundary.
-    primitives::parse_prefix(
-        trim_lexed_commas(tokens),
-        primitives::phrase(&["for", "each"]),
-    )?;
+    let tokens = trim_lexed_commas(tokens);
+    let tokens = primitives::parse_prefix(tokens, opt(primitives::kw("then")).void())
+        .map(|(_, rest)| trim_lexed_commas(rest))
+        .unwrap_or(tokens);
+    primitives::parse_prefix(tokens, primitives::phrase(&["for", "each"]))?;
     let (subject_tokens, effect_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::comma().void())?;
     let subject = parse_for_each_object_subject_shape(subject_tokens)?;
@@ -187,6 +212,19 @@ pub(crate) fn parse_for_each_target_players_shape(
                     .get(index.saturating_sub(1))
                     .is_some_and(|previous| previous.is_word("for"))
             {
+                return None;
+            }
+            // An `each` inside a quoted granted rule ("attacks each combat if
+            // able") is part of that rule, not this clause's iterator marker.
+            let inside_quote = after_player[..index]
+                .iter()
+                .filter(|token| {
+                    token.kind == crate::runtime_backend::front_end::lexer::TokenKind::Quote
+                })
+                .count()
+                % 2
+                == 1;
+            if inside_quote {
                 return None;
             }
             Some((index, trim_lexed_commas(after_player.get(index + 1..)?)))

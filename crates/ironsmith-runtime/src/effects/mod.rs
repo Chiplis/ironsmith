@@ -93,10 +93,11 @@ pub use cards::{
     DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, ExileTopOfLibraryEffect,
     ExileUntilMatchEffect, FatesealEffect, LearnEffect, LookAtHandEffect, LookAtObjectsEffect,
     LookAtTopCardsEffect, MillEffect, PutTaggedRemainderOnLibraryBottomEffect,
-    RearrangeLookedCardsInLibraryEffect, RevealFromHandEffect, RevealSourceFromHandEffect,
-    RevealTaggedEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect, SearchLibrarySlot,
-    SearchLibrarySlotsEffect, ShuffleGraveyardIntoLibraryEffect,
-    ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
+    RearrangeLookedCardsInLibraryEffect, ReorderTopPlanarDeckEffect, RevealFromHandEffect,
+    RevealSourceFromHandEffect, RevealTaggedEffect, RevealTopEffect, ScryEffect,
+    SearchLibraryEffect, SearchLibrarySlot, SearchLibrarySlotsEffect,
+    ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
+    ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
     AssignNoCombatDamageEffect, CombatDamagePreventionTarget, EnterAttackingEffect,
@@ -114,16 +115,17 @@ pub use composition::{
     CumulativeUpkeepEffect, DevourEffect, EmitGiftGivenEffect, EmitKeywordActionEffect,
     ExecuteWithSourceEffect, ExploreEffect, ForEachControllerOfTaggedEffect, ForEachObject,
     ForEachObjectCorrelatedResultEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
-    ForPlayersEffect, IfEffect, LifeBidStart, LocalRewriteEffect, ManaRestrictedEffect,
-    ManaRetainedEffect, ManifestCardFromHandEffect, ManifestDreadEffect, ManifestObjectsEffect,
-    ManifestTopCardOfLibraryEffect, MayEffect, OpenAttractionEffect, PopulateEffect,
-    ReflexiveTriggerEffect, RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect,
-    SecretChoiceEffect, SecretChoiceResult, SequenceEffect, SupportEffect, TagAllEffect,
-    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringBlockersEffect,
-    TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TagTriggeringSourceEffect,
-    TaggedEffect, TargetOnlyEffect, UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG,
-    VOTED_OBJECTS_TAG, VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult,
-    WithIdEffect,
+    ForPlayersEffect, GrantRepeatableManaPaymentActionUntilEndOfTurnEffect, IfEffect, LifeBidStart,
+    LocalRewriteEffect, ManaRestrictedEffect, ManaRetainedEffect, ManifestCardFromHandEffect,
+    ManifestDreadEffect, ManifestObjectsEffect, ManifestTopCardOfLibraryEffect, MayEffect,
+    OpenAttractionEffect, PopulateEffect, ReflexiveTriggerEffect, RepeatEffectsEffect,
+    RepeatProcessEffect, RepeatProcessPromptEffect, SecretChoiceEffect, SecretChoiceResult,
+    SequenceEffect, SupportEffect, TagAllEffect, TagAttachedToSourceEffect,
+    TagMatchingObjectsEffect, TagOtherBlockParticipantEffect, TagTriggeringAttackerEffect,
+    TagTriggeringBlockersEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
+    TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
+    UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VillainousChoiceEffect, VoteChoice,
+    VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{
@@ -140,15 +142,17 @@ pub(crate) use counters::{
     remove_any_counters_among_cost_display, remove_any_counters_among_valid_targets_with_tags,
 };
 pub use damage::{
-    ClearDamageEffect, DealDamageEffect, DealDistributedDamageEffect, HealDamageEffect,
-    PreventNextTimeDamageEffect, PreventNextTimeDamageSource, PreventNextTimeDamageTarget,
-    RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageDestination,
-    RedirectNextDamageToTargetEffect, RedirectNextTimeDamageDestination,
-    RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
+    ClearDamageEffect, DamageDistributionMode, DealDamageEffect, DealDistributedDamageEffect,
+    HealDamageEffect, PreventNextTimeDamageEffect, PreventNextTimeDamageSource,
+    PreventNextTimeDamageTarget, RedirectAllDamageThisTurnToTargetEffect,
+    RedirectNextDamageDestination, RedirectNextDamageToTargetEffect,
+    RedirectNextTimeDamageDestination, RedirectNextTimeDamageSource,
+    RedirectNextTimeDamageToSourceEffect, ReplaceNextDamageToTargetEffect,
 };
 pub use delayed::{
-    ExileTaggedWhenSourceLeavesEffect, SacrificeSourceWhenTaggedLeavesEffect,
-    ScheduleDelayedTriggerEffect, ScheduleEffectsWhenTaggedLeavesEffect, TaggedLeavesAbilitySource,
+    DelayedTriggerPrepayment, ExileTaggedWhenSourceLeavesEffect,
+    SacrificeSourceWhenTaggedLeavesEffect, ScheduleDelayedTriggerEffect,
+    ScheduleEffectsWhenTaggedLeavesEffect, TaggedLeavesAbilitySource,
 };
 pub use life::{
     ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, NoteLifeTotalEffect, PayLifeEffect,
@@ -186,16 +190,17 @@ pub use player::{
     GrantTaggedSpellLifeCostByManaValueEffect, IncreaseSpeedEffect, LoseTheGameEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect, PayAnyLifeEffect,
     PayEnergyEffect, PlaySubgameEffect, PlayerCountersEffect, PoisonCountersEffect,
-    RadiationEffect, ReduceSpeedEffect, RestartGameEffect, RingTemptsYouEffect,
-    RollDiceChooseResultEffect, RollDieEffect, SkipCombatPhasesEffect,
+    RadiationEffect, ReduceSpeedEffect, RestartGameEffect, ReverseTurnOrderEffect,
+    RingTemptsYouEffect, RollDiceChooseResultEffect, RollDieEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect,
     VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,
-    RegisterDrawReplacementEffect, RegisterEnterUnderControlReplacementEffect,
-    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
+    RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
+    RegisterEnterUnderControlReplacementEffect, RegisterFutureZoneReplacementEffect,
+    RegisterManaReplacementEffect, RegisterNextBatchEnterWithCountersEffect,
     RegisterZoneReplacementEffect, ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;

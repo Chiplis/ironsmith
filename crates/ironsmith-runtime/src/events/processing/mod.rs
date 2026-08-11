@@ -31,7 +31,7 @@ use crate::types::CardType;
 use crate::zone::Zone;
 use application::{
     apply_trait_enter_tapped, apply_trait_enter_with_counters, apply_trait_replacement,
-    find_matching_cards_in_hand,
+    find_matching_cards_in_hand, find_matching_sacrificable_permanents,
 };
 
 fn apply_tribute_response(
@@ -606,6 +606,7 @@ fn process_event_direct(
                 effect_id,
                 object_id,
                 filter,
+                sacrifice_count,
                 destinations,
             } => TraitEventResult::NeedsInteraction {
                 decision_ctx,
@@ -614,6 +615,7 @@ fn process_event_direct(
                 object_id,
                 event: Box::new(event),
                 filter,
+                sacrifice_count,
                 life_cost: match &chosen_effect.replacement {
                     ReplacementAction::InteractivePayLifeOrEnterTapped { life_cost } => {
                         Some(*life_cost)
@@ -680,6 +682,7 @@ fn process_event_direct(
             effect_id,
             object_id,
             filter,
+            sacrifice_count,
             destinations,
         } => TraitEventResult::NeedsInteraction {
             decision_ctx,
@@ -688,6 +691,7 @@ fn process_event_direct(
             object_id,
             event: Box::new(event),
             filter,
+            sacrifice_count,
             life_cost,
             destinations,
         },
@@ -814,12 +818,27 @@ fn continue_interactive_replacement(
     object_id: crate::ids::ObjectId,
     controller: crate::ids::PlayerId,
     filter: Option<&crate::target::ObjectFilter>,
+    sacrifice_count: Option<u32>,
     redirect_zone: Zone,
     life_cost: Option<u32>,
     destinations: Option<&[Zone]>,
     provenance: crate::provenance::ProvNodeId,
     decision_maker: &mut dyn DecisionMaker,
 ) -> InteractiveReplacementResult {
+    if let (Some(filter), Some(count)) = (filter, sacrifice_count) {
+        return handle_sacrifice_or_redirect(
+            game,
+            response,
+            object_id,
+            controller,
+            filter,
+            count,
+            redirect_zone,
+            provenance,
+            decision_maker,
+        );
+    }
+
     // Handle discard-or-redirect (Mox Diamond pattern)
     if let Some(filter) = filter {
         return handle_discard_or_redirect(
@@ -853,6 +872,54 @@ fn continue_interactive_replacement(
 
     // Fallback: redirect
     InteractiveReplacementResult::redirected(redirect_zone)
+}
+
+fn handle_sacrifice_or_redirect(
+    game: &mut GameState,
+    response: &InteractiveReplacementResponse,
+    object_id: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+    filter: &crate::target::ObjectFilter,
+    count: u32,
+    redirect_zone: Zone,
+    provenance: crate::provenance::ProvNodeId,
+    decision_maker: &mut dyn DecisionMaker,
+) -> InteractiveReplacementResult {
+    let InteractiveReplacementResponse::Objects(objects) = response else {
+        return InteractiveReplacementResult::redirected(redirect_zone);
+    };
+    if objects.len() != count as usize {
+        return InteractiveReplacementResult::redirected(redirect_zone);
+    }
+    let distinct = objects
+        .iter()
+        .copied()
+        .collect::<std::collections::HashSet<_>>();
+    if distinct.len() != objects.len() {
+        return InteractiveReplacementResult::redirected(redirect_zone);
+    }
+    let candidates = find_matching_sacrificable_permanents(game, controller, object_id, filter);
+    if !objects.iter().all(|object| candidates.contains(object)) {
+        return InteractiveReplacementResult::redirected(redirect_zone);
+    }
+
+    let mut ctx = crate::effects::ExecutionContext::new(object_id, controller, decision_maker);
+    ctx.provenance = provenance;
+    for permanent in objects {
+        let effect = crate::effect::Effect::new(crate::effects::SacrificeTargetEffect::new(
+            crate::target::ChooseSpec::SpecificObject(*permanent),
+        ));
+        let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx) else {
+            return InteractiveReplacementResult::redirected(redirect_zone);
+        };
+        if !matches!(outcome.value, crate::effect::OutcomeValue::Count(value) if value >= 1) {
+            return InteractiveReplacementResult::redirected(redirect_zone);
+        }
+        for event in outcome.events {
+            game.queue_trigger_event(event.provenance(), event);
+        }
+    }
+    InteractiveReplacementResult::enters_battlefield()
 }
 
 /// Handle a discard-or-redirect interactive replacement.
@@ -1269,6 +1336,7 @@ fn resolve_madness_discard(
                             description: requirement.description.clone(),
                             legal_targets: requirement.legal_targets.clone(),
                             legal_target_sets: requirement.legal_target_sets.clone(),
+                            aggregate_constraint: requirement.aggregate_constraint.clone(),
                             min_targets: requirement.min_targets,
                             max_targets: requirement.max_targets,
                             distinct_player_group: requirement.distinct_player_group,
@@ -1361,6 +1429,8 @@ enum TraitApplyResult {
         object_id: crate::ids::ObjectId,
         /// The filter for discarding (for InteractiveDiscardOrRedirect).
         filter: Option<crate::target::ObjectFilter>,
+        /// Exact sacrifice count for InteractiveSacrificeOrRedirect.
+        sacrifice_count: Option<u32>,
         /// Destination options for InteractiveChooseDestination.
         destinations: Option<Vec<Zone>>,
     },
@@ -1503,6 +1573,8 @@ pub enum TraitEventResult {
         event: Box<Event>,
         /// The filter for discarding (for InteractiveDiscardOrRedirect).
         filter: Option<crate::target::ObjectFilter>,
+        /// Exact sacrifice count for InteractiveSacrificeOrRedirect.
+        sacrifice_count: Option<u32>,
         /// The life cost (for InteractivePayLifeOrEnterTapped).
         life_cost: Option<u32>,
         /// Destination options for InteractiveChooseDestination.
@@ -1723,6 +1795,14 @@ fn process_destroy_inner(
         return EventOutcome::Prevented;
     }
 
+    let destroy_snapshot = lki_snapshot.clone().or_else(|| {
+        game.object(permanent).map(|object| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, game,
+            )
+        })
+    });
+
     // Get the controller before we lose the reference
     let controller = game.controller_of(obj);
     let cause = if let Some(source_id) = source {
@@ -1736,7 +1816,7 @@ fn process_destroy_inner(
     };
 
     // Create the destroy event using the trait-based system
-    let event = Event::destroy(permanent, source);
+    let event = game.ensure_event_provenance(Event::destroy(permanent, source));
 
     // Process through replacement effects with NeedsChoice handling
     let result = process_with_dm(game, event.clone(), dm);
@@ -1773,6 +1853,16 @@ fn process_destroy_inner(
                         cause.clone(),
                         lki_snapshot,
                     );
+                    if final_zone == Zone::Graveyard
+                        && let Some(snapshot) = destroy_snapshot.clone()
+                    {
+                        let trigger_event = crate::triggers::TriggerEvent::new_with_provenance(
+                            crate::events::DestroyEvent::new(permanent, source)
+                                .with_successful_result(snapshot, final_zone),
+                            event.provenance(),
+                        );
+                        game.queue_trigger_event(trigger_event.provenance(), trigger_event);
+                    }
                     if final_zone == Zone::Graveyard {
                         let mut moved_ids = game.take_zone_change_results(permanent);
                         if moved_ids.is_empty()
@@ -2060,7 +2150,9 @@ fn process_zone_change_inner(
                         | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
                         | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen { .. }
                 );
-                if let Some(new_id) = game.move_object(object, destination, cause.clone()) {
+                let replacement_object_snapshot = if let Some(new_id) =
+                    game.move_object(object, destination, cause.clone())
+                {
                     for (counter_type, count) in counters {
                         if let Some(event) = game.add_counters_with_source(
                             new_id,
@@ -2076,13 +2168,23 @@ fn process_zone_change_inner(
                         game.add_exiled_with_source_link(replacement_source, new_id);
                     }
                     game.record_zone_change_results(object, vec![new_id]);
-                }
+                    game.object(new_id).map(|object| {
+                        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                            object, game,
+                        )
+                    })
+                } else {
+                    None
+                };
                 if !effects.is_empty() {
                     let mut ctx = crate::effects::ExecutionContext::new(
                         replacement_source,
                         replacement_controller,
                         dm,
                     );
+                    if let Some(snapshot) = replacement_object_snapshot {
+                        ctx.tag_object(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG, snapshot);
+                    }
                     for effect in effects {
                         if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx)
                         {
@@ -2534,6 +2636,7 @@ fn process_with_dm_and_additional_effects_and_applied(
                         effect_id,
                         object_id,
                         filter,
+                        sacrifice_count,
                         destinations,
                     } => {
                         return TraitEventResult::NeedsInteraction {
@@ -2543,6 +2646,7 @@ fn process_with_dm_and_additional_effects_and_applied(
                             object_id,
                             event: Box::new(current_event),
                             filter,
+                            sacrifice_count,
                             life_cost: match &chosen_effect.replacement {
                                 ReplacementAction::InteractivePayLifeOrEnterTapped {
                                     life_cost,
@@ -3613,6 +3717,14 @@ pub fn process_player_counters_with_event(
 ) -> u32 {
     use crate::events::{PutCountersEvent, downcast_event};
 
+    if game
+        .turn_store
+        .turn_history
+        .player_counter_is_locked_this_turn(target, counter_type)
+    {
+        return 0;
+    }
+
     let event = Event::put_player_counters(target, counter_type, count, cause);
     let result = process_trait_event(game, event);
 
@@ -4198,6 +4310,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                         effect_id,
                         object_id,
                         filter,
+                        sacrifice_count,
                         destinations,
                     } => {
                         let life_cost = match &chosen_effect.replacement {
@@ -4274,6 +4387,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                             object_id,
                             controller,
                             filter.as_ref(),
+                            sacrifice_count,
                             redirect_zone,
                             life_cost,
                             destinations.as_deref(),
@@ -4302,6 +4416,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                 object_id,
                 event,
                 filter,
+                sacrifice_count,
                 life_cost,
                 destinations,
             } => {
@@ -4371,6 +4486,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                     object_id,
                     controller,
                     filter.as_ref(),
+                    sacrifice_count,
                     redirect_zone,
                     life_cost,
                     destinations.as_deref(),
@@ -4725,6 +4841,7 @@ pub fn process_event_with_chosen_replacement_trait_and_applied_effects(
             effect_id,
             object_id,
             filter,
+            sacrifice_count,
             destinations,
         } => TraitEventResult::NeedsInteraction {
             decision_ctx,
@@ -4733,6 +4850,7 @@ pub fn process_event_with_chosen_replacement_trait_and_applied_effects(
             object_id,
             event: Box::new(event),
             filter,
+            sacrifice_count,
             life_cost: match &effect.replacement {
                 ReplacementAction::InteractivePayLifeOrEnterTapped { life_cost } => {
                     Some(*life_cost)

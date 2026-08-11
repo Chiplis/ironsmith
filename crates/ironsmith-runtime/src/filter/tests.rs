@@ -21,6 +21,158 @@ fn test_creature_filter() {
 }
 
 #[test]
+fn type_chosen_this_way_matches_any_subtype_accumulated_on_the_source() {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = CardBuilder::new(CardId::new(), "Shared Choice Source")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let source_id = game.create_object_from_card(&source, alice, Zone::Stack);
+    game.set_chosen_subtype(source_id, Subtype::Zombie);
+    game.set_chosen_subtype(source_id, Subtype::Goblin);
+
+    let zombie = CardBuilder::new(CardId::new(), "Chosen Zombie")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie])
+        .build();
+    let goblin = CardBuilder::new(CardId::new(), "Chosen Goblin")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Goblin])
+        .build();
+    let elf = CardBuilder::new(CardId::new(), "Unchosen Elf")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .build();
+    let zombie_id = game.create_object_from_card(&zombie, alice, Zone::Graveyard);
+    let goblin_id = game.create_object_from_card(&goblin, alice, Zone::Graveyard);
+    let elf_id = game.create_object_from_card(&elf, alice, Zone::Graveyard);
+
+    let mut filter = ObjectFilter::default();
+    filter.zone = Some(Zone::Graveyard);
+    filter.card_types = vec![CardType::Creature];
+    filter.chosen_creature_type = true;
+    filter.set_chosen_type_this_way_surface(true);
+    let context = FilterContext::new(alice).with_source(source_id);
+
+    assert!(filter.matches(game.object(zombie_id).unwrap(), &context, &game));
+    assert!(filter.matches(game.object(goblin_id).unwrap(), &context, &game));
+    assert!(!filter.matches(game.object(elf_id).unwrap(), &context, &game));
+    assert!(filter.description().contains("of a type chosen this way"));
+}
+
+#[test]
+fn enchant_creature_marker_uses_the_executable_aura_attachment_filter() {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+
+    let you = PlayerId::from_index(0);
+    let game = GameState::new(vec!["You".to_string()], 20);
+    let creature_aura = CardBuilder::new(CardId::from_raw(47_267), "Creature Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .build();
+    let controlled_creature_aura =
+        CardBuilder::new(CardId::from_raw(47_268), "Controlled Creature Aura")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .build();
+    let mut creature_aura = crate::object::Object::from_card(
+        crate::ids::ObjectId::from_raw(47_267),
+        &creature_aura,
+        you,
+        Zone::Hand,
+    );
+    creature_aura.aura_attach_filter =
+        Some(crate::object::AuraAttachmentFilter::Object(ObjectFilter::creature()).into());
+    let mut controlled_creature_aura = crate::object::Object::from_card(
+        crate::ids::ObjectId::from_raw(47_268),
+        &controlled_creature_aura,
+        you,
+        Zone::Hand,
+    );
+    controlled_creature_aura.aura_attach_filter = Some(
+        crate::object::AuraAttachmentFilter::Object(ObjectFilter::creature().you_control()).into(),
+    );
+    let filter = ObjectFilter::default()
+        .with_subtype(Subtype::Aura)
+        .with_ability_marker("enchant creature");
+    let context = FilterContext::new(you);
+
+    assert!(filter.matches(&creature_aura, &context, &game));
+    assert!(!filter.matches(&controlled_creature_aura, &context, &game));
+}
+
+#[test]
+fn freerunning_marker_matches_the_typed_composed_alternative_cost() {
+    use crate::alternative_cast::AlternativeCastingMethod;
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+
+    let you = PlayerId::from_index(0);
+    let game = GameState::new(vec!["You".to_string()], 20);
+    let card = CardBuilder::new(CardId::from_raw(47_269), "Freerunning Probe")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let mut with_freerunning = crate::object::Object::from_card(
+        crate::ids::ObjectId::from_raw(47_269),
+        &card,
+        you,
+        Zone::Graveyard,
+    );
+    with_freerunning
+        .alternative_casts
+        .push(AlternativeCastingMethod::alternative_cost(
+            "Freerunning",
+            None,
+            Vec::new(),
+        ));
+    let without_freerunning = crate::object::Object::from_card(
+        crate::ids::ObjectId::from_raw(47_270),
+        &card,
+        you,
+        Zone::Graveyard,
+    );
+    let filter = ObjectFilter::default().with_ability_marker("freerunning");
+    let context = FilterContext::new(you);
+
+    assert!(filter.matches(&with_freerunning, &context, &game));
+    assert!(!filter.matches(&without_freerunning, &context, &game));
+}
+
+#[test]
+fn defending_player_graveyard_owner_filter_rejects_other_graveyards() {
+    let attacker = PlayerId::from_index(0);
+    let defender = PlayerId::from_index(1);
+    let other_opponent = PlayerId::from_index(2);
+    let mut game = GameState::new(
+        vec![
+            "Attacker".to_string(),
+            "Defender".to_string(),
+            "Other opponent".to_string(),
+        ],
+        20,
+    );
+    let creature =
+        crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_266), "Graveyard Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+    let defending_card = game.create_object_from_card(&creature, defender, Zone::Graveyard);
+    let other_card = game.create_object_from_card(&creature, other_opponent, Zone::Graveyard);
+    let mut context = FilterContext::new(attacker);
+    context.defending_player = Some(defender);
+    let filter = ObjectFilter::default()
+        .with_type(CardType::Creature)
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::Defending);
+
+    assert!(filter.matches(game.object(defending_card).unwrap(), &context, &game));
+    assert!(!filter.matches(game.object(other_card).unwrap(), &context, &game));
+}
+
+#[test]
 fn branch_scoped_type_union_applies_shared_controller_and_mana_value_once() {
     use crate::card::CardBuilder;
     use crate::ids::CardId;
@@ -401,6 +553,69 @@ fn blocked_by_tagged_filter_matches_current_combat_relationship() {
 }
 
 #[test]
+fn attacking_alone_counts_attackers_per_controller() {
+    let mut game = GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let cara = PlayerId::from_index(2);
+    let attacker_card =
+        crate::card::CardBuilder::new(crate::ids::CardId::from_raw(61_001), "Attacker")
+            .card_types(vec![CardType::Creature])
+            .build();
+    let make_attacker =
+        |id, controller| Object::from_card(id, &attacker_card, controller, Zone::Battlefield);
+    let first_alice = make_attacker(ObjectId::from_raw(61_001), alice);
+    let second_alice = make_attacker(ObjectId::from_raw(61_002), alice);
+    let cara_attacker = make_attacker(ObjectId::from_raw(61_003), cara);
+    game.add_object(first_alice.clone());
+    game.add_object(second_alice.clone());
+    game.add_object(cara_attacker.clone());
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![
+            crate::combat_state::AttackerInfo {
+                creature: first_alice.id,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            },
+            crate::combat_state::AttackerInfo {
+                creature: cara_attacker.id,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            },
+        ],
+        ..Default::default()
+    });
+    let filter = ObjectFilter {
+        attacking: true,
+        attacking_alone: true,
+        ..ObjectFilter::creature()
+    };
+    let ctx = FilterContext::new(alice);
+    assert!(filter.matches(&first_alice, &ctx, &game));
+    assert!(filter.matches(&cara_attacker, &ctx, &game));
+
+    game.combat
+        .as_mut()
+        .unwrap()
+        .attackers
+        .push(crate::combat_state::AttackerInfo {
+            creature: second_alice.id,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        });
+    assert!(!filter.matches(&first_alice, &ctx, &game));
+    assert!(!filter.matches(&second_alice, &ctx, &game));
+    assert!(
+        filter.matches_snapshot(
+            &ObjectSnapshot::from_object_with_calculated_characteristics(&cara_attacker, &game),
+            &ctx,
+            &game,
+        ),
+        "another player's sole attacker remains attacking alone"
+    );
+}
+
+#[test]
 fn historical_block_partner_filter_matches_both_roles_using_declaration_lki() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -693,6 +908,7 @@ fn test_graveyard_filter_uses_current_subtypes() {
     use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::CardDefinitionBuilder;
+    use crate::effect::Value;
     use crate::ids::CardId;
     use crate::static_abilities::StaticAbility;
     use crate::zone::Zone;
@@ -2347,6 +2563,44 @@ fn test_filter_description_places_controller_before_power_toughness_relation() {
 }
 
 #[test]
+fn power_toughness_inequality_matches_live_objects_and_snapshots() {
+    use crate::card::PowerToughness;
+
+    let you = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["You".to_string()], 20);
+    let unequal = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_252), "Unequal")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .build();
+    let equal = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_253), "Equal")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let unequal_id = game.create_object_from_card(&unequal, you, Zone::Battlefield);
+    let equal_id = game.create_object_from_card(&equal, you, Zone::Battlefield);
+    let filter =
+        ObjectFilter::creature().with_power_toughness_relation(PowerToughnessRelation::NotEqual);
+    let ctx = FilterContext::new(you);
+
+    assert!(filter.matches(game.object(unequal_id).unwrap(), &ctx, &game));
+    assert!(!filter.matches(game.object(equal_id).unwrap(), &ctx, &game));
+    assert!(filter.matches_snapshot(
+        &ObjectSnapshot::from_object(game.object(unequal_id).unwrap(), &game),
+        &ctx,
+        &game
+    ));
+    assert!(!filter.matches_snapshot(
+        &ObjectSnapshot::from_object(game.object(equal_id).unwrap(), &game),
+        &ctx,
+        &game
+    ));
+    assert_eq!(
+        filter.description(),
+        "creature with power and toughness that aren't equal"
+    );
+}
+
+#[test]
 fn test_filter_description_places_controller_before_static_ability_qualifier() {
     let filter = ObjectFilter::creature()
         .controlled_by(PlayerFilter::You)
@@ -2673,6 +2927,7 @@ fn test_filter_matches_creature_dealt_damage_this_turn() {
             source: ObjectId::from_raw(500),
             target: crate::events::DamageTarget::Object(creature_id),
             amount: 1,
+            excess_damage: 0,
             is_combat: false,
             is_unpreventable: false,
             cause: crate::events::cause::EventCause::effect(),
@@ -2684,4 +2939,144 @@ fn test_filter_matches_creature_dealt_damage_this_turn() {
     game.record_turn_history_event(&damage_event);
     let creature = game.object(creature_id).expect("creature should exist");
     assert!(filter.matches(creature, &ctx, &game));
+}
+
+#[test]
+fn source_damage_recipient_filters_persist_across_turns_and_keep_exact_identity() {
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::effect::Value;
+    use crate::events::{DamageEvent, DamageTarget};
+    use crate::ids::CardId;
+    use crate::provenance::ProvNodeId;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::triggers::TriggerEvent;
+
+    let mut game = GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let cara = PlayerId::from_index(2);
+    let creature = CardBuilder::new(CardId::from_raw(60_120), "History Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .build();
+    let planeswalker = CardBuilder::new(CardId::from_raw(60_121), "History Target")
+        .card_types(vec![CardType::Planeswalker])
+        .build();
+    let source = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let damaged_planeswalker = game.create_object_from_card(&planeswalker, bob, Zone::Battlefield);
+    let untouched_planeswalker =
+        game.create_object_from_card(&planeswalker, cara, Zone::Battlefield);
+
+    let target_snapshot = ObjectSnapshot::from_object(
+        game.object(damaged_planeswalker).expect("planeswalker"),
+        &game,
+    );
+    let player_damage = TriggerEvent::new_with_provenance(
+        DamageEvent::with_cause(
+            source,
+            DamageTarget::Player(bob),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        ProvNodeId::default(),
+    );
+    let object_damage = TriggerEvent::new_with_provenance(
+        DamageEvent::with_cause(
+            source,
+            DamageTarget::Object(damaged_planeswalker),
+            1,
+            false,
+            crate::events::cause::EventCause::effect(),
+        )
+        .with_target_snapshot(target_snapshot),
+        ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&player_damage);
+    game.record_turn_history_event(&object_damage);
+    game.next_turn();
+    assert_eq!(
+        game.turn_store.turn_history.total_damage_to_player(bob),
+        0,
+        "the current-turn ledger should have reset"
+    );
+
+    let ctx = game.filter_context_for(alice, Some(source));
+    let player_filter = PlayerFilter::was_dealt_damage_by_source_this_game(PlayerFilter::Opponent);
+    assert!(player_filter_matches_game(&player_filter, bob, &game, &ctx));
+    assert!(!player_filter_matches_game(
+        &player_filter,
+        cara,
+        &game,
+        &ctx
+    ));
+    assert!(!player_filter_matches_game(
+        &player_filter,
+        alice,
+        &game,
+        &ctx
+    ));
+
+    let mut object_filter = ObjectFilter::planeswalker();
+    object_filter.was_dealt_damage_by_source_this_game = true;
+    assert!(
+        object_filter.matches(
+            game.object(damaged_planeswalker)
+                .expect("damaged planeswalker"),
+            &ctx,
+            &game,
+        )
+    );
+    assert!(
+        !object_filter.matches(
+            game.object(untouched_planeswalker)
+                .expect("untouched planeswalker"),
+            &ctx,
+            &game,
+        )
+    );
+
+    let other_source = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let other_ctx = game.filter_context_for(alice, Some(other_source));
+    assert!(!player_filter_matches_game(
+        &player_filter,
+        bob,
+        &game,
+        &other_ctx
+    ));
+    assert!(
+        !object_filter.matches(
+            game.object(damaged_planeswalker)
+                .expect("damaged planeswalker"),
+            &other_ctx,
+            &game,
+        )
+    );
+
+    let players = crate::effect::Effect::new(crate::effects::ForPlayersEffect::new(
+        player_filter,
+        vec![crate::effect::Effect::deal_damage(
+            Value::Fixed(1),
+            ChooseSpec::Player(PlayerFilter::IteratedPlayer),
+        )],
+    ));
+    let objects = crate::effect::Effect::new(crate::effects::ForEachObject::new(
+        object_filter,
+        vec![crate::effect::Effect::deal_damage(
+            Value::Fixed(1),
+            ChooseSpec::Iterated,
+        )],
+    ));
+    let mut execution = crate::effects::ExecutionContext::new_default(source, alice);
+    crate::effects::execute_effect(&mut game, &players, &mut execution)
+        .expect("historical player loop should resolve");
+    crate::effects::execute_effect(&mut game, &objects, &mut execution)
+        .expect("historical planeswalker loop should resolve");
+    assert_eq!(game.player(bob).expect("Bob").life, 19);
+    assert_eq!(game.player(cara).expect("Cara").life, 20);
+    assert_eq!(game.damage_on(damaged_planeswalker), 1);
+    assert_eq!(game.damage_on(untouched_planeswalker), 0);
 }

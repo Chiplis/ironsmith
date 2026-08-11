@@ -4,6 +4,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use super::super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, token_word_refs};
+use super::super::super::super::util::starts_filter_keyword_list_continuation_words;
 use super::super::super::{leaf, primitives};
 use super::AndPreservation;
 use super::verbs::find_chain_verb_tokens;
@@ -237,7 +238,9 @@ pub(crate) fn starts_with_inline_token_rules_tail_tokens(tokens: &[OwnedLexToken
 }
 
 pub(crate) fn is_token_creation_context_tokens(tokens: &[OwnedLexToken]) -> bool {
-    starts_any(tokens, &[&["create"]]) && contains_any(tokens, &["token", "tokens"])
+    contains_any(tokens, &["token", "tokens"])
+        && find_chain_verb_tokens(tokens)
+            .is_some_and(|verb| verb.kind == super::ChainVerbKind::Create)
 }
 
 pub(crate) fn starts_with_player_may_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -397,6 +400,9 @@ pub(super) fn then_followup_facts(
     let has_effect_head = find_chain_verb_tokens(after).is_some()
         || starts_with_nonverb_effect_head(after)
         || starts_with_player_may_tokens(after);
+    let sacrifice_unless_payment = starts_any(after, &[&["sacrifice"], &["sacrifices"]])
+        && primitives::contains_word(after, "unless")
+        && contains_any(after, &["pay", "pays"]);
     let allow_back_reference = has_back_reference
         && ((starts_any(after, &[&["put"], &["double"]])
             && contains_any(after, &["counter", "counters"]))
@@ -419,7 +425,8 @@ pub(super) fn then_followup_facts(
             || starts_any(
                 after,
                 &[&["transform"], &["transforms"], &["convert"], &["converts"]],
-            ));
+            )
+            || sacrifice_unless_payment);
     let allow_clash = starts_any(before, &[&["clash"], &["clashes"]]);
     let allow_attach = starts_any(after, &[&["attach"], &["attaches"]]);
     let allow_that_many = !starts_with_for_each
@@ -597,6 +604,8 @@ pub(super) fn comma_boundary_facts(
             }));
     let named_token_appositive =
         is_create_named_token_prefix(before) && starts_like_named_token_appositive(after);
+    let filter_keyword_list =
+        starts_filter_keyword_list_continuation_words(&token_word_refs(after));
     CommaBoundaryFacts {
         before_has_verb,
         after_starts_effect,
@@ -604,6 +613,7 @@ pub(super) fn comma_boundary_facts(
             || duration_trigger
             || contains_all(before, &["search", "library"])
             || target_card_type_list
+            || filter_keyword_list
             || inline_token_rules
             || named_token_appositive,
     }

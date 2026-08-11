@@ -356,6 +356,7 @@ pub(super) fn mana_spent_symbol_clause_words<'a>(symbol_clause: LexedClause<'a>)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::object::CounterType;
     use crate::runtime_backend::lexer::lex_line;
     use crate::static_abilities::StaticAbilityId;
 
@@ -414,6 +415,20 @@ mod tests {
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert_eq!(filter.controller, Some(PlayerFilter::You));
         assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_joint_negative_owner_controller_clause() {
+        let tokens = lex_line("permanent you neither own nor control", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.owner, Some(PlayerFilter::NotYou));
+        assert_eq!(filter.controller, Some(PlayerFilter::NotYou));
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(
+            filter.description(),
+            "permanent you neither own nor control"
+        );
     }
 
     #[test]
@@ -575,6 +590,25 @@ mod tests {
         assert_eq!(filter.zone, Some(Zone::Hand));
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert!(filter.drawn_this_turn);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_keeps_counter_placement_provenance() {
+        let tokens = lex_line(
+            "creature you control that you've put one or more +1/+1 counters on this turn",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        let constraint = filter
+            .counters_put_on_this_turn
+            .expect("typed counter-placement history constraint");
+        assert_eq!(constraint.counter_type, Some(CounterType::PlusOnePlusOne));
+        assert_eq!(constraint.source_controller, PlayerFilter::You);
+        assert_eq!(constraint.minimum, 1);
     }
 
     #[test]

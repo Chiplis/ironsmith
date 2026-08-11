@@ -354,6 +354,7 @@ pub(crate) fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     score += usize::from(filter.chosen_color) * 3;
     score += usize::from(filter.chosen_creature_type) * 3;
     score += usize::from(filter.excluded_chosen_creature_type) * 3;
+    score += usize::from(filter.excluded_any_chosen_creature_type) * 3;
     score += usize::from(filter.power.is_some() || filter.toughness.is_some()) * 2;
     score
 }

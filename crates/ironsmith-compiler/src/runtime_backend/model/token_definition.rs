@@ -2,6 +2,7 @@ use crate::ability::ManaUsageRestriction;
 use crate::color::ColorSet;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
+use crate::target::SourceReferenceSurface;
 use crate::types::{CardType, Subtype};
 
 /// Parser-level placeholder for an explicit "that card" stat reference in a
@@ -38,6 +39,7 @@ pub(crate) enum BuiltinTokenShape {
 pub(crate) enum TokenKeywordShape {
     Flying,
     WardGeneric(u32),
+    Firebending(u32),
     Defender,
     Prowess,
     Vigilance,
@@ -66,6 +68,21 @@ pub(crate) enum TokenCombatRestrictionShape {
     CantAttackOrBlock,
     Unblockable,
     CantBlock,
+    MustAttack,
+}
+
+/// Specialized token rules whose authored order cannot be recovered from the
+/// otherwise independent semantic fields on `CreatureTokenRulesShape`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CreatureTokenInlineRuleKind {
+    CombatRestriction,
+    LeavesReturnNamedToHand,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CreatureTokenInlineRulePresentation {
+    pub(crate) kind: CreatureTokenInlineRuleKind,
+    pub(crate) self_surface: Option<SourceReferenceSurface>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -220,6 +237,7 @@ pub(crate) struct AstartesWarriorTokenShape {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct CreatureTokenRulesShape {
     pub(crate) token_rules: TokenRulesSurfaces,
+    pub(crate) authored_inline_rules: Vec<CreatureTokenInlineRulePresentation>,
     pub(crate) cumulative_upkeep_mana_symbols: Option<Vec<ManaSymbol>>,
     pub(crate) tap_mana_ability: Option<TokenTapManaAbilityShape>,
     pub(crate) saddle_crew_power_bonus: Option<u32>,

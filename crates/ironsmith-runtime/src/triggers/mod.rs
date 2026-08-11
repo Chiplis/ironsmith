@@ -61,9 +61,10 @@ pub mod zone_changes;
 // Re-export core types
 pub(crate) use check::check_triggers_batch;
 pub use check::{
-    ActiveStateTriggerKey, DelayedTrigger, TriggerIdentity, TriggerQueue, TriggeredAbilityEntry,
-    TriggeredAbilitySourceKind, check_delayed_triggers, check_state_triggers, check_triggers,
-    compute_delayed_trigger_identity, compute_trigger_identity, generate_step_trigger_events,
+    ActiveStateTriggerKey, DelayedTrigger, PendingDelayedTriggerPayment, TriggerIdentity,
+    TriggerQueue, TriggeredAbilityEntry, TriggeredAbilitySourceKind, check_delayed_triggers,
+    check_state_triggers, check_triggers, compute_delayed_trigger_identity,
+    compute_trigger_identity, generate_step_trigger_events,
     generate_step_trigger_events_for_active_players, player_filter_matches_with_context,
     verify_intervening_if,
 };
@@ -113,13 +114,18 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+        | PlayerFilter::ControlsMost { .. }
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
-        | PlayerFilter::ChosenPlayer
+        | PlayerFilter::AttackedBySourceThisTurn
+        | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::LostLifeThisTurn { .. }
+        | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::Target(_)
         | PlayerFilter::AliasedTarget(_)
         | PlayerFilter::Excluding { .. } => "that player".to_string(),
+        PlayerFilter::ChosenPlayer => "the chosen player".to_string(),
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
             "enchanted player".to_string()
         }
@@ -156,8 +162,13 @@ pub(crate) fn describe_player_filter_possessive(filter: &PlayerFilter) -> String
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+        | PlayerFilter::ControlsMost { .. }
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::AttackedBySourceThisTurn
+        | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::LostLifeThisTurn { .. }
+        | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
         | PlayerFilter::ChosenPlayer
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::Target(_)
@@ -397,6 +408,18 @@ impl Trigger {
         Self::new(DiesDamagedByThisTurnTrigger::by_enchanted_creature(victim))
     }
 
+    /// Create a death trigger qualified by damage this turn from any source
+    /// matching the typed filter at the time that damage was dealt.
+    pub fn creature_dealt_damage_by_filtered_source_this_turn_dies(
+        victim: ObjectFilter,
+        damager_filter: ObjectFilter,
+    ) -> Self {
+        Self::new(DiesDamagedByFilteredSourceThisTurnTrigger::new(
+            victim,
+            damager_filter,
+        ))
+    }
+
     /// Create a "when this permanent leaves the battlefield" trigger.
     pub fn this_leaves_battlefield() -> Self {
         Self::new(ZoneChangeTrigger::this_leaves_battlefield())
@@ -486,6 +509,11 @@ impl Trigger {
         Self::new(BeginningOfEndStepTrigger::the_end_step())
     }
 
+    /// Create the event-qualified current-monarch end-step trigger.
+    pub fn beginning_of_monarch_end_step() -> Self {
+        Self::new(BeginningOfEndStepTrigger::monarch_end_step())
+    }
+
     /// Create a "at the beginning of combat on [player]'s turn" trigger.
     pub fn beginning_of_combat(player: PlayerFilter) -> Self {
         Self::new(BeginningOfCombatTrigger::new(player))
@@ -512,6 +540,15 @@ impl Trigger {
         ))
     }
 
+    pub fn beginning_of_postcombat_main_phase_with_surface(
+        player: PlayerFilter,
+        surface: ironsmith_core::trigger_model::PostcombatMainPhaseSurface,
+    ) -> Self {
+        Self::new(BeginningOfMainPhaseTrigger::new_with_postcombat_surface(
+            player, surface,
+        ))
+    }
+
     /// Create a "at the beginning of [player]'s main phase" trigger (either).
     pub fn beginning_of_main_phase(player: PlayerFilter) -> Self {
         Self::new(BeginningOfMainPhaseTrigger::new(
@@ -520,11 +557,24 @@ impl Trigger {
         ))
     }
 
+    pub fn beginning_of_main_phase_with_surface(
+        player: PlayerFilter,
+        surface: ironsmith_core::trigger_model::MainPhaseSurface,
+    ) -> Self {
+        Self::new(BeginningOfMainPhaseTrigger::new_with_main_phase_surface(
+            player, surface,
+        ))
+    }
+
     // === Combat Triggers ===
 
     /// Create a "when this creature attacks" trigger.
     pub fn this_attacks() -> Self {
         Self::new(ThisAttacksTrigger)
+    }
+
+    pub fn this_and_another_attack_different_players() -> Self {
+        Self::new(ThisAndAnotherAttackDifferentPlayersTrigger)
     }
 
     /// Create a "when this creature attacks a player who controls at least N matching permanents" trigger.
@@ -626,6 +676,15 @@ impl Trigger {
     /// Create a "when one or more [players] are attacked" trigger.
     pub fn players_attacked_one_or_more(player_filter: PlayerFilter) -> Self {
         Self::new(PlayersAttackedTrigger::one_or_more(player_filter))
+    }
+
+    /// Create a grouped trigger for a matching player attacking a typed
+    /// player/planeswalker target class.
+    pub fn player_attacks_one_or_more(
+        attacker: PlayerFilter,
+        target: ironsmith_core::AttackTargetRestriction,
+    ) -> Self {
+        Self::new(PlayerAttacksOneOrMoreTrigger::new(attacker, target))
     }
 
     /// Create a "when N or more [filter] attack" trigger that fires once per declaration.
@@ -875,6 +934,24 @@ impl Trigger {
         ))
     }
 
+    pub fn deals_exact_damage_to_object_or_player_with_source_surface(
+        source_filter: ObjectFilter,
+        object_filter: ObjectFilter,
+        player_filter: PlayerFilter,
+        player_first: bool,
+        amount: u32,
+        source_surface: ironsmith_core::trigger_model::DamageSourceSurface,
+    ) -> Self {
+        Self::new(DealsExactDamageToObjectOrPlayerTrigger::new(
+            source_filter,
+            object_filter,
+            player_filter,
+            player_first,
+            amount,
+            source_surface,
+        ))
+    }
+
     /// Create a "when [filter] deals noncombat damage to [player]" trigger.
     pub fn deals_noncombat_damage_to_player(
         filter: ObjectFilter,
@@ -962,11 +1039,27 @@ impl Trigger {
         Self::new(IsDealtDamageTrigger::combat_only(target))
     }
 
+    /// Create a "whenever [target] is dealt excess noncombat damage" trigger.
+    pub fn is_dealt_excess_noncombat_damage(target: ChooseSpec) -> Self {
+        Self::new(IsDealtDamageTrigger::excess_noncombat(target))
+    }
+
     // === Spell/Ability Triggers ===
 
     /// Create a "when [player] casts a spell" trigger.
     pub fn spell_cast(filter: Option<ObjectFilter>, caster: PlayerFilter) -> Self {
         Self::new(SpellCastTrigger::new(filter, caster))
+    }
+
+    /// Create a spell-cast trigger that also proves a same-named card exists
+    /// in a specified player's zone when the cast event happens.
+    pub fn spell_cast_same_name_card_in_zone(
+        filter: Option<ObjectFilter>,
+        caster: PlayerFilter,
+        zone: crate::zone::Zone,
+        owner: PlayerFilter,
+    ) -> Self {
+        Self::new(SpellCastTrigger::new(filter, caster).with_same_name_card_in_zone(zone, owner))
     }
 
     /// Create a passive ordinal trigger such as "when the fourth spell of a
@@ -1049,6 +1142,19 @@ impl Trigger {
     /// Create a generic "whenever an ability triggers" trigger.
     pub fn ability_triggers() -> Self {
         Self::new(AbilityTriggeredTrigger::new(false))
+    }
+
+    /// Create a trigger on an ability with a qualified source and cause.
+    pub fn ability_triggered_qualified(
+        another: bool,
+        source_filter: Option<ObjectFilter>,
+        caused_by_source_entering: bool,
+    ) -> Self {
+        Self::new(AbilityTriggeredTrigger::new_qualified(
+            another,
+            source_filter,
+            caused_by_source_entering,
+        ))
     }
 
     /// Create a qualified "when [player] activates [ability]" trigger.
@@ -1366,6 +1472,14 @@ impl Trigger {
         )
     }
 
+    pub fn permanent_sacrificed(filter: ObjectFilter) -> Self {
+        Self::new(PermanentSacrificedTrigger { filter })
+    }
+
+    pub fn permanent_destroyed(filter: ObjectFilter) -> Self {
+        Self::new(PermanentDestroyedTrigger { filter })
+    }
+
     /// Create a "whenever [player] creates [tokens]" trigger.
     pub fn tokens_created(player: PlayerFilter, filter: ObjectFilter, one_or_more: bool) -> Self {
         Self::new(TokensCreatedTrigger::new(player, filter, one_or_more))
@@ -1468,6 +1582,14 @@ impl Trigger {
         Self::new(KeywordActionTrigger::new(action, player))
     }
 
+    /// Create a "whenever [player] [keyword action] during your turn" trigger.
+    pub fn keyword_action_during_your_turn(
+        action: crate::events::KeywordActionKind,
+        player: PlayerFilter,
+    ) -> Self {
+        Self::new(KeywordActionTrigger::new(action, player).during_your_turn())
+    }
+
     /// Create a "whenever [player] [keyword action] [matching object]" trigger.
     pub fn keyword_action_matching_object(
         action: crate::events::KeywordActionKind,
@@ -1477,6 +1599,15 @@ impl Trigger {
         Self::new(KeywordActionTrigger::matching_object(
             action, player, filter,
         ))
+    }
+
+    /// Create a turn-qualified "whenever [player] [keyword action] [matching object]" trigger.
+    pub fn keyword_action_matching_object_during_your_turn(
+        action: crate::events::KeywordActionKind,
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    ) -> Self {
+        Self::new(KeywordActionTrigger::matching_object(action, player, filter).during_your_turn())
     }
 
     /// Create a "whenever [matching source] [keyword action] [tagged matching object]" trigger.

@@ -1,7 +1,7 @@
 use super::super::SentenceInput;
 use crate::cards::builders::{
-    CardTextError, EffectAst, ObjectFilter, PlayerAst, ReturnControllerAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, TagKey, TargetAst,
+    CardTextError, EffectAst, LibraryBottomOrderAst, ObjectFilter, PlayerAst, ReturnControllerAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst,
 };
 use crate::effect::ChoiceCount;
 use crate::runtime_backend::effect_ast_traversal::{
@@ -9,16 +9,20 @@ use crate::runtime_backend::effect_ast_traversal::{
 };
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::families::activation_and_restrictions::parse_may_cast_it_sentence;
+use crate::runtime_backend::front_end::grammar::permission_facts::subject_filters as permission_subject_filters;
 use crate::runtime_backend::front_end::grammar::sentence_markers::{self, LeadingMayActor};
 use crate::runtime_backend::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
 use crate::runtime_backend::grammar::effects::{
     clause_dispatch_shapes, control_copy_attach_shapes,
 };
+use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::util::{
     helper_tag_for_tokens, strip_leading_token_words_any, trim_commas,
 };
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::types::CardType;
 use crate::zone::Zone;
+use winnow::Parser;
 
 fn exiled_top_collection_tag(effect: &EffectAst) -> Option<TagKey> {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -264,12 +268,31 @@ pub(crate) fn parse_exile_top_then_put_from_among_onto_battlefield(
     )
 }
 
-/// Composes "exile the top N ...; you may cast any number ... from among
-/// them" using the moved-object tag minted by the exile effect.
-pub(crate) fn parse_exile_top_then_cast_any_number_free(
+fn exclude_lands_from_spell_filter(filter: &mut ObjectFilter) {
+    if !filter.excluded_card_types.contains(&CardType::Land) {
+        filter.excluded_card_types.push(CardType::Land);
+    }
+}
+
+fn parse_collection_cast_filter(
+    shape: &clause_dispatch_shapes::CastTaggedCollectionShape<'_>,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some(mut filter) =
+        permission_subject_filters::parse_cast_permission_filter_tokens(shape.subject_tokens)?
+    else {
+        return Ok(None);
+    };
+    if permission_subject_filters::generic_spell_subject_requires_nonland(shape.subject_tokens) {
+        exclude_lands_from_spell_filter(&mut filter);
+    }
+    filter.mana_value = shape.mana_value.clone();
+    Ok(Some(filter))
+}
+
+fn build_exile_top_then_cast_collection(
     sentences: &[SentenceInput],
     sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+) -> Result<Option<(Vec<EffectAst>, TagKey, TagKey)>, CardTextError> {
     let Ok(mut effects) =
         effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
     else {
@@ -278,33 +301,201 @@ pub(crate) fn parse_exile_top_then_cast_any_number_free(
     let Some(exiled_tag) = find_exiled_top_collection_tag(&effects) else {
         return Ok(None);
     };
-    let Some(shape) =
-        clause_dispatch_shapes::parse_cast_any_tagged_shape(sentences[sentence_idx + 1].lowered())
-    else {
+    let Some(shape) = clause_dispatch_shapes::parse_cast_tagged_collection_shape(
+        sentences[sentence_idx + 1].lowered(),
+    ) else {
+        return Ok(None);
+    };
+    let Some(mut filter) = parse_collection_cast_filter(&shape)? else {
         return Ok(None);
     };
 
-    let mut filter = ObjectFilter::nonland().in_zone(Zone::Exile);
-    filter.mana_value = shape.mana_value;
+    filter.zone = Some(Zone::Exile);
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: exiled_tag,
+        tag: exiled_tag.clone(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
-    effects.push(EffectAst::May {
-        effects: vec![EffectAst::ForEachObject {
-            filter,
-            effects: vec![EffectAst::May {
-                effects: vec![EffectAst::subject_verb_cast_tagged(
-                    TagKey::from(crate::cards::builders::IT_TAG),
-                    PlayerAst::You,
-                    false,
-                    false,
-                    true,
-                    None,
-                )],
-            }],
-        }],
+    let chosen_tag = helper_tag_for_tokens(
+        sentences[sentence_idx + 1].lowered(),
+        "cast_from_exiled_collection",
+    );
+    effects.push(EffectAst::ChooseTaggedObjectsInZone {
+        filter,
+        count: shape.count,
+        player: PlayerAst::You,
+        tag: chosen_tag.clone(),
+        zone: Zone::Exile,
     });
+    effects.push(EffectAst::ForEachTagged {
+        tag: chosen_tag.clone(),
+        effects: vec![EffectAst::subject_verb_cast_tagged(
+            TagKey::from(crate::cards::builders::IT_TAG),
+            PlayerAst::You,
+            false,
+            false,
+            true,
+            None,
+        )],
+    });
+    Ok(Some((effects, exiled_tag, chosen_tag)))
+}
+
+/// Composes "exile the top N ...; you may cast <count/filter> ... from among
+/// them" using the exact moved-object tag minted by the exile effect.
+pub(crate) fn parse_exile_top_then_cast_collection_free(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    Ok(
+        build_exile_top_then_cast_collection(sentences, sentence_idx)?
+            .map(|(effects, _, _)| effects),
+    )
+}
+
+fn remaining_exiled_filter(
+    mut filter: ObjectFilter,
+    exiled_tag: &TagKey,
+    chosen_tag: &TagKey,
+) -> ObjectFilter {
+    filter.zone = Some(Zone::Exile);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: exiled_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: chosen_tag.clone(),
+        relation: TaggedOpbjectRelation::IsNotTaggedObject,
+    });
+    filter
+}
+
+fn move_all_remaining_exiled(
+    filter: ObjectFilter,
+    zone: Zone,
+    order: Option<LibraryBottomOrderAst>,
+) -> EffectAst {
+    EffectAst::subject_verb_move_all_to_zone(
+        TargetAst::Object(filter, None, None),
+        zone,
+        false,
+        ReturnControllerAst::Preserve,
+        false,
+        None,
+    )
+    .with_destination_player_surface(Some(PlayerAst::You))
+    .with_library_order(order, PlayerAst::You)
+}
+
+fn parse_remaining_exiled_partition(
+    tokens: &[OwnedLexToken],
+    exiled_tag: &TagKey,
+    chosen_tag: &TagKey,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let mentions_remaining = contains_word_phrase(tokens, &["not", "cast", "this", "way"])
+        || contains_word_phrase(tokens, &["weren't", "cast"])
+        // `parser_token_word_refs` intentionally removes apostrophes from
+        // token pieces, so authored "weren't" reaches this word-level guard
+        // as "werent" even though token parsers retain the source spelling.
+        || contains_word_phrase(tokens, &["werent", "cast"]);
+    let direct_rest = contains_word_phrase(tokens, &["put", "the", "rest"]);
+    if !(mentions_remaining && contains_word_phrase(tokens, &["exiled"])) && !direct_rest {
+        return Ok(None);
+    }
+
+    // Partition the remaining filtered cards into hand, then move the rest to
+    // the library bottom. Zone scoping makes the second move the exact
+    // complement of the first after it resolves.
+    if contains_word_phrase(tokens, &["into", "your", "hand"])
+        && contains_word_phrase(
+            tokens,
+            &[
+                "the", "rest", "on", "the", "bottom", "of", "your", "library",
+            ],
+        )
+    {
+        let Some((_, after_exiled)) =
+            crate::runtime_backend::front_end::grammar::primitives::parse_prefix(
+                tokens,
+                (
+                    winnow::combinator::opt(
+                        crate::runtime_backend::front_end::grammar::primitives::kw("then"),
+                    ),
+                    crate::runtime_backend::front_end::grammar::primitives::phrase(&[
+                        "put", "the", "exiled",
+                    ]),
+                )
+                    .void(),
+            )
+        else {
+            return Ok(None);
+        };
+        let Some((filter_end, _, _)) =
+            crate::runtime_backend::front_end::grammar::primitives::find_prefix(
+                after_exiled,
+                || {
+                    crate::runtime_backend::front_end::grammar::primitives::any_phrase(&[
+                        &["that", "weren't", "cast"],
+                        &["not", "cast", "this", "way"],
+                    ])
+                },
+            )
+        else {
+            return Ok(None);
+        };
+        let filter_tokens = after_exiled.get(..filter_end).unwrap_or_default();
+        let Ok(filter) = parse_object_filter_lexed(filter_tokens, false) else {
+            return Ok(None);
+        };
+        let hand_filter = remaining_exiled_filter(filter, exiled_tag, chosen_tag);
+        let rest_filter = remaining_exiled_filter(ObjectFilter::default(), exiled_tag, chosen_tag);
+        return Ok(Some(vec![
+            move_all_remaining_exiled(hand_filter, Zone::Hand, None),
+            move_all_remaining_exiled(
+                rest_filter,
+                Zone::Library,
+                Some(LibraryBottomOrderAst::Random),
+            ),
+        ]));
+    }
+
+    let destination = if contains_word_phrase(tokens, &["into", "your", "graveyard"]) {
+        (Zone::Graveyard, None)
+    } else if contains_word_phrase(tokens, &["on", "the", "bottom", "of", "your", "library"])
+        && contains_word_phrase(tokens, &["random", "order"])
+    {
+        (Zone::Library, Some(LibraryBottomOrderAst::Random))
+    } else {
+        return Ok(None);
+    };
+    let filter = remaining_exiled_filter(ObjectFilter::default(), exiled_tag, chosen_tag);
+    Ok(Some(vec![move_all_remaining_exiled(
+        filter,
+        destination.0,
+        destination.1,
+    )]))
+}
+
+/// Three-sentence collection cast with a cleanup/partition instruction.  This
+/// must outrank the two-sentence rule so cleanup references are bound to both
+/// the original exiled set and the actually selected cast subset.
+pub(crate) fn parse_exile_top_cast_collection_then_partition(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((mut effects, exiled_tag, chosen_tag)) =
+        build_exile_top_then_cast_collection(sentences, sentence_idx)?
+    else {
+        return Ok(None);
+    };
+    let Some(partition) = parse_remaining_exiled_partition(
+        sentences[sentence_idx + 2].lowered(),
+        &exiled_tag,
+        &chosen_tag,
+    )?
+    else {
+        return Ok(None);
+    };
+    effects.extend(partition);
     Ok(Some(effects))
 }
 
@@ -367,4 +558,149 @@ pub(crate) fn parse_random_graveyard_exile_choose_copy_then_cast_copy(
         )],
     });
     Ok(Some(effects))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::EffectLoweringContext;
+    use crate::runtime_backend::front_end::lexer::{lex_line, split_lexed_sentences};
+    use crate::runtime_backend::lowering::compile_support::compile_effects;
+
+    fn sentence_inputs(text: &str) -> Vec<SentenceInput> {
+        let tokens = lex_line(text, 0).expect("collection-cast fixture should lex");
+        split_lexed_sentences(&tokens)
+            .into_iter()
+            .map(SentenceInput::from_lexed)
+            .collect()
+    }
+
+    fn registry_match(text: &str) -> super::super::super::SequenceRuleMatch {
+        let sentences = sentence_inputs(text);
+        super::super::super::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("collection-cast registry lookup should not error")
+            .expect("collection-cast registry should match")
+    }
+
+    fn chosen_filter_and_count(effects: &[EffectAst]) -> (&ObjectFilter, ChoiceCount) {
+        effects
+            .iter()
+            .find_map(|effect| match effect {
+                EffectAst::ChooseTaggedObjectsInZone { filter, count, .. } => {
+                    Some((filter, *count))
+                }
+                _ => None,
+            })
+            .expect("collection cast should choose from the exact tagged exile pool")
+    }
+
+    #[test]
+    fn collection_cast_registry_preserves_cardinality_and_global_filter_cap() {
+        let cases = [
+            (
+                "Exile the top X cards of your library. You may cast instant and sorcery spells with mana value X or less from among them without paying their mana costs. Then put all cards exiled this way that weren't cast into your graveyard.",
+                ChoiceCount::any_number(),
+                3,
+                "exile-top-cast-collection-partition",
+                true,
+            ),
+            (
+                "Exile the top six cards of your library. You may cast up to two sorcery spells with mana value 3 or less from among them without paying their mana costs. Put the exiled cards not cast this way on the bottom of your library in a random order.",
+                ChoiceCount::up_to(2),
+                3,
+                "exile-top-cast-collection-partition",
+                true,
+            ),
+            (
+                "Exile the top X cards of your library. You may cast an instant or sorcery spell with mana value X or less from among them without paying its mana cost. Then put the exiled instant and sorcery cards that weren't cast this way into your hand and the rest on the bottom of your library in a random order.",
+                ChoiceCount::up_to(1),
+                3,
+                "exile-top-cast-collection-partition",
+                true,
+            ),
+            (
+                "Target opponent exiles the top X cards of their library. You may cast any number of spells with mana value X or less from among them without paying their mana costs.",
+                ChoiceCount::any_number(),
+                2,
+                "exile-top-cast-collection-free",
+                true,
+            ),
+            (
+                "Exile the top eight cards of your library. You may cast an Aura spell from among them without paying its mana cost. Then put the rest on the bottom of your library in a random order.",
+                ChoiceCount::up_to(1),
+                3,
+                "exile-top-cast-collection-partition",
+                false,
+            ),
+        ];
+
+        for (text, expected_count, consumed, expected_rule, has_mana_cap) in cases {
+            let matched = registry_match(text);
+            assert_eq!(matched.name, expected_rule, "{text}");
+            assert_eq!(matched.consumed_sentences, consumed, "{text}");
+            let (filter, count) = chosen_filter_and_count(&matched.effects);
+            assert_eq!(count, expected_count, "{text}");
+            assert_eq!(filter.zone, Some(Zone::Exile), "{text}");
+            assert_eq!(filter.mana_value.is_some(), has_mana_cap, "{text}");
+            assert!(
+                filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                }),
+                "cast choice must stay scoped to the exact exiled set: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn collection_cast_partition_uses_actual_selected_subset_and_remaining_exile() {
+        let matched = registry_match(
+            "Exile the top X cards of your library. You may cast an instant or sorcery spell with mana value X or less from among them without paying its mana cost. Then put the exiled instant and sorcery cards that weren't cast this way into your hand and the rest on the bottom of your library in a random order.",
+        );
+        let debug = format!("{:#?}", matched.effects);
+        assert_eq!(debug.matches("ForEachTagged").count(), 1, "{debug}");
+        assert_eq!(debug.matches("MoveToZone").count(), 2, "{debug}");
+        assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+        assert!(debug.contains("zone: Hand"), "{debug}");
+        assert!(debug.contains("zone: Library"), "{debug}");
+        assert!(
+            debug.contains("order: Some(\n                    Random"),
+            "{debug}"
+        );
+    }
+
+    #[test]
+    fn collection_cast_partition_keeps_both_provenance_constraints_after_lowering() {
+        let cases = [
+            (
+                "Exile the top X cards of your library. You may cast instant and sorcery spells with mana value X or less from among them without paying their mana costs. Then put all cards exiled this way that weren't cast into your graveyard.",
+                1,
+            ),
+            (
+                "Exile the top X cards of your library. You may cast an instant or sorcery spell with mana value X or less from among them without paying its mana cost. Then put the exiled instant and sorcery cards that weren't cast this way into your hand and the rest on the bottom of your library in a random order.",
+                2,
+            ),
+        ];
+
+        for (text, expected_moves) in cases {
+            let matched = registry_match(text);
+            let (lowered, _) = compile_effects(&matched.effects, &mut EffectLoweringContext::new())
+                .expect("collection cast partition should lower");
+            let debug = format!("{lowered:#?}");
+            assert_eq!(
+                debug.matches("MoveToZoneEffect").count(),
+                expected_moves,
+                "{debug}"
+            );
+            assert_eq!(
+                debug.matches("relation: IsNotTaggedObject").count(),
+                expected_moves,
+                "each remainder move must exclude the exact selected cast set: {debug}"
+            );
+            assert_eq!(
+                debug.matches("relation: IsTaggedObject").count(),
+                expected_moves + 1,
+                "the cast choice and every remainder move must retain exile-set membership: {debug}"
+            );
+        }
+    }
 }

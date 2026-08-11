@@ -152,43 +152,22 @@ fn may_actor<'a>(input: &mut LexStream<'a>) -> WResult<LeadingMayActorShape> {
     .parse_next(input)
 }
 
-fn causative_player_subject<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    (
-        alt((primitives::kw("have"), primitives::kw("has"))),
-        primitives::any_phrase(&[
-            &["that", "player"],
-            &["that", "players"],
-            &["that", "opponent"],
-            &["that", "opponents"],
-            &["each", "player"],
-            &["each", "opponent"],
-            &["those", "players"],
-            &["those", "opponents"],
-            &["target", "player"],
-            &["target", "opponent"],
-            &["another", "player"],
-            &["another", "opponent"],
-        ]),
-    )
-        .void()
-        .parse_next(input)
-}
-
 pub(crate) fn parse_leading_may_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingMayClauseShape<'_>> {
     let (actor, effect_tokens) = primitives::parse_prefix(tokens, may_actor)?;
-    let effect_tokens =
-        if primitives::parse_prefix(effect_tokens, causative_player_subject).is_some() {
-            effect_tokens
-        } else {
-            primitives::parse_prefix(
-                effect_tokens,
-                alt((primitives::kw("have"), primitives::kw("has"))),
-            )
-            .map(|(_, rest)| rest)
-            .unwrap_or(effect_tokens)
-        };
+    // In `you may have each opponent lose 1 life`, `have` is only the
+    // causative marker. Keep the explicit participant tokens as the action's
+    // subject while removing that marker, just as we do for object
+    // causatives (`you may have it deal damage`). Retaining `have` sends the
+    // whole phrase to the broad implicit-subject path and incorrectly binds
+    // the life loss to the chooser.
+    let effect_tokens = primitives::parse_prefix(
+        effect_tokens,
+        alt((primitives::kw("have"), primitives::kw("has"))),
+    )
+    .map(|(_, rest)| rest)
+    .unwrap_or(effect_tokens);
     (!effect_tokens.is_empty()).then_some(LeadingMayClauseShape {
         actor,
         effect_tokens: trim_lexed_commas(effect_tokens),

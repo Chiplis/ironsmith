@@ -346,6 +346,7 @@ pub enum Subtype {
     Pirate,
     Plant,
     Praetor,
+    Prism,
     Raccoon,
     Rabbit,
     Rat,
@@ -478,6 +479,7 @@ pub enum Subtype {
     Brushwagg,
     Ctan,
     Camel,
+    Caribou,
     Capybara,
     Carrier,
     Child,
@@ -555,6 +557,7 @@ pub enum Subtype {
     Synth,
     Thalakos,
     Time,
+    TimeLord,
     Varmint,
     Volver,
     Walrus,
@@ -820,6 +823,7 @@ impl Subtype {
             Subtype::Pirate,
             Subtype::Plant,
             Subtype::Praetor,
+            Subtype::Prism,
             Subtype::Raccoon,
             Subtype::Rabbit,
             Subtype::Rat,
@@ -911,6 +915,7 @@ impl Subtype {
             Subtype::Brushwagg,
             Subtype::Ctan,
             Subtype::Camel,
+            Subtype::Caribou,
             Subtype::Capybara,
             Subtype::Carrier,
             Subtype::Child,
@@ -988,6 +993,7 @@ impl Subtype {
             Subtype::Synth,
             Subtype::Thalakos,
             Subtype::Time,
+            Subtype::TimeLord,
             Subtype::Varmint,
             Subtype::Volver,
             Subtype::Walrus,
@@ -1016,6 +1022,7 @@ impl Subtype {
             Subtype::Blood,
             Subtype::Infinity,
             Subtype::Powerstone,
+            Subtype::Spacecraft,
             Subtype::Stone,
             Subtype::Vibranium,
         ]
@@ -1209,6 +1216,7 @@ impl Subtype {
                 | Subtype::Lander
                 | Subtype::Map
                 | Subtype::Mutagen
+                | Subtype::Spacecraft
                 | Subtype::Treasure
                 | Subtype::Vehicle
         )
@@ -1318,6 +1326,8 @@ mod tests {
         assert!(Subtype::Bat.is_creature_type());
         assert!(Subtype::Pest.is_creature_type());
         assert!(Subtype::Fractal.is_creature_type());
+        assert!(Subtype::TimeLord.is_creature_type());
+        assert_eq!(Subtype::TimeLord.to_string(), "Time Lord");
         assert!(!Subtype::Plains.is_creature_type());
         assert!(!Subtype::Equipment.is_creature_type());
     }

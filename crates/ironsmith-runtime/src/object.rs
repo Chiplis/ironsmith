@@ -924,6 +924,7 @@ impl Object {
                     .first_printed_set_name
                     .as_ref()
                     .map(SharedStr::to_owned_string),
+                attraction_lights: Vec::new(),
                 mana_cost: self.mana_cost_owned(),
                 color_indicator: self.color_override,
                 supertypes: self.supertypes.to_vec(),

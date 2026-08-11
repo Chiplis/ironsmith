@@ -30,6 +30,9 @@ impl EffectExecutor for ChooseModeEffect {
     }
 
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for effect in &self.common_prefix_effects {
+            visitor(effect);
+        }
         for mode in &self.modes {
             for effect in &mode.effects {
                 visitor(effect);

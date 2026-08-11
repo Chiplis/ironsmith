@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
-use super::super::{leaf, primitives};
+use super::super::{filters, leaf, primitives};
 use super::nearby_primitives::{semantic_all, semantic_kw, semantic_noise, semantic_phrase};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +17,10 @@ pub(crate) enum CounterReplacementShape<'a> {
     },
     PlusOneDouble {
         filter_tokens: &'a [OwnedLexToken],
+    },
+    PlayerCounterPerTurnLimit {
+        counter_type: ironsmith_core::CounterType,
+        maximum: u32,
     },
 }
 
@@ -35,6 +39,7 @@ pub(crate) enum KeywordActionReplacementShape<'a> {
     ExploreTwice,
     ExploreAfterScry { value_tokens: &'a [OwnedLexToken] },
     AssembleRiggerTwice,
+    PlaneswalkAfterPlanarDeckChoice { count: u32 },
 }
 
 pub(crate) fn parse_noncombat_damage_minus_counter_replacement_tokens(
@@ -80,7 +85,11 @@ pub(crate) fn parse_counter_replacement_tokens(
     }
     primitives::parse_all(
         tokens,
-        alt((parse_plus_one_add_lexed, parse_plus_one_double_lexed)),
+        alt((
+            parse_player_counter_per_turn_limit_lexed,
+            parse_plus_one_add_lexed,
+            parse_plus_one_double_lexed,
+        )),
         "counter replacement",
     )
     .ok()
@@ -106,6 +115,7 @@ pub(crate) fn parse_keyword_action_replacement_tokens(
     primitives::parse_all(
         tokens,
         alt((
+            parse_planeswalk_planar_deck_replacement_lexed,
             parse_proliferate_you_replacement_lexed,
             parse_proliferate_opponent_replacement_lexed,
             parse_explore_replacement_lexed,
@@ -114,6 +124,26 @@ pub(crate) fn parse_keyword_action_replacement_tokens(
         "keyword-action replacement",
     )
     .ok()
+}
+
+fn parse_planeswalk_planar_deck_replacement_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<KeywordActionReplacementShape<'a>> {
+    primitives::phrase(&["if", "you", "would", "planeswalk"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["instead", "look", "at", "the", "top"]).parse_next(input)?;
+    let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["cards", "of", "your", "planar", "deck"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&[
+        "put", "one", "on", "the", "bottom", "of", "your", "planar", "deck", "and", "the", "other",
+        "on", "top",
+    ])
+    .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["then", "planeswalk"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordActionReplacementShape::PlaneswalkAfterPlanarDeckChoice { count })
 }
 
 fn parse_generic_counter_replacement(tokens: &[OwnedLexToken]) -> bool {
@@ -247,6 +277,64 @@ fn parse_energy_counter_replacement(tokens: &[OwnedLexToken]) -> bool {
             .void(),
         "double energy-counter replacement",
     )
+}
+
+fn parse_player_counter_per_turn_limit_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CounterReplacementShape<'a>> {
+    primitives::phrase(&["if", "you", "would", "get", "one", "or", "more"]).parse_next(input)?;
+    let first_descriptor = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(alt((primitives::kw("counter"), primitives::kw("counters")))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["instead", "you", "get"]).parse_next(input)?;
+    let maximum = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    let replacement_descriptor = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(alt((primitives::kw("counter"), primitives::kw("counters")))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;
+    primitives::phrase(&["and", "you", "can't", "get", "additional"]).parse_next(input)?;
+    let additional_descriptor = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(alt((primitives::kw("counter"), primitives::kw("counters")))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;
+    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+
+    let first = filters::parse_counter_type_from_tokens(trim_lexed_commas(first_descriptor));
+    let replacement =
+        filters::parse_counter_type_from_tokens(trim_lexed_commas(replacement_descriptor));
+    let additional =
+        filters::parse_counter_type_from_tokens(trim_lexed_commas(additional_descriptor));
+    let Some(counter_type) =
+        first.filter(|kind| Some(*kind) == replacement && replacement == additional)
+    else {
+        return Err(primitives::backtrack_err(
+            "player counter per-turn replacement",
+            "matching counter types",
+        ));
+    };
+
+    Ok(CounterReplacementShape::PlayerCounterPerTurnLimit {
+        counter_type,
+        maximum,
+    })
 }
 
 fn semantic_energy_symbol<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -439,6 +527,19 @@ mod tests {
             parse_counter_replacement_tokens(&energy),
             Some(CounterReplacementShape::EnergyYouGet)
         );
+
+        let per_turn_limit = lex_line(
+            "If you would get one or more poison counters, instead you get one poison counter and you can't get additional poison counters this turn.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_counter_replacement_tokens(&per_turn_limit),
+            Some(CounterReplacementShape::PlayerCounterPerTurnLimit {
+                counter_type: ironsmith_core::CounterType::Poison,
+                maximum: 1,
+            })
+        );
     }
 
     #[test]
@@ -464,6 +565,19 @@ mod tests {
         assert_eq!(
             parse_keyword_action_replacement_tokens(&tokens),
             Some(KeywordActionReplacementShape::AssembleRiggerTwice)
+        );
+    }
+
+    #[test]
+    fn parses_planeswalk_planar_deck_replacement() {
+        let tokens = lex_line(
+            "If you would planeswalk, instead look at the top two cards of your planar deck, put one on the bottom of your planar deck and the other on top, then planeswalk.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_keyword_action_replacement_tokens(&tokens),
+            Some(KeywordActionReplacementShape::PlaneswalkAfterPlanarDeckChoice { count: 2 })
         );
     }
 }

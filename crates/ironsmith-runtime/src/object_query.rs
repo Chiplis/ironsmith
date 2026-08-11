@@ -36,6 +36,11 @@ pub(crate) fn for_each_candidate_id_for_zone(
 /// This respects explicit `filter.zone` and broadens to nested `any_of` zones
 /// when present.
 pub(crate) fn candidate_ids_for_filter(game: &GameState, filter: &ObjectFilter) -> Vec<ObjectId> {
+    if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+        && filter.zone.is_some_and(|zone| zone != Zone::Stack)
+    {
+        return candidate_ids_for_zone(game, Some(Zone::Stack));
+    }
     if let Some(zone) = filter.zone {
         return candidate_ids_for_zone(game, Some(zone));
     }

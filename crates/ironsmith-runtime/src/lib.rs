@@ -34,6 +34,7 @@ pub mod grant;
 pub mod grant_registry;
 pub mod ids;
 pub mod mana;
+pub mod mana_payment;
 pub mod marker;
 pub mod object;
 pub(crate) mod object_query;
@@ -175,8 +176,7 @@ pub use combat_state::{
 };
 pub use decision::{
     AttackerDeclaration, AttackerOption, AutoPassDecisionMaker, BlockerDeclaration, BlockerOption,
-    ChoiceOption, DecisionMaker, DecisionRouter, GameProgress, GameResult, LegalAction,
-    ManaPaymentOption, ManaPipPaymentAction, ManaPipPaymentOption, ModeOption,
+    ChoiceOption, DecisionMaker, DecisionRouter, GameProgress, GameResult, LegalAction, ModeOption,
     NumericInputDecisionMaker, OptionalCostOption, ReplacementOption, ResponseError,
     TargetRequirement, compute_legal_actions, compute_legal_attackers, compute_legal_blockers,
 };

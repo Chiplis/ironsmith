@@ -18,6 +18,10 @@ pub(crate) struct CopyModifierSpec {
     pub(crate) added_subtypes: Vec<Subtype>,
     pub(crate) removed_supertypes: Vec<Supertype>,
     pub(crate) set_base_power_toughness: Option<(i32, i32)>,
+    /// The copy's base power and toughness are the respective totals of the
+    /// authored collection from which its copy source is chosen.
+    pub(crate) set_base_power_toughness_to_source_totals: bool,
+    pub(crate) starting_loyalty: Option<u32>,
     pub(crate) granted_abilities: Vec<StaticAbility>,
     /// "except it has haste and loses soulbond": the copy is created without
     /// the soulbond pairing ability.
@@ -34,6 +38,8 @@ impl Default for CopyModifierSpec {
             added_subtypes: Vec::new(),
             removed_supertypes: Vec::new(),
             set_base_power_toughness: None,
+            set_base_power_toughness_to_source_totals: false,
+            starting_loyalty: None,
             granted_abilities: Vec::new(),
             loses_soulbond: false,
         }
@@ -58,6 +64,12 @@ fn push_unique<T: PartialEq>(values: &mut Vec<T>, value: T) {
     if !values.iter().any(|existing| existing == &value) {
         values.push(value);
     }
+}
+
+fn contains_words(words: &[&str], phrase: &[&str]) -> bool {
+    words
+        .windows(phrase.len())
+        .any(|candidate| candidate == phrase)
 }
 
 pub(crate) fn parse_copy_modifier_words(
@@ -94,6 +106,51 @@ pub(crate) fn parse_copy_modifier_words(
         .iter()
         .filter_map(|word| parse_unsigned_pt_word(word))
         .next();
+    let power_is_source_total = contains_words(
+        modifier_words,
+        &[
+            "its",
+            "power",
+            "is",
+            "equal",
+            "to",
+            "the",
+            "total",
+            "power",
+            "of",
+            "those",
+            "creatures",
+        ],
+    );
+    let toughness_is_source_total = contains_words(
+        modifier_words,
+        &[
+            "its",
+            "toughness",
+            "is",
+            "equal",
+            "to",
+            "the",
+            "total",
+            "toughness",
+            "of",
+            "those",
+            "creatures",
+        ],
+    );
+    if power_is_source_total != toughness_is_source_total {
+        return Err(CardTextError::ParseError(
+            "copy aggregate power/toughness exception must preserve both values".to_string(),
+        ));
+    }
+    spec.set_base_power_toughness_to_source_totals = power_is_source_total;
+
+    spec.starting_loyalty = modifier_words
+        .windows(4)
+        .find(|words| words[..3] == ["starting", "loyalty", "is"])
+        .and_then(|words| {
+            crate::runtime_backend::front_end::shared::util::parse_number_word_u32(words[3])
+        });
 
     let grants_keyword = |phrase, keyword: &str| {
         surface.has_phrase(phrase)
@@ -157,7 +214,8 @@ pub(crate) fn parse_copy_modifier_words(
                 push_unique(&mut spec.added_subtypes, subtype);
             }
         }
-        spec.set_colors = (!colors.is_empty()).then_some(colors);
+        let explicit_colorless = modifier_words[..addition].contains(&"colorless");
+        spec.set_colors = (explicit_colorless || !colors.is_empty()).then_some(colors);
     } else if surface.starts(CreationPhrase::IdentityClause) {
         let descriptor_end = surface
             .location(CreationWordClass::DescriptorEnd)
@@ -201,7 +259,8 @@ pub(crate) fn parse_copy_modifier_words(
                 push_unique(&mut subtypes, subtype);
             }
         }
-        spec.set_colors = (!colors.is_empty()).then_some(colors);
+        let explicit_colorless = modifier_words[..descriptor_end].contains(&"colorless");
+        spec.set_colors = (explicit_colorless || !colors.is_empty()).then_some(colors);
         spec.set_card_types = (!card_types.is_empty()).then_some(card_types);
         spec.set_subtypes = (!subtypes.is_empty()).then_some(subtypes);
     }
@@ -245,10 +304,115 @@ mod tests {
     }
 
     #[test]
+    fn creature_type_addition_keeps_existing_subtypes() {
+        let spec = parse_copy_modifier_words(&[
+            "except",
+            "it",
+            "is",
+            "a",
+            "reflection",
+            "in",
+            "addition",
+            "to",
+            "its",
+            "other",
+            "creature",
+            "types",
+        ])
+        .expect("typed creature-subtype addition should parse");
+
+        assert_eq!(spec.added_subtypes, [Subtype::Reflection]);
+        assert!(spec.set_subtypes.is_none());
+    }
+
+    #[test]
     fn parses_explicit_spell_copy_color_exception() {
         let spec =
             parse_copy_modifier_words(&["except", "that", "the", "copy", "is", "red"]).unwrap();
 
         assert_eq!(spec.set_colors, Some(ColorSet::RED));
+    }
+
+    #[test]
+    fn parses_starting_loyalty_copy_exception() {
+        let spec = parse_copy_modifier_words(&[
+            "except",
+            "it",
+            "isnt",
+            "legendary",
+            "and",
+            "its",
+            "starting",
+            "loyalty",
+            "is",
+            "1",
+        ])
+        .unwrap();
+
+        assert_eq!(spec.removed_supertypes, vec![Supertype::Legendary]);
+        assert_eq!(spec.starting_loyalty, Some(1));
+    }
+
+    #[test]
+    fn parses_dynamic_totals_and_colorless_copy_exception() {
+        let spec = parse_copy_modifier_words(&[
+            "except",
+            "its",
+            "power",
+            "is",
+            "equal",
+            "to",
+            "the",
+            "total",
+            "power",
+            "of",
+            "those",
+            "creatures",
+            "its",
+            "toughness",
+            "is",
+            "equal",
+            "to",
+            "the",
+            "total",
+            "toughness",
+            "of",
+            "those",
+            "creatures",
+            "and",
+            "it",
+            "s",
+            "a",
+            "colorless",
+            "eldrazi",
+            "creature",
+        ])
+        .expect("typed aggregate copy exception should parse");
+
+        assert!(spec.set_base_power_toughness_to_source_totals);
+        assert_eq!(spec.set_colors, Some(ColorSet::new()));
+        assert_eq!(spec.set_card_types, Some(vec![CardType::Creature]));
+        assert_eq!(spec.set_subtypes, Some(vec![Subtype::Eldrazi]));
+    }
+
+    #[test]
+    fn rejects_half_of_an_aggregate_copy_pt_exception() {
+        let error = parse_copy_modifier_words(&[
+            "except",
+            "its",
+            "power",
+            "is",
+            "equal",
+            "to",
+            "the",
+            "total",
+            "power",
+            "of",
+            "those",
+            "creatures",
+        ])
+        .expect_err("one aggregate characteristic must not silently imply the other");
+
+        assert!(error.to_string().contains("both values"));
     }
 }

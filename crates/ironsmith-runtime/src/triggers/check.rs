@@ -382,6 +382,18 @@ pub enum TriggeredAbilitySourceKind {
     GameRule,
 }
 
+/// A pending cost that can be paid as a special action to cancel a delayed
+/// trigger before its matching event occurs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PendingDelayedTriggerPayment {
+    pub player: PlayerId,
+    pub cost: crate::cost::TotalCost,
+    /// Source identity used for cost checks and payment provenance. This may
+    /// name an object that has since changed zones; mana-only payments remain
+    /// valid because the obligation belongs to the delayed registration.
+    pub source: ObjectId,
+}
+
 /// A delayed trigger that waits for a specific event to occur.
 #[derive(Debug, Clone)]
 pub struct DelayedTrigger {
@@ -422,6 +434,13 @@ pub struct DelayedTrigger {
     /// Tagged objects captured when this delayed trigger was created.
     pub tagged_objects:
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    /// Player references captured when the delayed trigger was registered.
+    pub tagged_players: std::collections::HashMap<crate::tag::TagKey, Vec<crate::ids::PlayerId>>,
+    /// Optional payment window that removes this registration when paid.
+    pub prepayment: Option<PendingDelayedTriggerPayment>,
+    /// Prevention shield whose accumulated prevented damage supplies the
+    /// numeric value for this delayed ability.
+    pub prevention_shield: Option<crate::prevention::PreventionShieldId>,
 }
 
 /// Queue of triggered abilities waiting to be put on the stack.
@@ -444,6 +463,14 @@ impl TriggerQueue {
     /// Add a triggered ability to the queue.
     pub fn add(&mut self, entry: TriggeredAbilityEntry) {
         let source_snapshot = entry.source_snapshot.clone();
+        let zone_change_cause = entry
+            .triggering_event
+            .downcast::<crate::events::ZoneChangeEvent>()
+            .map(|zone_change| crate::events::AbilityTriggerZoneChangeCause {
+                from: zone_change.from,
+                to: zone_change.to,
+                destination_objects: zone_change.destination_objects().to_vec(),
+            });
         let mut event = TriggerEvent::new(
             crate::events::AbilityTriggeredEvent::new(
                 entry.source,
@@ -451,7 +478,12 @@ impl TriggerQueue {
                 entry.controller,
                 entry.trigger_identity,
             )
-            .with_source_snapshot(source_snapshot.clone()),
+            .with_source_snapshot(source_snapshot.clone())
+            .with_cause(
+                entry.triggering_event.kind(),
+                entry.triggering_event.object_id(),
+                zone_change_cause,
+            ),
             entry.triggering_event.provenance(),
         );
         if let Some(source_snapshot) = source_snapshot {
@@ -1653,6 +1685,18 @@ fn tagged_objects_for_matched_trigger(
             );
         }
     }
+    if let Some(zone_change) =
+        trigger.downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
+        && let Some(event) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>()
+    {
+        let snapshots = zone_change.matching_batch_snapshots(event, ctx);
+        if !snapshots.is_empty() {
+            tagged.insert(
+                crate::tag::TagKey::from(ironsmith_core::ZONE_CHANGE_GROUP_TAG),
+                snapshots,
+            );
+        }
+    }
     tagged
 }
 
@@ -1687,15 +1731,16 @@ fn tagged_objects_for_trigger_event_impl(
     }
     if let Some(cast) = trigger_event.downcast::<crate::events::SpellCastEvent>()
         && let Some(spell) = game.object(cast.spell)
-        && let Some(snapshots) = spell
-            .cast_tagged_objects
-            .get(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG)
-        && !snapshots.is_empty()
     {
         tagged.insert(
-            crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG),
-            snapshots.clone(),
+            crate::tag::TagKey::from("triggering"),
+            vec![ObjectSnapshot::from_object(spell, game)],
         );
+        for (tag, snapshots) in &spell.cast_tagged_objects {
+            if !snapshots.is_empty() {
+                tagged.insert(tag.clone(), snapshots.clone());
+            }
+        }
     }
     if include_other_attackers
         && let Some(attacked) =
@@ -1865,7 +1910,7 @@ fn check_battlefield_trigger_subscriber(
     if !presentation_labeled_trigger_is_active(game, obj, trigger_ability) {
         return;
     }
-    if skip_post_event_source_discovery(trigger_event, trigger_ability) {
+    if skip_post_event_source_discovery(trigger_event, trigger_ability, obj.stable_id) {
         return;
     }
     if !trigger_event_is_in_range(game, trigger_event, controller, obj_id, None)
@@ -1967,7 +2012,7 @@ fn battlefield_trigger_subscriber_matches_event(
     if !presentation_labeled_trigger_is_active(game, obj, trigger_ability) {
         return false;
     }
-    if skip_post_event_source_discovery(trigger_event, trigger_ability) {
+    if skip_post_event_source_discovery(trigger_event, trigger_ability, obj.stable_id) {
         return false;
     }
     if !trigger_event_is_in_range(game, trigger_event, controller, obj_id, None)
@@ -2084,6 +2129,7 @@ fn presentation_labeled_snapshot_trigger_is_active(
 fn skip_post_event_source_discovery(
     trigger_event: &TriggerEvent,
     trigger_ability: &TriggeredAbility,
+    source_stable_id: StableId,
 ) -> bool {
     if trigger_event
         .downcast::<crate::events::KeywordActionEvent>()
@@ -2093,7 +2139,17 @@ fn skip_post_event_source_discovery(
         // (from LKI) and the newly face-up plane (from the current state).
         return false;
     }
+    // A look-back matcher describes which abilities can function from an
+    // object's LKI; it does not mean every still-present permanent with that
+    // matcher must be skipped. Only suppress the current-state copy when this
+    // exact source is among the event's look-back source snapshots. Otherwise
+    // an observer such as "Whenever one or more creatures die" would be
+    // incorrectly skipped merely because some *other* permanent left.
     trigger_ability.trigger.looks_back_for_source(trigger_event)
+        && trigger_event
+            .lookback_source_snapshots()
+            .iter()
+            .any(|snapshot| snapshot.stable_id == source_stable_id)
 }
 
 fn collect_lookback_source_triggers(
@@ -2898,12 +2954,18 @@ pub(crate) fn take_delayed_untap_step_actions(
             .or(delayed.ability_source)
             .or_else(|| delayed.target_objects.first().copied())
             .unwrap_or_else(|| ObjectId::from_raw(0));
-        let ctx = TriggerContext::for_delayed_source(
+        let mut ctx = TriggerContext::for_delayed_source(
             source,
             delayed.controller,
             game,
             &delayed.tagged_objects,
         );
+        ctx.filter_ctx.tagged_players = delayed.tagged_players.clone();
+        ctx.filter_ctx.target_players = delayed
+            .tagged_players
+            .get(crate::tag::DELAYED_TARGET_PLAYERS_TAG)
+            .cloned()
+            .unwrap_or_default();
         if !untap.timing_matches(trigger_event, &ctx) {
             continue;
         }
@@ -2998,7 +3060,14 @@ pub fn check_delayed_triggers(
         {
             continue;
         }
-        let fallback_source = ObjectId::from_raw(0);
+        // Unwatched delayed triggers still have an ability source. Preserve
+        // that source in the matcher context so source-relative filters such
+        // as "the chosen name" can resolve the choices captured on it.
+        let fallback_source = delayed
+            .ability_source_stable_id
+            .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
+            .or(delayed.ability_source)
+            .unwrap_or_else(|| ObjectId::from_raw(0));
         let candidate_sources: &[ObjectId] = if delayed.target_objects.is_empty() {
             std::slice::from_ref(&fallback_source)
         } else {
@@ -3008,13 +3077,19 @@ pub fn check_delayed_triggers(
 
         let mut fired = false;
         for &source in candidate_sources {
-            let ctx = TriggerContext::for_delayed_source(
+            let mut ctx = TriggerContext::for_delayed_source(
                 source,
                 delayed.controller,
                 game,
                 &delayed.tagged_objects,
             )
             .with_trigger_identity(trigger_identity);
+            ctx.filter_ctx.tagged_players = delayed.tagged_players.clone();
+            ctx.filter_ctx.target_players = delayed
+                .tagged_players
+                .get(crate::tag::DELAYED_TARGET_PLAYERS_TAG)
+                .cloned()
+                .unwrap_or_default();
             let range_source = delayed.ability_source.unwrap_or(source);
             if !trigger_event_is_in_range(
                 game,
@@ -3072,11 +3147,19 @@ pub fn check_delayed_triggers(
                 })
                 .unwrap_or_else(|| "Delayed Trigger".to_string());
 
+            let event_value_amount = delayed
+                .prevention_shield
+                .map(|shield_id| {
+                    game.effect_store
+                        .prevention_effects
+                        .prevented_by_shield(shield_id) as i32
+                })
+                .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx));
             triggered.push(TriggeredAbilityEntry {
                 source: ability_source,
                 controller: delayed.controller,
                 x_value: delayed.x_value,
-                event_value_amount: delayed.trigger.event_value_amount(trigger_event, &ctx),
+                event_value_amount,
                 ability: TriggeredAbility {
                     trigger: delayed.trigger.clone(),
                     effects: delayed.effects.clone(),
@@ -3084,7 +3167,9 @@ pub fn check_delayed_triggers(
                     intervening_if: None,
                     presentation_label: None,
                 },
-                triggering_event: trigger_event.clone(),
+                triggering_event: trigger_event
+                    .clone()
+                    .with_player_tags(delayed.tagged_players.clone()),
                 source_stable_id,
                 source_name,
                 source_snapshot: delayed.ability_source_snapshot.clone(),
@@ -3157,7 +3242,7 @@ fn check_triggers_in_zone(
             continue;
         }
 
-        if skip_post_event_source_discovery(trigger_event, trigger_ability) {
+        if skip_post_event_source_discovery(trigger_event, trigger_ability, obj.stable_id) {
             continue;
         }
 
@@ -3293,7 +3378,8 @@ pub fn player_filter_matches_with_context(
                     .zip(game.player(controller))
                     .is_some_and(|(candidate, you)| candidate.life > you.life)
         }
-        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+        | PlayerFilter::ControlsMost { .. } => {
             let mut filter_ctx = game.filter_context_for(controller, None);
             filter_ctx.defending_player = defending_player;
             player_filter_matches_game(spec, player, game, &filter_ctx)
@@ -3313,6 +3399,19 @@ pub fn player_filter_matches_with_context(
             .any(|snapshot| {
                 snapshot.controller == player && snapshot.card_types.contains(card_type)
             }),
+        // This helper has no source object. Source-relative player history is
+        // resolved by effect execution's game-aware filter context instead.
+        PlayerFilter::AttackedBySourceThisTurn
+        | PlayerFilter::WasDealtDamageBySourceThisGame { .. } => false,
+        PlayerFilter::LostLifeThisTurn { .. } => {
+            let filter_ctx = game.filter_context_for(controller, None);
+            crate::filter::player_filter_matches_game(spec, player, game, &filter_ctx)
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+            let mut filter_ctx = game.filter_context_for(controller, None);
+            filter_ctx.defending_player = defending_player;
+            player_filter_matches_game(spec, player, game, &filter_ctx)
+        }
         PlayerFilter::ChosenPlayer => false,
         PlayerFilter::TaggedPlayer(_) => false,
         PlayerFilter::Teammate => game.are_teammates(controller, player),
@@ -4911,6 +5010,7 @@ mod tests {
             .expect("spell object should exist")
             .optional_costs_paid = crate::cost::OptionalCostsPaid {
             costs: vec![("Conspire".into(), 1), ("Conspire 2".into(), 1)],
+            cast_at_sorcery_timing: false,
         };
 
         let triggered = check_triggers(

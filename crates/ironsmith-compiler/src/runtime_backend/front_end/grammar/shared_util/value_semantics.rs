@@ -13,8 +13,8 @@ use crate::runtime_backend::object_filters::{
     parse_object_filter, parse_object_filter_lexed, parse_object_filter_words,
 };
 use crate::runtime_backend::util::{
-    parse_greater_than_or_equal_quantity_prefix, trim_commas, trim_edge_punctuation,
-    trim_edge_punctuation_tokens,
+    parse_greater_than_or_equal_quantity_prefix, possessive_normalized_word_refs, trim_commas,
+    trim_edge_punctuation, trim_edge_punctuation_tokens,
 };
 
 use super::super::super::lexer::{OwnedLexToken, trim_lexed_commas};
@@ -486,6 +486,52 @@ pub(crate) fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option
     let words = word_view.to_word_refs();
     if words.is_empty() {
         return None;
+    }
+
+    let turn_start_untapped_lands_player = match words.as_slice() {
+        [
+            "untapped",
+            "land" | "lands",
+            "they",
+            "controlled",
+            "at",
+            "the",
+            "beginning",
+            "of",
+            "this",
+            "turn",
+        ] => Some(PlayerFilter::IteratedPlayer),
+        [
+            "untapped",
+            "land" | "lands",
+            "you",
+            "controlled",
+            "at",
+            "the",
+            "beginning",
+            "of",
+            "this",
+            "turn",
+        ] => Some(PlayerFilter::You),
+        _ => None,
+    };
+    if let Some(player) = turn_start_untapped_lands_player {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::UntappedLandsAtTurnStart(player),
+        ));
+    }
+
+    if matches!(
+        words.as_slice(),
+        [
+            "attraction" | "attractions",
+            "youve" | "you've",
+            "visited",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Some(Value::AttractionsVisitedThisTurn(PlayerFilter::You));
     }
 
     if matches!(
@@ -1041,7 +1087,12 @@ pub(crate) fn parse_commander_cast_count_player(tokens: &[OwnedLexToken]) -> Opt
 pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let word_view = TokenWordView::new(tokens);
     let words_all = word_view.to_word_refs();
-    let prefix_start = parse_equal_to_start(&words_all)?.after;
+    // Callers that have already split an `equal to` clause pass only the
+    // amount tail (`the number of ...`). Accept that typed amount directly as
+    // well as the unsplit authored clause.
+    let prefix_start = parse_equal_to_start(&words_all)
+        .map(|start| start.after)
+        .unwrap_or(0);
     let suffix_refs = words_all.get(prefix_start..)?;
     let matched = value_helper_shapes::parse_number_of_prefix(suffix_refs)?;
     let number_word_idx = prefix_start + matched.number_of_start;
@@ -1053,6 +1104,31 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     let filter_tokens = trim_edge_punctuation(&tokens[filter_range]);
     let filter_word_view = TokenWordView::new(&filter_tokens);
     let filter_words = filter_word_view.to_word_refs();
+    // A relative controller clause scopes the counted set to the object
+    // targeted by this same effect. Parse the set independently from the
+    // back-reference so characteristic words in `that creature's controller`
+    // cannot leak into the counted filter as an additional Creature type.
+    if let Some(that_idx) = filter_words.iter().rposition(|word| *word == "that") {
+        let relative = possessive_normalized_word_refs(&filter_words[that_idx..]);
+        let relative_noun = relative.get(1).map(|word| word.trim_end_matches('s'));
+        if relative.len() == 4
+            && relative[0] == "that"
+            && matches!(
+                relative_noun,
+                Some("creature" | "permanent" | "object" | "planeswalker")
+            )
+            && relative[2] == "controller"
+            && relative[3] == "controls"
+            && that_idx > 0
+        {
+            let base_range = filter_word_view.token_span_for_words(0, that_idx)?;
+            let mut filter =
+                parse_object_filter(&trim_edge_punctuation(&filter_tokens[base_range]), false)
+                    .ok()?;
+            filter.controller = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
+            return Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
+        }
+    }
     if let Some(value) = parse_turn_history_count_value(&filter_tokens) {
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
@@ -1239,6 +1315,28 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
     let filter_range = clause_words.token_span_for_words(idx, clause_words.len())?;
     let filter_tokens = &tokens[filter_range];
     let object_words = &clause_refs[idx..];
+    if aggregate == value_helper_shapes::AggregateKind::Total
+        && value_kind == value_helper_shapes::AggregateValueKind::ManaValue
+        && let Some(Value::SpellsCastThisTurnMatching {
+            player,
+            mut filter,
+            exclude_source,
+        }) = parse_spells_cast_this_turn_matching_count_value(filter_tokens)
+    {
+        // `other` in this history phrase is relative to the spell whose value
+        // is being evaluated. It is carried explicitly by `exclude_source`;
+        // leaving it on the snapshot filter would apply a second, context-
+        // dependent object relation.
+        filter.other = false;
+        return Some(
+            Value::TotalManaValueOfSpellsCastThisTurnMatching {
+                player,
+                filter,
+                exclude_source,
+            }
+            .with_surface_hint(ValueSurfaceHint::EqualTo),
+        );
+    }
     if value_kind == value_helper_shapes::AggregateValueKind::ManaValue
         && let Some(value) = source_linked_exiled_mana_value(object_words)
     {
@@ -1521,6 +1619,31 @@ mod tests {
     }
 
     #[test]
+    fn counted_set_keeps_the_same_effect_target_controller_relation() {
+        let value = parse_equal_to_number_of_filter_value(&lex_words(
+            "equal to the number of nonbasic lands that creature's controller controls",
+        ))
+        .expect("relative target-controller count should parse");
+        let Value::SurfaceHinted { value, .. } = value else {
+            panic!("equal-to surface should be retained: {value:?}");
+        };
+        let Value::Count(filter) = *value else {
+            panic!("expected an object count: {value:?}");
+        };
+        assert_eq!(filter.card_types, vec![CardType::Land]);
+        assert!(!filter.card_types.contains(&CardType::Creature));
+        assert!(
+            filter
+                .excluded_supertypes
+                .contains(&crate::Supertype::Basic)
+        );
+        assert_eq!(
+            filter.controller,
+            Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+        );
+    }
+
+    #[test]
     fn mana_symbol_spent_value_preserves_symbol_and_cast_reference() {
         for (text, expected_symbol, expected_reference) in [
             (
@@ -1656,6 +1779,32 @@ mod tests {
     }
 
     #[test]
+    fn parse_total_mana_value_of_other_spells_cast_this_turn_as_history_aggregate() {
+        let tokens =
+            lex_words("equal to the total mana value of other spells you've cast this turn");
+        let value = parse_equal_to_aggregate_filter_value(&tokens)
+            .expect("spell-cast mana-value aggregate should parse");
+        let Value::SurfaceHinted { value, .. } = value else {
+            panic!("expected equal-to surface hint");
+        };
+        let Value::TotalManaValueOfSpellsCastThisTurnMatching {
+            player,
+            filter,
+            exclude_source,
+        } = value.as_ref()
+        else {
+            panic!("expected spell-history mana-value aggregate, got {value:?}");
+        };
+        assert_eq!(*player, PlayerFilter::You);
+        assert!(*exclude_source);
+        assert!(!filter.other, "source exclusion is carried by the query");
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell)
+        );
+    }
+
+    #[test]
     fn turn_history_counts_keep_event_metric_and_typed_filters() {
         let cases = [
             ("Zubera that died this turn", "Died"),
@@ -1695,6 +1844,10 @@ mod tests {
             (
                 "+1/+1 counters you've put on creatures under your control this turn",
                 "CountersPutOn",
+            ),
+            (
+                "untapped lands they controlled at the beginning of this turn",
+                "UntappedLandsAtTurnStart",
             ),
             ("times you descended this turn", "Descended"),
         ];
@@ -1824,6 +1977,15 @@ mod tests {
 
     #[test]
     fn turn_history_where_bindings_precede_current_zone_counts() {
+        let attractions = parse_turn_history_value_binding(&lex_words(
+            "where X is the number of Attractions you've visited this turn",
+        ))
+        .expect("Attraction visit history should parse");
+        assert_eq!(
+            attractions,
+            Value::AttractionsVisitedThisTurn(PlayerFilter::You)
+        );
+
         let graveyard = parse_turn_history_value_binding(&lex_words(
             "where X is the number of cards put into their graveyard from anywhere this turn",
         ))

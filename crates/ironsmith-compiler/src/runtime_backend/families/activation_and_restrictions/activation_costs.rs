@@ -20,7 +20,32 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
         ));
     }
     let fact = cant_shapes::parse_direct_cant_fact_tokens(tokens)?;
-    let ability = match fact {
+    let authored_self_surface = matches!(
+        fact,
+        DirectCantFact::SourceCantAttack
+            | DirectCantFact::SourceCantBlock
+            | DirectCantFact::SourceCantAttackItsOwner
+            | DirectCantFact::SourceCantBeBlocked
+            | DirectCantFact::SourceCantAttackAlone
+            | DirectCantFact::SourceCantAttackOrBlock
+            | DirectCantFact::SourceCantAttackOrBlockAlone
+            | DirectCantFact::SourceCantAttackOrBlockUnlessMaxSpeed
+    )
+    .then(|| {
+        tokens
+            .iter()
+            .position(|token| {
+                token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")
+            })
+            .and_then(|cant| {
+                source_reference_surface_for_span(span_from_tokens(&tokens[..cant])).or_else(|| {
+                    let subject_words = words(&tokens[..cant]);
+                    source_reference_surface_for_words(&subject_words)
+                })
+            })
+    })
+    .flatten();
+    let mut ability = match fact {
         DirectCantFact::TemporaryUnblockable => return Some(StaticAbilityShapeResolution::Decline),
         DirectCantFact::PlayerWouldGainNoLifeInstead => StaticAbility::restriction(
             crate::effect::Restriction::gain_life(PlayerFilter::Any),
@@ -73,6 +98,9 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
             StaticAbility::cant_attack_you_unless_controller_pays_per_attacker_basic_land_types_among_lands_you_control()
         }
     };
+    if let Some(surface) = authored_self_surface {
+        ability = ability.with_self_subject_surface(surface);
+    }
     Some(StaticAbilityShapeResolution::Ability(ability))
 }
 
@@ -778,6 +806,17 @@ pub(crate) fn parse_cant_clause(
 mod tests {
     use super::super::super::util::tokenize_line;
     use super::*;
+
+    #[test]
+    fn extra_turn_attack_restriction_is_a_typed_condition() {
+        let tokens = tokenize_line("This can't attack during extra turns.", 0);
+        let ability = parse_cant_clause(&tokens)
+            .expect("extra-turn attack restriction should parse")
+            .expect("extra-turn attack restriction should be claimed");
+        let debug = format!("{ability:#?}");
+        assert!(debug.contains("CantAttack"), "{debug}");
+        assert!(debug.contains("CurrentTurnIsExtra"), "{debug}");
+    }
 
     #[test]
     fn permanents_cant_phase_in_is_a_typed_static_restriction() {

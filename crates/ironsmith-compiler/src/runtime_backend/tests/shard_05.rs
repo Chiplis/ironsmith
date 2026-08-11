@@ -960,6 +960,16 @@ pub(super) fn rewrite_type_line_parser_handles_supertypes_types_and_subtypes() {
 }
 
 #[test]
+pub(super) fn rewrite_type_line_parser_recognizes_spacecraft_as_an_artifact_subtype() {
+    let parsed = parse_type_line_rewrite("Artifact — Spacecraft")
+        .expect("Spacecraft should be registered as an artifact subtype");
+    assert_eq!(parsed.card_types, vec![CardType::Artifact]);
+    assert_eq!(parsed.subtypes, vec![Subtype::Spacecraft]);
+    assert!(Subtype::Spacecraft.is_artifact_subtype());
+    assert!(!Subtype::Spacecraft.is_creature_type());
+}
+
+#[test]
 pub(super) fn rewrite_values_type_line_parser_keeps_front_face_only() {
     let parsed = super::super::grammar::values::parse_type_line_with(
         "Legendary Creature — Elf Druid // Sorcery",
@@ -1519,6 +1529,7 @@ pub(super) fn rewrite_activation_cost_preserves_top_only_graveyard_selection_thr
             choice_count,
             filter,
             top_only: true,
+            turn_face_up: false,
         }] if *choice_count == ChoiceCount::exactly(1)
             && filter.zone == Some(Zone::Graveyard)
             && filter.card_types == [CardType::Creature]
@@ -1608,6 +1619,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
             choice_count,
             filter,
             top_only: false,
+            turn_face_up: false,
         }] if *choice_count == ChoiceCount::at_least(1)
             && filter.zone == Some(Zone::Graveyard)
             && filter.owner == Some(crate::target::PlayerFilter::You)
@@ -1623,6 +1635,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
             choice_count,
             filter,
             top_only: false,
+            turn_face_up: false,
         }] if *choice_count == ChoiceCount::exactly(1)
             && filter.zone == Some(Zone::Graveyard)
             && filter.single_graveyard
@@ -2639,9 +2652,57 @@ pub(super) fn rewrite_semantic_parse_keeps_nested_combat_whenever_trigger()
         rewrite_direct_triggered_chunk(item).expect("expected a typed triggered semantic chunk");
     let trigger_debug = format!("{trigger:?}");
     let effects_debug = format!("{effects:?}");
-    assert!(trigger_debug.contains("Attacks"), "{trigger_debug}");
+    assert!(
+        trigger_debug.contains("BeginningOfCombat"),
+        "{trigger_debug}"
+    );
+    assert!(effects_debug.contains("UnlessPays"), "{effects_debug}");
+    assert!(
+        effects_debug.contains("DelayedTriggerForDuration"),
+        "{effects_debug}"
+    );
+    assert!(effects_debug.contains("Attacks"), "{effects_debug}");
     assert!(effects_debug.contains("Draw"), "{effects_debug}");
 
+    Ok(())
+}
+
+#[test]
+pub(super) fn nested_combat_payment_keeps_blocks_union_and_end_of_combat_lifetime()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Combat Flotilla Variant")
+        .card_types(vec![CardType::Creature]);
+    let (doc, _) = parse_text_to_semantic_document(
+        builder,
+        "At the beginning of each combat, unless you pay {R}, whenever this creature blocks or becomes blocked by a creature this combat, that creature gains first strike until end of turn.".to_string(),
+        false,
+    )?;
+    let [item] = doc.items.as_slice() else {
+        panic!("expected one nested combat item, got {:?}", doc.items);
+    };
+    let (trigger, effects, _) =
+        rewrite_direct_triggered_chunk(item).expect("expected typed outer combat trigger");
+    let trigger_debug = format!("{trigger:#?}");
+    let effects_debug = format!("{effects:#?}");
+    assert!(
+        trigger_debug.contains("BeginningOfCombat"),
+        "{trigger_debug}"
+    );
+    assert!(effects_debug.contains("UnlessPays"), "{effects_debug}");
+    assert!(
+        effects_debug.contains("DelayedTriggerForDuration"),
+        "{effects_debug}"
+    );
+    assert!(effects_debug.contains("EndOfCombat"), "{effects_debug}");
+    assert!(
+        effects_debug.contains("ThisBlocksObject"),
+        "{effects_debug}"
+    );
+    assert!(
+        effects_debug.contains("ThisBecomesBlockedByObject"),
+        "{effects_debug}"
+    );
+    assert!(effects_debug.contains("FirstStrike"), "{effects_debug}");
     Ok(())
 }
 

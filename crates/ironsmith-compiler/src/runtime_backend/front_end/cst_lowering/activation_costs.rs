@@ -214,16 +214,9 @@ pub(crate) fn lower_activation_cost_cst(
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let tag = format!("sacrifice_cost_{sacrifice_tag_id}");
                 sacrifice_tag_id += 1;
-                costs.push(Cost::validated_effect(Effect::choose_objects(
-                    ObjectFilter::creature().you_control(),
-                    ChoiceCount::exactly(1),
-                    PlayerFilter::You,
-                    tag.clone(),
-                )));
-                costs.push(Cost::validated_effect(Effect::sacrifice(
-                    ObjectFilter::tagged(tag),
-                    1,
-                )));
+                costs.push(Cost::validated_effect(
+                    Effect::sacrifice(ObjectFilter::creature().you_control(), 1).tag(tag),
+                ));
             }
             ActivationCostSegmentCst::SacrificeChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
@@ -231,26 +224,29 @@ pub(crate) fn lower_activation_cost_cst(
                 if filter.controller.is_none() {
                     filter.controller = Some(PlayerFilter::You);
                 }
-                let tag = format!("sacrifice_cost_{sacrifice_tag_id}");
-                sacrifice_tag_id += 1;
-                costs.push(Cost::validated_effect(Effect::choose_objects(
-                    filter,
-                    count.clone(),
-                    PlayerFilter::You,
-                    tag.clone(),
-                )));
                 let exact_count =
                     (!count.dynamic_x && count.max == Some(count.min)).then_some(count.min as u32);
-                let sacrifice = if let Some(exact_count) = exact_count {
-                    Effect::sacrifice(ObjectFilter::tagged(tag), exact_count)
+                if let Some(exact_count) = exact_count {
+                    let tag = format!("sacrifice_cost_{sacrifice_tag_id}");
+                    sacrifice_tag_id += 1;
+                    costs.push(Cost::validated_effect(
+                        Effect::sacrifice(filter, exact_count).tag(tag),
+                    ));
                 } else {
-                    Effect::sacrifice_player(
+                    let tag = format!("sacrifice_cost_{sacrifice_tag_id}");
+                    sacrifice_tag_id += 1;
+                    costs.push(Cost::validated_effect(Effect::choose_objects(
+                        filter,
+                        count.clone(),
+                        PlayerFilter::You,
+                        tag.clone(),
+                    )));
+                    costs.push(Cost::validated_effect(Effect::sacrifice_player(
                         ObjectFilter::tagged(tag.clone()),
                         crate::effect::Value::Count(ObjectFilter::tagged(tag)),
                         PlayerFilter::You,
-                    )
-                };
-                costs.push(Cost::validated_effect(sacrifice));
+                    )));
+                }
             }
             ActivationCostSegmentCst::SacrificeAll { filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
@@ -258,11 +254,16 @@ pub(crate) fn lower_activation_cost_cst(
                 if filter.controller.is_none() {
                     filter.controller = Some(PlayerFilter::You);
                 }
-                costs.push(Cost::validated_effect(Effect::sacrifice_player(
-                    filter.clone(),
-                    crate::effect::Value::Count(filter),
-                    PlayerFilter::You,
-                )));
+                let tag = format!("sacrifice_cost_{sacrifice_tag_id}");
+                sacrifice_tag_id += 1;
+                costs.push(Cost::validated_effect(
+                    Effect::sacrifice_player(
+                        filter.clone(),
+                        crate::effect::Value::Count(filter),
+                        PlayerFilter::You,
+                    )
+                    .tag(tag),
+                ));
             }
             ActivationCostSegmentCst::UnattachChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
@@ -301,6 +302,7 @@ pub(crate) fn lower_activation_cost_cst(
                 choice_count,
                 filter,
                 top_only,
+                turn_face_up,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = filter.clone();
@@ -324,9 +326,46 @@ pub(crate) fn lower_activation_cost_cst(
                     choose = choose.top_only();
                 }
                 costs.push(Cost::validated_effect(Effect::new(choose)));
-                costs.push(Cost::validated_effect(Effect::exile(
-                    crate::target::ChooseSpec::tagged(tag),
-                )));
+                let exile =
+                    crate::effects::ExileEffect::with_spec(crate::target::ChooseSpec::tagged(tag));
+                let exile = if *turn_face_up {
+                    exile.turn_face_up()
+                } else {
+                    exile
+                };
+                costs.push(Cost::validated_effect(Effect::new(exile)));
+            }
+            ActivationCostSegmentCst::ExileSourceAndChosen {
+                source_filter,
+                choice_count,
+                filter,
+            } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                for (mut filter, count) in [
+                    (source_filter.clone(), ChoiceCount::exactly(1)),
+                    (filter.clone(), *choice_count),
+                ] {
+                    if filter.zone.is_none() {
+                        filter.zone = Some(crate::zone::Zone::Battlefield);
+                    }
+                    if filter.zone == Some(crate::zone::Zone::Battlefield)
+                        && filter.controller.is_none()
+                        && !filter.source
+                    {
+                        filter.controller = Some(PlayerFilter::You);
+                    }
+                    let tag = format!("exile_cost_{exile_tag_id}");
+                    exile_tag_id += 1;
+                    costs.push(Cost::validated_effect(Effect::choose_objects(
+                        filter,
+                        count,
+                        PlayerFilter::You,
+                        tag.clone(),
+                    )));
+                    costs.push(Cost::validated_effect(Effect::exile(
+                        crate::target::ChooseSpec::tagged(tag),
+                    )));
+                }
             }
             ActivationCostSegmentCst::ExileSelfAndNamedArtifacts { names } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
@@ -422,6 +461,16 @@ pub(crate) fn lower_activation_cost_cst(
                     crate::target::ChooseSpec::tagged(tag),
                     crate::zone::Zone::Library,
                     true,
+                )));
+            }
+            ActivationCostSegmentCst::MoveSelfToLibraryBottom { surface } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::validated_effect(Effect::move_to_zone(
+                    crate::runtime_backend::front_end::shared::util::source_choose_spec_for_surface(
+                        surface.clone(),
+                    ),
+                    crate::zone::Zone::Library,
+                    false,
                 )));
             }
             ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard => {
@@ -527,4 +576,42 @@ pub(crate) fn lower_activation_cost_cst(
     }
     flush_pending_mana(&mut costs, &mut pending_mana_pips);
     Ok(TotalCost::from_costs(costs))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn direct_sacrifice_cost_exports_the_paid_object_snapshot() {
+        let cst = crate::runtime_backend::grammar::activation_costs::parse_activation_cost_rewrite(
+            "Sacrifice a creature",
+        )
+        .expect("activation cost should parse");
+        let cost = lower_activation_cost_cst(&cst).expect("activation cost should lower");
+        let [component] = cost.costs() else {
+            panic!("expected one sacrifice cost component: {cost:#?}");
+        };
+        let tagged = component
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::TaggedEffect>())
+            .expect("the paid creature must be retained by a typed cost tag");
+        assert_eq!(tagged.tag.as_str(), "sacrifice_cost_0");
+        assert!(
+            tagged
+                .effect
+                .downcast_ref::<crate::effects::SacrificeEffect>()
+                .is_some(),
+            "the tag must wrap the executable sacrifice: {tagged:#?}"
+        );
+
+        let imports =
+            crate::runtime_backend::front_end::shared::util::activation_cost_reference_imports(
+                &cost,
+            );
+        assert_eq!(
+            imports.last_object_tag.as_ref().map(|tag| tag.as_str()),
+            Some("sacrifice_cost_0")
+        );
+    }
 }

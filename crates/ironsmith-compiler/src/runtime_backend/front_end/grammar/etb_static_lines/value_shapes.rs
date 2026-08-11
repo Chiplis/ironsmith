@@ -22,6 +22,7 @@ pub(crate) struct WhereXFixedPlusReferenceSpec<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WhereXPlayerMetric {
     LifeGainedByYouThisTurn,
+    LifeLostByYouThisTurn,
     LifeLostByOpponentsThisTurn,
     OpponentsDealtCombatDamageThisTurn,
     NoncombatDamageDealtToOpponentsThisTurn,
@@ -91,6 +92,7 @@ pub(crate) struct WhereXSourceStatSpec<'a> {
     pub(crate) kind: EtbSourceStatKind,
     pub(crate) reference_tokens: &'a [OwnedLexToken],
     pub(crate) fallback: Option<EtbSourceStatFallback>,
+    pub(crate) as_this_ability_resolves: bool,
 }
 
 pub(crate) fn parse_equal_to_value_body_tokens(
@@ -359,6 +361,16 @@ fn parse_where_x_player_metric_lexed<'a>(input: &mut LexStream<'a>) -> WResult<W
             primitives::phrase(&["gained", "this", "turn"]),
         )
             .value(WhereXPlayerMetric::LifeGainedByYouThisTurn),
+        (
+            primitives::phrase(&["amount", "of", "life"]),
+            alt((
+                primitives::kw("you've"),
+                primitives::kw("youve"),
+                primitives::kw("you"),
+            )),
+            primitives::phrase(&["lost", "this", "turn"]),
+        )
+            .value(WhereXPlayerMetric::LifeLostByYouThisTurn),
         primitives::phrase(&[
             "total",
             "life",
@@ -547,18 +559,31 @@ fn parse_source_stat_suffix<'a>(input: &mut LexStream<'a>) -> WResult<WhereXSour
     let reference_tokens = repeat_till(
         1..,
         any.void(),
-        peek((parse_source_stat_kind, primitives::sentence_end())),
+        peek((parse_source_stat_tail, primitives::sentence_end())),
     )
     .map(|((), _)| ())
     .take()
     .parse_next(input)?;
-    let kind = parse_source_stat_kind(input)?;
+    let (kind, as_this_ability_resolves) = parse_source_stat_tail(input)?;
     let fallback = parse_source_stat_fallback(reference_tokens, kind);
     Ok(WhereXSourceStatSpec {
         kind,
         reference_tokens,
         fallback,
+        as_this_ability_resolves,
     })
+}
+
+fn parse_source_stat_tail(input: &mut LexStream<'_>) -> WResult<(EtbSourceStatKind, bool)> {
+    let kind = parse_source_stat_kind(input)?;
+    let as_this_ability_resolves = opt((
+        opt(primitives::comma()),
+        primitives::phrase(&["as", "this", "ability", "resolves"]),
+    )
+        .void())
+    .parse_next(input)?
+    .is_some();
+    Ok((kind, as_this_ability_resolves))
 }
 
 fn parse_tagged_mana_value_of_stat<'a>(
@@ -579,6 +604,7 @@ fn parse_tagged_mana_value_of_stat<'a>(
         kind: EtbSourceStatKind::ManaValue,
         reference_tokens,
         fallback: Some(EtbSourceStatFallback::TaggedObject),
+        as_this_ability_resolves: false,
     })
 }
 
@@ -775,6 +801,12 @@ mod tests {
             Some(WhereXPlayerMetric::LifeGainedByYouThisTurn)
         );
 
+        let tokens = lex_line("where X is the amount of life you lost this turn.", 0).unwrap();
+        assert_eq!(
+            parse_where_x_player_metric_tokens(&tokens),
+            Some(WhereXPlayerMetric::LifeLostByYouThisTurn)
+        );
+
         let tokens = lex_line(
             "where X is the greatest mana value among creatures you control.",
             0,
@@ -842,6 +874,17 @@ mod tests {
                 Some(EtbSourceStatFallback::Source),
             ))
         );
+
+        let tokens = lex_line(
+            "where X is this creature's power as this ability resolves.",
+            0,
+        )
+        .unwrap();
+        let parsed =
+            parse_where_x_source_stat_tokens(&tokens).expect("resolution-time source stat");
+        assert_eq!(parsed.kind, EtbSourceStatKind::Power);
+        assert_eq!(parsed.fallback, Some(EtbSourceStatFallback::Source));
+        assert!(parsed.as_this_ability_resolves);
 
         let tokens = lex_line("where X is that spell's mana value.", 0).unwrap();
         assert_eq!(

@@ -77,6 +77,47 @@ fn spell_cost_filters_keep_reusable_qualifiers_and_origin_unions() {
 }
 
 #[test]
+fn cunning_nightbonder_shares_its_flash_spell_filter_across_both_clauses() {
+    let definition = parse_oracle_card_definition("Cunning Nightbonder");
+    assert_eq!(
+        canonical_compiled_lines(&definition).join("\n"),
+        "Flash\nSpells with flash you cast cost {1} less to cast and can't be countered."
+    );
+
+    let mut reduction_filter = None;
+    let mut protected_filter = None;
+    for ability in &definition.abilities {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        let Some(model) = static_ability.compiled_model() else {
+            continue;
+        };
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::CostReduction(reduction) => {
+                reduction_filter = Some(reduction.filter.clone());
+            }
+            ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                restriction: ironsmith_core::Restriction::BeCountered(filter),
+                additional_restrictions,
+                ..
+            } if additional_restrictions.is_empty() => {
+                protected_filter = Some(filter.clone());
+            }
+            _ => {}
+        }
+    }
+    let reduction_filter = reduction_filter.expect("flash-spell reduction");
+    let protected_filter = protected_filter.expect("flash-spell counter restriction");
+    assert_eq!(protected_filter, reduction_filter);
+    assert_eq!(reduction_filter.cast_by, Some(PlayerFilter::You));
+    assert_eq!(
+        reduction_filter.static_abilities,
+        vec![crate::static_abilities::StaticAbilityId::Flash]
+    );
+}
+
+#[test]
 fn hinata_cost_modifiers_scale_for_each_exact_target() {
     let compiled = compiled_spell_cost_text("Hinata, Dawn-Crowned");
     assert!(

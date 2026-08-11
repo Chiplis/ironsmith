@@ -91,9 +91,24 @@ pub(crate) fn resolve_non_target_player_filter(
         PlayerAst::MostCardsInHand => Ok(PlayerFilter::MostCardsInHand),
         PlayerAst::MostLifeTied => Ok(PlayerFilter::MostLifeTied),
         PlayerAst::LowestLifeTied => Ok(PlayerFilter::LowestLifeTied),
-        PlayerAst::Target | PlayerAst::TargetOpponent => Err(CardTextError::ParseError(
-            "target player requires explicit targeting".to_string(),
-        )),
+        PlayerAst::Target => match refs.known_last_player_filter() {
+            Some(PlayerFilter::Target(inner)) | Some(PlayerFilter::AliasedTarget(inner)) => {
+                Ok(PlayerFilter::Target(inner.clone()))
+            }
+            _ => Err(CardTextError::ParseError(
+                "target player requires explicit targeting".to_string(),
+            )),
+        },
+        PlayerAst::TargetOpponent => match refs.known_last_player_filter() {
+            Some(PlayerFilter::Target(inner)) | Some(PlayerFilter::AliasedTarget(inner))
+                if inner.as_ref() == &PlayerFilter::Opponent =>
+            {
+                Ok(PlayerFilter::target_opponent())
+            }
+            _ => Err(CardTextError::ParseError(
+                "target player requires explicit targeting".to_string(),
+            )),
+        },
         PlayerAst::Opponent => Ok(PlayerFilter::Opponent),
         PlayerAst::PlayerToYourLeft => Ok(PlayerFilter::PlayerToYourLeft),
         PlayerAst::PlayerToYourRight => Ok(PlayerFilter::PlayerToYourRight),
@@ -128,6 +143,9 @@ pub(crate) fn resolve_non_target_player_filter(
         PlayerAst::ThatPlayerOrTargetController => {
             Ok(PlayerFilter::TargetPlayerOrControllerOfTarget)
         }
+        PlayerAst::TriggeringSourceController => Ok(PlayerFilter::ControllerOf(ObjectRef::tagged(
+            "triggering_source",
+        ))),
         PlayerAst::ItsController => {
             if let Some(tag) = refs.known_last_object_tag() {
                 Ok(PlayerFilter::ControllerOf(ObjectRef::tagged(tag.clone())))
@@ -200,9 +218,22 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
             push_target_player_filter_choices(player, choices);
             append_object_filter_target_player_choices(filter, choices);
         }
+        PlayerFilter::ControlsMost { filter } => {
+            append_object_filter_target_player_choices(filter, choices);
+        }
         PlayerFilter::Excluding { base, excluded } => {
             push_target_player_filter_choices(base, choices);
             push_target_player_filter_choices(excluded, choices);
+        }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+            push_target_player_filter_choices(base, choices);
+        }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            push_target_player_filter_choices(base, choices);
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
+            push_target_player_filter_choices(base, choices);
+            append_object_filter_target_player_choices(sources, choices);
         }
         PlayerFilter::Any
         | PlayerFilter::You
@@ -221,6 +252,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::MostCardsInHand
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::ChosenPlayer
         | PlayerFilter::TaggedPlayer(_)
         | PlayerFilter::IteratedPlayer
@@ -246,8 +278,13 @@ fn append_object_filter_target_player_choices(
         filter
             .attacking_player_or_planeswalker_controlled_by
             .as_ref(),
+        filter.protected_by.as_ref(),
         filter.attached_to_player.as_ref(),
         filter.entered_battlefield_controller.as_ref(),
+        filter
+            .counters_put_on_this_turn
+            .as_ref()
+            .map(|constraint| &constraint.source_controller),
         filter.discarded_or_cycled_this_turn_by.as_ref(),
         filter.dealt_damage_to_player_this_turn.as_ref(),
     ]
@@ -323,6 +360,16 @@ fn resolve_contextual_player_filter(
         PlayerFilter::Target(inner) => {
             PlayerFilter::Target(Box::new(resolve_contextual_player_filter(inner, refs)?))
         }
+        PlayerFilter::AliasedTarget(inner)
+            if matches!(inner.as_ref(), PlayerFilter::IteratedPlayer) =>
+        {
+            // This wrapper is initially only a discourse marker for
+            // "that player"/"their". Once the antecedent is known, retain a
+            // target alias only when that antecedent was an announced target.
+            // A persistent participant such as ChosenPlayer has no target
+            // assignment to consult at runtime.
+            as_followup_player_alias(resolve_contextual_player_filter(inner, refs)?)
+        }
         PlayerFilter::AliasedTarget(inner) => {
             PlayerFilter::AliasedTarget(Box::new(resolve_contextual_player_filter(inner, refs)?))
         }
@@ -347,6 +394,23 @@ fn resolve_contextual_player_filter(
                 excluded: Box::new(excluded),
             }
         }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+            PlayerFilter::WasDealtDamageBySourceThisGame {
+                base: Box::new(resolve_contextual_player_filter(base, refs)?),
+            }
+        }
+        PlayerFilter::LostLifeThisTurn { base } => PlayerFilter::LostLifeThisTurn {
+            base: Box::new(resolve_contextual_player_filter(base, refs)?),
+        },
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+            base,
+            sources,
+            minimum,
+        } => PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+            base: Box::new(resolve_contextual_player_filter(base, refs)?),
+            sources: Box::new(resolve_object_filter_player_refs(sources, refs)?),
+            minimum: *minimum,
+        },
         PlayerFilter::ControllerOf(reference) => {
             PlayerFilter::ControllerOf(resolve_object_ref(reference, refs))
         }
@@ -403,6 +467,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -430,7 +495,10 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
             }
             _ => {}
         },
-        Value::SpellsCastThisTurnMatching { filter, .. } => replace_it_tag_in_filter(filter, tag),
+        Value::SpellsCastThisTurnMatching { filter, .. }
+        | Value::TotalManaValueOfSpellsCastThisTurnMatching { filter, .. } => {
+            replace_it_tag_in_filter(filter, tag)
+        }
         Value::ManaFromSourceSpentToCastThisSpell { source_filter, .. } => {
             replace_it_tag_in_filter(source_filter, tag)
         }
@@ -448,6 +516,11 @@ fn replace_it_tag_in_filter(filter: &mut ObjectFilter, tag: &TagKey) {
         if constraint.tag.as_str() == IT_TAG {
             constraint.tag = tag.clone();
         }
+    }
+    if let Some(ObjectRef::Tagged(reference_tag)) = &mut filter.in_combat_with
+        && reference_tag.as_str() == IT_TAG
+    {
+        *reference_tag = tag.clone();
     }
     for comparison in [
         filter.power.as_mut(),
@@ -537,6 +610,9 @@ fn resolve_object_filter_player_refs(
     {
         *attacking_player = resolve_contextual_player_filter(attacking_player, refs)?;
     }
+    if let Some(protector) = resolved.protected_by.as_mut() {
+        *protector = resolve_contextual_player_filter(protector, refs)?;
+    }
     if let Some(attached_to_player) = resolved.attached_to_player.as_mut() {
         *attached_to_player = resolve_contextual_player_filter(attached_to_player, refs)?;
     }
@@ -546,11 +622,18 @@ fn resolve_object_filter_player_refs(
     if let Some(blocked_by) = resolved.blocked_by.as_mut() {
         *blocked_by = resolve_object_ref(blocked_by, refs);
     }
+    if let Some(in_combat_with) = resolved.in_combat_with.as_mut() {
+        *in_combat_with = resolve_object_ref(in_combat_with, refs);
+    }
     if let Some(combat_partner) = resolved.blocked_or_was_blocked_by_this_turn.as_mut() {
         **combat_partner = resolve_object_filter_player_refs(combat_partner, refs)?;
     }
     if let Some(entered_controller) = resolved.entered_battlefield_controller.as_mut() {
         *entered_controller = resolve_contextual_player_filter(entered_controller, refs)?;
+    }
+    if let Some(constraint) = resolved.counters_put_on_this_turn.as_mut() {
+        constraint.source_controller =
+            resolve_contextual_player_filter(&constraint.source_controller, refs)?;
     }
     for nested in &mut resolved.no_shared_creature_types_with {
         *nested = resolve_object_filter_player_refs(nested, refs)?;
@@ -673,9 +756,18 @@ pub(crate) fn resolve_it_tag(
             }
         }
     }
+    let source_exiled_set_excludes_current =
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }) && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        });
     if let Some(tag) = refs.known_last_object_tag()
         && tag.as_str() != crate::tag::SOURCE_EXILED_TAG
         && tag.as_str() != "triggering"
+        && !source_exiled_set_excludes_current
     {
         for constraint in &mut resolved.tagged_constraints {
             if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
@@ -1015,7 +1107,10 @@ pub(crate) fn resolve_choose_spec_it_tag(
                 .known_last_object_tag()
                 .is_some_and(|tag| tag.as_str() == IT_TAG)
             {
-                return Ok(if refs.iterated_player || refs.iterated_object {
+                // A player loop can still bind `__it__` through a choice made
+                // by that player. Only an object loop supplies the runtime's
+                // `iterated_object`; preserve the tag for per-player choices.
+                return Ok(if refs.iterated_object {
                     ChooseSpec::Iterated
                 } else {
                     ChooseSpec::Tagged(TagKey::from(IT_TAG))
@@ -1123,6 +1218,10 @@ pub(crate) fn resolve_value_it_tag(
             resolve_it_tag(filter, refs)?,
             *multiplier,
         )),
+        Value::GreatestCount(filter) => Ok(Value::GreatestCount(resolve_it_tag(filter, refs)?)),
+        Value::GreatestSharedCreatureTypeCount(filter) => Ok(
+            Value::GreatestSharedCreatureTypeCount(resolve_it_tag(filter, refs)?),
+        ),
         Value::TotalPower(filter) => Ok(Value::TotalPower(resolve_it_tag(filter, refs)?)),
         Value::TotalToughness(filter) => Ok(Value::TotalToughness(resolve_it_tag(filter, refs)?)),
         Value::TotalManaValue(filter) => Ok(Value::TotalManaValue(resolve_it_tag(filter, refs)?)),
@@ -1221,6 +1320,11 @@ pub(crate) fn resolve_value_it_tag(
                 TurnHistoryCount::PlayersLostLife(player) => TurnHistoryCount::PlayersLostLife(
                     resolve_contextual_player_filter(player, refs)?,
                 ),
+                TurnHistoryCount::UntappedLandsAtTurnStart(player) => {
+                    TurnHistoryCount::UntappedLandsAtTurnStart(resolve_contextual_player_filter(
+                        player, refs,
+                    )?)
+                }
                 TurnHistoryCount::Descended(player) => {
                     TurnHistoryCount::Descended(resolve_contextual_player_filter(player, refs)?)
                 }
@@ -1640,7 +1744,16 @@ pub(crate) fn resolve_attach_object_spec(
         }
         TargetAst::WithCount(inner, count) => {
             let (base, _) = resolve_attach_object_spec(inner, refs)?;
-            let spec = base.with_count(*count);
+            // An un-targeted attachment noun resolves to `All(filter)` when it
+            // has no authored quantity ("attach all Auras ...").  A counted
+            // noun is different: "attach an Equipment ..." is a resolving
+            // choice, not an instruction to attach every matching Equipment.
+            // Keep the filter in the ordinary `Object` form so the runtime's
+            // counted-choice path asks for exactly the authored number.
+            let spec = match base.unhinted() {
+                ChooseSpec::All(filter) => ChooseSpec::Object(filter.clone()).with_count(*count),
+                _ => base.with_count(*count),
+            };
             let choices = if spec.is_target() {
                 vec![spec.clone()]
             } else {
@@ -1661,6 +1774,52 @@ mod tests {
     use crate::runtime_backend::references::reference_model::{
         RefState, ReferenceFrame, ReferenceImports,
     };
+
+    #[test]
+    fn repeated_target_opponent_reference_requires_a_matching_announced_target() {
+        let refs = ReferenceEnv {
+            last_player_filter: RefState::Known(PlayerFilter::target_opponent()),
+            ..ReferenceEnv::default()
+        };
+
+        assert_eq!(
+            resolve_non_target_player_filter(PlayerAst::TargetOpponent, &refs)
+                .expect("the already announced opponent target should remain in scope"),
+            PlayerFilter::target_opponent()
+        );
+
+        let unrelated = ReferenceEnv {
+            last_player_filter: RefState::Known(PlayerFilter::target_player()),
+            ..ReferenceEnv::default()
+        };
+        assert!(
+            resolve_non_target_player_filter(PlayerAst::TargetOpponent, &unrelated).is_err(),
+            "an arbitrary player target must not satisfy a target-opponent reference"
+        );
+        assert!(
+            resolve_non_target_player_filter(PlayerAst::TargetOpponent, &ReferenceEnv::default())
+                .is_err(),
+            "target language without an explicit target must still be rejected"
+        );
+    }
+
+    #[test]
+    fn counted_implicit_attach_object_remains_a_resolving_choice() {
+        let object = TargetAst::WithCount(
+            Box::new(TargetAst::Object(ObjectFilter::creature(), None, None)),
+            crate::effect::ChoiceCount::exactly(1),
+        );
+
+        let (spec, choices) = resolve_attach_object_spec(&object, &ReferenceEnv::default())
+            .expect("counted attachment object should resolve");
+
+        assert!(choices.is_empty(), "a resolving choice is not a target");
+        assert_eq!(spec.count(), crate::effect::ChoiceCount::exactly(1));
+        assert!(
+            matches!(spec.base(), ChooseSpec::Object(_)),
+            "the counted filter must not degrade to All(filter): {spec:#?}"
+        );
+    }
 
     #[test]
     fn target_wrapped_implicit_it_value_resolves_to_source() {
@@ -1728,6 +1887,42 @@ mod tests {
     }
 
     #[test]
+    fn source_exiled_set_can_exclude_the_current_exile_result() {
+        let refs = ReferenceEnv {
+            last_object_tag: RefState::Known(TagKey::from("exiled_7")),
+            ..ReferenceEnv::default()
+        };
+        let filter = ObjectFilter::tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG))
+            .in_zone(Zone::Exile)
+            .not_tagged(TagKey::from(IT_TAG));
+
+        let resolved = resolve_it_tag(&filter, &refs)
+            .expect("resolve the current-result exclusion without rebinding the source set");
+
+        assert!(resolved.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(resolved.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "exiled_7"
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        }));
+        assert!(!resolved.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "exiled_7"
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+
+        let ordinary =
+            ObjectFilter::tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG)).in_zone(Zone::Exile);
+        let ordinary = resolve_it_tag(&ordinary, &refs)
+            .expect("an ordinary latest-exile collection should still rebind");
+        assert!(ordinary.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "exiled_7"
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+    }
+
+    #[test]
     fn unresolved_it_relational_constraint_survives_for_runtime_trigger_binding() {
         let filter = ObjectFilter::default().match_tagged(
             TagKey::from(IT_TAG),
@@ -1768,6 +1963,23 @@ mod tests {
 
         assert!(matches!(
             resolved.blocked_by,
+            Some(ObjectRef::Tagged(tag)) if tag.as_str() == "targeted_0"
+        ));
+    }
+
+    #[test]
+    fn in_combat_with_that_creature_resolves_the_nested_object_reference() {
+        let mut filter = ObjectFilter::creature();
+        filter.in_combat_with = Some(ObjectRef::Tagged(TagKey::from(IT_TAG)));
+        let refs = ReferenceEnv {
+            last_object_tag: RefState::Known(TagKey::from("targeted_0")),
+            ..ReferenceEnv::default()
+        };
+
+        let resolved = resolve_it_tag(&filter, &refs).expect("resolve combat antecedent");
+
+        assert!(matches!(
+            resolved.in_combat_with,
             Some(ObjectRef::Tagged(tag)) if tag.as_str() == "targeted_0"
         ));
     }

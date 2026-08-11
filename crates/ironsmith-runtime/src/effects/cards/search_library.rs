@@ -7,9 +7,6 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     resolve_player_filter, resolve_value, view_hidden_candidate_objects,
 };
-use crate::effects::zones::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
-};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{SearchLibraryEvent, ShuffleLibraryEvent};
 use crate::filter::ObjectFilterExt as _;
@@ -184,22 +181,38 @@ impl EffectExecutor for SearchLibraryEffect {
                     }
 
                     // For other destinations, move then shuffle
-                    let new_id = if let Some(search_override) = search_override {
+                    let (new_id, move_events, move_facts) = if let Some(search_override) =
+                        search_override
+                    {
                         exile_found_cards_for_opposition_agent(game, &[card_id], search_override)
                             .first()
                             .copied()
-                    } else if self.destination == Zone::Battlefield {
-                        match move_to_battlefield_with_options(
-                            game,
-                            ctx,
-                            card_id,
-                            BattlefieldEntryOptions::preserve(false),
-                        ) {
-                            BattlefieldEntryOutcome::Moved(new_id) => Some(new_id),
-                            BattlefieldEntryOutcome::Prevented => None,
-                        }
+                            .map(|id| (Some(id), Vec::new(), Vec::new()))
+                            .unwrap_or((None, Vec::new(), Vec::new()))
                     } else {
-                        game.move_object_by_effect(card_id, self.destination)
+                        // Search destinations can be locally rewritten by
+                        // self-replacements (for example, Library -> Hand can
+                        // become Library -> Battlefield). Route the move
+                        // through the normal effect path so the execution
+                        // context's decision maker and temporary replacement
+                        // effects participate in that zone change.
+                        let move_effect = crate::effect::Effect::move_to_zone(
+                            crate::target::ChooseSpec::SpecificObject(card_id),
+                            self.destination,
+                            false,
+                        );
+                        let stable_id = game.object(card_id).map(|object| object.stable_id);
+                        let move_outcome = crate::effects::execute_effect(game, &move_effect, ctx)?;
+                        let moved = match &move_outcome.value {
+                            crate::effect::OutcomeValue::Objects(ids) => ids.first().copied(),
+                            _ => None,
+                        }
+                        .or_else(|| {
+                            stable_id
+                                .and_then(|stable| game.find_object_by_stable_id(stable))
+                                .filter(|current| *current != card_id)
+                        });
+                        (moved, move_outcome.events, move_outcome.execution_facts)
                     };
 
                     if let Some(new_id) = new_id {
@@ -207,7 +220,12 @@ impl EffectExecutor for SearchLibraryEffect {
                         game.shuffle_player_library(player_id);
                         let mut outcome = EffectOutcome::with_objects(vec![new_id])
                             .with_affected_objects(vec![new_id])
-                            .with_events([search_event.clone(), shuffle_event.clone()]);
+                            .with_events(
+                                [search_event.clone(), shuffle_event.clone()]
+                                    .into_iter()
+                                    .chain(move_events),
+                            );
+                        outcome.execution_facts.extend(move_facts);
                         if let Some(memory) = chosen_memory {
                             outcome = outcome
                                 .with_chosen_object_memory(vec![memory.clone()])

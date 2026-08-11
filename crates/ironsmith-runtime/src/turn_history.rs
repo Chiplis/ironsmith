@@ -2,9 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::color::ColorSet;
 use crate::events::EnterBattlefieldEvent;
-use crate::events::combat::{
-    CreatureAttackedEvent, CreatureBecameBlockedEvent, CreatureBlockedEvent,
-};
+use crate::events::combat::{CreatureAttackedEvent, CreatureBlockedEvent};
 use crate::events::other::CounterPlacedEvent;
 use crate::events::other::{
     CardDiscardedEvent, CardsDrawnEvent, ControlChangedEvent, KeywordActionEvent,
@@ -60,6 +58,8 @@ impl TurnEventRecord {
 /// Unified owner for turn-scoped bookkeeping and history.
 #[derive(Debug, Clone, Default)]
 pub struct TurnHistory {
+    /// Per-player snapshot taken before the untap step begins.
+    pub untapped_lands_at_turn_start: HashMap<PlayerId, u32>,
     pub activated_abilities_this_turn: HashSet<(ObjectId, usize)>,
     pub loyalty_abilities_activated_this_turn: HashSet<ObjectId>,
     pub activated_abilities_resolved_this_turn: HashMap<(ObjectId, usize), u32>,
@@ -71,11 +71,19 @@ pub struct TurnHistory {
     pub mana_spent_to_cast_spells_this_turn: HashMap<PlayerId, u32>,
     pub players_attacked_this_turn: HashSet<PlayerId>,
     pub players_tapped_land_for_mana_this_turn: HashSet<PlayerId>,
+    /// Player/counter pairs locked by a replacement effect for the rest of
+    /// this turn (for example, "you can't get additional poison counters this
+    /// turn"). The lock is established when that replacement applies, rather
+    /// than retroactively counting counters received earlier in the turn.
+    pub player_counter_locks_this_turn: HashSet<(PlayerId, crate::object::CounterType)>,
     pub die_rolls_this_turn: HashMap<PlayerId, Vec<u32>>,
     pub die_roll_result_adjustments_this_turn: HashSet<(ObjectId, StaticAbilityInstanceId)>,
     /// Source/player pairs for attached-object rule restrictions that player
     /// has paid to ignore until the turn ends.
     pub players_ignoring_attached_static_restrictions_this_turn: HashSet<(ObjectId, PlayerId)>,
+    /// Source/player pairs for source-wide rule restrictions that the player
+    /// has paid to ignore until the turn ends.
+    pub players_ignoring_source_static_effects_this_turn: HashSet<(ObjectId, PlayerId)>,
     pub creatures_attacked_this_turn: HashSet<ObjectId>,
     pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
@@ -100,9 +108,13 @@ impl TurnHistory {
         self.mana_spent_to_cast_spells_this_turn.clear();
         self.players_attacked_this_turn.clear();
         self.players_tapped_land_for_mana_this_turn.clear();
+        self.untapped_lands_at_turn_start.clear();
+        self.player_counter_locks_this_turn.clear();
         self.die_rolls_this_turn.clear();
         self.die_roll_result_adjustments_this_turn.clear();
         self.players_ignoring_attached_static_restrictions_this_turn
+            .clear();
+        self.players_ignoring_source_static_effects_this_turn
             .clear();
         self.creatures_attacked_this_turn.clear();
         self.creature_attack_counts_this_turn.clear();
@@ -169,6 +181,24 @@ impl TurnHistory {
             )
     }
 
+    pub fn player_counter_is_locked_this_turn(
+        &self,
+        player: PlayerId,
+        counter_type: crate::object::CounterType,
+    ) -> bool {
+        self.player_counter_locks_this_turn
+            .contains(&(player, counter_type))
+    }
+
+    pub fn lock_player_counter_for_turn(
+        &mut self,
+        player: PlayerId,
+        counter_type: crate::object::CounterType,
+    ) {
+        self.player_counter_locks_this_turn
+            .insert((player, counter_type));
+    }
+
     pub fn total_spells_cast_this_turn(&self) -> u32 {
         self.projected_records()
             .filter(|record| record.event.downcast::<SpellCastEvent>().is_some())
@@ -220,6 +250,17 @@ impl TurnHistory {
         players
             .iter()
             .map(|player| self.cards_discarded_by_player(*player))
+            .sum()
+    }
+
+    pub fn total_attractions_visited_for_players(&self, players: &[PlayerId]) -> u32 {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<KeywordActionEvent>())
+            .filter(|event| {
+                event.action == KeywordActionKind::VisitAttraction
+                    && players.contains(&event.player)
+            })
+            .map(|event| event.amount)
             .sum()
     }
 
@@ -571,12 +612,20 @@ impl TurnHistory {
         &self,
         stable_id: StableId,
     ) -> bool {
+        self.object_was_put_into_graveyard_from_zone_this_turn(stable_id, Zone::Battlefield)
+    }
+
+    pub fn object_was_put_into_graveyard_from_zone_this_turn(
+        &self,
+        stable_id: StableId,
+        from: Zone,
+    ) -> bool {
         self.projected_records().any(|record| {
             record
                 .event
                 .downcast::<ZoneChangeEvent>()
                 .is_some_and(|event| {
-                    event.from == Zone::Battlefield
+                    event.from == from
                         && event.to == Zone::Graveyard
                         && record
                             .object_snapshot
@@ -872,10 +921,6 @@ impl TurnHistory {
                 .event
                 .downcast::<CreatureBlockedEvent>()
                 .is_some_and(|event| event.blocker == creature)
-                || record
-                    .event
-                    .downcast::<CreatureBecameBlockedEvent>()
-                    .is_some_and(|event| event.attacker == creature)
         })
     }
 
@@ -1380,6 +1425,12 @@ pub(crate) fn resolve_turn_history_count(
             .map(|event| event.player)
             .collect::<HashSet<_>>()
             .len() as i32,
+        TurnHistoryCount::UntappedLandsAtTurnStart(player) => history
+            .untapped_lands_at_turn_start
+            .iter()
+            .filter(|(player_id, _)| player.matches_player(**player_id, filter_ctx))
+            .map(|(_, count)| *count as i32)
+            .sum(),
         TurnHistoryCount::Descended(player) => history
             .projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
@@ -1637,6 +1688,54 @@ mod tests {
             2
         );
         assert_eq!(resolve_turn_history_count(&game, &query, &bob_ctx, None), 1);
+    }
+
+    #[test]
+    fn graveyard_entry_from_library_history_tracks_stable_identity_and_origin() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let creature = CardDefinitionBuilder::new(CardId::new(), "History Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let from_library = game.create_object_from_definition(&creature, alice, Zone::Graveyard);
+        let from_hand = game.create_object_from_definition(&creature, alice, Zone::Graveyard);
+
+        for (object, from) in [(from_library, Zone::Library), (from_hand, Zone::Hand)] {
+            let snapshot = ObjectSnapshot::from_object(
+                game.object(object).expect("history object should exist"),
+                &game,
+            );
+            let event = TriggerEvent::new_with_provenance(
+                ZoneChangeEvent::with_cause(
+                    object,
+                    from,
+                    Zone::Graveyard,
+                    EventCause::effect(),
+                    Some(snapshot),
+                ),
+                ProvNodeId::default(),
+            );
+            game.record_turn_history_event(&event);
+        }
+
+        let library_stable = game
+            .object(from_library)
+            .expect("library-origin object should exist")
+            .stable_id;
+        let hand_stable = game
+            .object(from_hand)
+            .expect("hand-origin object should exist")
+            .stable_id;
+        assert!(
+            game.turn_store
+                .turn_history
+                .object_was_put_into_graveyard_from_zone_this_turn(library_stable, Zone::Library)
+        );
+        assert!(
+            !game.turn_store
+                .turn_history
+                .object_was_put_into_graveyard_from_zone_this_turn(hand_stable, Zone::Library)
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@
 use crate::effect::{EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt, ExecutionFact};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
-use crate::filter::ObjectFilterExt;
+use crate::filter::{ObjectFilterExt, player_filter_matches_game};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 pub type IfEffect = ironsmith_core::IfEffect<crate::effect::Effect>;
@@ -30,6 +30,10 @@ fn object_filter_mentions_iterated_player(filter: &crate::target::ObjectFilter) 
             .as_ref()
             .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
         || filter
+            .protected_by
+            .as_ref()
+            .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
+        || filter
             .attached_to_player
             .as_ref()
             .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
@@ -37,6 +41,10 @@ fn object_filter_mentions_iterated_player(filter: &crate::target::ObjectFilter) 
             .entered_battlefield_controller
             .as_ref()
             .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
+        || filter
+            .counters_put_on_this_turn
+            .as_ref()
+            .is_some_and(|constraint| constraint.source_controller.mentions_iterated_player())
         || filter
             .attached_to_object
             .as_deref()
@@ -159,6 +167,23 @@ pub(super) fn predicate_matches_with_context(
     game: &GameState,
     ctx: &ExecutionContext,
 ) -> bool {
+    if let EffectPredicate::PlayerAffectedObjectHasGreatestManaValue { player } = predicate {
+        let Some(all_memory) = outcome.affected_object_memory() else {
+            return false;
+        };
+        let Some(greatest) = all_memory.iter().map(|memory| memory.mana_value).max() else {
+            return false;
+        };
+        let Some(partitions) = outcome.player_affected_object_memory() else {
+            return false;
+        };
+        let filter_ctx = ctx.filter_context(game);
+        return partitions.iter().any(|(affected_player, memory)| {
+            player_filter_matches_game(player, *affected_player, game, &filter_ctx)
+                && memory.iter().any(|object| object.mana_value == greatest)
+        });
+    }
+
     let EffectPredicate::PriorEffectResult(surface) = predicate else {
         return predicate.evaluate_outcome(outcome);
     };
@@ -248,7 +273,8 @@ impl EffectExecutor for IfEffect {
         if matches!(
             self.predicate,
             EffectPredicate::Happened | EffectPredicate::DidNotHappen
-        ) && (effect_list_mentions_iterated_player(&self.then)
+        ) && (self.per_player_result
+            || effect_list_mentions_iterated_player(&self.then)
             || effect_list_mentions_iterated_player(&self.else_))
             && let Some(player_counts) =
                 outcome.execution_facts.iter().find_map(|fact| match fact {
@@ -401,6 +427,60 @@ mod tests {
         // Then branch should NOT execute (no else branch, so Resolved)
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
         assert_eq!(game.player(alice).unwrap().life, initial_life);
+    }
+
+    #[test]
+    fn player_partition_did_not_branch_applies_only_to_zero_count_player() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let condition = EffectId(19);
+        ctx.store_outcome(
+            condition,
+            EffectOutcome::count(1).with_player_counts(vec![(alice, 1), (bob, 0)]),
+        );
+
+        IfEffect::if_then(
+            condition,
+            EffectPredicate::DidNotHappen,
+            vec![Effect::lose_life_player(
+                crate::effect::Value::Fixed(1),
+                PlayerFilter::IteratedPlayer,
+            )],
+        )
+        .with_per_player_result(true)
+        .execute(&mut game, &mut ctx)
+        .expect("per-player result branch should resolve");
+
+        assert_eq!(game.player(alice).expect("alice").life, 20);
+        assert_eq!(game.player(bob).expect("bob").life, 19);
+    }
+
+    #[test]
+    fn unmarked_player_counts_keep_one_global_result_evaluation() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let condition = EffectId(20);
+        ctx.store_outcome(
+            condition,
+            EffectOutcome::count(1).with_player_counts(vec![(alice, 1), (bob, 1)]),
+        );
+
+        IfEffect::if_then(
+            condition,
+            EffectPredicate::Happened,
+            vec![Effect::gain_life(1)],
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("an ordinary result branch should resolve once");
+
+        assert_eq!(game.player(alice).expect("alice").life, 21);
+        assert_eq!(game.player(bob).expect("bob").life, 20);
     }
 
     #[test]
@@ -592,6 +672,79 @@ mod tests {
             &game,
             &ctx
         ));
+    }
+
+    #[test]
+    fn participant_discard_extremum_executes_on_a_tie_but_not_a_strict_loss() {
+        fn memory(
+            id: u64,
+            player: PlayerId,
+            mana_value: i32,
+        ) -> crate::effect::OutcomeObjectMemory {
+            let object_id = crate::ids::ObjectId::from_raw(id);
+            crate::effect::OutcomeObjectMemory {
+                object_id,
+                stable_id: crate::ids::StableId::from(object_id),
+                name: format!("Discarded {id}"),
+                controller: player,
+                owner: player,
+                zone: crate::zone::Zone::Hand,
+                power: None,
+                toughness: None,
+                mana_value,
+                card_types: vec![crate::types::CardType::Sorcery],
+                colors: crate::color::ColorSet::default(),
+                subtypes: Vec::new(),
+                is_token: false,
+            }
+        }
+
+        fn run_case(your_mana_value: i32, their_mana_value: i32) -> u32 {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let source_card =
+                crate::card::CardBuilder::new(crate::ids::CardId::new(), "Cage Brawler")
+                    .card_types(vec![crate::types::CardType::Creature])
+                    .build();
+            let source =
+                game.create_object_from_card(&source_card, alice, crate::zone::Zone::Battlefield);
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            let condition = EffectId(7);
+            let yours = memory(7001, alice, your_mana_value);
+            let theirs = memory(7002, bob, their_mana_value);
+            ctx.store_outcome(
+                condition,
+                EffectOutcome::count(2)
+                    .with_affected_object_memory(vec![yours.clone(), theirs.clone()])
+                    .with_player_affected_object_memory(vec![
+                        (alice, vec![yours]),
+                        (bob, vec![theirs]),
+                    ]),
+            );
+
+            IfEffect::if_then(
+                condition,
+                EffectPredicate::PlayerAffectedObjectHasGreatestManaValue {
+                    player: crate::target::PlayerFilter::You,
+                },
+                vec![Effect::put_counters_on_source(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    2,
+                )],
+            )
+            .execute(&mut game, &mut ctx)
+            .expect("participant-result branch should resolve");
+
+            game.counter_count(source, crate::object::CounterType::PlusOnePlusOne)
+        }
+
+        assert_eq!(run_case(5, 5), 2, "a tied maximum satisfies the branch");
+        assert_eq!(
+            run_case(5, 6),
+            0,
+            "another participant's strict maximum rejects the branch"
+        );
     }
 
     #[test]

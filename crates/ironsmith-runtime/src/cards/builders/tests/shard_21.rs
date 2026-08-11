@@ -335,6 +335,26 @@ pub(super) fn parse_oracle_selective_adaptation_keyword_bundle_regression() {
             && debug.contains("Vigilance"),
         "expected keyword-specific filters in Selective Adaptation, got {debug}"
     );
+
+    let choices = def
+        .spell_effect
+        .as_ref()
+        .expect("Selective Adaptation should have a spell effect")
+        .flattened_default_effects()
+        .into_iter()
+        .filter_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        choices.len(),
+        13,
+        "expected twelve keyword slots plus one battlefield choice"
+    );
+    assert!(
+        choices
+            .iter()
+            .all(|choice| choice.count == crate::effect::ChoiceCount::exactly(1)),
+        "every public revealed-card slot and the final battlefield choice is mandatory when candidates exist: {choices:#?}"
+    );
 }
 
 #[test]

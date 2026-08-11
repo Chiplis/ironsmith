@@ -25,13 +25,15 @@ pub(crate) struct SameControllerSacrificeShape {
     pub(crate) target: Range<usize>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GraveyardCastReplacementShape {
     pub(crate) until_end_of_turn: bool,
     pub(crate) without_paying_mana_cost: bool,
     pub(crate) includes_artifact: bool,
     pub(crate) artifact_first: bool,
     pub(crate) mana_value_limit: Option<i32>,
+    pub(crate) additional_mana_cost: Option<crate::mana::ManaCost>,
+    pub(crate) mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +44,48 @@ pub(crate) struct ConditionalSelfAnimateTail {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ReturnTaggedBattlefieldShape {
     pub(crate) tapped: bool,
+}
+
+const EXILE_RESOLVING_CARD_INSTEAD: &[&str] = &[
+    "exile",
+    "that",
+    "card",
+    "instead",
+    "of",
+    "putting",
+    "it",
+    "into",
+    "your",
+    "graveyard",
+    "as",
+    "it",
+    "resolves",
+];
+const IF_YOU_DO_RETURN_TO_HAND_NEXT_END_STEP: &[&str] = &[
+    "if",
+    "you",
+    "do",
+    "return",
+    "it",
+    "to",
+    "your",
+    "hand",
+    "at",
+    "the",
+    "beginning",
+    "of",
+    "the",
+    "next",
+    "end",
+    "step",
+];
+
+pub(crate) fn is_resolving_card_exile_then_return_next_end_step_shape(
+    replacement: &[OwnedLexToken],
+    delayed_return: &[OwnedLexToken],
+) -> bool {
+    matches_complete_sequence(replacement, &[EXILE_RESOLVING_CARD_INSTEAD])
+        && matches_complete_sequence(delayed_return, &[IF_YOU_DO_RETURN_TO_HAND_NEXT_END_STEP])
 }
 
 const CHOICE_PREFIX: &[&str] = &[
@@ -444,6 +488,36 @@ fn mana_value_limit(tokens: &[OwnedLexToken]) -> Option<i32> {
     Some(limit)
 }
 
+fn additional_cast_mana_cost(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<crate::mana::ManaCost>, ()> {
+    let Some(by_paying) = tokens
+        .windows(2)
+        .position(|pair| pair[0].is_word("by") && pair[1].is_word("paying"))
+    else {
+        return Ok(None);
+    };
+    let cost_start = by_paying + 2;
+    let Some(addition) = tokens[cost_start..]
+        .iter()
+        .position(|token| token.is_word("in"))
+        .map(|offset| cost_start + offset)
+    else {
+        return Err(());
+    };
+    if !matches_complete_content_sequence(
+        &tokens[addition..],
+        &[&["in", "addition", "to", "its", "other", "costs"]],
+    ) {
+        return Err(());
+    }
+    crate::runtime_backend::front_end::grammar::leaf::parse_leaf_mana_cost_tokens(
+        &tokens[cost_start..addition],
+    )
+    .map(Some)
+    .map_err(|_| ())
+}
+
 pub(crate) fn parse_graveyard_cast_replacement_shape(
     cast: &[OwnedLexToken],
     replacement: &[OwnedLexToken],
@@ -475,6 +549,26 @@ pub(crate) fn parse_graveyard_cast_replacement_shape(
     {
         return None;
     }
+    let (cast, mana_spend_mode) = if let Some(rest) = primitives::strip_lexed_suffix_phrase(
+        cast,
+        &[
+            "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
+        ],
+    ) {
+        (rest, ironsmith_core::value_model::ManaSpendMode::AnyType)
+    } else if primitives::strip_lexed_suffix_phrase(
+        cast,
+        &["can", "be", "spent", "to", "cast", "that", "spell"],
+    )
+    .is_some()
+    {
+        // A mana-spending rider is semantic, not ignorable descriptive text.
+        // Only claim the exact supported any-type grammar above.
+        return None;
+    } else {
+        (cast, ironsmith_core::value_model::ManaSpendMode::Normal)
+    };
+    let additional_mana_cost = additional_cast_mana_cost(cast).ok()?;
     Some(GraveyardCastReplacementShape {
         until_end_of_turn,
         without_paying_mana_cost: contains_sequence_phrase(cast, WITHOUT_MANA),
@@ -485,6 +579,8 @@ pub(crate) fn parse_graveyard_cast_replacement_shape(
             .zip(cast.iter().position(|token| token.is_word("instant")))
             .is_some_and(|(artifact, instant)| artifact < instant),
         mana_value_limit: mana_value_limit(cast),
+        additional_mana_cost,
+        mana_spend_mode,
     })
 }
 
@@ -650,6 +746,30 @@ mod tests {
         assert!(shape.artifact_first);
         assert!(shape.without_paying_mana_cost);
         assert!(!shape.until_end_of_turn);
+        assert_eq!(
+            shape.mana_spend_mode,
+            ironsmith_core::value_model::ManaSpendMode::Normal
+        );
+        let any_type = parse_graveyard_cast_replacement_shape(
+            &lex(
+                "You may cast target instant or sorcery card from a graveyard, and mana of any type can be spent to cast that spell",
+            ),
+            &lex("If that spell would be put into a graveyard, exile it instead"),
+        )
+        .unwrap();
+        assert_eq!(
+            any_type.mana_spend_mode,
+            ironsmith_core::value_model::ManaSpendMode::AnyType
+        );
+        assert!(
+            parse_graveyard_cast_replacement_shape(
+                &lex(
+                    "You may cast target instant or sorcery card from a graveyard, and mana of any color can be spent to cast that spell",
+                ),
+                &lex("If that spell would be put into a graveyard, exile it instead"),
+            )
+            .is_none()
+        );
         let duration = parse_graveyard_cast_replacement_shape(
             &lex(
                 "Until end of turn, you may cast target instant or sorcery card from your graveyard without paying its mana cost",
@@ -697,6 +817,10 @@ mod tests {
             &lex(
                 "At the beginning of the next end step, return it to the battlefield under its owner's control"
             ),
+        ));
+        assert!(is_resolving_card_exile_then_return_next_end_step_shape(
+            &lex("Exile that card instead of putting it into your graveyard as it resolves"),
+            &lex("If you do, return it to your hand at the beginning of the next end step"),
         ));
     }
 }

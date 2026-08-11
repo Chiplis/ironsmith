@@ -10,6 +10,35 @@ fn choose_spec_may_hold_multiple_objects(spec: &ChooseSpec) -> bool {
     }
 }
 
+/// Recover the authored collection behind "one of those creatures" while
+/// retaining the single-object choice used as the copy source.
+fn mark_copy_source_as_one_of_tagged_set(spec: &mut ChooseSpec) -> Option<ObjectFilter> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => mark_copy_source_as_one_of_tagged_set(spec),
+        ChooseSpec::Object(filter) => {
+            let tagged = filter
+                .tagged_constraints
+                .iter()
+                .filter(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject);
+            if tagged.count() != 1 {
+                return None;
+            }
+            filter.set_one_of_tagged_set_surface(true);
+            Some(filter.clone())
+        }
+        ChooseSpec::Tagged(tag) => {
+            let mut filter = ObjectFilter::tagged(tag.clone());
+            filter.card_types = vec![CardType::Creature];
+            filter.set_one_of_tagged_set_surface(true);
+            Some(filter)
+        }
+        _ => None,
+    }
+}
+
 pub(super) fn compile_subject_verb_middle(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -66,12 +95,15 @@ pub(super) fn compile_subject_verb_middle(
             target_reference_pronoun,
             all_matches,
             count,
+            count_surface,
             player,
             may_choose_new_targets,
             choose_new_target_singular,
             removed_supertypes,
             set_colors,
             added_card_types,
+            added_subtypes,
+            set_base_power_toughness,
         } => {
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -85,20 +117,23 @@ pub(super) fn compile_subject_verb_middle(
             }
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
-            let copy_effect = Effect::with_id(
-                id.0,
-                Effect::new(
-                    crate::effects::CopySpellEffect::new_for_player(
-                        spec.clone(),
-                        count.clone(),
-                        player_filter.clone(),
-                    )
-                    .with_removed_supertypes(removed_supertypes.clone())
-                    .with_optional_target_reference_kind(*target_reference_kind)
-                    .with_target_reference_pronoun(*target_reference_pronoun),
-                ),
+            let mut lowered_copy = crate::effects::CopySpellEffect::new_for_player(
+                spec.clone(),
+                count.clone(),
+                player_filter.clone(),
             )
-            .tag(COPIED_STACK_OBJECT_TAG);
+            .with_removed_supertypes(removed_supertypes.clone())
+            .with_set_colors(*set_colors)
+            .with_added_card_types(added_card_types.clone())
+            .with_added_subtypes(added_subtypes.clone())
+            .with_set_base_power_toughness(*set_base_power_toughness)
+            .with_optional_target_reference_kind(*target_reference_kind)
+            .with_target_reference_pronoun(*target_reference_pronoun);
+            if let Some(surface) = count_surface {
+                lowered_copy = lowered_copy.with_count_surface(*surface);
+            }
+            let copy_effect =
+                Effect::with_id(id.0, Effect::new(lowered_copy)).tag(COPIED_STACK_OBJECT_TAG);
             let retarget_effect = if *may_choose_new_targets {
                 let retarget = crate::effects::ChooseNewTargetsEffect::may_for_player(
                     id,
@@ -114,27 +149,6 @@ pub(super) fn compile_subject_verb_middle(
                 None
             };
             let mut compiled = vec![copy_effect];
-            if let Some(colors) = set_colors {
-                compiled.push(Effect::new(
-                    crate::effects::ApplyContinuousEffect::with_spec(
-                        ChooseSpec::Tagged(TagKey::from(COPIED_STACK_OBJECT_TAG)),
-                        crate::continuous::Modification::SetColors(*colors),
-                        Until::Forever,
-                    ),
-                ));
-            }
-            if !added_card_types.is_empty() {
-                compiled.push(Effect::new(
-                    crate::effects::ApplyContinuousEffect::with_spec(
-                        ChooseSpec::Tagged(TagKey::from(COPIED_STACK_OBJECT_TAG)),
-                        crate::continuous::Modification::AddCardTypes(added_card_types.clone()),
-                        Until::Forever,
-                    )
-                    .with_type_retention_surface(Some(
-                        ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes,
-                    )),
-                ));
-            }
             if let Some(retarget) = retarget_effect {
                 compiled.push(retarget);
             }
@@ -187,10 +201,10 @@ pub(super) fn compile_subject_verb_middle(
             membership_filter
                 .tagged_constraints
                 .push(TaggedObjectConstraint {
-                    tag: TagKey::from("__it__"),
+                    tag: resolved_keep,
                     relation: TaggedOpbjectRelation::SameStableId,
                 });
-            let in_keep = Condition::TaggedObjectMatches(resolved_keep, membership_filter);
+            let in_keep = Condition::TaggedObjectMatches(TagKey::from(IT_TAG), membership_filter);
             let move_rest = Effect::for_each_tagged(
                 resolved_tag,
                 vec![Effect::conditional(
@@ -282,8 +296,11 @@ pub(super) fn compile_subject_verb_middle(
             player,
             allow_land,
             as_copy,
+            copy_cast_reminder_surface,
             without_paying_mana_cost,
+            additional_mana_cost,
             cost_reduction,
+            mana_spend_mode,
         } => {
             let resolved_tag = if tag.as_str() == "__last_revealed__" {
                 TagKey::from(ctx.last_revealed_tag.clone().ok_or_else(|| {
@@ -322,8 +339,11 @@ pub(super) fn compile_subject_verb_middle(
                     player_filter,
                     *allow_land,
                     *as_copy,
+                    *copy_cast_reminder_surface,
                     *without_paying_mana_cost,
+                    additional_mana_cost.clone(),
                     cost_reduction.clone(),
+                    *mana_spend_mode,
                 )],
                 Vec::new(),
             ))
@@ -337,6 +357,7 @@ pub(super) fn compile_subject_verb_middle(
             while_on_top_of_library,
             free_cast_from_current_zone,
             until_source_exiles_another,
+            max_plays,
             surface,
         } => {
             let player_filter =
@@ -373,7 +394,8 @@ pub(super) fn compile_subject_verb_middle(
                 },
                 *allow_land,
                 *allow_any_color_for_cast,
-            );
+            )
+            .with_max_plays(*max_plays);
             if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
                 && ctx.last_exiled_collection_is_plural
             {
@@ -442,6 +464,7 @@ pub(super) fn compile_subject_verb_middle(
             allow_land,
             allow_any_color_for_cast,
             until_next_end_step,
+            max_plays,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -471,7 +494,8 @@ pub(super) fn compile_subject_verb_middle(
                 },
                 *allow_land,
                 *allow_any_color_for_cast,
-            );
+            )
+            .with_max_plays(*max_plays);
             if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
                 && ctx.last_exiled_collection_is_plural
             {
@@ -586,6 +610,7 @@ pub(super) fn compile_subject_verb_middle(
         }
         SubjectVerbActionAst::ExileUntilSourceLeaves {
             target,
+            duration,
             leave_watcher,
             face_down,
             all,
@@ -605,7 +630,7 @@ pub(super) fn compile_subject_verb_middle(
             if *all && let ChooseSpec::Object(filter) = spec {
                 spec = ChooseSpec::All(filter);
             }
-            let mut exile_until = crate::effects::ExileUntilEffect::source_leaves(spec.clone())
+            let mut exile_until = crate::effects::ExileUntilEffect::new(spec.clone(), *duration)
                 .with_face_down(*face_down)
                 .with_explicit_return_surface(*explicit_return_surface);
             if let Some((watcher, _)) = leave_watcher_spec {
@@ -621,6 +646,7 @@ pub(super) fn compile_subject_verb_middle(
         }
         SubjectVerbActionAst::ReturnToBattlefield {
             target,
+            from_graveyard_or_exile,
             tapped,
             transformed,
             converted,
@@ -715,7 +741,17 @@ pub(super) fn compile_subject_verb_middle(
             };
 
             let mut aura_grant_effects = Vec::new();
-            let mut effect = if use_move_to_zone {
+            let mut effect = if *from_graveyard_or_exile
+                && matches!(resolved_spec.base(), ChooseSpec::Source)
+                && as_aura.is_none()
+                && !*transformed
+                && !*converted
+                && matches!(controller, ReturnControllerAst::Preserve)
+            {
+                Effect::new(
+                    crate::effects::ReturnFromGraveyardOrExileToBattlefieldEffect::new(*tapped),
+                )
+            } else if use_move_to_zone {
                 let move_back = crate::effects::MoveToZoneEffect::new(
                     resolved_spec.clone(),
                     Zone::Battlefield,
@@ -888,6 +924,10 @@ pub(super) fn compile_subject_verb_middle(
             attached_to,
             all,
         } => {
+            let explicitly_counted_source_collection = matches!(
+                target,
+                TargetAst::WithCount(..) | TargetAst::WithCountValue(..)
+            );
             // Inside an each-player reveal sequence, a bare "it" can arrive
             // from the generic subject parser as `Source`. Once a revealed
             // object tag exists, moving the source into every iterated
@@ -1069,6 +1109,7 @@ pub(super) fn compile_subject_verb_middle(
                 && !*to_top
                 && let ChooseSpec::Object(filter) = spec.base()
                 && filter.zone == Some(Zone::Exile)
+                && filter.tagged_constraints.is_empty()
             {
                 let remainder_tag = ctx.last_exiled_collection_tag.clone().or_else(|| {
                     (ctx.last_object_tag.as_deref() == Some("__source_exiled__")).then(|| {
@@ -1114,6 +1155,7 @@ pub(super) fn compile_subject_verb_middle(
                 };
             }
             if *zone != Zone::Battlefield
+                && !explicitly_counted_source_collection
                 && let ChooseSpec::Object(filter) = spec.base()
                 && filter.zone == Some(Zone::Exile)
                 && filter
@@ -1322,6 +1364,7 @@ pub(super) fn compile_subject_verb_middle(
             let resolved_power = resolve_value_it_tag(power, &current_reference_env(ctx))?;
             let resolved_toughness = resolve_value_it_tag(toughness, &current_reference_env(ctx))?;
             compile_tagged_effect_for_target(target, ctx, "pumped", |spec| {
+                let source_reference_surface = spec.source_reference_surface().cloned();
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
                     spec,
                     crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
@@ -1332,6 +1375,9 @@ pub(super) fn compile_subject_verb_middle(
                 )
                 .require_creature_target()
                 .with_set_quantifier_surface(*set_quantifier_surface);
+                if let Some(surface) = source_reference_surface {
+                    apply = apply.with_source_reference_surface(surface);
+                }
                 if let Some(condition) = condition {
                     apply = apply.with_condition(condition.clone());
                 }
@@ -1600,6 +1646,17 @@ pub(super) fn compile_subject_verb_middle(
             Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
                 spec,
                 crate::continuous::Modification::AddSubtypes(subtypes.clone()),
+                duration.clone(),
+            ))
+        }),
+        SubjectVerbActionAst::RemoveSubtypes {
+            target,
+            subtypes,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "subtyped", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::RemoveSubtypes(subtypes.clone()),
                 duration.clone(),
             ))
         }),
@@ -2222,17 +2279,21 @@ pub(super) fn compile_subject_verb_middle(
         }
         SubjectVerbActionAst::SearchLibrary {
             filter,
+            search_zones,
             destination,
             chooser,
             player,
             search_mode,
             reveal,
+            reveal_reference_surface,
             shuffle,
             count,
             count_value,
             library_position_from_top,
             result_reference_surface,
+            search_top_in_any_order_surface,
             tapped,
+            enters_with_counters,
             enters_under_your_control,
         } => {
             let (chooser_filter, chooser_choices) = if matches!(*chooser, PlayerAst::Implicit) {
@@ -2277,6 +2338,7 @@ pub(super) fn compile_subject_verb_middle(
                     .unwrap_or_else(|| player_filter.clone()),
             );
             let use_search_effect = *shuffle
+                && search_zones.as_slice() == [Zone::Library]
                 && count.max == Some(1)
                 && count_value.is_none()
                 && *destination != Zone::Battlefield;
@@ -2324,9 +2386,11 @@ pub(super) fn compile_subject_verb_middle(
                     tag.clone(),
                 )
                 .with_count_value_opt(count_value.clone())
-                .in_zone(Zone::Library)
+                .in_zones(search_zones.clone())
                 .with_description(choose_description)
-                .with_search_result_reference_surface(*result_reference_surface);
+                .with_search_result_reference_surface(*result_reference_surface)
+                .with_search_reveal_reference_surface(*reveal_reference_surface)
+                .with_search_top_in_any_order_surface(*search_top_in_any_order_surface);
                 let choose = match search_mode {
                     crate::effect::SearchSelectionMode::Exact => choose.as_search(),
                     crate::effect::SearchSelectionMode::Optional => choose.as_optional_search(),
@@ -2346,7 +2410,16 @@ pub(super) fn compile_subject_verb_middle(
                     } else {
                         player_filter.clone()
                     };
-                    Effect::put_onto_battlefield(ChooseSpec::Iterated, *tapped, entry_controller)
+                    let put = crate::effects::PutOntoBattlefieldEffect::new(
+                        ChooseSpec::Iterated,
+                        *tapped,
+                        entry_controller,
+                    );
+                    let put = enters_with_counters
+                        .iter()
+                        .cloned()
+                        .fold(put, |put, counter| put.with_entry_counter(counter));
+                    Effect::new(put)
                 } else {
                     Effect::move_to_zone(ChooseSpec::Iterated, *destination, to_top)
                 };
@@ -2412,6 +2485,7 @@ pub(super) fn compile_subject_verb_middle(
             attached_to,
             tapped,
             attacking,
+            attack_target_player,
             exile_at_end_of_combat,
             sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step,
@@ -2461,6 +2535,12 @@ pub(super) fn compile_subject_verb_middle(
             }
             if *attacking {
                 effect = effect.attacking();
+            }
+            if let Some(attack_target_player) = attack_target_player {
+                effect = effect.attacking_player(resolve_non_target_player_filter(
+                    *attack_target_player,
+                    &current_reference_env(ctx),
+                )?);
             }
             if *exile_at_end_of_combat {
                 effect = effect.exile_at_end_of_combat();
@@ -2576,6 +2656,8 @@ pub(super) fn compile_subject_verb_middle(
             added_subtypes,
             removed_supertypes,
             set_base_power_toughness,
+            set_base_power_toughness_to_source_totals,
+            starting_loyalty,
             granted_abilities,
         } => {
             let ObjectRefAst::Tagged(tag) = object;
@@ -2584,6 +2666,7 @@ pub(super) fn compile_subject_verb_middle(
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
             let player_filter = subject.into_player_filter();
             let choices = subject.into_choices();
+            let aggregate_tag = tag.clone();
             let mut effect = crate::effects::CreateTokenCopyEffect::new(
                 ChooseSpec::Tagged(tag),
                 count,
@@ -2657,6 +2740,18 @@ pub(super) fn compile_subject_verb_middle(
             if let Some((power, toughness)) = set_base_power_toughness {
                 effect = effect.set_base_power_toughness(*power, *toughness);
             }
+            if let Some(loyalty) = starting_loyalty {
+                effect = effect.starting_loyalty(*loyalty);
+            }
+            if *set_base_power_toughness_to_source_totals {
+                let mut filter = ObjectFilter::tagged(aggregate_tag);
+                filter.card_types = vec![CardType::Creature];
+                filter.set_one_of_tagged_set_surface(true);
+                effect = effect.set_base_power_toughness_value(
+                    Value::TotalPower(filter.clone()),
+                    Value::TotalToughness(filter),
+                );
+            }
             for ability in granted_abilities {
                 effect = effect.grant_static_ability(ability.clone());
             }
@@ -2695,6 +2790,8 @@ pub(super) fn compile_subject_verb_middle(
             added_subtypes,
             removed_supertypes,
             set_base_power_toughness,
+            set_base_power_toughness_to_source_totals,
+            starting_loyalty,
             granted_abilities,
         } => {
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
@@ -2718,6 +2815,18 @@ pub(super) fn compile_subject_verb_middle(
                 source_spec = ChooseSpec::Tagged(TagKey::from(last_tag));
             }
             source_spec = with_target_reference_surface_hint(source_spec, source);
+            let aggregate_source_filter = if *set_base_power_toughness_to_source_totals {
+                Some(
+                    mark_copy_source_as_one_of_tagged_set(&mut source_spec).ok_or_else(|| {
+                        CardTextError::ParseError(
+                            "aggregate copy power/toughness requires one tagged source set"
+                                .to_string(),
+                        )
+                    })?,
+                )
+            } else {
+                None
+            };
             let mut effect =
                 crate::effects::CreateTokenCopyEffect::new(source_spec, count, player_filter);
             if *enters_tapped {
@@ -2788,6 +2897,15 @@ pub(super) fn compile_subject_verb_middle(
             if let Some((power, toughness)) = set_base_power_toughness {
                 effect = effect.set_base_power_toughness(*power, *toughness);
             }
+            if let Some(loyalty) = starting_loyalty {
+                effect = effect.starting_loyalty(*loyalty);
+            }
+            if let Some(filter) = aggregate_source_filter {
+                effect = effect.set_base_power_toughness_value(
+                    Value::TotalPower(filter.clone()),
+                    Value::TotalToughness(filter),
+                );
+            }
             for ability in granted_abilities {
                 effect = effect.grant_static_ability(ability.clone());
             }
@@ -2851,6 +2969,7 @@ pub(super) fn compile_subject_verb_middle(
             target,
             mode,
             require_change,
+            copy_reference_plural,
         } => {
             let refs = current_reference_env(ctx);
             if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
@@ -2872,7 +2991,10 @@ pub(super) fn compile_subject_verb_middle(
                         .known_last_object_tag()
                         .is_some_and(|tag| tag.as_str() == "triggering")
                     {
-                        (ChooseSpec::Tagged(crate::tag::TagKey::from("triggering")), Vec::new())
+                        (
+                            ChooseSpec::Tagged(crate::tag::TagKey::from("triggering")),
+                            Vec::new(),
+                        )
                     } else {
                         (ChooseSpec::Source, Vec::new())
                     }
@@ -2886,6 +3008,10 @@ pub(super) fn compile_subject_verb_middle(
 
             let mut effect = crate::effects::RetargetStackObjectEffect::new(spec.clone())
                 .with_chooser(subject.into_player_filter());
+
+            if *copy_reference_plural {
+                effect = effect.with_plural_copy_reference();
+            }
 
             if *require_change {
                 effect = effect.require_change();

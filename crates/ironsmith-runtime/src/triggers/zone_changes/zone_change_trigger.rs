@@ -136,6 +136,8 @@ pub struct ZoneChangeTrigger {
     pub cause_filter: Option<CauseFilter>,
     /// Optional active-turn qualifier.
     pub during_turn: Option<PlayerFilter>,
+    /// Optional phase restriction on when the event occurs.
+    pub timing: Option<ironsmith_core::TriggerTimingRestriction>,
     /// Optional provenance qualifier on how the destination object originated.
     pub origin_condition: Option<ZoneChangeOriginCondition>,
     /// How many times to fire for batch events.
@@ -159,6 +161,7 @@ impl Default for ZoneChangeTrigger {
             player: PlayerRelation::Any,
             cause_filter: None,
             during_turn: None,
+            timing: None,
             origin_condition: None,
             count_mode: CountMode::Each,
             this_object: false,
@@ -214,6 +217,12 @@ impl ZoneChangeTrigger {
     /// Set the active-turn qualifier.
     pub fn during_turn(mut self, player: PlayerFilter) -> Self {
         self.during_turn = Some(player);
+        self
+    }
+
+    /// Restrict this zone-change trigger to events that occur during combat.
+    pub fn during_combat(mut self) -> Self {
+        self.timing = Some(ironsmith_core::TriggerTimingRestriction::DuringCombat);
         self
     }
 
@@ -642,7 +651,7 @@ impl ZoneChangeTrigger {
             Some(text.to_string())
         }
 
-        fn cause_phrase(trigger: &ZoneChangeTrigger) -> Option<&'static str> {
+        fn cause_phrase(trigger: &ZoneChangeTrigger) -> Option<String> {
             let cause_filter = trigger.cause_filter.as_ref()?;
             match &cause_filter.cause_type {
                 Some(crate::events::cause::CauseTypeFilter::Not(
@@ -650,7 +659,36 @@ impl ZoneChangeTrigger {
                 )) if cause_filter.source_filter.is_none()
                     && cause_filter.controller_filter.is_none() =>
                 {
-                    Some("without being played")
+                    Some("without being played".to_string())
+                }
+                Some(crate::events::cause::CauseTypeFilter::Exact(
+                    crate::events::cause::CauseType::Cost,
+                )) if matches!(
+                    cause_filter.controller_filter,
+                    Some(crate::events::cause::ControllerFilter::You)
+                ) =>
+                {
+                    let source_filter = cause_filter.source_filter.as_ref()?;
+                    let [marker] = source_filter.ability_markers.as_slice() else {
+                        return None;
+                    };
+                    let mut residual = source_filter.clone();
+                    residual.ability_markers.clear();
+                    if residual != ObjectFilter::default() || marker.trim().is_empty() {
+                        return None;
+                    }
+                    let article = if matches!(
+                        marker.chars().next().map(|ch| ch.to_ascii_lowercase()),
+                        Some('a' | 'e' | 'i' | 'o' | 'u')
+                    ) {
+                        "an"
+                    } else {
+                        "a"
+                    };
+                    Some(format!(
+                        "while you're activating {article} {} ability",
+                        marker.to_ascii_lowercase()
+                    ))
                 }
                 _ => None,
             }
@@ -755,7 +793,6 @@ impl ZoneChangeTrigger {
         if let Some(display) = spell_or_ability_you_control_exiles_display(self) {
             return display;
         }
-
         if self.this_object {
             let battlefield_subject = self.this_subject_text("permanent");
             let card_subject = self.this_subject_text("card");
@@ -780,7 +817,7 @@ impl ZoneChangeTrigger {
                     "When {battlefield_subject} {enter_verb} {origin_phrase}{origin_suffix}"
                 );
             }
-            return match (&self.from, &self.to) {
+            let mut display = match (&self.from, &self.to) {
                 (
                     ZonePattern::Specific(Zone::Battlefield),
                     ZonePattern::Specific(Zone::Graveyard),
@@ -816,6 +853,30 @@ impl ZoneChangeTrigger {
                 }
                 _ => "When this object changes zones".to_string(),
             };
+            if let Some(cause_phrase) = cause_phrase(self) {
+                display.push(' ');
+                display.push_str(&cause_phrase);
+            }
+            if let Some(during_turn) = &self.during_turn {
+                let phrase = match during_turn {
+                    PlayerFilter::You => Some("during your turn"),
+                    PlayerFilter::Opponent => Some("during an opponent's turn"),
+                    PlayerFilter::Any | PlayerFilter::Active => None,
+                    PlayerFilter::Specific(_) => Some("during that player's turn"),
+                    _ => Some("during the specified player's turn"),
+                };
+                if let Some(phrase) = phrase {
+                    display.push(' ');
+                    display.push_str(phrase);
+                }
+            }
+            if matches!(
+                self.timing,
+                Some(ironsmith_core::TriggerTimingRestriction::DuringCombat)
+            ) {
+                display.push_str(" during combat");
+            }
+            return display;
         }
 
         let mut parts = vec!["Whenever".to_string()];
@@ -864,6 +925,9 @@ impl ZoneChangeTrigger {
             filter_desc = stripped.to_string();
         }
         if self.count_mode == CountMode::OneOrMore {
+            if let Some(rest) = filter_desc.strip_prefix("another ") {
+                filter_desc = format!("other {rest}");
+            }
             filter_desc = pluralize_zone_change_subject(&filter_desc, &self.object_filter);
         }
         let has_article = filter_desc.starts_with("a ")
@@ -873,7 +937,8 @@ impl ZoneChangeTrigger {
             || filter_desc.starts_with("that ")
             || filter_desc.starts_with("another ")
             || filter_desc.starts_with("enchanted ")
-            || filter_desc.starts_with("equipped ");
+            || filter_desc.starts_with("equipped ")
+            || self.object_filter.source;
         if self.count_mode == CountMode::OneOrMore {
             parts.push("one or more".to_string());
         } else if !has_article {
@@ -976,6 +1041,16 @@ impl ZoneChangeTrigger {
                     .to_string(),
                 );
             }
+            (ZonePattern::Specific(Zone::Battlefield), ZonePattern::AnyExcept(Zone::Graveyard)) => {
+                parts.push(
+                    if self.count_mode == CountMode::OneOrMore {
+                        "leave the battlefield without dying"
+                    } else {
+                        "leaves the battlefield without dying"
+                    }
+                    .to_string(),
+                );
+            }
             (ZonePattern::Specific(Zone::Battlefield), _) => {
                 parts.push(
                     if self.count_mode == CountMode::OneOrMore {
@@ -1016,7 +1091,7 @@ impl ZoneChangeTrigger {
         }
 
         if let Some(cause_phrase) = cause_phrase(self) {
-            parts.push(cause_phrase.to_string());
+            parts.push(cause_phrase);
         }
 
         if let Some(during_turn) = &self.during_turn {
@@ -1030,6 +1105,13 @@ impl ZoneChangeTrigger {
             if let Some(phrase) = phrase {
                 parts.push(phrase.to_string());
             }
+        }
+
+        if matches!(
+            self.timing,
+            Some(ironsmith_core::TriggerTimingRestriction::DuringCombat)
+        ) {
+            parts.push("during combat".to_string());
         }
 
         let mut display = parts.join(" ");
@@ -1058,6 +1140,31 @@ impl ZoneChangeTrigger {
             Some(surface) => surface.display_text(),
             None => format!("this {}", self.this_subject(fallback)),
         }
+    }
+
+    /// Capture the exact LKI set that satisfied a batch-style zone-change
+    /// trigger. Aggregate values in the queued ability must not recount the
+    /// battlefield after the objects have moved.
+    pub(crate) fn matching_batch_snapshots(
+        &self,
+        event: &ZoneChangeEvent,
+        ctx: &TriggerContext<'_>,
+    ) -> Vec<crate::snapshot::ObjectSnapshot> {
+        if self.count_mode != CountMode::OneOrMore || !self.uses_snapshot() {
+            return Vec::new();
+        }
+        matching_snapshots(event, &self.object_filter, ctx)
+            .into_iter()
+            .filter(|snapshot| {
+                (!self.this_object || snapshot.object_id == ctx.source_id)
+                    && match &self.player {
+                        PlayerRelation::Any => true,
+                        PlayerRelation::You => snapshot.controller == ctx.controller,
+                        PlayerRelation::Opponent => snapshot.controller != ctx.controller,
+                    }
+            })
+            .cloned()
+            .collect()
     }
 }
 
@@ -1103,6 +1210,13 @@ impl TriggerMatcher for ZoneChangeTrigger {
             if !current_turn_matches_player_filter(during_turn, ctx, None) {
                 return false;
             }
+        }
+        if matches!(
+            self.timing,
+            Some(ironsmith_core::TriggerTimingRestriction::DuringCombat)
+        ) && ctx.game.turn.phase != crate::game_state::Phase::Combat
+        {
+            return false;
         }
 
         // Check zone patterns
@@ -1476,6 +1590,64 @@ mod tests {
     }
 
     #[test]
+    fn leaves_without_dying_excludes_graveyard_and_keeps_batch_surface() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(1);
+        let creature_id = ObjectId::from_raw(2);
+        let mut filter = ObjectFilter::creature();
+        filter.controller = Some(PlayerFilter::You);
+        filter.other = true;
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Battlefield)
+            .to(ZonePattern::AnyExcept(Zone::Graveyard))
+            .filter(filter)
+            .count(CountMode::OneOrMore);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more other creatures you control leave the battlefield without dying"
+        );
+        let exiled = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Exile,
+                EventCause::effect(),
+                Some(make_creature_snapshot(creature_id, alice, "Returned Bear")),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&exiled, &ctx));
+
+        let died = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                EventCause::effect(),
+                Some(make_creature_snapshot(creature_id, alice, "Dead Bear")),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&died, &ctx));
+
+        let opponents = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Hand,
+                EventCause::effect(),
+                Some(make_creature_snapshot(creature_id, bob, "Opponent Bear")),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&opponents, &ctx));
+    }
+
+    #[test]
     fn extraordinary_journey_matches_direct_or_cast_from_exile_entry() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -1725,6 +1897,15 @@ mod tests {
             trigger.display(),
             "Whenever another artifact and/or Villain you control enters the battlefield"
         );
+    }
+
+    #[test]
+    fn named_source_graveyard_trigger_does_not_gain_an_indefinite_article() {
+        let trigger = ZoneChangeTrigger::dies(ObjectFilter::source_with_surface(
+            crate::target::SourceReferenceSurface::ShortName("Blex".to_string()),
+        ));
+
+        assert_eq!(trigger.display(), "Whenever Blex dies");
     }
 
     #[test]
@@ -2008,6 +2189,54 @@ mod tests {
         assert!(explicit_put.matches(&event, &ctx));
     }
 
+    fn craft_cost_cause(
+        controller: crate::events::cause::ControllerFilter,
+    ) -> crate::events::cause::CauseFilter {
+        let mut source_filter = ObjectFilter::default();
+        source_filter.ability_markers.push("craft".to_string());
+        crate::events::cause::CauseFilter {
+            cause_type: Some(crate::events::cause::CauseTypeFilter::Exact(
+                crate::events::cause::CauseType::Cost,
+            )),
+            source_filter: Some(source_filter),
+            controller_filter: Some(controller),
+        }
+    }
+
+    #[test]
+    fn source_exiled_for_your_marked_ability_cost_displays_activation_context() {
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Battlefield)
+            .to(Zone::Exile)
+            .filter(ObjectFilter::creature())
+            .this()
+            .cause(craft_cost_cause(
+                crate::events::cause::ControllerFilter::You,
+            ));
+
+        assert_eq!(
+            trigger.display(),
+            "When this creature is put into exile from the battlefield while you're activating a craft ability"
+        );
+    }
+
+    #[test]
+    fn marked_ability_cost_for_an_opponent_does_not_claim_you_are_activating_it() {
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Battlefield)
+            .to(Zone::Exile)
+            .filter(ObjectFilter::creature())
+            .this()
+            .cause(craft_cost_cause(
+                crate::events::cause::ControllerFilter::Opponent,
+            ));
+
+        assert_eq!(
+            trigger.display(),
+            "When this creature is put into exile from the battlefield"
+        );
+    }
+
     #[test]
     fn test_display() {
         let dies = ZoneChangeTrigger::dies(ObjectFilter::creature());
@@ -2048,6 +2277,19 @@ mod tests {
             nontoken_anywhere_to_exile.display(),
             "Whenever one or more cards are put into exile during your turn"
         );
+    }
+
+    #[test]
+    fn this_creature_dies_during_combat_keeps_the_timing_surface() {
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Battlefield)
+            .to(Zone::Graveyard)
+            .filter(ObjectFilter::creature())
+            .this()
+            .during_combat()
+            .graveyard_surface(GraveyardTriggerSurface::Dies);
+
+        assert_eq!(trigger.display(), "When this creature dies during combat");
     }
 
     #[test]

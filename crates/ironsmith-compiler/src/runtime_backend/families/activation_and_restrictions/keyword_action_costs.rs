@@ -1,14 +1,14 @@
 use super::*;
 use crate::runtime_backend::grammar::keyword_action_costs::{
     KeywordAbilityHead, KeywordCumulativeUpkeepCostSurface, KeywordDamageSubjectKind,
-    KeywordDynamicManaTail, KeywordDynamicPaymentShape, SpecialAbilityPhraseKind,
-    parse_cumulative_upkeep_cost_surface_tokens, parse_dynamic_soulshift_words,
-    parse_keyword_ability_surface_tokens, parse_keyword_cost_action_surface_tokens,
-    parse_keyword_damage_subject_split_tokens, parse_keyword_dynamic_mana_tail_tokens,
-    parse_keyword_dynamic_payment_tokens, parse_keyword_payment_lead_tokens,
-    parse_keyword_untap_restriction_words, parse_normalized_keyword_words_tokens,
-    parse_payment_alternative_split_tokens, parse_single_graveyard_bottom_payment_tokens,
-    parse_special_ability_phrase_words,
+    KeywordDynamicManaTail, KeywordDynamicPaymentShape, KeywordGraveyardBottomPaymentScope,
+    SpecialAbilityPhraseKind, parse_cumulative_upkeep_cost_surface_tokens,
+    parse_dynamic_soulshift_words, parse_keyword_ability_surface_tokens,
+    parse_keyword_cost_action_surface_tokens, parse_keyword_damage_subject_split_tokens,
+    parse_keyword_dynamic_mana_tail_tokens, parse_keyword_dynamic_payment_tokens,
+    parse_keyword_payment_lead_tokens, parse_keyword_untap_restriction_words,
+    parse_normalized_keyword_words_tokens, parse_payment_alternative_split_tokens,
+    parse_single_graveyard_bottom_payment_tokens, parse_special_ability_phrase_words,
 };
 use crate::runtime_backend::grammar::leaf::{
     LeafManaCostPrefix, parse_leaf_mana_cost_prefix_tokens,
@@ -481,16 +481,21 @@ pub(crate) fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<us
     parse_payment_alternative_split_tokens(tokens).map(|split| split.delimiter)
 }
 
-fn parse_single_graveyard_bottom_library_payment(
+pub(crate) fn parse_single_graveyard_bottom_library_payment(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TotalCost>, CardTextError> {
     let Some(payment) = parse_single_graveyard_bottom_payment_tokens(tokens) else {
         return Ok(None);
     };
 
-    let filter = ObjectFilter::default()
-        .in_zone(Zone::Graveyard)
-        .single_graveyard();
+    let filter = match payment.scope {
+        KeywordGraveyardBottomPaymentScope::SingleOwner => ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .single_graveyard(),
+        KeywordGraveyardBottomPaymentScope::Yours => ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You),
+    };
     crate::costs::payment_effects_to_total_cost(vec![Effect::move_to_zone(
         ChooseSpec::Object(filter).with_count(ChoiceCount::exactly(payment.count as usize)),
         Zone::Library,
@@ -1019,6 +1024,31 @@ mod tests {
             matches!(actions.as_slice(), [KeywordAction::CumulativeUpkeep { .. }]),
             "{actions:?}"
         );
+    }
+
+    #[test]
+    fn activation_cost_accepts_owned_graveyard_bottom_library_payment() {
+        let total_cost = parse_payment_clause_as_total_cost(&lex(
+            "Put three cards from your graveyard on the bottom of your library",
+        ))
+        .unwrap()
+        .expect("owned graveyard payment should parse");
+        let payment = crate::costs::total_cost_to_payment_effects(&total_cost);
+        let [effect] = payment.as_slice() else {
+            panic!("expected one payment effect, got {payment:#?}");
+        };
+        let moved = effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .expect("payment should move the selected cards");
+        assert_eq!(moved.zone, Zone::Library);
+        assert!(!moved.to_top);
+        assert_eq!(moved.target.count(), ChoiceCount::exactly(3));
+        let ChooseSpec::Object(filter) = moved.target.base() else {
+            panic!("expected an object choice, got {moved:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert!(!filter.single_graveyard);
     }
 
     #[test]

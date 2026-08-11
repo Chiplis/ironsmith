@@ -214,6 +214,7 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             beneficiary: spec.beneficiary,
             usage_limit: spec.usage_limit,
             cast_this_way_filter: spec.cast_this_way_filter,
+            source_exiled_surface: spec.source_exiled_surface,
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .into_iter()
@@ -636,6 +637,7 @@ impl RuntimeBuilderSnapshot {
             .supertypes(self.card.supertypes)
             .card_types(self.card.card_types)
             .subtypes(self.card.subtypes)
+            .attraction_lights(self.card.attraction_lights)
             .linked_face_layout(self.card.linked_face_layout);
         if let Some(pt) = self.card.power_toughness {
             builder = builder.power_toughness(pt);
@@ -723,6 +725,24 @@ mod tests {
     }
 
     #[test]
+    fn converts_tag_other_block_participant_effect_payload() {
+        let filter = compiler::target::ObjectFilter::creature();
+        let compiler_effect = compiler::effect::Effect::tag_other_block_participant(
+            "other_block_participant",
+            Some(filter.clone()),
+        );
+
+        let runtime_effect = runtime_effect_from_core_model(compiler_effect)
+            .expect("block-participant tagging should cross the compiler/runtime bridge");
+        let tagging = runtime_effect
+            .downcast_ref::<ironsmith::effects::TagOtherBlockParticipantEffect>()
+            .expect("runtime payload should remain block-participant tagging");
+
+        assert_eq!(tagging.tag.as_str(), "other_block_participant");
+        assert_eq!(tagging.filter.as_ref(), Some(&filter));
+    }
+
+    #[test]
     fn compile_to_runtime_definition_handles_representative_spell_text() {
         let definition = compile_to_runtime_definition(
             "Lightning Bolt",
@@ -753,26 +773,73 @@ mod tests {
     #[test]
     fn compile_builder_to_runtime_definition_handles_cumulative_upkeep_payment_from_metadata_builder()
      {
-        let definition = compile_builder_to_runtime_definition(
-            compiler::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Jötun Grunt")
-                .mana_cost(ironsmith::mana::ManaCost::from_pips(vec![
-                    vec![ironsmith::mana::ManaSymbol::Generic(1)],
-                    vec![ironsmith::mana::ManaSymbol::White],
-                ]))
-                .card_types(vec![CardType::Creature])
-                .subtypes(vec![
-                    ironsmith::types::Subtype::Giant,
-                    ironsmith::types::Subtype::Soldier,
-                ])
-                .power_toughness(ironsmith::card::PowerToughness::fixed(4, 4)),
-            "Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
-            false,
-        )
-        .expect("Jötun Grunt should compile through runtime compiler integration");
+        fn contains_effect<T: 'static>(effect: &ironsmith::effect::Effect) -> bool {
+            if effect.downcast_ref::<T>().is_some() {
+                return true;
+            }
+            let mut found = false;
+            effect.visit_child_effects(&mut |child| {
+                found |= contains_effect::<T>(child);
+            });
+            found
+        }
 
-        let debug = format!("{definition:#?}");
-        assert!(debug.contains("CumulativeUpkeepEffect"), "{debug}");
-        assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+        // The compiler's deeply nested typed parser legitimately needs more
+        // than libtest's small worker-stack default for this long reminder
+        // clause. Exercise the same integration on an explicitly sized test
+        // thread so the assertion remains structural instead of depending on
+        // platform test-runner stack limits.
+        let definition = std::thread::Builder::new()
+            .name("cumulative-upkeep-compiler-regression".to_string())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                compile_builder_to_runtime_definition(
+                    compiler::CardDefinitionBuilder::new(
+                        ironsmith::ids::CardId::new(),
+                        "Jötun Grunt",
+                    )
+                    .mana_cost(ironsmith::mana::ManaCost::from_pips(vec![
+                        vec![ironsmith::mana::ManaSymbol::Generic(1)],
+                        vec![ironsmith::mana::ManaSymbol::White],
+                    ]))
+                    .card_types(vec![CardType::Creature])
+                    .subtypes(vec![
+                        ironsmith::types::Subtype::Giant,
+                        ironsmith::types::Subtype::Soldier,
+                    ])
+                    .power_toughness(ironsmith::card::PowerToughness::fixed(4, 4)),
+                    "Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+                    false,
+                )
+                .expect("Jötun Grunt should compile through runtime compiler integration")
+            })
+            .expect("cumulative-upkeep compiler test thread should start")
+            .join()
+            .expect("cumulative-upkeep compiler test thread should finish");
+
+        let root_effects = definition
+            .abilities
+            .iter()
+            .flat_map(|ability| match &ability.kind {
+                ironsmith::ability::AbilityKind::Triggered(triggered) => {
+                    triggered.effects.all_effects()
+                }
+                ironsmith::ability::AbilityKind::Activated(activated) => {
+                    activated.effects.all_effects()
+                }
+                ironsmith::ability::AbilityKind::Static(_) => Vec::new(),
+            });
+        let root_effects = root_effects.collect::<Vec<_>>();
+        assert!(
+            root_effects.iter().any(|effect| contains_effect::<
+                ironsmith::effects::CumulativeUpkeepEffect,
+            >(effect))
+        );
+        assert!(
+            root_effects
+                .iter()
+                .any(|effect| contains_effect::<ironsmith::effects::MoveToZoneEffect>(effect))
+        );
     }
 
     #[test]

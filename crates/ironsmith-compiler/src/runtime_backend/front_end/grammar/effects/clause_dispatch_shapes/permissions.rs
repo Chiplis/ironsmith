@@ -1,5 +1,6 @@
 use super::super::*;
 
+use crate::effect::ChoiceCount;
 use crate::filter::Comparison;
 use crate::runtime_backend::front_end::grammar::leaf;
 use winnow::combinator::{alt, eof, opt, repeat_till};
@@ -122,6 +123,122 @@ fn cast_any_tagged<'a>(input: &mut LexStream<'a>) -> WResult<CastAnyTaggedShape>
 
 pub(crate) fn parse_cast_any_tagged_shape(tokens: &[OwnedLexToken]) -> Option<CastAnyTaggedShape> {
     primitives::parse_all(tokens, cast_any_tagged, "cast any tagged shape").ok()
+}
+
+/// A one-shot free-cast choice drawn from the exact collection established by
+/// an earlier effect.  This covers the shared Oracle family:
+///
+/// - "cast any number of spells ... from among them"
+/// - "cast up to two sorcery spells ... from among them"
+/// - "cast an instant or sorcery spell ... from among them"
+/// - "cast instant and sorcery spells ... from among them"
+///
+/// The subject and mana-value cap stay separate so permission-subject lowering
+/// does not accidentally apply a trailing cap only to the final arm of a type
+/// union.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CastTaggedCollectionShape<'a> {
+    pub(crate) count: ChoiceCount,
+    pub(crate) subject_tokens: &'a [OwnedLexToken],
+    pub(crate) mana_value: Option<Comparison>,
+}
+
+fn parse_collection_cast_count<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> (Option<ChoiceCount>, &'a [OwnedLexToken]) {
+    if let Some(((), rest)) =
+        primitives::parse_prefix(tokens, primitives::phrase(&["any", "number", "of"]))
+    {
+        return (Some(ChoiceCount::any_number()), rest);
+    }
+    if let Some((count, rest)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&["up", "to"]),
+            leaf::parse_leaf_number_token_lexed,
+        )
+            .map(|(_, count)| count),
+    ) {
+        return (Some(ChoiceCount::up_to(count as usize)), rest);
+    }
+    if let Some(((), rest)) = primitives::parse_prefix(
+        tokens,
+        alt((primitives::kw("a"), primitives::kw("an"))).void(),
+    ) {
+        return (Some(ChoiceCount::up_to(1)), rest);
+    }
+    (None, tokens)
+}
+
+fn split_collection_cast_mana_value(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], Option<Comparison>)> {
+    let Some((bound_start, _, bound_tokens)) =
+        primitives::find_prefix(tokens, || primitives::phrase(&["with", "mana", "value"]))
+    else {
+        return Some((trim_lexed_commas(tokens), None));
+    };
+    let subject_tokens = trim_lexed_commas(tokens.get(..bound_start)?);
+    let mana_value = primitives::parse_all(
+        trim_lexed_commas(bound_tokens),
+        mana_value_bound,
+        "tagged collection cast mana value",
+    )
+    .ok()?;
+    Some((subject_tokens, Some(mana_value)))
+}
+
+pub(crate) fn parse_cast_tagged_collection_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<CastTaggedCollectionShape<'_>> {
+    let tokens = trim_lexed_commas(tokens);
+    let (_, body) = primitives::parse_prefix(tokens, primitives::phrase(&["you", "may", "cast"]))?;
+    let (authored_count, body) = parse_collection_cast_count(body);
+    let (scope_start, _, free_cast_tail) = primitives::find_prefix(body, || {
+        primitives::any_phrase(&[
+            &["from", "among", "them"],
+            &["from", "among", "those", "cards"],
+            &["from", "among", "those", "exiled", "cards"],
+        ])
+    })?;
+    primitives::parse_all(
+        trim_lexed_commas(free_cast_tail),
+        (
+            primitives::any_phrase(&[
+                &["without", "paying", "its", "mana", "cost"],
+                &["without", "paying", "their", "mana", "costs"],
+            ]),
+            primitives::sentence_end(),
+        )
+            .void(),
+        "tagged collection free-cast tail",
+    )
+    .ok()?;
+
+    let (subject_tokens, mana_value) =
+        split_collection_cast_mana_value(trim_lexed_commas(body.get(..scope_start)?))?;
+    if subject_tokens.is_empty() {
+        return None;
+    }
+    let contains_singular_spell =
+        primitives::find_prefix(subject_tokens, || primitives::kw("spell")).is_some();
+    let contains_plural_spells =
+        primitives::find_prefix(subject_tokens, || primitives::kw("spells")).is_some();
+    if !contains_singular_spell && !contains_plural_spells {
+        return None;
+    }
+    let count = authored_count.unwrap_or_else(|| {
+        if contains_plural_spells {
+            ChoiceCount::any_number()
+        } else {
+            ChoiceCount::up_to(1)
+        }
+    });
+    Some(CastTaggedCollectionShape {
+        count,
+        subject_tokens,
+        mana_value,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -352,6 +469,44 @@ mod tests {
                 .group_size,
             2
         );
+    }
+
+    #[test]
+    fn tagged_collection_cast_shape_preserves_cardinality_filter_and_global_cap() {
+        let cases = [
+            (
+                "You may cast any number of spells with mana value X or less from among them without paying their mana costs.",
+                ChoiceCount::any_number(),
+                vec!["spells"],
+            ),
+            (
+                "You may cast up to two sorcery spells with mana value 3 or less from among them without paying their mana costs.",
+                ChoiceCount::up_to(2),
+                vec!["sorcery", "spells"],
+            ),
+            (
+                "You may cast an instant or sorcery spell with mana value X or less from among them without paying its mana cost.",
+                ChoiceCount::up_to(1),
+                vec!["instant", "or", "sorcery", "spell"],
+            ),
+            (
+                "You may cast instant and sorcery spells with mana value X or less from among them without paying their mana costs.",
+                ChoiceCount::any_number(),
+                vec!["instant", "and", "sorcery", "spells"],
+            ),
+        ];
+        for (text, count, subject) in cases {
+            let tokens = lex_line(text, 0).unwrap();
+            let parsed = parse_cast_tagged_collection_shape(&tokens)
+                .unwrap_or_else(|| panic!("expected tagged collection cast shape for {text}"));
+            assert_eq!(parsed.count, count, "{text}");
+            assert_eq!(
+                TokenWordView::new(parsed.subject_tokens).to_word_refs(),
+                subject,
+                "{text}"
+            );
+            assert!(parsed.mana_value.is_some(), "{text}");
+        }
     }
 
     #[test]

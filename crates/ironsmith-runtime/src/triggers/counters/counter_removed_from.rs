@@ -10,6 +10,8 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 #[derive(Debug, Clone, PartialEq)]
 pub struct CounterRemovedFromTrigger {
     pub filter: ObjectFilter,
+    pub counter_type: Option<crate::object::CounterType>,
+    pub last: bool,
     pub one_or_more: bool,
     pub caused_by_source: bool,
 }
@@ -18,6 +20,8 @@ impl CounterRemovedFromTrigger {
     pub fn new(filter: ObjectFilter) -> Self {
         Self {
             filter,
+            counter_type: None,
+            last: false,
             one_or_more: false,
             caused_by_source: false,
         }
@@ -25,6 +29,16 @@ impl CounterRemovedFromTrigger {
 
     pub fn one_or_more(mut self) -> Self {
         self.one_or_more = true;
+        self
+    }
+
+    pub fn counter_type(mut self, counter_type: crate::object::CounterType) -> Self {
+        self.counter_type = Some(counter_type);
+        self
+    }
+
+    pub fn last(mut self) -> Self {
+        self.last = true;
         self
     }
 
@@ -43,6 +57,13 @@ impl TriggerMatcher for CounterRemovedFromTrigger {
             return false;
         };
         if !e.is_removed() {
+            return false;
+        }
+        if self
+            .counter_type
+            .is_some_and(|counter_type| e.marker.as_counter() != Some(counter_type))
+            || (self.last && e.count_after != Some(0))
+        {
             return false;
         }
         if self.caused_by_source && e.source != Some(ctx.source_id) {
@@ -86,10 +107,24 @@ impl TriggerMatcher for CounterRemovedFromTrigger {
     }
 
     fn display(&self) -> String {
+        if self.last {
+            let counter = self.counter_type.map_or_else(
+                || "counter".to_string(),
+                |counter_type| format!("{} counter", counter_type.description()),
+            );
+            return format!(
+                "When the last {counter} is removed from {}",
+                self.filter.description()
+            );
+        }
+        let counter_noun = self.counter_type.map_or_else(
+            || "counter".to_string(),
+            |counter_type| format!("{} counter", counter_type.description()),
+        );
         let counter_phrase = if self.one_or_more {
-            "one or more counters are"
+            format!("one or more {counter_noun}s are")
         } else {
-            "a counter is"
+            format!("a {counter_noun} is")
         };
         let this_way = if self.caused_by_source {
             " this way"
@@ -115,6 +150,53 @@ mod tests {
     fn test_display() {
         let trigger = CounterRemovedFromTrigger::new(ObjectFilter::creature());
         assert!(trigger.display().contains("counter is removed"));
+    }
+
+    #[test]
+    fn grouped_named_counter_display_keeps_the_counter_type() {
+        let trigger = CounterRemovedFromTrigger::new(ObjectFilter::source_with_surface(
+            crate::target::SourceReferenceSurface::ShortName("Chandra".to_string()),
+        ))
+        .counter_type(CounterType::Loyalty)
+        .one_or_more();
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more loyalty counters are removed from Chandra"
+        );
+    }
+
+    #[test]
+    fn last_named_counter_uses_event_time_remainder_and_exact_type() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+        let trigger = CounterRemovedFromTrigger::new(ObjectFilter::source())
+            .counter_type(CounterType::Charge)
+            .last();
+        let ctx = TriggerContext::for_source(source, alice, &game);
+
+        let still_has_one = TriggerEvent::new(
+            MarkersChangedEvent::removed(CounterType::Charge, source, 1, None, None)
+                .with_count_after(1),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let last = TriggerEvent::new(
+            MarkersChangedEvent::removed(CounterType::Charge, source, 1, None, None)
+                .with_count_after(0),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let wrong_type = TriggerEvent::new(
+            MarkersChangedEvent::removed(CounterType::PlusOnePlusOne, source, 1, None, None)
+                .with_count_after(0),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&still_has_one, &ctx));
+        assert!(trigger.matches(&last, &ctx));
+        assert!(!trigger.matches(&wrong_type, &ctx));
+        assert_eq!(
+            trigger.display(),
+            "When the last charge counter is removed from this"
+        );
     }
 
     #[test]

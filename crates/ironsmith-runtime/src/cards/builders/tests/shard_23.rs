@@ -1449,6 +1449,73 @@ pub(super) fn captain_america_first_avenger_strict_parser_and_compiled_text_regr
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn shadow_throw_ability_word_does_not_gain_an_ellipsis() {
+    let oracle = "Deathtouch\nThrow — Whenever Shadow deals combat damage to a player, you may sacrifice another nonland permanent. If you do, draw two cards and each opponent loses life equal to the mana value of the sacrificed permanent.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Shadow, Mysterious Assassin")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Shadow should parse");
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert!(rendered.contains("Throw — Whenever Shadow"), "{rendered}");
+    assert!(!rendered.contains("Throw..."), "{rendered}");
+    assert!(!rendered.contains("Throw ..."), "{rendered}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn skullbriar_keeps_typed_all_zone_counter_retention() {
+    let oracle = "Haste\nWhenever Skullbriar deals combat damage to a player, put a +1/+1 counter on it.\nCounters remain on Skullbriar as it moves to any zone other than a player's hand or library.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Skullbriar, the Walking Grave")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Skullbriar should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if matches!(
+                        static_ability.compiled_model().map(|model| &model.payload),
+                        Some(ironsmith_core::StaticAbilityPayload::CountersRemainAcrossZoneChanges {
+                            excluded_destinations,
+                            ..
+                        }) if excluded_destinations == &[Zone::Hand, Zone::Library]
+                    )
+            )
+        })
+        .expect("Skullbriar should have typed counter-retention semantics");
+    for zone in [
+        Zone::Battlefield,
+        Zone::Hand,
+        Zone::Library,
+        Zone::Graveyard,
+        Zone::Stack,
+        Zone::Exile,
+        Zone::Command,
+        Zone::Ante,
+        Zone::OutsideGame,
+    ] {
+        assert!(ability.functional_zones.contains(&zone), "missing {zone:?}");
+    }
+
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Counters remain on Skullbriar as it moves to any zone other than a player's hand or library."
+        ),
+        "{rendered}"
+    );
+    assert!(!rendered.contains("Counter all other card"), "{rendered}");
+}
+
 pub(super) fn captain_america_distributed_damage(
     effect: &crate::effect::Effect,
 ) -> Option<&crate::effects::DealDistributedDamageEffect> {

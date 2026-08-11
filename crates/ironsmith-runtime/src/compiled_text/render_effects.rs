@@ -45,6 +45,7 @@ mod structural_bundles;
 
 pub(super) use abilities_and_costs::*;
 pub(super) use chain_copy::*;
+pub(crate) use clause_and_ability_surfaces::triggered_search_devotion_color;
 pub(super) use clause_and_ability_surfaces::*;
 pub(super) use continuous_and_choices::*;
 pub(super) use costs_and_triggers::*;
@@ -56,13 +57,13 @@ pub(super) use emblem_surfaces::*;
 pub(super) use looked_partition::*;
 pub(super) use looked_top_bottom::*;
 pub(super) use observation_conditionals::*;
-pub(super) use player_and_zone_effects::*;
+pub(crate) use player_and_zone_effects::*;
 pub(super) use quantified_player_actions::*;
 pub(super) use returned_object_type_setting::*;
 pub(super) use roll_result_surfaces::*;
 pub(super) use search_reveal_and_sacrifice::*;
 pub(super) use sequences_and_votes::*;
-pub(super) use single_effects_early::*;
+pub(crate) use single_effects_early::*;
 pub(super) use single_effects_late::*;
 pub(super) use structural_bundles::*;
 

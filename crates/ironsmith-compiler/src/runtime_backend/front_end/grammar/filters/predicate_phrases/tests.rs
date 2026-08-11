@@ -15,6 +15,127 @@ fn predicate_tokens_after_if(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
 }
 
 #[test]
+fn triggering_object_first_tap_predicate_is_per_object_history() -> Result<(), CardTextError> {
+    for text in [
+        "If it's the first time that creature has become tapped this turn",
+        "If it is the first time that permanent has become tapped this turn",
+    ] {
+        let tokens = lex_line(text, 0)?;
+        assert_eq!(
+            parse_predicate(&predicate_tokens_after_if(&tokens))?,
+            PredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn,
+            "{text}"
+        );
+    }
+
+    let near_miss = lex_line(
+        "If it's the first time that creature has attacked this turn",
+        0,
+    )?;
+    assert!(!matches!(
+        parse_predicate(&predicate_tokens_after_if(&near_miss)),
+        Ok(PredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn)
+    ));
+    Ok(())
+}
+
+#[test]
+fn triggering_object_first_counter_predicate_is_per_object_history() -> Result<(), CardTextError> {
+    for text in [
+        "If it's the first time counters have been put on that creature this turn",
+        "If it is the first time counters have been put on that permanent this turn",
+    ] {
+        let tokens = lex_line(text, 0)?;
+        assert_eq!(
+            parse_predicate(&predicate_tokens_after_if(&tokens))?,
+            PredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn,
+            "{text}"
+        );
+    }
+
+    let near_miss = lex_line(
+        "If it's the first time counters have been removed from that creature this turn",
+        0,
+    )?;
+    assert!(!matches!(
+        parse_predicate(&predicate_tokens_after_if(&near_miss)),
+        Ok(PredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn)
+    ));
+    Ok(())
+}
+
+#[test]
+fn sole_creature_card_in_your_graveyard_is_an_exact_count() -> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "If this card is the only creature card in your graveyard",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator: ValueComparisonOperator::Equal,
+        right: Value::Fixed(1),
+    } = parsed
+    else {
+        panic!("expected an exact creature-card count, got {parsed:#?}");
+    };
+    assert_eq!(filter.zone, Some(Zone::Graveyard));
+    assert_eq!(filter.owner, Some(PlayerFilter::You));
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert!(filter.has_explicit_card_noun());
+
+    let near_miss = lex_line("If this card is a creature card in your graveyard", 0)?;
+    assert!(matches!(
+        parse_predicate(&predicate_tokens_after_if(&near_miss))?,
+        PredicateAst::SourceMatches(_)
+    ));
+    Ok(())
+}
+
+#[test]
+fn triggering_spell_ordinal_union_preserves_comma_separated_categories() -> Result<(), CardTextError>
+{
+    let tokens = lex_line(
+        "If it's the first instant spell, the first sorcery spell, or the first Otter spell other than Alania you've cast this turn",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let debug = format!("{parsed:#?}");
+
+    assert_eq!(debug.matches("ValueComparison").count(), 3, "{debug}");
+    assert_eq!(
+        debug.matches("before_triggering_spell: true").count(),
+        3,
+        "{debug}"
+    );
+    assert!(debug.contains("Instant"), "{debug}");
+    assert!(debug.contains("Sorcery"), "{debug}");
+    assert!(debug.contains("Otter"), "{debug}");
+    assert!(debug.contains("exclude_source: true"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn triggering_spell_ordinal_union_does_not_split_one_type_disjunction() -> Result<(), CardTextError>
+{
+    let tokens = lex_line(
+        "If it's the first instant or sorcery spell you've cast this turn",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        matches!(parsed, PredicateAst::ValueComparison { .. }),
+        "one ordinal category must remain one predicate: {debug}"
+    );
+    assert_eq!(debug.matches("ValueComparison").count(), 1, "{debug}");
+    assert!(debug.contains("Instant"), "{debug}");
+    assert!(debug.contains("Sorcery"), "{debug}");
+    Ok(())
+}
+
+#[test]
 fn parse_past_control_predicate_preserves_lki_mode_and_authored_noun() -> Result<(), CardTextError>
 {
     let tokens = lex_line("If you controlled that permanent", 0)?;
@@ -464,6 +585,27 @@ fn parse_predicate_demonstrative_negated_land_card_keeps_it_reference() -> Resul
 }
 
 #[test]
+fn parse_predicate_negated_copula_scopes_over_coordinated_descriptor() -> Result<(), CardTextError>
+{
+    let expected = PredicateAst::Not(Box::new(PredicateAst::Or(
+        Box::new(PredicateAst::ItMatches(ObjectFilter::creature())),
+        Box::new(PredicateAst::ItMatches(
+            ObjectFilter::default().with_subtype(Subtype::Vehicle),
+        )),
+    )));
+
+    for text in [
+        "If it isn't a creature or Vehicle",
+        "If it is not a creature or Vehicle",
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert_eq!(parsed, expected, "{text}");
+    }
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_turn_timing_uses_capture_parser() -> Result<(), CardTextError> {
     for (text, expected) in [
         ("If it's your turn", PredicateAst::YourTurn),
@@ -660,6 +802,26 @@ fn parse_predicate_conjoined_control_uses_capture_parser() -> Result<(), CardTex
 }
 
 #[test]
+fn parse_predicate_time_lord_control_uses_distinct_compound_subtype() -> Result<(), CardTextError> {
+    let tokens = lex_line("If you control a Time Lord", 0)?;
+    let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+    let parsed = parse_predicate(&predicate_tokens)?;
+
+    assert_eq!(
+        parsed,
+        PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter: ObjectFilter::default()
+                .with_subtype(Subtype::TimeLord)
+                .controlled_by(PlayerFilter::You)
+                .in_zone(Zone::Battlefield),
+        }
+    );
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_control_or_graveyard_uses_capture_parser() -> Result<(), CardTextError> {
     for text in [
         "If you control a creature or there is a creature card in your graveyard",
@@ -683,6 +845,57 @@ fn parse_predicate_control_or_graveyard_uses_capture_parser() -> Result<(), Card
         assert_eq!(graveyard_filter.zone, Some(Zone::Graveyard), "{text}");
         assert_eq!(graveyard_filter.owner, Some(PlayerFilter::You), "{text}");
     }
+    Ok(())
+}
+
+#[test]
+fn control_or_returned_to_hand_keeps_independent_tagged_result() -> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "If you control a Squirrel or returned a Squirrel card to your hand this way",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let PredicateAst::Or(left, right) = parsed else {
+        panic!("expected independent control/result alternatives: {parsed:#?}");
+    };
+    let PredicateAst::PlayerControls { player, filter } = left.as_ref() else {
+        panic!("left side should remain a control condition: {left:#?}");
+    };
+    assert_eq!(*player, PlayerAst::You);
+    assert_eq!(filter.subtypes, [Subtype::Squirrel]);
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+
+    let PredicateAst::PlayerTaggedObjectMatches {
+        player,
+        tag,
+        filter,
+        mode,
+    } = right.as_ref()
+    else {
+        panic!("right side should observe the returned result: {right:#?}");
+    };
+    assert_eq!(*player, PlayerAst::You);
+    assert_eq!(tag.as_str(), IT_TAG);
+    assert_eq!(filter.subtypes, [Subtype::Squirrel]);
+    assert_eq!(filter.zone, Some(Zone::Hand));
+    assert_eq!(
+        filter.prior_effect_action_surface(),
+        Some(ironsmith_core::PriorEffectAction::Returned)
+    );
+    assert_eq!(
+        *mode,
+        ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown
+    );
+
+    let near_miss = lex_line(
+        "If you control a Squirrel or returned a Squirrel card to the battlefield this way",
+        0,
+    )?;
+    assert_ne!(
+        parse_predicate(&predicate_tokens_after_if(&near_miss)).ok(),
+        Some(PredicateAst::Or(left, right)),
+        "a different destination must not acquire the return-to-hand result gate"
+    );
     Ok(())
 }
 
@@ -866,6 +1079,14 @@ fn parse_predicate_control_conditions_use_shared_capture_parser() -> Result<(), 
                 player: PlayerAst::That,
                 filter: ObjectFilter::land(),
                 count: 2,
+            },
+        ),
+        (
+            "If you control exactly one creature",
+            PredicateAst::PlayerControlsExactly {
+                player: PlayerAst::You,
+                filter: ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                count: 1,
             },
         ),
     ] {
@@ -1949,6 +2170,7 @@ fn parse_predicate_preserves_mana_source_provenance() -> Result<(), CardTextErro
             Value::ManaFromSourceSpentToCastThisSpell {
                 source_filter,
                 include_source_noun,
+                reference,
             },
         operator: ValueComparisonOperator::GreaterThanOrEqual,
         right: Value::Fixed(1),
@@ -1957,6 +2179,7 @@ fn parse_predicate_preserves_mana_source_provenance() -> Result<(), CardTextErro
         panic!("expected a typed mana-source predicate, got {parsed:?}");
     };
     assert!(!include_source_noun);
+    assert_eq!(reference, ironsmith_core::ManaSpentCastReferenceSurface::It);
     assert!(source_filter.subtypes.contains(&Subtype::Treasure));
     Ok(())
 }
@@ -1965,6 +2188,7 @@ fn parse_predicate_preserves_mana_source_provenance() -> Result<(), CardTextErro
 fn parse_predicate_spell_lifecycle_uses_shared_capture_parser() -> Result<(), CardTextError> {
     for (text, expected) in [
         ("If you cast this spell", PredicateAst::SourceWasCast),
+        ("If you cast it", PredicateAst::SourceWasCast),
         (
             "If it was cast",
             PredicateAst::TaggedWasCast(TagKey::from(IT_TAG)),
@@ -2140,6 +2364,29 @@ fn parse_predicate_spell_cast_this_turn_uses_shared_capture_parser() -> Result<(
             "{text}"
         );
     }
+
+    let tokens = lex_line(
+        "If you've cast three or more instant and sorcery spells this turn",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let PredicateAst::ValueComparison {
+        left:
+            Value::SpellsCastThisTurnMatching {
+                player,
+                filter,
+                exclude_source,
+            },
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(3),
+    } = parsed
+    else {
+        panic!("expected a threshold over the filtered spell count, got {parsed:?}");
+    };
+    assert_eq!(player, PlayerFilter::You);
+    assert!(!exclude_source);
+    assert!(filter.card_types.contains(&CardType::Instant));
+    assert!(filter.card_types.contains(&CardType::Sorcery));
 
     let tokens = lex_line("If opponent has cast a creature spell this turn", 0)?;
     let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
@@ -2317,6 +2564,29 @@ fn parse_predicate_life_relations_use_shared_capture_parser() -> Result<(), Card
 
         assert_eq!(parsed, expected, "{text}");
     }
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_supports_having_most_life_or_being_tied() -> Result<(), CardTextError> {
+    let tokens = lex_line("if you have the most life or are tied for most life", 0)?;
+    let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+    assert_eq!(
+        parse_predicate(&predicate_tokens)?,
+        PredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
+            player: PlayerAst::You,
+        }
+    );
+
+    let near_miss = lex_line("if you have the lowest life or are tied for lowest life", 0)?;
+    assert!(
+        super::advanced::parse_player_life_relation_predicate(&predicate_tokens_after_if(
+            &near_miss,
+        ))
+        .is_none(),
+        "a lowest-life condition must not inherit the most-life semantics"
+    );
     Ok(())
 }
 
@@ -2688,8 +2958,30 @@ fn parse_predicate_stack_object_targets_object_uses_capture_parser() -> Result<(
 }
 
 #[test]
+fn parse_predicate_stack_object_targets_object_or_player_keeps_both_domains()
+-> Result<(), CardTextError> {
+    let tokens = lex_line("If it targets a permanent or player", 0)?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+    let PredicateAst::ItMatches(filter) = parsed else {
+        panic!("expected spell targeting predicate");
+    };
+    assert_eq!(filter.zone, Some(Zone::Stack));
+    assert_eq!(filter.stack_kind, Some(StackObjectKind::Spell));
+    assert!(filter.targets_any_of);
+    assert_eq!(filter.targets_player, Some(PlayerFilter::Any));
+    let Some(target_filter) = filter.targets_object.as_deref() else {
+        panic!("expected permanent target domain");
+    };
+    assert_eq!(target_filter.zone, Some(Zone::Battlefield));
+    assert!(target_filter.card_types.is_empty(), "{target_filter:#?}");
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_source_zone_uses_capture_parser() -> Result<(), CardTextError> {
     for (text, expected_zone) in [
+        ("If it's on the battlefield", Zone::Battlefield),
         ("If this card is in your hand", Zone::Hand),
         ("If this creature is in your graveyard", Zone::Graveyard),
         ("If this is in exile", Zone::Exile),
@@ -2704,6 +2996,28 @@ fn parse_predicate_source_zone_uses_capture_parser() -> Result<(), CardTextError
             "{text}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_preserves_ordered_graveyard_cards_above_source() -> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "If this card is in your graveyard with three or more creature cards above it",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let PredicateAst::SourceInGraveyardWithCardsAbove { filter, count } = parsed else {
+        panic!("expected ordered-graveyard source predicate: {parsed:#?}");
+    };
+    assert_eq!(count, 3);
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert_eq!(filter.zone, None);
+
+    let near_miss = lex_line(
+        "If this card is in your graveyard with three or more creature cards below it",
+        0,
+    )?;
+    assert!(parse_predicate(&predicate_tokens_after_if(&near_miss)).is_err());
     Ok(())
 }
 
@@ -2771,6 +3085,19 @@ fn parse_predicate_triggering_object_counters_use_shared_capture_parser()
             PredicateAst::TriggeringObjectHadCounterAtLeast {
                 counter_type: CounterType::PlusOnePlusOne,
                 count: 1,
+            },
+        ),
+        (
+            "If it had counters on it",
+            PredicateAst::ValueComparison {
+                left: Value::CountersOn(
+                    Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
+                        "triggering",
+                    ))),
+                    None,
+                ),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
             },
         ),
     ] {

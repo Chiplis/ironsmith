@@ -52,6 +52,7 @@ pub(crate) enum TaggedPermissionTargetSurface {
     It,
     ThatCard,
     ThatSpell,
+    Them,
     ThoseCards,
     SpellsFromAmongThoseCards,
     SpellsFromAmongThoseExiledCards,
@@ -64,6 +65,10 @@ pub(crate) struct TaggedPermissionTargetFact<'a> {
     pub(crate) reference: TaggedPermissionReference,
     pub(crate) as_copy: bool,
     pub(crate) surface: TaggedPermissionTargetSurface,
+    /// Total uses shared by the tagged collection. This preserves deferred
+    /// choices such as "play one of those cards" without selecting a card
+    /// when the permission is created.
+    pub(crate) max_plays: Option<u32>,
     pub(crate) rest_tokens: &'a [OwnedLexToken],
 }
 
@@ -153,6 +158,8 @@ pub(crate) struct RevealedTopLibraryPermissionFact<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TaggedLookReference {
+    It,
+    ThatCard,
     Them,
     ThoseCards,
 }
@@ -164,9 +171,13 @@ pub(crate) struct ForAsLongAsLookAtTaggedFact<'a> {
     pub(crate) permission_tokens: &'a [OwnedLexToken],
 }
 
+/// A spell-subject-qualified reference to the collection tagged by a preceding
+/// action, such as "noncreature spells from among those cards".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PermanentSpellsFromTaggedFact<'a> {
+pub(crate) struct SpellsFromTaggedFact<'a> {
     pub(crate) reference: TaggedPermissionReference,
+    pub(crate) subject_tokens: &'a [OwnedLexToken],
+    pub(crate) surface: TaggedPermissionTargetSurface,
     pub(crate) tail_tokens: &'a [OwnedLexToken],
 }
 
@@ -185,12 +196,13 @@ pub(crate) fn parse_permission_lead_tokens(
 pub(crate) fn parse_tagged_permission_target_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedPermissionTargetFact<'_>> {
-    let ((reference, as_copy, surface), rest_tokens) =
+    let ((reference, as_copy, surface, max_plays), rest_tokens) =
         primitives::parse_prefix(tokens, parse_tagged_permission_target_lexed)?;
     Some(TaggedPermissionTargetFact {
         reference,
         as_copy,
         surface,
+        max_plays,
         rest_tokens,
     })
 }
@@ -359,18 +371,33 @@ pub(crate) fn parse_for_as_long_as_look_at_tagged_tokens(
     .ok()
 }
 
-pub(crate) fn parse_permanent_spells_from_tagged_tokens(
+pub(crate) fn parse_spells_from_tagged_tokens(
     tokens: &[OwnedLexToken],
-) -> Option<PermanentSpellsFromTaggedFact<'_>> {
-    let (_, tail_tokens) = primitives::parse_prefix(
-        tokens,
+) -> Option<SpellsFromTaggedFact<'_>> {
+    let (scope_start, surface, tail_tokens) = primitives::find_prefix(tokens, || {
         alt((
-            primitives::phrase(&["permanent", "spells", "from", "among", "them"]),
-            primitives::phrase(&["permanent", "spells", "from", "among", "those", "cards"]),
-        )),
-    )?;
-    Some(PermanentSpellsFromTaggedFact {
+            primitives::phrase(&["from", "among", "those", "cards"])
+                .value(TaggedPermissionTargetSurface::SpellsFromAmongThoseCards),
+            primitives::phrase(&["from", "among", "those", "exiled", "cards"])
+                .value(TaggedPermissionTargetSurface::SpellsFromAmongThoseExiledCards),
+            primitives::phrase(&["from", "among", "them"])
+                .value(TaggedPermissionTargetSurface::Other),
+        ))
+    })?;
+    let subject_tokens = trim_lexed_commas(&tokens[..scope_start]);
+    if subject_tokens.is_empty()
+        || primitives::find_prefix(subject_tokens, || {
+            alt((primitives::kw("spell"), primitives::kw("spells"))).void()
+        })
+        .is_none()
+    {
+        return None;
+    }
+
+    Some(SpellsFromTaggedFact {
         reference: TaggedPermissionReference::LastTagged,
+        subject_tokens,
+        surface,
         tail_tokens,
     })
 }
@@ -408,6 +435,7 @@ fn parse_tagged_permission_target_lexed<'a>(
     TaggedPermissionReference,
     bool,
     TaggedPermissionTargetSurface,
+    Option<u32>,
 )> {
     alt((
         alt((
@@ -415,37 +443,57 @@ fn parse_tagged_permission_target_lexed<'a>(
                 TaggedPermissionReference::LastTagged,
                 false,
                 TaggedPermissionTargetSurface::It,
+                None,
             )),
             primitives::phrase(&["that", "card"]).value((
                 TaggedPermissionReference::LastTagged,
                 false,
                 TaggedPermissionTargetSurface::ThatCard,
+                None,
             )),
             primitives::phrase(&["that", "spell"]).value((
                 TaggedPermissionReference::LastTagged,
                 false,
                 TaggedPermissionTargetSurface::ThatSpell,
+                None,
+            )),
+            primitives::kw("them").value((
+                TaggedPermissionReference::LastTagged,
+                false,
+                TaggedPermissionTargetSurface::Them,
+                None,
             )),
             primitives::phrase(&["those", "cards"]).value((
                 TaggedPermissionReference::LastTagged,
                 false,
                 TaggedPermissionTargetSurface::ThoseCards,
+                None,
             )),
             primitives::phrase(&["spells", "from", "among", "those", "exiled", "cards"]).value((
                 TaggedPermissionReference::LastTagged,
                 false,
                 TaggedPermissionTargetSurface::SpellsFromAmongThoseExiledCards,
+                None,
             )),
             primitives::phrase(&["spells", "from", "among", "those", "cards"]).value((
                 TaggedPermissionReference::LastTagged,
                 false,
                 TaggedPermissionTargetSurface::SpellsFromAmongThoseCards,
+                None,
             )),
             primitives::any_phrase(&[
-                &["spells", "from", "among", "them"],
                 &["one", "of", "those", "cards"],
                 &["one", "of", "those", "card"],
                 &["one", "of", "them"],
+            ])
+            .value((
+                TaggedPermissionReference::LastTagged,
+                false,
+                TaggedPermissionTargetSurface::Other,
+                Some(1),
+            )),
+            primitives::any_phrase(&[
+                &["spells", "from", "among", "them"],
                 &["them"],
                 &["the", "exiled", "cards"],
                 &["exiled", "cards"],
@@ -458,6 +506,7 @@ fn parse_tagged_permission_target_lexed<'a>(
                 TaggedPermissionReference::LastTagged,
                 false,
                 TaggedPermissionTargetSurface::Other,
+                None,
             )),
         )),
         alt((
@@ -465,17 +514,20 @@ fn parse_tagged_permission_target_lexed<'a>(
                 TaggedPermissionReference::SourceExiled,
                 false,
                 TaggedPermissionTargetSurface::Other,
+                None,
             )),
             primitives::any_phrase(&[&["that", "revealed", "card"], &["the", "revealed", "card"]])
                 .value((
                     TaggedPermissionReference::LastRevealed,
                     false,
                     TaggedPermissionTargetSurface::Other,
+                    None,
                 )),
             primitives::any_phrase(&[&["the", "copy"], &["that", "copy"], &["a", "copy"]]).value((
                 TaggedPermissionReference::LastTagged,
                 true,
                 TaggedPermissionTargetSurface::Other,
+                None,
             )),
         )),
     ))
@@ -533,7 +585,7 @@ fn parse_until_source_exiles_another_permission_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<UntilSourceExilesAnotherPermissionFact<'a>> {
     let (actor, verb) = parse_permission_lead_lexed.parse_next(input)?;
-    let (reference, as_copy, target_surface) =
+    let (reference, as_copy, target_surface, _max_plays) =
         parse_tagged_permission_target_lexed.parse_next(input)?;
     if as_copy {
         return Err(primitives::backtrack_err(
@@ -816,6 +868,9 @@ fn parse_for_as_long_as_look_at_tagged_lexed<'a>(
     parse_for_as_long_as_exiled_lexed.parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
     let reference = alt((
+        primitives::phrase(&["you", "may", "look", "at", "it"]).value(TaggedLookReference::It),
+        primitives::phrase(&["you", "may", "look", "at", "that", "card"])
+            .value(TaggedLookReference::ThatCard),
         primitives::phrase(&["you", "may", "look", "at", "them"]).value(TaggedLookReference::Them),
         primitives::phrase(&["you", "may", "look", "at", "those", "cards"])
             .value(TaggedLookReference::ThoseCards),
@@ -873,6 +928,19 @@ mod tests {
         assert_eq!(
             TokenWordView::new(target.rest_tokens).word_refs(),
             ["this", "turn"]
+        );
+    }
+
+    #[test]
+    fn one_of_tagged_collection_preserves_shared_deferred_limit() {
+        let tokens = lex("You may play one of those cards until your next end step");
+        let lead = parse_permission_lead_tokens(&tokens).unwrap();
+        let target = parse_tagged_permission_target_tokens(lead.rest_tokens).unwrap();
+        assert_eq!(target.reference, TaggedPermissionReference::LastTagged);
+        assert_eq!(target.max_plays, Some(1));
+        assert_eq!(
+            TokenWordView::new(target.rest_tokens).word_refs(),
+            ["until", "your", "next", "end", "step"]
         );
     }
 
@@ -939,6 +1007,7 @@ mod tests {
     #[test]
     fn temporary_permission_references_preserve_distinct_collection_surfaces() {
         let cases = [
+            ("them", TaggedPermissionTargetSurface::Them),
             ("those cards", TaggedPermissionTargetSurface::ThoseCards),
             (
                 "spells from among those cards",
@@ -970,13 +1039,29 @@ mod tests {
 
     #[test]
     fn tagged_look_revealed_top_and_permanent_pool_facts_keep_boundaries() {
+        let singular = lex(
+            "For as long as it remains exiled, you may look at that card and you may cast it if it's a creature spell",
+        );
+        let singular = parse_for_as_long_as_look_at_tagged_tokens(&singular).unwrap();
+        assert_eq!(singular.reference, TaggedLookReference::ThatCard);
+        assert_eq!(
+            TokenWordView::new(singular.permission_tokens).word_refs(),
+            [
+                "you", "may", "cast", "it", "if", "its", "a", "creature", "spell"
+            ]
+        );
+
         let look = lex(
             "For as long as those cards remain exiled, you may look at them, and you may cast permanent spells from among them",
         );
         let look = parse_for_as_long_as_look_at_tagged_tokens(&look).unwrap();
         assert_eq!(look.reference, TaggedLookReference::Them);
         let permanent = parse_permission_lead_tokens(look.permission_tokens).unwrap();
-        let permanent = parse_permanent_spells_from_tagged_tokens(permanent.rest_tokens).unwrap();
+        let permanent = parse_spells_from_tagged_tokens(permanent.rest_tokens).unwrap();
+        assert_eq!(
+            TokenWordView::new(permanent.subject_tokens).word_refs(),
+            ["permanent", "spells"]
+        );
         assert!(permanent.tail_tokens.is_empty());
 
         let revealed = lex(
@@ -986,6 +1071,38 @@ mod tests {
         assert_eq!(
             TokenWordView::new(revealed.permission_tokens).word_refs(),
             ["you", "may", "play", "that", "card"]
+        );
+    }
+
+    #[test]
+    fn qualified_spell_pool_fact_preserves_subject_surface_and_tail() {
+        let tokens =
+            lex("noncreature spells from among those cards without paying their mana costs");
+        let parsed = parse_spells_from_tagged_tokens(&tokens).unwrap();
+        assert_eq!(parsed.reference, TaggedPermissionReference::LastTagged);
+        assert_eq!(
+            TokenWordView::new(parsed.subject_tokens).word_refs(),
+            ["noncreature", "spells"]
+        );
+        assert_eq!(
+            parsed.surface,
+            TaggedPermissionTargetSurface::SpellsFromAmongThoseCards
+        );
+        assert_eq!(
+            TokenWordView::new(parsed.tail_tokens).word_refs(),
+            ["without", "paying", "their", "mana", "costs"]
+        );
+
+        let permanent = lex("permanent spells from among them this turn");
+        let permanent = parse_spells_from_tagged_tokens(&permanent).unwrap();
+        assert_eq!(
+            TokenWordView::new(permanent.subject_tokens).word_refs(),
+            ["permanent", "spells"]
+        );
+        assert_eq!(permanent.surface, TaggedPermissionTargetSurface::Other);
+        assert_eq!(
+            TokenWordView::new(permanent.tail_tokens).word_refs(),
+            ["this", "turn"]
         );
     }
 

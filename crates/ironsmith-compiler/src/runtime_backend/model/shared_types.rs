@@ -15,6 +15,7 @@ pub(crate) enum MetadataLine {
     ManaCost(String),
     TypeLine(String),
     FirstPrintedSet(String),
+    AttractionLights(String),
     PowerToughness(String),
     Loyalty(String),
     Defense(String),
@@ -65,6 +66,7 @@ impl Default for StatementLineSemanticFacts {
 pub(crate) struct AsEntersEffectProgramFacts {
     pub(crate) subject: String,
     pub(crate) also_turns_face_up: bool,
+    pub(crate) turns_face_up_only: bool,
     pub(crate) uses_enters_with_counter_surface: bool,
 }
 
@@ -150,6 +152,7 @@ pub(crate) struct TriggerFunctionalZoneFacts {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct TriggerFrequencyFacts {
     pub(crate) first_time_each_or_this_turn: bool,
+    pub(crate) first_time_during_each_of_your_turns: bool,
     pub(crate) becomes_crewed: bool,
     pub(crate) do_this_limit_each_turn: Option<u32>,
 }

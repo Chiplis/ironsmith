@@ -49,6 +49,9 @@ pub(crate) fn parse_exile_segment_tokens(
     tokens: &[OwnedLexToken],
     contextual_source_reference: impl Fn(&[&str]) -> bool,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    if let Some(compound) = parse_source_and_chosen_exile(tokens)? {
+        return Ok(compound);
+    }
     let shape = primitives::parse_all(tokens, parse_exile_cost_shape_lexed, "exile-cost")
         .map_err(|_| unsupported(tokens, "exile"))?;
     match shape {
@@ -102,6 +105,7 @@ pub(crate) fn parse_exile_segment_tokens(
                 choice_count: choice.count,
                 filter,
                 top_only,
+                turn_face_up: false,
             })
         }
         ExileCostShape::NamedArtifacts {
@@ -122,9 +126,66 @@ pub(crate) fn parse_exile_segment_tokens(
     }
 }
 
+fn parse_source_and_chosen_exile(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ActivationCostSegmentCst>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("exile")) {
+        return Ok(None);
+    }
+    let body = &tokens[1..];
+    let Some(and_idx) = body.iter().position(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    let source_tokens = &body[..and_idx];
+    let source_words = primitives::TokenWordView::new(source_tokens).word_refs();
+    let Some(source_surface) =
+        crate::runtime_backend::front_end::shared::util::this_source_surface_for_words(
+            &source_words,
+        )
+    else {
+        return Ok(None);
+    };
+    let chosen_tokens = &body[and_idx + 1..];
+    let Some(choice) = parse_activation_choice_prefix_tokens(chosen_tokens) else {
+        return Ok(None);
+    };
+    // This route is deliberately limited to a fixed, nonzero second set.
+    // Optional/dynamic conjunctions need different payment legality.
+    if choice.count.min == 0 || choice.count.max != Some(choice.count.min) || choice.count.dynamic_x
+    {
+        return Ok(None);
+    }
+    let filter = parse_activation_exile_filter_tokens(choice.rest)?;
+    if !filter.other {
+        return Ok(None);
+    }
+    let mut source_filter = crate::target::ObjectFilter::source_with_surface(source_surface);
+    source_filter.zone = Some(Zone::Battlefield);
+    Ok(Some(ActivationCostSegmentCst::ExileSourceAndChosen {
+        source_filter,
+        choice_count: choice.count,
+        filter,
+    }))
+}
+
 fn parse_generic_exile(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    // `face up` is the manner of exile, not a second face-state adjective on
+    // the selected permanent. It is valid here only after an explicitly
+    // face-down subject; otherwise leave the phrase to the ordinary filter
+    // parser rather than silently changing its meaning.
+    let (subject_tokens, turn_face_up) = if subject_tokens.len() >= 3
+        && subject_tokens[subject_tokens.len() - 2].is_word("face")
+        && subject_tokens[subject_tokens.len() - 1].is_word("up")
+        && subject_tokens[..subject_tokens.len() - 2]
+            .iter()
+            .any(|token| token.is_word("face-down"))
+    {
+        (&subject_tokens[..subject_tokens.len() - 2], true)
+    } else {
+        (subject_tokens, false)
+    };
     let (subject_tokens, top_only) = strip_top_only_prefix(subject_tokens);
     let choice = parse_activation_choice_prefix_tokens(subject_tokens)
         .ok_or_else(|| unsupported(subject_tokens, "exile-selector"))?;
@@ -136,6 +197,7 @@ fn parse_generic_exile(
         choice_count: choice.count,
         filter,
         top_only,
+        turn_face_up,
     })
 }
 
@@ -413,9 +475,58 @@ mod tests {
                 choice_count,
                 filter,
                 top_only: true,
+                turn_face_up: false,
             } if choice_count == crate::effect::ChoiceCount::exactly(1)
                 && filter.zone == Some(Zone::Graveyard)
                 && filter.card_types == [crate::types::CardType::Creature]
+        ));
+
+        let face_up = lex_line("exile a face-down permanent you control face up", 0).unwrap();
+        assert!(matches!(
+            parse_exile_segment_tokens(&face_up, |_| false).unwrap(),
+            ActivationCostSegmentCst::ExileChosen {
+                choice_count,
+                filter,
+                top_only: false,
+                turn_face_up: true,
+            } if choice_count == crate::effect::ChoiceCount::exactly(1)
+                && filter.face_down == Some(true)
+                && filter.controller == Some(PlayerFilter::You)
+        ));
+
+        let compound = lex_line(
+            "exile this Vehicle and four other artifact creatures and/or Vehicles you control",
+            0,
+        )
+        .unwrap();
+        assert!(matches!(
+            parse_exile_segment_tokens(&compound, |_| false).unwrap(),
+            ActivationCostSegmentCst::ExileSourceAndChosen {
+                source_filter,
+                choice_count,
+                filter,
+            } if source_filter.source
+                && matches!(
+                    source_filter.source_surface,
+                    Some(crate::target::SourceReferenceSurface::ThisPermanentType(ref text))
+                        if text == "this Vehicle"
+                )
+                && choice_count == crate::effect::ChoiceCount::exactly(4)
+                && filter.other
+                && filter.controller == Some(PlayerFilter::You)
+                && filter.card_types.contains(&crate::types::CardType::Artifact)
+                && filter.card_types.contains(&crate::types::CardType::Creature)
+                && filter.subtypes.contains(&crate::types::Subtype::Vehicle)
+        ));
+
+        let ordinary_face_up = lex_line("exile a face-up permanent you control", 0).unwrap();
+        assert!(matches!(
+            parse_exile_segment_tokens(&ordinary_face_up, |_| false).unwrap(),
+            ActivationCostSegmentCst::ExileChosen {
+                filter,
+                turn_face_up: false,
+                ..
+            } if filter.face_down == Some(false)
         ));
 
         let ordinary = lex_line("exile a creature card from your graveyard", 0).unwrap();

@@ -74,10 +74,12 @@ fn active_goaders_for_attack_preview(
 
 fn generic_attack_tax_preview(
     game: &GameState,
+    target: &AttackTarget,
     defending_player: PlayerId,
     view: &DerivedGameView<'_>,
 ) -> u32 {
     let mut tax = 0u32;
+    let target_kind = crate::static_abilities::AttackTaxTargetKind::from(target);
 
     for &object_id in &game.battlefield {
         let Some(object) = game.object(object_id) else {
@@ -104,12 +106,40 @@ fn generic_attack_tax_preview(
             });
 
         tax = abilities.into_iter().fold(tax, |acc, ability| {
+            if !ability.generic_attack_tax_applies_to(target_kind) {
+                return acc;
+            }
             acc.saturating_add(
                 ability
                     .generic_attack_tax_per_attacker_against_you(game, object_id, defending_player)
                     .unwrap_or(0),
             )
         });
+    }
+
+    for restriction in &game.effect_store.restriction_effects {
+        if restriction.controller != defending_player
+            || !restriction.is_active(game, game.turn.turn_number)
+        {
+            continue;
+        }
+        if let crate::effect::Restriction::AttackYouUnlessControllerPaysPerAttacker(
+            per_attacker_tax,
+            covers_planeswalkers,
+        ) = &restriction.restriction
+        {
+            let applies = matches!(
+                target_kind,
+                crate::static_abilities::AttackTaxTargetKind::Player
+            ) || (*covers_planeswalkers
+                && matches!(
+                    target_kind,
+                    crate::static_abilities::AttackTaxTargetKind::Planeswalker
+                ));
+            if applies {
+                tax = tax.saturating_add(*per_attacker_tax);
+            }
+        }
     }
 
     tax
@@ -251,7 +281,8 @@ pub(crate) fn compute_legal_attackers_with_view(
         let mut nongoad_targets = Vec::new();
 
         for (target, defending_player) in &attack_targets {
-            let generic_attack_tax = generic_attack_tax_preview(game, *defending_player, view);
+            let generic_attack_tax =
+                generic_attack_tax_preview(game, target, *defending_player, view);
             if can_declare_attack_target_preview(
                 game,
                 perm,

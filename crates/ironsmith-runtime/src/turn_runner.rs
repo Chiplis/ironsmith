@@ -708,6 +708,9 @@ impl TurnRunner {
                     return Ok(TurnAction::Continue);
                 }
                 game.turn.step = Some(Step::Upkeep);
+                for player in game.turn_players() {
+                    game.mark_upkeep_began(player);
+                }
                 game.reset_priority_for_new_window();
                 drain_pending_trigger_events(game, tq);
                 generate_and_queue_step_triggers(game, tq);
@@ -793,6 +796,9 @@ impl TurnRunner {
                         .map_err(GameLoopError::InvalidState)?;
                 }
                 crate::game_loop::add_saga_lore_counters(game, tq);
+                // CR 505.5: after the Saga turn-based action, roll to visit
+                // Attractions if the active player controls one.
+                crate::game_loop::roll_to_visit_attractions(game, tq)?;
 
                 self.state = TurnState::FirstMainPriority;
                 Ok(TurnAction::RunPriority)

@@ -662,7 +662,7 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
         ("permanents loses", "malformed-permanents-loses"),
     ];
     for (marker, label) in malformed_markers {
-        if compiled.contains(marker) {
+        if compiled.contains(marker) && !oracle.contains(marker) {
             return Some(format!("compiled text contains malformed output: {label}"));
         }
     }
@@ -2650,6 +2650,18 @@ fn build_registry_card_record_with_explicit_includes(
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty());
+    let attraction_lights = face
+        .and_then(|value| value.get("attraction_lights"))
+        .or_else(|| card.get("attraction_lights"))
+        .and_then(Value::as_array)
+        .map(|lights| {
+            lights
+                .iter()
+                .filter_map(Value::as_u64)
+                .map(|light| light.to_string())
+                .collect::<Vec<_>>()
+        })
+        .filter(|lights| !lights.is_empty());
 
     let mut metadata_lines = Vec::new();
     if let Some(mana_cost) = mana_cost
@@ -2666,6 +2678,9 @@ fn build_registry_card_record_with_explicit_includes(
     }
     if let Some(set_name) = first_printed_set_name {
         metadata_lines.push(format!("First printed set: {set_name}"));
+    }
+    if let Some(lights) = attraction_lights {
+        metadata_lines.push(format!("Attraction lights: {}", lights.join(", ")));
     }
     if let (Some(power), Some(toughness)) = (power.as_deref(), toughness.as_deref())
         && !power.trim().is_empty()
@@ -2956,6 +2971,18 @@ fn build_card_payload_for_face(card: &Value, face_index: usize) -> Option<CardPa
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty());
+    let attraction_lights = face
+        .get("attraction_lights")
+        .or_else(|| card.get("attraction_lights"))
+        .and_then(Value::as_array)
+        .map(|lights| {
+            lights
+                .iter()
+                .filter_map(Value::as_u64)
+                .map(|light| light.to_string())
+                .collect::<Vec<_>>()
+        })
+        .filter(|lights| !lights.is_empty());
 
     let mut metadata_lines = Vec::new();
     if let Some(mana_cost) = mana_cost
@@ -2972,6 +2999,9 @@ fn build_card_payload_for_face(card: &Value, face_index: usize) -> Option<CardPa
     }
     if let Some(set_name) = first_printed_set_name {
         metadata_lines.push(format!("First printed set: {set_name}"));
+    }
+    if let Some(lights) = attraction_lights {
+        metadata_lines.push(format!("Attraction lights: {}", lights.join(", ")));
     }
     if let (Some(power), Some(toughness)) = (power.as_deref(), toughness.as_deref())
         && !power.trim().is_empty()
@@ -3644,6 +3674,20 @@ CardDefinition {
                 Some(expected)
             );
         }
+    }
+
+    #[test]
+    fn authoritative_marker_guard_allows_authored_delayed_target_trigger_wording() {
+        let mut snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+        snapshot.normalized_oracle_text =
+            "{4}, {T}: Whenever target creature deals combat damage this turn, draw a card."
+                .to_string();
+        snapshot.compiled_text = Some(
+            "{4}, {T}: Whenever target creature deals combat damage this turn, draw a card."
+                .to_string(),
+        );
+
+        assert_eq!(authoritative_semantic_marker_parse_error(&snapshot), None);
     }
 
     #[test]

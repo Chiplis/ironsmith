@@ -68,7 +68,17 @@ pub(crate) fn parse_permission_subject_filter_tokens(
     }
 
     if parse_aura_enchant_creature_subject(filter_tokens).is_some() {
-        return Ok(Some(ObjectFilter::default().with_subtype(Subtype::Aura)));
+        return Ok(Some(
+            ObjectFilter::default()
+                .with_subtype(Subtype::Aura)
+                .with_ability_marker("enchant creature"),
+        ));
+    }
+    if matches!(
+        parse_exact_permission_subject(filter_tokens),
+        Some(ExactPermissionSubject::NoncreatureSpells)
+    ) {
+        return Ok(Some(ObjectFilter::noncreature_spell()));
     }
     if matches!(
         parse_exact_permission_subject(filter_tokens),
@@ -361,12 +371,23 @@ mod tests {
                 .expect("filter parse")
                 .expect("aura filter");
         assert!(aura.subtypes.contains(&Subtype::Aura));
+        assert_eq!(aura.ability_markers, ["enchant creature"]);
 
         let permanent = parse_permission_subject_filter_tokens(&lex("permanent spells"))
             .expect("filter parse")
             .expect("permanent filter");
         assert!(permanent.card_types.contains(&CardType::Creature));
         assert!(permanent.card_types.contains(&CardType::Planeswalker));
+
+        let noncreature = parse_cast_permission_filter_tokens(&lex("noncreature spells"))
+            .expect("filter parse")
+            .expect("noncreature-spell filter");
+        assert!(
+            noncreature
+                .excluded_card_types
+                .contains(&CardType::Creature)
+        );
+        assert!(noncreature.excluded_card_types.contains(&CardType::Land));
     }
 
     #[test]

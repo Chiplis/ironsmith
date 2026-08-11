@@ -146,8 +146,27 @@ impl PriorEffectMetricQuery {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValueSurfaceHint {
+    /// Preserve an unbounded choice with a minimum of one, such as
+    /// "discard one or more land cards." Effects that support optional
+    /// unbounded selection use this typed marker to distinguish it from
+    /// "any number," whose minimum is zero.
+    OneOrMoreChoice,
     WhereXIs,
     EqualTo,
+    /// Preserve an authored exact-equality comparison ("is exactly N") as
+    /// distinct from the semantically equivalent "is equal to N" surface.
+    /// The comparison operator remains the executable source of truth.
+    ExactComparison,
+    /// Preserve an authored maximum-selection phrase of the form
+    /// "A or B, whichever is greater." The executable value is represented
+    /// with ordinary arithmetic primitives (`A + B - min(A, B)`), while this
+    /// marker retains the authored extremum surface.
+    WhicheverIsGreater,
+    /// Preserve an authored resolution-time sampling clause on a dynamic
+    /// value, such as "where X is this creature's power as this ability
+    /// resolves." The effect using the value remains responsible for
+    /// actually freezing it at resolution.
+    AsThisAbilityResolves,
     /// Preserve an authored numeric reference to "the result" of the prior
     /// effect. Unlike an ambient trigger event amount, this value must bind to
     /// the immediately exported effect result (for example, a die roll).
@@ -287,6 +306,10 @@ pub enum ValueSurfaceHint {
     /// objects ("counters among creatures") rather than an explicit
     /// per-object reference ("counters on that creature").
     CountersAmong,
+    /// Preserve a last-known-information counter total from the object that
+    /// caused the current trigger: "the number of counters it had on it."
+    /// The underlying value remains a typed CountersOn(triggering) lookup.
+    TriggeringObjectCountersItHad,
     EnergyPaidThisWay,
     /// Preserve Oracle's "Repeat this process once" surface while executing
     /// the typed repeated effect body exactly twice.
@@ -401,6 +424,11 @@ pub enum TurnHistoryCount {
     Cycled(PlayerFilter),
     /// Matching players who lost life this turn.
     PlayersLostLife(PlayerFilter),
+    /// Lands which were untapped under a matching player's control at the
+    /// beginning of the current turn. This is a frozen turn-boundary value:
+    /// tapping or changing control of a land later in the turn does not alter
+    /// the count.
+    UntappedLandsAtTurnStart(PlayerFilter),
     /// The number of times matching players descended this turn. Descend is
     /// evaluated from zone-change LKI because the permanent card may no longer
     /// be in the graveyard when this value resolves.
@@ -453,6 +481,10 @@ pub enum Value {
     Count(ObjectFilter),
     CountScaled(ObjectFilter, i32),
     GreatestCount(ObjectFilter),
+    /// The largest cohort of matching creatures that share one creature type.
+    /// A creature with multiple creature types contributes once to each of its
+    /// type cohorts; the value is the size of the largest cohort, not the sum.
+    GreatestSharedCreatureTypeCount(ObjectFilter),
     TotalPower(ObjectFilter),
     TotalToughness(ObjectFilter),
     TotalManaValue(ObjectFilter),
@@ -533,6 +565,10 @@ pub enum Value {
     LifeGainedThisTurn(PlayerFilter),
     LifeLostThisTurn(PlayerFilter),
     CardsDiscardedThisTurn(PlayerFilter),
+    /// Number of Attraction visit events performed by matching players during
+    /// the current turn. This is history-based: an Attraction still counts if
+    /// it has since left the battlefield, and repeated visits count again.
+    AttractionsVisitedThisTurn(PlayerFilter),
     DamageDealtToPlayersThisTurn(PlayerFilter),
     NoncombatDamageDealtToPlayersThisTurn(PlayerFilter),
     NoncombatDamageDealtBySourcesControlledThisTurn {
@@ -547,6 +583,15 @@ pub enum Value {
     SpellsCastThisTurn(PlayerFilter),
     SpellsCastBeforeThisTurn(PlayerFilter),
     SpellsCastThisTurnMatching {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        exclude_source: bool,
+    },
+    /// Total mana value of matching spells cast during the current turn.
+    ///
+    /// This deliberately reads cast history rather than the current stack so
+    /// spells that have already resolved still contribute to the aggregate.
+    TotalManaValueOfSpellsCastThisTurnMatching {
         player: PlayerFilter,
         filter: ObjectFilter,
         exclude_source: bool,
@@ -571,11 +616,13 @@ pub enum Value {
         reference: ManaSpentCastReferenceSurface,
     },
     /// Mana spent to cast this spell whose producing source matched the
-    /// captured last-known-information filter. The surface flag preserves
-    /// whether oracle used the generic noun "source" after the filter.
+    /// captured last-known-information filter. The surface fields preserve
+    /// whether oracle used the generic noun "source" after the filter and
+    /// how it referred back to the spell being cast.
     ManaFromSourceSpentToCastThisSpell {
         source_filter: ObjectFilter,
         include_source_noun: bool,
+        reference: ManaSpentCastReferenceSurface,
     },
     /// Total mana spent to cast the spell whose cast event triggered the
     /// currently resolving ability.
@@ -1438,6 +1485,17 @@ pub enum Condition {
         player: PlayerFilter,
         dungeon_name: Option<String>,
     },
+    /// A pregame draft record contains a card matching `filter` that the
+    /// indicated player removed from the draft with the named card group.
+    ///
+    /// The filter remains the ordinary characteristic/ability filter so
+    /// mechanics can ask about any reusable printed quality rather than a
+    /// card-specific flag.
+    PlayerRemovedDraftCardMatching {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        with_cards_named: String,
+    },
     LifeTotalOrLess(i32),
     LifeTotalOrGreater(i32),
     CardsInHandOrMore(i32),
@@ -1474,6 +1532,9 @@ pub enum Condition {
     },
     YouHaveCardInHandMatching(ObjectFilter),
     YourTurn,
+    /// The turn currently being played was created as an extra turn rather
+    /// than reached through the normal turn order.
+    CurrentTurnIsExtra,
     YourFirstTurnsOfTheGameOrFewer(u32),
     CreatureDiedThisTurn,
     CreatureDiedThisTurnOrMore(u32),
@@ -1506,6 +1567,7 @@ pub enum Condition {
     ObjectEnteredBattlefieldLastTurn(ObjectFilter),
     ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),
     SourceWasCast,
+    ThisSpellWasCastAtSorceryTiming,
     ThisSpellEscaped,
     ThisSpellWasCastFromZone(Zone),
     ThisSpellWasCastFromNonHand,
@@ -1625,6 +1687,10 @@ pub enum Condition {
     TaggedObjectWasCast(TagKey),
     TaggedObjectIsSoulbondPaired(TagKey),
     EnchantedPermanentAttackedThisTurn,
+    EnchantedPermanentAttackedOrBlockedSinceLastUpkeep,
+    /// The resolving ability's source either blocked or became blocked since
+    /// its controller's previous upkeep.
+    SourceBlockedOrBecameBlockedSinceLastUpkeep,
     /// Two or more selected object targets do not all have the same current color set.
     ///
     /// This is resolution-context-only because it compares the objects selected for
@@ -1653,6 +1719,14 @@ pub enum Condition {
     MaxTimesEachTurn(u32),
     DoThisMaxTimesEachTurn(u32),
     TriggeringObjectWasEnchanted,
+    /// The object named by the triggering tap event has exactly one tap event
+    /// in the current turn's history (the event currently being checked).
+    TriggeringObjectBecameTappedFirstTimeThisTurn,
+    /// The object named by the triggering counter event has exactly one
+    /// counter-addition event in the current turn's history (the event
+    /// currently being checked). This is deliberately per object rather than
+    /// per triggered ability.
+    TriggeringObjectHadCountersPutFirstTimeThisTurn,
     TriggeringObjectHadToAttackThisCombat,
     TriggeringObjectHadCounters {
         counter_type: CounterType,
@@ -1662,6 +1736,12 @@ pub enum Condition {
     CardInYourGraveyard {
         card_types: Vec<crate::CardType>,
         subtypes: Vec<crate::Subtype>,
+    },
+    /// The source card is in its owner's ordered graveyard with at least
+    /// `count` matching cards closer to the top of that graveyard.
+    SourceInGraveyardWithCardsAbove {
+        filter: ObjectFilter,
+        count: u32,
     },
     SourceIsInZone(Zone),
     ActivationTiming(ActivationTiming),

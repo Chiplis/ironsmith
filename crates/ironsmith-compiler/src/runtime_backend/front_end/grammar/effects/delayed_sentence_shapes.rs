@@ -72,6 +72,10 @@ pub(crate) enum DelayedDiesShape<'a> {
     ThatReference {
         effect_tokens: &'a [OwnedLexToken],
     },
+    DefinitePriorTarget {
+        subject_tokens: &'a [OwnedLexToken],
+        effect_tokens: &'a [OwnedLexToken],
+    },
     ThisWay {
         subject_tokens: &'a [OwnedLexToken],
         effect_tokens: &'a [OwnedLexToken],
@@ -399,6 +403,34 @@ pub(crate) struct DelayedTargetCombatDamageShape<'a> {
     pub recipient_tokens: &'a [OwnedLexToken],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DelayedDiesAfterDamageByPreviousCreatureShape<'a> {
+    pub(crate) victim_tokens: &'a [OwnedLexToken],
+}
+
+/// Parse the event core from a delayed watcher such as
+/// `Whenever a creature dealt damage by that creature dies this turn, ...`.
+///
+/// `parse_delayed_this_turn_shape` owns the trailing duration and comma, so
+/// this parser deliberately receives only the trigger core. The demonstrative
+/// damager refers to the creature selected by the preceding instruction; the
+/// victim remains the independently dying object.
+pub(crate) fn parse_delayed_dies_after_damage_by_previous_creature_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<DelayedDiesAfterDamageByPreviousCreatureShape<'_>> {
+    let (victim_tokens, ()) =
+        primitives::split_lexed_once_before_suffix(trimmed(tokens), 1, || {
+            (
+                semantic_phrase(&["dealt", "damage", "by", "that", "creature", "dies"]),
+                eof,
+            )
+                .void()
+        })?;
+    let victim_tokens = trimmed(victim_tokens);
+    (!victim_tokens.is_empty())
+        .then_some(DelayedDiesAfterDamageByPreviousCreatureShape { victim_tokens })
+}
+
 /// Parse "target <subject> deals combat damage to <recipient>" for a delayed
 /// this-turn registration. The target is chosen while the enclosing ability
 /// resolves; the trigger must watch that exact object.
@@ -437,6 +469,32 @@ pub(crate) fn parse_delayed_target_put_into_your_graveyard_subject(
     })?;
     let subject_tokens = trimmed(subject_tokens);
     (!subject_tokens.is_empty()).then_some(subject_tokens)
+}
+
+/// Parse a delayed trigger that watches the object selected immediately
+/// before this sentence: "When it's put into a graveyard this turn, ...".
+///
+/// Oracle's contraction is normalized by the lexer to `its`, so keep that
+/// exact event-shaped spelling alongside the uncontracted and demonstrative
+/// forms. The narrow `put into a graveyard` tail prevents a possessive `its`
+/// from being mistaken for this pronoun elsewhere.
+pub(crate) fn is_delayed_prior_object_put_into_a_graveyard(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_all(
+        trimmed(tokens),
+        (
+            alt((
+                semantic_phrase(&["its", "put", "into", "a", "graveyard"]),
+                semantic_phrase(&["it", "is", "put", "into", "a", "graveyard"]),
+                semantic_phrase(&["that", "card", "is", "put", "into", "a", "graveyard"]),
+                semantic_phrase(&["that", "creature", "is", "put", "into", "a", "graveyard"]),
+                semantic_phrase(&["that", "permanent", "is", "put", "into", "a", "graveyard"]),
+            )),
+            eof,
+        )
+            .void(),
+        "delayed prior-object graveyard trigger",
+    )
+    .is_ok()
 }
 
 pub(crate) fn is_next_cast_spell_or_loyalty_shape(tokens: &[OwnedLexToken]) -> bool {
@@ -497,6 +555,13 @@ pub(crate) fn delayed_trigger_has_next_marker(tokens: &[OwnedLexToken]) -> bool 
     primitives::find_prefix(trimmed(tokens), || primitives::kw("next")).is_some()
 }
 
+pub(crate) fn delayed_trigger_has_first_time_marker(tokens: &[OwnedLexToken]) -> bool {
+    primitives::split_lexed_once_before_suffix(trimmed(tokens), 1, || {
+        (primitives::phrase(&["for", "the", "first", "time"]), eof).void()
+    })
+    .is_some()
+}
+
 fn dies_this_way_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
         primitives::phrase(&["dealt", "damage", "this", "way", "dies", "this", "turn"]),
@@ -526,6 +591,24 @@ pub(crate) fn parse_delayed_dies_shape(tokens: &[OwnedLexToken]) -> Option<Delay
         .is_some()
     {
         return Some(DelayedDiesShape::ThatReference { effect_tokens });
+    }
+
+    // A definite filtered noun after a prior targeted action names that
+    // exact target rather than every object matching the filter: "When the
+    // permanent you don't control dies this turn, ...". Keep the subject
+    // tokens so semantic lowering can retain both its filter and antecedent.
+    if let Some((subject_tokens, ())) =
+        primitives::split_lexed_once_before_suffix(trigger_tokens, 2, || {
+            (primitives::phrase(&["dies", "this", "turn"]), eof).void()
+        })
+    {
+        let subject_tokens = trimmed(subject_tokens);
+        if primitives::parse_prefix(subject_tokens, primitives::kw("the").void()).is_some() {
+            return Some(DelayedDiesShape::DefinitePriorTarget {
+                subject_tokens,
+                effect_tokens,
+            });
+        }
     }
 
     let (subject_tokens, ()) =
@@ -591,6 +674,26 @@ mod tests {
         let shape = parse_delayed_this_turn_shape(&target_graveyard).unwrap();
         assert!(
             parse_delayed_target_put_into_your_graveyard_subject(shape.trigger_tokens).is_some()
+        );
+
+        let prior_object = tokens("When it's put into a graveyard this turn, return that card.");
+        let shape = parse_delayed_this_turn_shape(&prior_object).unwrap();
+        assert!(is_delayed_prior_object_put_into_a_graveyard(
+            shape.trigger_tokens
+        ));
+
+        let damaged_victim = tokens(
+            "Whenever a creature dealt damage by that creature dies this turn, its controller loses 2 life.",
+        );
+        let shape = parse_delayed_this_turn_shape(&damaged_victim).unwrap();
+        let damage_history =
+            parse_delayed_dies_after_damage_by_previous_creature_shape(shape.trigger_tokens)
+                .expect("damage-history death watcher should retain its victim domain");
+        assert_eq!(
+            crate::runtime_backend::front_end::lexer::render_token_slice(
+                damage_history.victim_tokens
+            ),
+            "a creature"
         );
     }
 

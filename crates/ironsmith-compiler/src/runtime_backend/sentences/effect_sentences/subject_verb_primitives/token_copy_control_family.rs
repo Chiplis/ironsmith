@@ -456,13 +456,12 @@ pub(crate) fn parse_exile_source_with_counters_sentence(
         Err(error) if shape.source_reference => return Err(error),
         Err(_) => return Ok(None),
     };
-    if !shape.source_reference && counter_type != crate::object::CounterType::Time {
-        return Ok(None);
-    }
-
     let (exile_target, counter_target) = if shape.source_reference {
         let source = TargetAst::Source(clause.span());
         (source.clone(), source)
+    } else if shape.it_reference {
+        let it = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
+        (it.clone(), it)
     } else {
         (
             parse_target_phrase(shape.target_tokens)?,
@@ -595,4 +594,30 @@ pub(crate) fn find_color_choice_phrase(
 ) -> Option<(usize, usize)> {
     effect_grammar::parse_color_choice_phrase_span(clause.tokens())
         .map(|shape| (shape.start, shape.len))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn targeted_graveyard_exile_accepts_a_named_counter_payload() {
+        let tokens = lex_line(
+            "exile up to one target Assassin creature card from your graveyard with a memory counter on it",
+            0,
+        )
+        .expect("exile-with-counter sentence should lex");
+        let effects =
+            parse_exile_source_with_counters_sentence(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("exile-with-counter sentence should parse")
+                .expect("typed exile-with-counter shape should match");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 2, "{debug}");
+        assert!(debug.contains("action: Exile"), "{debug}");
+        assert!(debug.contains("action: PutCounters"), "{debug}");
+        assert!(debug.contains("Named(\"memory\")"), "{debug}");
+        assert!(debug.contains("zone: Some(Graveyard)"), "{debug}");
+    }
 }

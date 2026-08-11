@@ -163,6 +163,11 @@ fn parsed_controller_owner_shape(
 pub(crate) fn parse_controller_owner_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ControllerOwnerSubjectShape> {
+    const TRIGGERING_STACK_CONTROLLER: &[&[&str]] = &[
+        &["that", "spell", "or", "ability's", "controller"],
+        &["that", "spell", "or", "ability", "s", "controller"],
+        &["that", "spell", "or", "abilitys", "controller"],
+    ];
     const ENCHANTED_CONTROLLER: &[&[&str]] = &[
         &["enchanted", "creature", "s", "controller"],
         &["enchanted", "creatures", "controller"],
@@ -173,6 +178,17 @@ pub(crate) fn parse_controller_owner_subject_tokens(
         &["enchanted", "creatures", "owner"],
         &["enchanted", "creature's", "owner"],
     ];
+
+    let words = TokenWordView::new(tokens).to_word_refs();
+    if TRIGGERING_STACK_CONTROLLER
+        .iter()
+        .any(|expected| permission_shapes::exact_words(&words, expected))
+    {
+        return Some(ControllerOwnerSubjectShape {
+            subject: SubjectAst::TriggeringSourceController,
+            target: TargetAst::Tagged(TagKey::from("triggering_source"), None),
+        });
+    }
 
     if tokens.len() == 2 && tokens[0].is_word("its") {
         let player = if tokens[1].is_word("controller") {
@@ -488,9 +504,48 @@ mod tests {
         let shape = parse_controller_owner_subject_tokens(&tokens).expect("controller subject");
         assert_eq!(shape.subject, SubjectAst::Player(PlayerAst::ItsController));
 
+        let tokens = lex_line("that spell or ability's controller", 0).expect("lex");
+        let shape = parse_controller_owner_subject_tokens(&tokens)
+            .expect("triggering stack-object controller subject");
+        assert_eq!(shape.subject, SubjectAst::TriggeringSourceController);
+        assert!(matches!(
+            shape.target,
+            TargetAst::Tagged(ref tag, None) if tag.as_str() == "triggering_source"
+        ));
+
         let tokens = lex_line("target creature's base power and toughness", 0).expect("lex");
         let shape = parse_base_power_toughness_subject_tokens(&tokens).expect("base pt subject");
         assert!(!shape.target_tokens.is_empty());
+    }
+
+    #[test]
+    fn owner_of_target_keeps_heterogeneous_zone_union() {
+        let tokens = lex_line(
+            "the owner of target spell, nonland permanent, or card in a graveyard",
+            0,
+        )
+        .expect("lex owner subject");
+        let shape = parse_controller_owner_subject_tokens(&tokens).expect("owner subject");
+        assert_eq!(shape.subject, SubjectAst::Player(PlayerAst::ItsOwner));
+        let TargetAst::Object(filter, explicit_target, _) = shape.target else {
+            panic!("expected object target union");
+        };
+        assert!(explicit_target.is_some());
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.zone == Some(crate::Zone::Stack)
+                && branch.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+        }));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.zone == Some(crate::Zone::Battlefield)
+                && branch.excluded_card_types == [crate::CardType::Land]
+        }));
+        assert!(
+            filter
+                .any_of
+                .iter()
+                .any(|branch| branch.zone == Some(crate::Zone::Graveyard))
+        );
     }
 
     #[test]

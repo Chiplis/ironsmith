@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use super::super::lexer::{LexStream, OwnedLexToken, TokenWordView};
+use super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
 use super::{leaf, primitives};
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -30,6 +30,13 @@ pub(crate) struct DrawRevealMatchingRestBottomShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DiscardOrRedirectReplacementShape {
     pub(crate) discard_type: CardType,
+    pub(crate) redirect_zone: Zone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SacrificeOrRedirectReplacementShape<'a> {
+    pub(crate) count: u32,
+    pub(crate) filter_tokens: &'a [OwnedLexToken],
     pub(crate) redirect_zone: Zone,
 }
 
@@ -67,6 +74,32 @@ pub(crate) fn parse_discard_or_redirect_replacement(
     .ok()
 }
 
+pub(crate) fn parse_sacrifice_or_redirect_replacement(
+    tokens: &[OwnedLexToken],
+) -> Option<SacrificeOrRedirectReplacementShape<'_>> {
+    let (_, after_sacrifice) = primitives::parse_prefix(tokens, sacrifice_replacement_intro)?;
+    let (instead_idx, _, after_instead) =
+        primitives::find_prefix(after_sacrifice, || primitives::kw("instead"))?;
+    let payment_tokens = trim_lexed_commas(&after_sacrifice[..instead_idx]);
+    let number = leaf::parse_leaf_number_prefix_tokens(payment_tokens)?;
+    let (count, consumed) = number.into_fixed()?;
+    let filter_tokens = trim_lexed_commas(payment_tokens.get(consumed..)?);
+    if count == 0 || filter_tokens.is_empty() {
+        return None;
+    }
+    primitives::parse_all(
+        after_instead,
+        sacrifice_replacement_result_sentences,
+        "sacrifice-or-redirect replacement result",
+    )
+    .ok()?;
+    Some(SacrificeOrRedirectReplacementShape {
+        count,
+        filter_tokens,
+        redirect_zone: Zone::Graveyard,
+    })
+}
+
 fn enter_battlefield_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::phrase(&["would", "enter"]).parse_next(input)?;
     opt(alt((
@@ -75,6 +108,23 @@ fn enter_battlefield_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     )))
     .parse_next(input)?;
     Ok(())
+}
+
+fn sacrifice_replacement_intro<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::kw("if").parse_next(input)?;
+    repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(enter_battlefield_marker))
+        .void()
+        .parse_next(input)?;
+    enter_battlefield_marker(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("sacrifice").parse_next(input)?;
+    Ok(())
+}
+
+fn sacrifice_replacement_result_sentences<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::end_of_sentence().parse_next(input)?;
+    discard_success_sentence(input)?;
+    discard_failure_sentence(input)
 }
 
 fn discard_success_sentence<'a>(input: &mut LexStream<'a>) -> WResult<()> {

@@ -20,10 +20,13 @@ use super::super::util::{
     parse_counter_type_from_tokens, parse_target_phrase, parse_value,
     record_source_reference_surface, span_from_tokens,
 };
+use crate::runtime_backend::families::activation_and_restrictions::controller_filter_for_token_player;
 use crate::runtime_backend::front_end::grammar::effects::zone_counter_shapes as shapes;
 use crate::runtime_backend::grammar::shared_util::value_semantics::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
 };
+
+use super::clause_pattern_helpers::extract_subject_player;
 type ZoneCounterCompatWords<'a> = TokenWordView<'a>;
 
 fn this_way_object_count_value() -> Value {
@@ -583,6 +586,12 @@ pub(crate) fn split_until_source_leaves_tail(tokens: &[OwnedLexToken]) -> (&[Own
     shapes::split_until_source_leaves_shape(tokens)
 }
 
+pub(crate) fn split_until_opponent_becomes_monarch_tail(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    shapes::split_until_opponent_becomes_monarch_shape(tokens)
+}
+
 pub(crate) fn split_until_target_leaves_tail(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
@@ -652,15 +661,7 @@ pub(crate) fn parse_convert(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
 }
 
 pub(crate) fn exile_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {
-    match subject {
-        Some(SubjectAst::Player(PlayerAst::Target)) => Some(PlayerFilter::target_player()),
-        Some(SubjectAst::Player(PlayerAst::TargetOpponent)) => {
-            Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)))
-        }
-        Some(SubjectAst::Player(PlayerAst::That)) => Some(PlayerFilter::IteratedPlayer),
-        Some(SubjectAst::Player(PlayerAst::You)) => Some(PlayerFilter::You),
-        _ => None,
-    }
+    extract_subject_player(subject).and_then(controller_filter_for_token_player)
 }
 
 pub(crate) fn apply_exile_subject_owner_context(

@@ -20,29 +20,49 @@ fn parse_as_enters_effect_program_facts(
     {
         return None;
     }
-    let enters_idx = tokens.iter().position(|token| token.is_word("enters"))?;
-    if enters_idx <= 1 {
-        return None;
-    }
     let comma_idx = tokens
         .iter()
         .enumerate()
-        .skip(enters_idx + 1)
+        .skip(2)
         .find_map(|(idx, token)| token.is_comma().then_some(idx))?;
     if comma_idx + 1 >= tokens.len() {
         return None;
     }
-    let also_turns_face_up = tokens[enters_idx + 1..comma_idx]
+    let (subject_end_idx, also_turns_face_up, turns_face_up_only) = if let Some(enters_idx) = tokens
+        [..comma_idx]
         .iter()
-        .filter(|token| token.kind == super::super::lexer::TokenKind::Word)
-        .map(|token| token.parser_text.as_str())
-        .eq(["or", "is", "turned", "face", "up"]);
+        .position(|token| token.is_word("enters"))
+    {
+        let also_turns_face_up = tokens[enters_idx + 1..comma_idx]
+            .iter()
+            .filter(|token| token.kind == super::super::lexer::TokenKind::Word)
+            .map(|token| token.parser_text.as_str())
+            .eq(["or", "is", "turned", "face", "up"]);
+        (enters_idx, also_turns_face_up, false)
+    } else {
+        let is_idx = tokens[..comma_idx]
+            .iter()
+            .position(|token| token.is_word("is"))?;
+        let is_turned_face_up = tokens[is_idx..comma_idx]
+            .iter()
+            .filter(|token| token.kind == super::super::lexer::TokenKind::Word)
+            .map(|token| token.parser_text.as_str())
+            .eq(["is", "turned", "face", "up"]);
+        if !is_turned_face_up {
+            return None;
+        }
+        (is_idx, true, true)
+    };
+    if subject_end_idx <= 1 {
+        return None;
+    }
     let uses_enters_with_counter_surface = tokens[comma_idx + 1..]
         .windows(2)
         .any(|pair| pair[0].is_word("enters") && pair[1].is_word("with"));
     Some(AsEntersEffectProgramFacts {
-        subject: super::super::lexer::render_token_slice(&tokens[1..enters_idx]),
+        subject: super::super::lexer::render_token_slice(&tokens[1..subject_end_idx]),
         also_turns_face_up,
+        turns_face_up_only,
         uses_enters_with_counter_surface,
     })
 }
@@ -74,11 +94,23 @@ fn parse_as_transforms_effect_program_facts(
     if transforms_idx + 2 >= comma_idx || comma_idx + 1 >= tokens.len() {
         return None;
     }
+    let parsed_destination =
+        super::super::lexer::render_token_slice(&tokens[transforms_idx + 2..comma_idx]);
+    let destination =
+        crate::runtime_backend::front_end::shared::util::current_source_reference_name()
+            .and_then(|source_name| {
+                if source_name.eq_ignore_ascii_case(&parsed_destination) {
+                    return Some(source_name);
+                }
+                let short_name = source_name.split(',').next()?.trim();
+                short_name
+                    .eq_ignore_ascii_case(&parsed_destination)
+                    .then(|| short_name.to_string())
+            })
+            .unwrap_or(parsed_destination);
     Some(AsTransformsEffectProgramFacts {
         subject: super::super::lexer::render_token_slice(&tokens[1..transforms_idx]),
-        destination: super::super::lexer::render_token_slice(
-            &tokens[transforms_idx + 2..comma_idx],
-        ),
+        destination,
     })
 }
 
@@ -164,6 +196,8 @@ pub(crate) fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> Line
                 trigger_surface::parse_becomes_tapped_during_your_turn_tokens(tokens).is_some(),
             frequency: TriggerFrequencyFacts {
                 first_time_each_or_this_turn: trigger_frequency.first_time_each_or_this_turn,
+                first_time_during_each_of_your_turns: trigger_frequency
+                    .first_time_during_each_of_your_turns,
                 becomes_crewed: trigger_frequency.becomes_crewed,
                 do_this_limit_each_turn: trigger_frequency.do_this_limit_each_turn,
             },
@@ -257,7 +291,18 @@ mod tests {
 
         assert_eq!(as_enters.subject, "this Vehicle");
         assert!(as_enters.also_turns_face_up);
+        assert!(!as_enters.turns_face_up_only);
         assert!(!as_enters.uses_enters_with_counter_surface);
+
+        let face_up_only =
+            facts("As this creature is turned face up, put four +1/+1 counters on it.")
+                .statement
+                .as_enters_effect_program
+                .expect("face-up-only timing should be retained as typed semantic facts");
+        assert_eq!(face_up_only.subject, "this creature");
+        assert!(face_up_only.also_turns_face_up);
+        assert!(face_up_only.turns_face_up_only);
+        assert!(!face_up_only.uses_enters_with_counter_surface);
 
         let counter_surface = facts(
             "As this creature enters, remove all counters from all permanents. This creature enters with a +1/+1 counter on it for each counter removed this way.",
@@ -280,6 +325,20 @@ mod tests {
         assert_eq!(as_transforms.subject, "this creature");
         assert_eq!(as_transforms.destination, "Shinryu");
         assert!(parsed.statement.as_enters_effect_program.is_none());
+
+        let normalized =
+            crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+                "Shinryu, Transcendent Rival",
+                || facts("As this creature transforms into shinryu, choose an opponent."),
+            );
+        assert_eq!(
+            normalized
+                .statement
+                .as_transforms_effect_program
+                .expect("normalized destination should remain typed")
+                .destination,
+            "Shinryu"
+        );
     }
 
     #[test]

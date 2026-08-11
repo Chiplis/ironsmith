@@ -2333,8 +2333,7 @@ impl WasmGame {
             .copied()
             .map(|player| (player, self.game.vanguard_starting_hand_size(player)))
             .collect::<HashMap<_, _>>();
-        let mut child_priority = PriorityLoopState::new(self.game.players.len());
-        child_priority.set_auto_choose_single_pip_payment(false);
+        let child_priority = PriorityLoopState::new(self.game.players.len());
         let parent_priority = std::mem::replace(&mut self.priority_state, child_priority);
         let parent_trigger_queue = std::mem::replace(&mut self.trigger_queue, TriggerQueue::new());
         self.suspended_subgame_hosts.push((
@@ -3070,8 +3069,6 @@ impl WasmGame {
     fn reset_runtime_state(&mut self) {
         self.trigger_queue = TriggerQueue::new();
         self.priority_state = PriorityLoopState::new(self.game.players.len());
-        self.priority_state
-            .set_auto_choose_single_pip_payment(false);
         self.pregame = None;
         self.suspended_subgame_hosts.clear();
         self.pending_decision = None;

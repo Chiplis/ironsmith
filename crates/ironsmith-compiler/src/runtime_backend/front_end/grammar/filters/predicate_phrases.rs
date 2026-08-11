@@ -1,8 +1,9 @@
 use super::super::super::lexer::{
     LexedClause, OwnedLexToken, TokenKind, TokenWordView, render_token_slice, token_slice_first_is,
+    trim_lexed_commas,
 };
 use super::*;
-use crate::cards::TextSpan;
+use crate::cards::{TextSpan, builders::TargetAst};
 use crate::runtime_backend::cst_lowering::lower_activation_cost_cst;
 use crate::runtime_backend::grammar::activation_costs::parse_activation_cost_tokens;
 use crate::runtime_backend::grammar::conditions::{
@@ -421,13 +422,16 @@ fn is_source_card_reference_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let relation = parse_prepositional_copula_relation_clauses(tokens, &["in"])?;
+    let relation = parse_prepositional_copula_relation_clauses(tokens, &["in", "on"])?;
     let source = relation.subject_clause;
     if !is_source_reference_clause(source) {
         return None;
     }
 
     let zone = relation.tail_clause;
+    if surface::exact_any(zone, &[&["the", "battlefield"], &["battlefield"]]) {
+        return Some(PredicateAst::SourceIsInZone(Zone::Battlefield));
+    }
     if surface::exact(zone, &["your", "graveyard"]) {
         return Some(PredicateAst::SourceIsInZone(Zone::Graveyard));
     }
@@ -447,6 +451,48 @@ fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
         return Some(PredicateAst::SourceIsInZone(Zone::Command));
     }
     None
+}
+
+/// Parse an ordered-graveyard predicate such as
+/// `this card is in your graveyard with three or more creature cards above it`.
+/// The object filter describes the cards above the source; its zone is supplied
+/// by the ordered graveyard traversal at runtime rather than by ordinary
+/// battlefield filter defaults.
+fn parse_source_graveyard_cards_above_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    const PREFIX: [&str; 7] = ["this", "card", "is", "in", "your", "graveyard", "with"];
+    if words.len() < PREFIX.len() + 5
+        || words[..PREFIX.len()] != PREFIX
+        || words.get(8..10) != Some(&["or", "more"])
+        || words.get(words.len().saturating_sub(2)..) != Some(&["above", "it"])
+    {
+        return None;
+    }
+    let count = crate::runtime_backend::util::parse_number_word_i32(words[7])?;
+    let count = u32::try_from(count).ok().filter(|count| *count > 0)?;
+
+    let count_token = tokens.iter().position(|token| token.is_word(words[7]))?;
+    let or_token = tokens[count_token + 1..]
+        .iter()
+        .position(|token| token.is_word("or"))?
+        + count_token
+        + 1;
+    let above_token = tokens.iter().rposition(|token| token.is_word("above"))?;
+    if !tokens
+        .get(or_token + 1)
+        .is_some_and(|token| token.is_word("more"))
+        || above_token <= or_token + 2
+    {
+        return None;
+    }
+    let mut filter = parse_object_filter(&tokens[or_token + 2..above_token], false).ok()?;
+    if filter.zone == Some(Zone::Battlefield) {
+        filter.zone = None;
+    }
+    if filter.zone.is_some() || filter.controller.is_some() || filter.owner.is_some() {
+        return None;
+    }
+    Some(PredicateAst::SourceInGraveyardWithCardsAbove { filter, count })
 }
 
 fn parse_outlaw_shorthand_filter(clause: LexedClause<'_>) -> Option<ObjectFilter> {
@@ -688,6 +734,9 @@ pub(crate) fn parse_source_keyword_condition_filter(
     }
     let mut filter = ObjectFilter::default();
     apply_filter_keyword_constraint(&mut filter, constraint, false);
+    if subject_words.as_slice() == ["it"] {
+        filter.set_trailing_candidate_ability_condition_surface(true);
+    }
     Some(filter)
 }
 
@@ -710,6 +759,7 @@ fn parse_triggering_object_keyword_predicate(tokens: &[OwnedLexToken]) -> Option
     }
     let mut filter = ObjectFilter::default();
     apply_filter_keyword_constraint(&mut filter, constraint, false);
+    filter.set_trailing_candidate_ability_condition_surface(true);
     Some(PredicateAst::ItMatches(filter))
 }
 
@@ -1458,6 +1508,18 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
         let counter_type = parse_terminal_counter_phrase(counter_clause.tokens().get(1..)?)??;
         return Some(PredicateAst::TriggeringObjectHadNoCounter(counter_type));
     }
+    if surface::exact_any(counter_clause, &[&["counter"], &["counters"]]) {
+        return Some(PredicateAst::ValueComparison {
+            left: Value::CountersOn(
+                Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
+                    "triggering",
+                ))),
+                None,
+            ),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        });
+    }
     let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
     Some(PredicateAst::TriggeringObjectHadCounterAtLeast {
         counter_type,
@@ -1817,10 +1879,27 @@ fn parse_stack_object_targets_object_predicate(tokens: &[OwnedLexToken]) -> Opti
     {
         return None;
     }
-    let target_filter = parse_object_filter(target.tokens(), false).ok()?;
-    Some(PredicateAst::ItMatches(
-        ObjectFilter::spell().targeting_object(target_filter),
-    ))
+    let target =
+        crate::runtime_backend::front_end::grammar::shared_util::target_semantics::parse_target_phrase_inner(
+            target.tokens(),
+        )
+        .ok()?;
+    let spell_filter = match target {
+        TargetAst::Object(target_filter, None, _) => {
+            ObjectFilter::spell().targeting_object(target_filter)
+        }
+        TargetAst::Player(player_filter, None) => {
+            ObjectFilter::spell().targeting_player(player_filter)
+        }
+        TargetAst::ObjectOrPlayer(object_filter, player_filter, None) => {
+            let mut filter =
+                ObjectFilter::spell().targeting(Some(player_filter), Some(object_filter));
+            filter.targets_any_of = true;
+            filter
+        }
+        _ => return None,
+    };
+    Some(PredicateAst::ItMatches(spell_filter))
 }
 
 fn is_stack_object_reference_clause(clause: LexedClause<'_>) -> bool {
@@ -2120,6 +2199,73 @@ fn parse_you_control_or_graveyard_predicate(
     Some(result)
 }
 
+/// Preserve the two independently authored facts in predicates such as
+///
+/// `you control a Squirrel or returned a Squirrel card to your hand this way`.
+///
+/// The ordinary `or` recovery inherits a missing subject from the left side.
+/// In this shape it must inherit only `you`, not the left-side verb `control`:
+/// the right side observes the tagged result of the prior return-to-hand
+/// effect rather than asking whether a matching card is currently controlled.
+fn parse_you_control_or_returned_to_hand_this_way_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<Result<PredicateAst, CardTextError>> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        WinnowSequence::subject("subject", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::action("control", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object("controlled", WinnowCaptureKind::UntilPhrase(&["or"])),
+        WinnowSequence::word("or"),
+        WinnowSequence::action("returned", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object(
+            "returned_object",
+            WinnowCaptureKind::UntilPhrase(&["to", "your", "hand"]),
+        ),
+        WinnowSequence::phrase(&["to", "your", "hand"]),
+        WinnowSequence::phrase(&["this", "way"]),
+    ];
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject = matched.capture_clause("subject", clause)?;
+    let control = matched.capture_clause("control", clause)?;
+    let returned = matched.capture_clause("returned", clause)?;
+    if !is_you_clause(subject)
+        || !surface::exact_any(control, &[&["control"], &["controls"]])
+        || !surface::exact(returned, &["returned"])
+    {
+        return None;
+    }
+
+    let controlled = matched.capture_clause("controlled", clause)?;
+    let returned_object = matched.capture_clause("returned_object", clause)?;
+    if controlled.tokens().is_empty() || returned_object.tokens().is_empty() {
+        return None;
+    }
+
+    Some(
+        parse_object_filter(controlled.tokens(), false).and_then(|mut control_filter| {
+            parse_object_filter(returned_object.tokens(), false).map(|mut returned_filter| {
+                control_filter.controller = Some(PlayerFilter::You);
+                returned_filter.zone = Some(Zone::Hand);
+                returned_filter.set_prior_effect_action_surface(Some(
+                    ironsmith_core::PriorEffectAction::Returned,
+                ));
+                PredicateAst::Or(
+                    Box::new(PredicateAst::PlayerControls {
+                        player: PlayerAst::You,
+                        filter: control_filter,
+                    }),
+                    Box::new(PredicateAst::PlayerTaggedObjectMatches {
+                        player: PlayerAst::You,
+                        tag: TagKey::from(IT_TAG),
+                        filter: returned_filter,
+                        mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+                    }),
+                )
+            })
+        }),
+    )
+}
+
 fn graveyard_object_tokens_after_existential<'a>(
     clause: LexedClause<'a>,
 ) -> Option<&'a [OwnedLexToken]> {
@@ -2148,6 +2294,55 @@ fn parse_you_control_conjoined_predicate(
     let right_object = matched.capture_clause("right_object", tail_clause)?;
     if left_object.tokens().is_empty() || right_object.tokens().is_empty() {
         return None;
+    }
+
+    // A shared plural head scopes `named` over both sides: "you control
+    // creatures named Mine Worker and Power Plant Worker" requires two
+    // independently named creatures. Parsing the right side as a standalone
+    // object phrase instead mistakes words inside the second card name for
+    // characteristics (for example, `Plant` as a subtype).
+    let tail_words = tail_clause.word_refs();
+    let has_shared_named_head = tail_words.get(1) == Some(&"named")
+        && tail_words.first().is_some_and(|word| {
+            matches!(
+                *word,
+                "artifacts"
+                    | "cards"
+                    | "creatures"
+                    | "enchantments"
+                    | "lands"
+                    | "permanents"
+                    | "spells"
+                    | "tokens"
+            )
+        });
+    if has_shared_named_head {
+        let shared_named_result =
+            parse_object_filter(left_object.tokens(), false).and_then(|mut left_filter| {
+                let right_name = render_token_slice(right_object.tokens())
+                    .trim()
+                    .to_ascii_lowercase();
+                if left_filter.name.is_none() || right_name.is_empty() {
+                    return Err(CardTextError::ParseError(
+                        "missing card name in conjoined named-control condition".to_string(),
+                    ));
+                }
+                let mut right_filter = left_filter.clone();
+                right_filter.name = Some(right_name);
+                left_filter.controller = Some(PlayerFilter::You);
+                right_filter.controller = Some(PlayerFilter::You);
+                Ok(PredicateAst::And(
+                    Box::new(PredicateAst::PlayerControls {
+                        player: PlayerAst::You,
+                        filter: left_filter,
+                    }),
+                    Box::new(PredicateAst::PlayerControls {
+                        player: PlayerAst::You,
+                        filter: right_filter,
+                    }),
+                ))
+            });
+        return Some(shared_named_result);
     }
 
     let result = parse_object_filter(left_object.tokens(), false).and_then(|mut left_filter| {
@@ -2212,7 +2407,12 @@ fn parse_player_controls_predicate(
         .iter()
         .chain(POWER_GREATER_THAN_TOUGHNESS_TAIL_PHRASES)
         .any(|phrase| surface::contains(clause, phrase));
-    if !has_power_toughness_relation {
+    // Preserve an authored exact cardinality through the local quantity
+    // capture below.  The shared possession parser is intentionally tolerant
+    // and can normalize singular `exactly one` to an existential control
+    // condition, which is not equivalent for intervening-if triggers.
+    let has_authored_exact_count = tokens.iter().any(|token| token.is_word("exactly"));
+    if !has_power_toughness_relation && !has_authored_exact_count {
         if let Some(control_condition) =
             crate::runtime_backend::grammar::conditions::parse_control_condition(
                 tokens,
@@ -2467,7 +2667,65 @@ fn ability_resolution_ordinal_disjunction_counts(clause: LexedClause<'_>) -> Opt
 /// independent event-boundary comparison, so shared Oracle wording such as
 /// "the first instant spell, the first sorcery spell, or the first Otter
 /// spell ..." retains its inclusive disjunction semantics.
-fn parse_triggering_spell_ordinal_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+fn split_triggering_spell_ordinal_categories(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+    let mut categories = Vec::new();
+    let mut category_start = 0usize;
+    let mut idx = 0usize;
+
+    while idx < tokens.len() {
+        if tokens[idx].kind != TokenKind::Comma && !tokens[idx].is_word("or") {
+            idx += 1;
+            continue;
+        }
+
+        let mut next_category_start = idx + 1;
+        while tokens
+            .get(next_category_start)
+            .is_some_and(|token| token.kind == TokenKind::Comma)
+        {
+            next_category_start += 1;
+        }
+        if tokens
+            .get(next_category_start)
+            .is_some_and(|token| token.is_word("or"))
+        {
+            next_category_start += 1;
+        }
+
+        let mut ordinal_idx = next_category_start;
+        if tokens
+            .get(ordinal_idx)
+            .is_some_and(|token| token.is_word("the"))
+        {
+            ordinal_idx += 1;
+        }
+        let starts_repeated_ordinal = tokens
+            .get(ordinal_idx)
+            .and_then(|token| ordinal_number_word(token.parser_text()))
+            .is_some_and(|ordinal| ordinal > 0);
+        if !starts_repeated_ordinal {
+            idx += 1;
+            continue;
+        }
+
+        let category = trim_lexed_commas(&tokens[category_start..idx]);
+        if !category.is_empty() {
+            categories.push(category);
+        }
+        category_start = next_category_start;
+        idx = ordinal_idx;
+    }
+
+    let category = trim_lexed_commas(&tokens[category_start..]);
+    if !category.is_empty() {
+        categories.push(category);
+    }
+    categories
+}
+
+pub(crate) fn parse_triggering_spell_ordinal_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
     const OPTIONAL_THE: &[WinnowAtom<'static>] = &[WinnowSequence::word("the")];
     const CAST_THIS_TURN_SUFFIXES: &[&[&str]] = &[
         &["you", "cast", "this", "turn"],
@@ -2490,7 +2748,7 @@ fn parse_triggering_spell_ordinal_predicate(tokens: &[OwnedLexToken]) -> Option<
     let categories = matched.capture_clause("ordinal_categories", clause)?;
 
     let mut predicates = Vec::new();
-    for category in split_lexed_slices_on_or(categories.tokens()) {
+    for category in split_triggering_spell_ordinal_categories(categories.tokens()) {
         let category = LexedClause::new(category).trimmed();
         let category_tokens = strip_leading_article_tokens(category.tokens());
         let (ordinal_token, descriptor_tokens) = category_tokens.split_first()?;
@@ -3393,7 +3651,7 @@ fn parse_demonstrative_or_descriptor_predicate(
     else {
         return Ok(None);
     };
-    if negative || tagged_that_enchantment {
+    if tagged_that_enchantment {
         return Ok(None);
     }
     let Some(or_idx) = token_index_for_word(&descriptor_tokens, OR_WORD) else {
@@ -3425,10 +3683,18 @@ fn parse_demonstrative_or_descriptor_predicate(
         return Ok(None);
     }
 
-    Ok(Some(PredicateAst::Or(
+    let predicate = PredicateAst::Or(
         Box::new(demonstrative_match_predicate(left, match_time)),
         Box::new(demonstrative_match_predicate(right, match_time)),
-    )))
+    );
+    Ok(Some(if negative {
+        // A single negated copula scopes over the complete coordinated
+        // descriptor: "it isn't a creature or Vehicle" means the object is
+        // neither one, not "not a creature OR a Vehicle."
+        PredicateAst::Not(Box::new(predicate))
+    } else {
+        predicate
+    }))
 }
 
 fn is_it_demonstrative_subject_clause(clause: LexedClause<'_>) -> bool {

@@ -2939,7 +2939,13 @@ pub(super) fn setup_spell_mana_window_probe()
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let mountain = crate::cards::definitions::basic_mountain();
+    let mountain = CardDefinitionBuilder::new(CardId::new(), "Ordering Mountain")
+        .card_types(vec![CardType::Land])
+        .with_ability(Ability::mana(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+            vec![ManaSymbol::Red],
+        ))
+        .build();
     let mountain_id = game.create_object_from_definition(&mountain, alice, Zone::Battlefield);
     let spell = CardDefinitionBuilder::new(CardId::new(), "Mana Window Order Probe")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
@@ -2976,32 +2982,30 @@ pub(super) fn spell_mana_ability_window_precedes_every_cost_payment() {
         &PriorityResponse::PriorityAction(cast_action),
     )
     .expect("the cast should reach its pre-payment mana-ability window");
-    let window = match progress {
+    let payment = match progress {
         GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            crate::decisions::context::DecisionContext::ManaPayment(ctx),
         ) => ctx,
-        other => panic!("expected the mana-ability window, got {other:?}"),
+        other => panic!("expected the authoritative mana proposal, got {other:?}"),
     };
-    assert!(window.description.starts_with("Activate mana abilities"));
+    assert_eq!(payment.plan.mana_ability_steps.len(), 1);
+    assert_eq!(payment.plan.mana_ability_steps[0].source, mountain_id);
     assert!(
         game.object(mountain_id)
             .is_some_and(|mountain| mountain.zone == Zone::Battlefield)
     );
     assert!(!game.is_tapped(mountain_id));
 
-    let mana_choice = window
-        .options
-        .iter()
-        .find(|option| option.object_id == Some(mountain_id))
-        .map(|option| option.index)
-        .expect("the window should expose the Mountain mana ability");
     let progress = apply_priority_response(
         &mut game,
         &mut trigger_queue,
         &mut state,
-        &PriorityResponse::ManaPayment(mana_choice),
+        &PriorityResponse::ManaPaymentPlan(crate::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id: payment.plan.id,
+            request_hash: payment.plan.request_hash,
+        }),
     )
-    .expect("activating the Mountain should lock mana before costs are paid");
+    .expect("confirming the plan should prepare mana before costs are paid");
     let cost_order = match progress {
         GameProgress::NeedsDecisionCtx(
             crate::decisions::context::DecisionContext::SelectOptions(ctx),
@@ -3071,56 +3075,24 @@ pub(super) fn closed_spell_mana_window_does_not_reopen_after_nonmana_cost_and_ro
         &PriorityResponse::PriorityAction(cast_action),
     )
     .expect("the cast should reach its pre-payment mana-ability window");
-    let window = match progress {
+    let _payment = match progress {
         GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            crate::decisions::context::DecisionContext::ManaPayment(ctx),
         ) => ctx,
-        other => panic!("expected the mana-ability window, got {other:?}"),
+        other => panic!("expected the authoritative mana proposal, got {other:?}"),
     };
-    let finish_choice = window
-        .options
-        .iter()
-        .find(|option| option.description.starts_with("Finish"))
-        .map(|option| option.index)
-        .expect("the player must be able to close the mana-ability window");
-    let progress = apply_priority_response(
-        &mut game,
-        &mut trigger_queue,
-        &mut state,
-        &PriorityResponse::ManaPayment(finish_choice),
-    )
-    .expect("closing the window should lock the total cost");
-    let cost_order = match progress {
-        GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
-        ) => ctx,
-        other => panic!("expected cost ordering after the window, got {other:?}"),
-    };
-    let sacrifice_choice = cost_order
-        .options
-        .iter()
-        .find(|option| {
-            option
-                .description
-                .to_ascii_lowercase()
-                .contains("sacrifice")
-        })
-        .map(|option| option.index)
-        .expect("the sacrifice component should be selectable");
-    apply_priority_response(
-        &mut game,
-        &mut trigger_queue,
-        &mut state,
-        &PriorityResponse::NextCostChoice(sacrifice_choice),
-    )
-    .expect("the sacrifice component should request a permanent");
     let error = apply_priority_response(
         &mut game,
         &mut trigger_queue,
         &mut state,
-        &PriorityResponse::CardCostChoice(mountain_id),
+        &PriorityResponse::ManaPaymentPlan(crate::mana_payment::ManaPaymentResponse::Replan {
+            preferences: crate::mana_payment::ManaPaymentPreferences {
+                excluded_sources: vec![mountain_id],
+                ..Default::default()
+            },
+        }),
     )
-    .expect_err("mana abilities must not reopen after the first cost is paid");
+    .expect_err("excluding the only source must reject the plan before any cost is paid");
 
     assert!(matches!(error, GameLoopError::ActionCancelled(_)));
     assert!(game.stack_is_empty());
@@ -3151,7 +3123,13 @@ pub(super) fn activation_mana_ability_window_precedes_every_cost_payment() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let mountain = crate::cards::definitions::basic_mountain();
+    let mountain = CardDefinitionBuilder::new(CardId::new(), "Activation Ordering Mountain")
+        .card_types(vec![CardType::Land])
+        .with_ability(Ability::mana(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+            vec![ManaSymbol::Red],
+        ))
+        .build();
     let mountain_id = game.create_object_from_definition(&mountain, alice, Zone::Battlefield);
     let source = create_creature(&mut game, "Activation Mana Window Probe", alice, 1, 1);
     game.object_mut(source)
@@ -3198,27 +3176,25 @@ pub(super) fn activation_mana_ability_window_precedes_every_cost_payment() {
         &PriorityResponse::PriorityAction(activate_action),
     )
     .expect("the activation should reach its pre-payment mana-ability window");
-    let window = match progress {
+    let payment = match progress {
         GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            crate::decisions::context::DecisionContext::ManaPayment(ctx),
         ) => ctx,
-        other => panic!("expected the activation mana-ability window, got {other:?}"),
+        other => panic!("expected the authoritative activation proposal, got {other:?}"),
     };
-    assert!(window.description.starts_with("Activate mana abilities"));
+    assert_eq!(payment.plan.mana_ability_steps.len(), 1);
+    assert_eq!(payment.plan.mana_ability_steps[0].source, mountain_id);
     assert!(!game.is_tapped(mountain_id));
-    let mana_choice = window
-        .options
-        .iter()
-        .find(|option| option.object_id == Some(mountain_id))
-        .map(|option| option.index)
-        .expect("the activation window should expose the Mountain mana ability");
     let progress = apply_priority_response(
         &mut game,
         &mut trigger_queue,
         &mut state,
-        &PriorityResponse::ManaPayment(mana_choice),
+        &PriorityResponse::ManaPaymentPlan(crate::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id: payment.plan.id,
+            request_hash: payment.plan.request_hash,
+        }),
     )
-    .expect("activating the Mountain should precede activation-cost payment");
+    .expect("confirming the plan should precede activation-cost payment");
     let cost_order = match progress {
         GameProgress::NeedsDecisionCtx(
             crate::decisions::context::DecisionContext::SelectOptions(ctx),

@@ -41,6 +41,9 @@ pub struct GrantPlayTaggedEffect {
     /// "cast spells from among those exiled cards" wording over the singular
     /// "cast that card this turn". Purely cosmetic; resolution is unaffected.
     pub cast_pool_is_plural: bool,
+    /// Total number of plays shared by the tagged collection. The choice of
+    /// card is deferred until a card is actually played.
+    pub max_plays: Option<u32>,
 }
 
 impl GrantPlayTaggedEffect {
@@ -66,11 +69,17 @@ impl GrantPlayTaggedEffect {
             spell_cost_increase: None,
             lands_enter_tapped: false,
             cast_pool_is_plural: false,
+            max_plays: None,
         }
     }
 
     pub fn cast_pool_is_plural(mut self, plural: bool) -> Self {
         self.cast_pool_is_plural = plural;
+        self
+    }
+
+    pub fn with_max_plays(mut self, max_plays: Option<u32>) -> Self {
+        self.max_plays = max_plays;
         self
     }
 
@@ -206,6 +215,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
 
         let mut granted = 0usize;
         let mut seen = std::collections::HashSet::new();
+        let mut shared_usage_by_player = std::collections::HashMap::new();
         let mut mana_permission_stable_ids =
             std::collections::HashMap::<crate::ids::PlayerId, Vec<crate::ids::StableId>>::new();
         for snapshot in snapshots {
@@ -281,7 +291,30 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 spell_cost_increase: self.spell_cost_increase.clone(),
                 lands_enter_tapped: self.lands_enter_tapped,
             };
-            if constraints != PlayFromConstraints::default() {
+            let shared_usage_id = self.max_plays.map(|max_plays| {
+                *shared_usage_by_player.entry(player_id).or_insert_with(|| {
+                    game.effect_store
+                        .grant_registry
+                        .create_shared_usage_budget(max_plays)
+                })
+            });
+            if let Some(shared_usage_id) = shared_usage_id {
+                let target_stable_id = ((constraints != PlayFromConstraints::default()
+                    && self.duration != GrantPlayTaggedDuration::ForAsLongAsExiled)
+                    || self.during_turns_counter_put_on_source.is_some())
+                .then_some(object_stable_id);
+                game.effect_store
+                    .grant_registry
+                    .grant_play_from_to_card_in_shared_budget(
+                        object_id,
+                        target_stable_id,
+                        object_zone,
+                        player_id,
+                        constraints,
+                        source,
+                        shared_usage_id,
+                    );
+            } else if constraints != PlayFromConstraints::default() {
                 if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
                     game.effect_store.grant_registry.grant_play_from_to_card(
                         object_id,
@@ -429,6 +462,68 @@ mod tests {
             }
             _ => panic!("expected effect grant source"),
         }
+    }
+
+    #[test]
+    fn shared_tagged_play_budget_is_consumed_by_first_cast() {
+        use crate::alternative_cast::CastingMethod;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let first = CardBuilder::new(CardId::from_raw(11), "First Exiled Card").build();
+        let second = CardBuilder::new(CardId::from_raw(12), "Second Exiled Card").build();
+        let first_id = game.create_object_from_card(&first, alice, Zone::Exile);
+        let second_id = game.create_object_from_card(&second, alice, Zone::Exile);
+        let snapshots = [first_id, second_id]
+            .into_iter()
+            .map(|id| ObjectSnapshot::from_object(game.object(id).unwrap(), &game))
+            .collect();
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("witness_cards"), snapshots);
+
+        let source = ObjectId::from_raw(101);
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+        GrantPlayTaggedEffect::until_your_next_turn("witness_cards", PlayerFilter::You)
+            .with_max_plays(Some(1))
+            .execute(&mut game, &mut ctx)
+            .expect("shared tagged permission should resolve");
+
+        assert!(game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            first_id,
+            Zone::Exile,
+            alice,
+        ));
+        assert!(game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            second_id,
+            Zone::Exile,
+            alice,
+        ));
+
+        crate::game_loop::propose_spell_cast(
+            &mut game,
+            first_id,
+            Zone::Exile,
+            alice,
+            &CastingMethod::PlayFrom {
+                source,
+                zone: Zone::Exile,
+                use_alternative: None,
+            },
+        )
+        .expect("first card should use the shared permission");
+
+        assert!(
+            !game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                second_id,
+                Zone::Exile,
+                alice,
+            ),
+            "playing either card must exhaust the collection's shared budget"
+        );
     }
 
     #[test]

@@ -156,6 +156,7 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
         MetadataLineKind::ManaCost => MetadataLine::ManaCost(surface.value),
         MetadataLineKind::TypeLine => MetadataLine::TypeLine(surface.value),
         MetadataLineKind::FirstPrintedSet => MetadataLine::FirstPrintedSet(surface.value),
+        MetadataLineKind::AttractionLights => MetadataLine::AttractionLights(surface.value),
         MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(surface.value),
         MetadataLineKind::Loyalty => MetadataLine::Loyalty(surface.value),
         MetadataLineKind::Defense => MetadataLine::Defense(surface.value),
@@ -242,6 +243,24 @@ fn replace_names_with_map(
     fn preceded_by_ability_grant_word(bytes: &[u8], idx: usize) -> bool {
         previous_word(bytes, idx)
             .is_some_and(|word| matches!(word, b"has" | b"have" | b"gain" | b"gains"))
+    }
+
+    fn is_indefinite_become_descriptor(bytes: &[u8], idx: usize) -> bool {
+        let Some(article) = previous_word(bytes, idx) else {
+            return false;
+        };
+        if !matches!(article, b"a" | b"an") {
+            return false;
+        }
+        let mut article_start = idx;
+        while article_start > 0 && !bytes[article_start - 1].is_ascii_alphanumeric() {
+            article_start -= 1;
+        }
+        while article_start > 0 && bytes[article_start - 1].is_ascii_alphanumeric() {
+            article_start -= 1;
+        }
+        previous_word(bytes, article_start)
+            .is_some_and(|word| matches!(word, b"become" | b"becomes" | b"became" | b"becoming"))
     }
 
     fn token_word_appears_before_sentence_end(bytes: &[u8], mut idx: usize) -> bool {
@@ -508,6 +527,7 @@ fn replace_names_with_map(
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
             && !within_vote_choice_clause(bytes, idx)
+            && !is_indefinite_become_descriptor(bytes, idx)
             && !(preserve_source_surfaces
                 && should_preserve_source_surface_context(bytes, idx, full_bytes.len()))
             && !should_preserve_single_word_keyword_verb_usage(
@@ -540,6 +560,7 @@ fn replace_names_with_map(
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
             && !within_vote_choice_clause(bytes, idx)
+            && !is_indefinite_become_descriptor(bytes, idx)
             && (is_short_name_self_reference_context(bytes, idx, short_bytes.len())
                 || is_result_optional_companion_short_name_context(bytes, idx, short_bytes.len()))
             && !(preserve_source_surfaces
@@ -1000,9 +1021,24 @@ pub(crate) fn preprocess_document(
                 .ok()
                 .map(|tokens| looks_like_spell_resolution_followup_intro_lexed(tokens.as_slice()))
                 .unwrap_or(false);
+            let is_standalone_keyword_action = lex_line(split_line.as_str(), virtual_line_index)
+                .ok()
+                .and_then(|tokens| {
+                    split_lexed_sentences(&tokens)
+                        .into_iter()
+                        .next()
+                        .map(|sentence| {
+                            super::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(
+                                sentence,
+                            )
+                            .is_some()
+                        })
+                })
+                .unwrap_or(false);
 
             if spell_card_prefers_resolution_line_merge(&builder)
                 && looks_like_resolution_followup
+                && !is_standalone_keyword_action
                 && let Some(PreprocessedItem::Line(previous)) = items.last_mut()
             {
                 let combined_raw_line =
@@ -1232,6 +1268,30 @@ mod tests {
         )
         .expect("an ordinary card-name reference should still normalize");
         assert_eq!(reference.normalized, "when this enters, draw a card.");
+    }
+
+    #[test]
+    fn preprocess_preserves_front_face_name_used_as_become_subtype_descriptor() {
+        let document = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Coward // Killer")
+                .card_types(vec![CardType::Sorcery]),
+            "Target creature can't block this turn and becomes a Coward in addition to its other types until end of turn.\nTime travel.",
+        )
+        .expect("combined-card face text should preprocess");
+        let Some(PreprocessedItem::Line(line)) = document.items.first() else {
+            panic!("expected Coward's first rules line: {:#?}", document.items);
+        };
+
+        assert_eq!(
+            line.info.normalized.normalized,
+            "target creature can't block this turn and becomes a coward in addition to its other types until end of turn."
+        );
+        assert_eq!(
+            document.items.len(),
+            2,
+            "an independently executable keyword action on its own Oracle line must retain that source boundary: {:#?}",
+            document.items
+        );
     }
 
     #[test]

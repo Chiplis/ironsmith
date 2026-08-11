@@ -6,7 +6,9 @@ use super::{
 };
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_single_target_from_spec};
+use crate::effects::helpers::{
+    resolve_objects_for_effect, resolve_single_object_from_spec, resolve_single_target_from_spec,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::AttachmentTarget;
@@ -33,7 +35,28 @@ fn resolve_attachment_target(
         }
     }
 
-    match resolve_single_target_from_spec(game, spec, ctx)? {
+    let resolved = match spec.base() {
+        ChooseSpec::Player(_)
+        | ChooseSpec::SpecificPlayer(_)
+        | ChooseSpec::SourceController
+        | ChooseSpec::SourceOwner
+        | ChooseSpec::EachPlayer(_)
+        | ChooseSpec::ObjectOrPlayer(_, _)
+        | ChooseSpec::PlayerOrPlaneswalker(_)
+        | ChooseSpec::AttackedPlayerOrPlaneswalker
+        | ChooseSpec::AnyTarget
+        | ChooseSpec::AnyOtherTarget
+        | ChooseSpec::Iterated => resolve_single_target_from_spec(game, spec, ctx)?,
+        // A counted object target can legitimately resolve to an empty set
+        // when its minimum is zero. Keep that absence in the object domain so
+        // it becomes `InvalidTarget` (a no-op for this instruction) instead
+        // of retrying the same spec as a player and surfacing a type error.
+        _ => crate::effects::ResolvedTarget::Object(resolve_single_object_from_spec(
+            game, spec, ctx,
+        )?),
+    };
+
+    match resolved {
         crate::effects::ResolvedTarget::Object(id) => Ok(AttachmentTarget::Object(id)),
         crate::effects::ResolvedTarget::Player(id) => Ok(AttachmentTarget::Player(id)),
     }
@@ -245,6 +268,34 @@ mod tests {
             Some(crate::object::AuraAttachmentFilter::from(ObjectFilter::creature()).into());
         game.add_object(object);
         id
+    }
+
+    #[test]
+    fn optional_object_destination_with_no_announced_target_is_a_no_op() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let equipment = create_equipment(&mut game, "Optional Equipment", alice);
+        let original_host = create_creature(&mut game, "Original Host", alice);
+        assert!(attach_battlefield_object_to_target(
+            &mut game,
+            equipment,
+            AttachmentTarget::Object(original_host),
+        ));
+
+        let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()))
+            .with_count(crate::effect::ChoiceCount::up_to(1));
+        let effect = AttachObjectsEffect::new(ChooseSpec::SpecificObject(equipment), target);
+        let mut ctx = ExecutionContext::new_default(equipment, alice);
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("declining an optional attachment target should not error");
+
+        assert_eq!(outcome.status, crate::effect::OutcomeStatus::TargetInvalid);
+        assert_eq!(
+            game.object(equipment).and_then(|object| object.attached_to),
+            Some(AttachmentTarget::Object(original_host)),
+            "a declined reattachment must leave the Equipment where it was"
+        );
     }
 
     #[test]
@@ -554,6 +605,62 @@ mod tests {
             game.object(second_aura)
                 .and_then(|object| object.attached_to),
             Some(AttachmentTarget::Object(second_creature))
+        );
+    }
+
+    #[test]
+    fn formerly_attached_equipment_resolves_from_departed_source_lki() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Counter Inheritance Source", alice);
+        let target = create_creature(&mut game, "Counter Inheritance Target", alice);
+        let former_equipment = create_equipment(&mut game, "Former Equipment", alice);
+        let unrelated_equipment = create_equipment(&mut game, "Unrelated Equipment", alice);
+
+        assert!(
+            crate::effects::permanents::attach_battlefield_object_to_target(
+                &mut game,
+                former_equipment,
+                AttachmentTarget::Object(source),
+            )
+        );
+        let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(source).expect("source should exist"),
+            &game,
+        );
+        game.move_object_by_effect(source, Zone::Graveyard)
+            .expect("sacrificed source should leave the battlefield");
+        assert!(
+            game.object(source).is_none(),
+            "the attachment's former battlefield host must no longer be a live object"
+        );
+
+        let mut formerly_attached_equipment = ObjectFilter::default()
+            .in_zone(Zone::Battlefield)
+            .with_subtype(Subtype::Equipment);
+        formerly_attached_equipment.attached_to_object = Some(Box::new(ObjectFilter::source()));
+        let effect = AttachObjectsEffect::new(
+            ChooseSpec::All(formerly_attached_equipment),
+            ChooseSpec::SpecificObject(target),
+        );
+        let mut ctx =
+            ExecutionContext::new_default(source, alice).with_source_snapshot(source_snapshot);
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("former attachment should resolve from source LKI");
+
+        assert_eq!(outcome.count_or_zero(), 1);
+        assert_eq!(
+            game.object(former_equipment)
+                .and_then(|object| object.attached_to),
+            Some(AttachmentTarget::Object(target))
+        );
+        assert_eq!(
+            game.object(unrelated_equipment)
+                .and_then(|object| object.attached_to),
+            None,
+            "Equipment absent from the source snapshot must not be attached"
         );
     }
 }

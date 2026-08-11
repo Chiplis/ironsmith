@@ -1788,6 +1788,71 @@ fn forecast_activation_requires_the_source_owners_upkeep_and_is_once_per_turn() 
     );
 }
 
+#[test]
+fn any_player_mana_activation_uses_the_activators_turn_before_end_step() {
+    use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
+    use crate::cost::TotalCost;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let card = CardBuilder::new(CardId::from_raw(57_201), "Shared Mana Source")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let source_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    game.object_mut(source_id)
+        .expect("shared mana source")
+        .abilities_mut()
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: TotalCost::free(),
+                effects: crate::resolution::ResolutionProgram::default(),
+                choices: vec![],
+                timing: ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: Some(vec![ManaSymbol::Colorless]),
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let bob_can_activate = |game: &GameState| {
+        compute_legal_actions(game, bob).iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateManaAbility { source, .. } if *source == source_id
+            )
+        })
+    };
+
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+    game.turn.phase = Phase::NextMain;
+    game.turn.step = None;
+    assert!(
+        bob_can_activate(&game),
+        "an opponent may activate the source during that opponent's own turn"
+    );
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(bob);
+    assert!(
+        !bob_can_activate(&game),
+        "the permission does not extend into another player's turn"
+    );
+
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(Step::End);
+    assert!(
+        !bob_can_activate(&game),
+        "the activator-relative permission ends before the end step"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_compute_legal_actions_excludes_hand_only_ability_from_battlefield() {

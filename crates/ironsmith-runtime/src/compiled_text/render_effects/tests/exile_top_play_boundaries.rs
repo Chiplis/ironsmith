@@ -98,6 +98,61 @@ fn linked_exile_top_play_accepts_duration_player_and_land_variants() {
 }
 
 #[test]
+fn plural_exile_pool_with_one_shared_play_renders_one_of_those_cards() {
+    let tag = TagKey::from("__sentence_helper_exiled_l0_s0_e0");
+    let exile = Effect::new(
+        crate::effects::ExileTopOfLibraryEffect::new(Value::Fixed(2), PlayerFilter::You)
+            .tag_moved(tag.clone()),
+    );
+    let mut grant = crate::effects::GrantPlayTaggedEffect::new(
+        tag,
+        PlayerFilter::You,
+        crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep,
+        true,
+        ironsmith_core::value_model::ManaSpendMode::Normal,
+    );
+    grant.cast_pool_is_plural = true;
+    grant.max_plays = Some(1);
+
+    assert_eq!(
+        describe_effect_clause_list(&[exile.clone(), Effect::new(grant.clone())]).as_deref(),
+        Some(
+            "exile the top two cards of your library. Until your next end step, you may play one of those cards"
+        )
+    );
+
+    for max_plays in [None, Some(2)] {
+        grant.max_plays = max_plays;
+        assert!(
+            describe_effect_clause_list(&[exile.clone(), Effect::new(grant.clone())]).is_some_and(
+                |text| {
+                    text.contains("may play those cards")
+                        && !text.contains("play one of those cards")
+                }
+            ),
+            "a non-singleton play budget must not inherit the one-card choice surface"
+        );
+    }
+
+    grant.max_plays = Some(1);
+    grant.duration = crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd;
+    assert!(
+        describe_effect_clause_list(&[exile.clone(), Effect::new(grant.clone())])
+            .is_some_and(|text| text.contains("may play those cards")
+                && !text.contains("play one of those cards")),
+        "a different permission duration must not inherit the exact next-end-step surface"
+    );
+
+    grant.duration = crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep;
+    grant.tag = TagKey::from("__different_exiled_collection");
+    assert!(
+        describe_effect_clause_list(&[exile, Effect::new(grant)])
+            .is_none_or(|text| !text.contains("play one of those cards")),
+        "unrelated exile and permission tags must not be rendered as one linked collection"
+    );
+}
+
+#[test]
 fn linked_exile_top_play_renders_source_exile_event_boundary() {
     let tag = TagKey::from("__sentence_helper_exiled_l0_s0_e0");
     let surface = ironsmith_core::GrantPlayTaggedSurface::default()

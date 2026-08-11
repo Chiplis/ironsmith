@@ -204,6 +204,7 @@ pub(crate) fn describe_chain_copy_effect_list(effects: &[Effect]) -> Option<Stri
     if !matches!(copy.target.unhinted(), ChooseSpec::Source)
         || copy.count != Value::Fixed(1)
         || !copy.removed_supertypes.is_empty()
+        || copy.has_characteristic_modifiers()
         || !chain_actor_matches_enabling_action(
             copy_decider,
             enabling_decider,

@@ -57,6 +57,77 @@ fn strip_leading_sign(text: &str) -> Option<&str> {
     None
 }
 
+/// Parse a return action authored once between a modal choice instruction and
+/// its bullet list. Restrict this to demonstrative object follow-ups so
+/// ordinary modal metadata sentences (for example, repeated-mode permission)
+/// and not-yet-specialized common actions remain header text.
+fn parse_modal_common_suffix_effects(
+    tokens: &[OwnedLexToken],
+    choose_idx: usize,
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let Some(sentence_end) = tokens
+        .iter()
+        .enumerate()
+        .skip(choose_idx)
+        .find_map(|(index, token)| token.is_period().then_some(index))
+    else {
+        return Ok(Vec::new());
+    };
+
+    let mut effects = Vec::new();
+    for sentence in split_lexed_sentences(&tokens[sentence_end + 1..]) {
+        let return_action = sentence
+            .first()
+            .is_some_and(|token| token.is_word("return"));
+        let demonstrative_object = sentence.iter().any(|token| {
+            ["it", "them", "that", "those"]
+                .iter()
+                .any(|word| token.is_word(word))
+        });
+        if return_action && demonstrative_object {
+            effects.extend(parse_effect_sentences_lexed(sentence)?);
+        }
+    }
+    Ok(effects)
+}
+
+/// Parse effects authored once after the modal instruction itself, as in
+/// "choose one and this creature gets +1/+1 until end of turn." These effects
+/// are neither pre-choice setup nor part of any individual bullet.
+fn parse_modal_common_prefix_effects(
+    tokens: &[OwnedLexToken],
+    choose_idx: usize,
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let Some(sentence_end) =
+        tokens
+            .iter()
+            .enumerate()
+            .skip(choose_idx)
+            .find_map(|(index, token)| {
+                (token.is_period() || matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+                    .then_some(index)
+            })
+    else {
+        return Ok(Vec::new());
+    };
+    let Some(and_idx) = tokens[choose_idx + 1..sentence_end]
+        .iter()
+        .rposition(|token| token.is_word("and"))
+        .map(|offset| choose_idx + 1 + offset)
+    else {
+        return Ok(Vec::new());
+    };
+    let effect_tokens = trim_lexed_commas(&tokens[and_idx + 1..sentence_end]);
+    if effect_tokens.is_empty()
+        || effect_tokens
+            .first()
+            .is_some_and(|token| token.is_word("or"))
+    {
+        return Ok(Vec::new());
+    }
+    parse_effect_sentences_lexed(effect_tokens)
+}
+
 pub(crate) fn parse_modal_header(
     info: &LineInfo,
     tokens: &[OwnedLexToken],
@@ -66,11 +137,16 @@ pub(crate) fn parse_modal_header(
         .trim_start()
         .to_ascii_lowercase()
         .starts_with("spree");
-    let choose_spec = if spree {
+    let tiered = info
+        .raw_line
+        .trim_start()
+        .to_ascii_lowercase()
+        .starts_with("tiered");
+    let choose_spec = if spree || tiered {
         ModalHeaderChooseSpec {
             choose_idx: 0,
             min: Value::Fixed(1),
-            max: None,
+            max: tiered.then_some(Value::Fixed(1)),
             random: false,
             x_clause_start: None,
         }
@@ -167,17 +243,20 @@ pub(crate) fn parse_modal_header(
         effect_start_idx = comma_idx + 1;
     }
 
-    let prechoose_tokens = if spree {
+    let prechoose_tokens = if spree || tiered {
         &[]
     } else {
         trim_lexed_commas(&tokens[effect_start_idx..choose_idx])
     };
     let (prefix_effects_ast, modal_gate) = parse_modal_header_prefix_effects(prechoose_tokens)?;
+    let common_prefix_effects_ast = parse_modal_common_prefix_effects(tokens, choose_idx)?;
+    let common_suffix_effects_ast = parse_modal_common_suffix_effects(tokens, choose_idx)?;
 
     Ok(Some(ModalHeader {
         min,
         max,
         spree,
+        tiered,
         weighted_mode_points: super::grammar::modal::parse_modal_point_header_tokens(tokens)
             .is_some(),
         random,
@@ -193,6 +272,8 @@ pub(crate) fn parse_modal_header(
         activated,
         x_replacement,
         prefix_effects_ast,
+        common_prefix_effects_ast,
+        common_suffix_effects_ast,
         modal_gate,
         line_text: info.raw_line.clone(),
     }))
@@ -365,7 +446,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Endure { .. }
             | SubjectVerbActionAst::Exploit
             | SubjectVerbActionAst::ConniveIterated
-            | SubjectVerbActionAst::OpenAttraction
+            | SubjectVerbActionAst::OpenAttraction { .. }
             | SubjectVerbActionAst::ManifestTopCardOfLibrary
             | SubjectVerbActionAst::CloakTopCardOfLibrary
             | SubjectVerbActionAst::ManifestCardFromHand
@@ -377,6 +458,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::FightIterated { .. }
             | SubjectVerbActionAst::Clash { .. }
             | SubjectVerbActionAst::FlipCoin
+            | SubjectVerbActionAst::FlipCoinFaceOnly
             | SubjectVerbActionAst::RollDie { .. }
             | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
@@ -484,6 +566,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
+            | SubjectVerbActionAst::ReplaceNextDamageToTarget { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
@@ -492,6 +575,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
+            | SubjectVerbActionAst::CreateTokenChoice { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
             | SubjectVerbActionAst::RetargetStackObject { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
@@ -510,6 +594,8 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RegisterManaReplacement { .. }
             | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
+            | SubjectVerbActionAst::RegisterEnterTappedReplacement { .. }
+            | SubjectVerbActionAst::RegisterNextBatchEnterWithCounters { .. }
             | SubjectVerbActionAst::Enchant { .. }
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }
@@ -535,6 +621,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::SetCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::RemoveSubtypes { .. }
             | SubjectVerbActionAst::SetCreatureSubtypes { .. }
             | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
             | SubjectVerbActionAst::AddColors { .. }
@@ -560,6 +647,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::SearchLibrary { .. }
             | SubjectVerbActionAst::Cant { .. }
             | SubjectVerbActionAst::AdditionalPhases { .. }
+            | SubjectVerbActionAst::ReverseTurnOrder
             | SubjectVerbActionAst::TurnFaceUp { .. }
             | SubjectVerbActionAst::ShuffleLibrary => {}
             SubjectVerbActionAst::CreateTokenCopy { count: amount, .. }

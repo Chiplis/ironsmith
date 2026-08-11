@@ -1,6 +1,102 @@
 use super::*;
 
 impl GameState {
+    pub(crate) fn mark_upkeep_began(&mut self, player: PlayerId) {
+        let previous = self
+            .turn_store
+            .current_upkeep_turn_by_player
+            .insert(player, self.turn.turn_number)
+            .unwrap_or(0);
+        self.turn_store
+            .previous_upkeep_turn_by_player
+            .insert(player, previous);
+    }
+
+    pub fn enchanted_permanent_attacked_or_blocked_since_last_upkeep(
+        &self,
+        aura: ObjectId,
+        player: PlayerId,
+    ) -> bool {
+        let Some(stable_id) = self
+            .object(aura)
+            .and_then(|source| source.attached_to.and_then(|target| target.object_id()))
+            .and_then(|attached| self.object(attached))
+            .map(|attached| attached.stable_id)
+        else {
+            return false;
+        };
+        let threshold = self
+            .turn_store
+            .previous_upkeep_turn_by_player
+            .get(&player)
+            .copied()
+            .unwrap_or(0);
+        self.turn_store
+            .creature_last_attacked_turn
+            .get(&stable_id)
+            .is_some_and(|turn| *turn >= threshold)
+            || self
+                .turn_store
+                .creature_last_blocked_turn
+                .get(&stable_id)
+                .is_some_and(|turn| *turn >= threshold)
+    }
+
+    pub fn source_blocked_or_became_blocked_since_last_upkeep(
+        &self,
+        source: ObjectId,
+        player: PlayerId,
+    ) -> bool {
+        let Some(stable_id) = self.object(source).map(|object| object.stable_id) else {
+            return false;
+        };
+        let threshold = self
+            .turn_store
+            .previous_upkeep_turn_by_player
+            .get(&player)
+            .copied()
+            .unwrap_or(0);
+        self.turn_store
+            .creature_last_blocked_turn
+            .get(&stable_id)
+            .is_some_and(|turn| *turn >= threshold)
+            || self
+                .turn_store
+                .creature_last_became_blocked_turn
+                .get(&stable_id)
+                .is_some_and(|turn| *turn >= threshold)
+    }
+
+    /// Whether `player` has paid to ignore a source-wide static effect from
+    /// `source` for the rest of the current turn.
+    pub fn player_ignores_source_static_effect_this_turn(
+        &self,
+        source: ObjectId,
+        player: PlayerId,
+    ) -> bool {
+        self.turn_store
+            .turn_history
+            .players_ignoring_source_static_effects_this_turn
+            .contains(&(source, player))
+    }
+
+    pub(crate) fn player_ignores_source_static_effect_until_end_of_turn(
+        &mut self,
+        source: ObjectId,
+        player: PlayerId,
+    ) -> bool {
+        let inserted = self
+            .turn_store
+            .turn_history
+            .players_ignoring_source_static_effects_this_turn
+            .insert((source, player));
+        if inserted {
+            self.mark_continuous_state_dirty();
+            self.bump_mutation_revision();
+        }
+        inserted
+    }
+
     /// Whether `player` has taken the special action that lets them ignore the
     /// attached-object rule restrictions from `source` this turn.
     pub fn player_ignores_attached_static_restrictions_this_turn(
@@ -582,6 +678,7 @@ impl GameState {
         }
         self.handle_planechase_player_departure(player, &removed_ids);
         self.handle_vanguard_player_departure(player);
+        self.handle_attraction_player_departure(player);
         self.prune_grand_melee_stacks_for_departure(player, &removed_ids);
 
         // End every effect that gives the departing player control. Other
@@ -704,10 +801,16 @@ impl GameState {
                 .chosen_creature_types
                 .retain(|source, _| !removed_ids.contains(source));
             choices
+                .chosen_creature_type_sets
+                .retain(|source, _| !removed_ids.contains(source));
+            choices
                 .chosen_card_types
                 .retain(|source, _| !removed_ids.contains(source));
             choices
                 .chosen_players
+                .retain(|source, _| !removed_ids.contains(source));
+            choices
+                .chosen_objects
                 .retain(|source, _| !removed_ids.contains(source));
             choices
                 .chosen_named_options
@@ -932,6 +1035,18 @@ impl GameState {
     }
 
     pub(crate) fn next_turn_single_lane(&mut self) {
+        self.next_turn_single_lane_with_extra_turn_override(None);
+    }
+
+    /// Advance one single-lane turn while optionally overriding the provenance
+    /// inferred from the ordinary extra-turn queue.
+    ///
+    /// Grand Melee uses that queue internally to focus a lane, including for
+    /// normal turns, so it supplies the lane's authoritative provenance here.
+    pub(crate) fn next_turn_single_lane_with_extra_turn_override(
+        &mut self,
+        extra_turn_override: Option<bool>,
+    ) {
         let completed_turn_players = self.turn_players();
         let mut normal_anchor = self.turn.active_player;
         let current_index = self
@@ -941,20 +1056,21 @@ impl GameState {
             .position(|&player| player == self.turn.active_player)
             .unwrap_or(0);
         let mut normal_index = (current_index + 1) % self.turn_store.turn_order.len();
-        let next_player = loop {
-            let candidate = if let Some(extra_turn) = self.turn_store.extra_turns.pop() {
-                self.team_turn_representative(extra_turn)
-            } else if self.shared_team_turns_enabled() {
-                let player = self
-                    .next_team_turn_representative_after(normal_anchor)
-                    .expect("a shared-turn game must retain an in-game team");
-                normal_anchor = player;
-                player
-            } else {
-                let player = self.turn_store.turn_order[normal_index];
-                normal_index = (normal_index + 1) % self.turn_store.turn_order.len();
-                player
-            };
+        let (next_player, selected_from_extra_turn_queue) = loop {
+            let (candidate, is_extra_turn) =
+                if let Some(extra_turn) = self.turn_store.extra_turns.pop() {
+                    (self.team_turn_representative(extra_turn), true)
+                } else if self.shared_team_turns_enabled() {
+                    let player = self
+                        .next_team_turn_representative_after(normal_anchor)
+                        .expect("a shared-turn game must retain an in-game team");
+                    normal_anchor = player;
+                    (player, false)
+                } else {
+                    let player = self.turn_store.turn_order[normal_index];
+                    normal_index = (normal_index + 1) % self.turn_store.turn_order.len();
+                    (player, false)
+                };
 
             if !self
                 .player(candidate)
@@ -962,13 +1078,20 @@ impl GameState {
             {
                 continue;
             }
+            if extra_turn_override.unwrap_or(is_extra_turn)
+                && self.player_skips_extra_turn(candidate)
+            {
+                continue;
+            }
             if self.consume_team_turn_skip(candidate) {
                 continue;
             }
-            break candidate;
+            break (candidate, is_extra_turn);
         };
 
         // Reset turn state
+        self.turn_store.current_turn_is_extra =
+            extra_turn_override.unwrap_or(selected_from_extra_turn_queue);
         self.turn.active_player = next_player;
         self.turn.priority_player = Some(next_player);
         self.turn.turn_number += 1;
@@ -1058,6 +1181,14 @@ impl GameState {
         // have been continuously controlled since this turn began (CR 302.6).
         self.reconcile_continuous_control_changes();
         self.activate_restrictions_starting_this_turn();
+
+        // Printed static restrictions can switch on or off solely because the
+        // turn changed (for example, "can't attack during extra turns").
+        // Those abilities do not create entries in `restriction_effects`, so
+        // `activate_restrictions_starting_this_turn` has no reason to rebuild
+        // the cant tracker for them. Keep direct legality queries made at the
+        // new-turn boundary in sync with the newly selected turn.
+        self.update_cant_effects();
     }
 
     pub fn record_turn_start_hand_sizes(&mut self) {
@@ -1067,6 +1198,19 @@ impl GameState {
             .filter(|player| player.is_in_game())
             .map(|player| (player.id, player.hand.len()))
             .collect();
+        self.turn_store.turn_history.untapped_lands_at_turn_start = self
+            .battlefield
+            .iter()
+            .copied()
+            .filter_map(|object_id| {
+                let object = self.object(object_id)?;
+                (object.card_types.contains(&CardType::Land) && !self.is_tapped(object_id))
+                    .then(|| self.controller_of(object))
+            })
+            .fold(HashMap::new(), |mut counts, controller| {
+                *counts.entry(controller).or_insert(0) += 1;
+                counts
+            });
     }
 
     pub fn mark_combat_phase_started(&mut self) {
@@ -2288,6 +2432,12 @@ impl GameState {
                     source_obj, self,
                 )],
             );
+            if let Some(chosen) = self.chosen_object(source_id) {
+                tagged_objects.insert(
+                    crate::tag::TagKey::from(crate::tag::CHOSEN_OBJECTS_TAG),
+                    vec![chosen.clone()],
+                );
+            }
             let source_is_aura = source_obj.subtypes.contains(&crate::types::Subtype::Aura)
                 || (source_obj
                     .card_types

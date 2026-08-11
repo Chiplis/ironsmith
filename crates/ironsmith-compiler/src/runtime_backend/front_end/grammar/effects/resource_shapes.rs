@@ -53,6 +53,7 @@ pub(crate) enum ResourceShuffleShape {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ResourceChosenNameTargetShape<'a> {
     pub(crate) base_tokens: &'a [OwnedLexToken],
+    pub(crate) chosen_name_source: ironsmith_core::ChosenNameSourceSurface,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +74,18 @@ fn sentence_finished(tokens: &[OwnedLexToken]) -> bool {
     tokens.is_empty()
         || primitives::parse_all(tokens, primitives::sentence_end(), "resource sentence end")
             .is_ok()
+}
+
+/// Matches the global game action authored as “reverse the game's turn
+/// order.” Apostrophe tokenization can expose the possessive as either
+/// `game s` or `games`, so both normalized forms are accepted exactly.
+pub(crate) fn parse_resource_reverse_turn_order_shape(tokens: &[OwnedLexToken]) -> bool {
+    matches!(
+        TokenWordView::new(trimmed(tokens)).word_refs().as_slice(),
+        ["the", "game", "s", "turn", "order"]
+            | ["the", "games", "turn", "order"]
+            | ["the", "game's", "turn", "order"]
+    )
 }
 
 fn semantic_kw<'a>(
@@ -768,7 +781,17 @@ pub(crate) fn parse_resource_chosen_name_target_shape(
         let tail = strip_articles(after_with);
         let base = trimmed(&tokens[..absolute_with]);
         if !base.is_empty() && exact_unit(tail, chosen_name_tail) {
-            return Some(ResourceChosenNameTargetShape { base_tokens: base });
+            let words = TokenWordView::new(tail).word_refs();
+            let chosen_name_source = words.windows(4).find_map(|window| match window {
+                ["chosen", "for", "this", noun] => {
+                    ironsmith_core::ChosenNameSourceSurface::from_noun(noun)
+                }
+                _ => None,
+            })?;
+            return Some(ResourceChosenNameTargetShape {
+                base_tokens: base,
+                chosen_name_source,
+            });
         }
         search = after_with;
     }

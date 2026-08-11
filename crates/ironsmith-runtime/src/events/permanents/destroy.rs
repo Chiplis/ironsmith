@@ -5,6 +5,8 @@ use std::any::Any;
 use crate::events::traits::{EventKind, GameEventType, RedirectValidTypes, RedirectableTarget};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
+use crate::snapshot::ObjectSnapshot;
+use crate::zone::Zone;
 
 /// A destroy event that can be processed through the replacement effect system.
 #[derive(Debug, Clone)]
@@ -13,28 +15,31 @@ pub struct DestroyEvent {
     pub permanent: ObjectId,
     /// The source causing the destruction (may be None for SBA destruction)
     pub source: Option<ObjectId>,
+    /// Last-known battlefield characteristics of the destroyed permanent.
+    pub snapshot: Option<ObjectSnapshot>,
+    /// Final destination after all destruction and zone-change replacements.
+    pub final_zone: Option<Zone>,
 }
 
 impl DestroyEvent {
     /// Create a new destroy event.
     pub fn new(permanent: ObjectId, source: Option<ObjectId>) -> Self {
-        Self { permanent, source }
+        Self {
+            permanent,
+            source,
+            snapshot: None,
+            final_zone: None,
+        }
     }
 
     /// Create a destroy event from a specific source.
     pub fn from_source(permanent: ObjectId, source: ObjectId) -> Self {
-        Self {
-            permanent,
-            source: Some(source),
-        }
+        Self::new(permanent, Some(source))
     }
 
     /// Create a destroy event from state-based actions.
     pub fn from_sba(permanent: ObjectId) -> Self {
-        Self {
-            permanent,
-            source: None,
-        }
+        Self::new(permanent, None)
     }
 
     /// Return a new event with a different permanent.
@@ -42,7 +47,15 @@ impl DestroyEvent {
         Self {
             permanent,
             source: self.source,
+            snapshot: self.snapshot.clone(),
+            final_zone: self.final_zone,
         }
+    }
+
+    pub fn with_successful_result(mut self, snapshot: ObjectSnapshot, final_zone: Zone) -> Self {
+        self.snapshot = Some(snapshot);
+        self.final_zone = Some(final_zone);
+        self
     }
 }
 
@@ -87,6 +100,14 @@ impl GameEventType for DestroyEvent {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn object_id(&self) -> Option<ObjectId> {
+        Some(self.permanent)
+    }
+
+    fn snapshot(&self) -> Option<&ObjectSnapshot> {
+        self.snapshot.as_ref()
     }
 }
 

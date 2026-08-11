@@ -58,6 +58,7 @@ use super::reference_model::{
 };
 use super::reference_resolution::{
     EffectReferenceResolutionConfig, annotate_effect_sequence,
+    effect_references_prior_prevention_amount, effect_references_typed_removed_counter_metric,
     preserves_existing_it_for_power_self_damage_followup,
 };
 use super::static_ability_helpers::{
@@ -246,6 +247,18 @@ pub(crate) fn compile_condition_from_predicate_ast(
         }
         PredicateAst::EnchantedPermanentAttackedThisTurn => {
             Condition::EnchantedPermanentAttackedThisTurn
+        }
+        PredicateAst::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep => {
+            Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep
+        }
+        PredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep => {
+            Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep
+        }
+        PredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn => {
+            Condition::TriggeringObjectBecameTappedFirstTimeThisTurn
+        }
+        PredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn => {
+            Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn
         }
         PredicateAst::TargetObjectsHaveDifferentColorSets => {
             Condition::TargetObjectsHaveDifferentColorSets
@@ -703,6 +716,12 @@ pub(crate) fn compile_condition_from_predicate_ast(
             Condition::SourceCameUnderYourControlThisTurn
         }
         PredicateAst::SourceAttackedOrBlockedThisTurn => Condition::SourceAttackedOrBlockedThisTurn,
+        PredicateAst::SourceInGraveyardWithCardsAbove { filter, count } => {
+            Condition::SourceInGraveyardWithCardsAbove {
+                filter: filter.clone(),
+                count: *count,
+            }
+        }
         PredicateAst::SourceIsInZone(zone) => Condition::SourceIsInZone(*zone),
         PredicateAst::YouAttackedThisTurn => Condition::AttackedThisTurn,
         PredicateAst::YouAttackedWithNOrMoreCreaturesThisTurn(count) => {
@@ -714,6 +733,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             )));
         }
         PredicateAst::SourceWasCast => Condition::SourceWasCast,
+        PredicateAst::ThisSpellWasCastAtSorceryTiming => Condition::ThisSpellWasCastAtSorceryTiming,
         PredicateAst::ThisSpellEscaped => Condition::ThisSpellEscaped,
         PredicateAst::NoSpellsWereCastLastTurn => Condition::NoSpellsWereCastLastTurn,
         PredicateAst::YouHaveFullParty => Condition::YouHaveFullParty,
@@ -1271,11 +1291,24 @@ fn preserve_chooser_relative_player_filters(
         resolved.attacking_player_or_planeswalker_controlled_by =
             Some(PlayerFilter::IteratedPlayer);
     }
+    if matches!(original.protected_by, Some(PlayerFilter::IteratedPlayer)) {
+        resolved.protected_by = Some(PlayerFilter::IteratedPlayer);
+    }
     if matches!(
         original.entered_battlefield_controller,
         Some(PlayerFilter::IteratedPlayer)
     ) {
         resolved.entered_battlefield_controller = Some(PlayerFilter::IteratedPlayer);
+    }
+    if original
+        .counters_put_on_this_turn
+        .as_ref()
+        .is_some_and(|constraint| {
+            matches!(constraint.source_controller, PlayerFilter::IteratedPlayer)
+        })
+        && let Some(constraint) = resolved.counters_put_on_this_turn.as_mut()
+    {
+        constraint.source_controller = PlayerFilter::IteratedPlayer;
     }
     if matches!(
         original.attached_to_player,
@@ -1351,12 +1384,19 @@ fn bind_relative_iterated_player_filters_to_chooser(
         &mut filter.targets_player,
         &mut filter.targets_only_player,
         &mut filter.attacking_player_or_planeswalker_controlled_by,
+        &mut filter.protected_by,
         &mut filter.entered_battlefield_controller,
         &mut filter.attached_to_player,
     ] {
         if let Some(relative) = relative.as_mut() {
             bind_relative_iterated_player_filter_to_player_filter(relative, &chooser);
         }
+    }
+    if let Some(constraint) = filter.counters_put_on_this_turn.as_mut() {
+        bind_relative_iterated_player_filter_to_player_filter(
+            &mut constraint.source_controller,
+            &chooser,
+        );
     }
     if let Some(targets) = filter.targets_object.as_deref_mut() {
         bind_relative_iterated_player_filters_to_chooser(targets, &chooser);
@@ -1407,13 +1447,29 @@ fn bind_relative_iterated_player_filter_to_player_filter(
         PlayerFilter::IteratedPlayer => {
             *relative = as_followup_player_alias(player_filter.clone());
         }
+        PlayerFilter::AliasedTarget(inner)
+            if matches!(inner.as_ref(), PlayerFilter::IteratedPlayer) =>
+        {
+            // The alias wrapper means "the previously announced target." If
+            // the enclosing trigger instead binds a stable contextual player
+            // (for example, its persistent chosen player), preserve that
+            // participant directly. Leaving `AliasedTarget(ChosenPlayer)`
+            // would incorrectly require a target announcement at runtime.
+            *relative = as_followup_player_alias(player_filter.clone());
+        }
         PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
             bind_relative_iterated_player_filter_to_player_filter(inner, player_filter);
         }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
-        | PlayerFilter::MaxSpeed { base, .. } => {
+        | PlayerFilter::MaxSpeed { base, .. }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base }
+        | PlayerFilter::LostLifeThisTurn { base } => {
             bind_relative_iterated_player_filter_to_player_filter(base, player_filter);
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
+            bind_relative_iterated_player_filter_to_player_filter(base, player_filter);
+            bind_relative_iterated_player_filters_to_chooser(sources, player_filter);
         }
         PlayerFilter::Excluding { base, excluded } => {
             bind_relative_iterated_player_filter_to_player_filter(base, player_filter);
@@ -1446,6 +1502,8 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
         }
         Value::Count(filter)
         | Value::CountScaled(filter, _)
+        | Value::GreatestCount(filter)
+        | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -1481,6 +1539,7 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
                 | TurnHistoryCount::PlayersLostLife(player)
+                | TurnHistoryCount::UntappedLandsAtTurnStart(player)
                 | TurnHistoryCount::Descended(player)
                 | TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => {
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
@@ -1524,6 +1583,7 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::LifeGainedThisTurn(player)
         | Value::LifeLostThisTurn(player)
         | Value::CardsDiscardedThisTurn(player)
+        | Value::AttractionsVisitedThisTurn(player)
         | Value::DamageDealtToPlayersThisTurn(player)
         | Value::NoncombatDamageDealtToPlayersThisTurn(player)
         | Value::MaxCardsDrawnThisTurn(player)
@@ -1549,6 +1609,11 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
             players, filter, ..
         }
         | Value::SpellsCastThisTurnMatching {
+            player: players,
+            filter,
+            ..
+        }
+        | Value::TotalManaValueOfSpellsCastThisTurnMatching {
             player: players,
             filter,
             ..
@@ -2371,7 +2436,14 @@ pub(crate) fn tag_object_target_effect(
     ctx: &mut EffectLoweringContext,
     prefix: &str,
 ) -> Effect {
-    if ctx.auto_tag_object_targets && choose_spec_targets_object(spec) {
+    // A quantified object phrase can be lowered from `Object` to `All` after
+    // reference annotation has already reserved a result tag for it.  Keep
+    // that complete affected set taggable just like an ordinary object
+    // choice; otherwise a following plural reference (for example, "they
+    // can't phase in") points at a tag that no runtime effect ever fills.
+    let produces_object_results =
+        choose_spec_targets_object(spec) || matches!(spec.base(), ChooseSpec::All(_));
+    if ctx.auto_tag_object_targets && produces_object_results {
         let tag = ctx.next_tag(prefix);
         ctx.last_object_tag = Some(tag.clone());
         effect.tag(tag)
@@ -2575,8 +2647,11 @@ fn equipment_granted_damage_ability(
     })
 }
 
-fn static_ability_for_token_keyword(keyword: token_grammar::TokenKeywordShape) -> StaticAbility {
-    match keyword {
+fn static_ability_for_token_keyword(
+    keyword: token_grammar::TokenKeywordShape,
+) -> Option<StaticAbility> {
+    Some(match keyword {
+        token_grammar::TokenKeywordShape::Firebending(_) => return None,
         token_grammar::TokenKeywordShape::Flying => StaticAbility::flying(),
         token_grammar::TokenKeywordShape::WardGeneric(amount) => {
             StaticAbility::ward(TotalCost::mana(ManaCost::from_symbols(vec![
@@ -2613,7 +2688,7 @@ fn static_ability_for_token_keyword(keyword: token_grammar::TokenKeywordShape) -
         token_grammar::TokenKeywordShape::Plainswalk => {
             StaticAbility::landwalk(crate::types::Subtype::Plains)
         }
-    }
+    })
 }
 
 fn build_equipment_token_from_rules_shape(
@@ -2682,7 +2757,9 @@ fn build_equipment_token_from_rules_shape(
                     )));
                 }
                 for keyword in keywords {
-                    let grant = static_ability_for_token_keyword(*keyword);
+                    let Some(grant) = static_ability_for_token_keyword(*keyword) else {
+                        continue;
+                    };
                     let display = format!("Equipped creature has {}.", grant.display());
                     builder = builder.with_ability(Ability::static_ability(StaticAbility::new(
                         crate::static_abilities::AttachedAbilityGrant::new(
@@ -2781,7 +2858,12 @@ fn apply_embedded_token_rules(
                 let created = build_builtin_token_definition(*token);
                 builder.with_ability(Ability {
                     kind: AbilityKind::Triggered(TriggeredAbility {
-                        trigger: Trigger::this_dies(),
+                        // This typed embedded-rule grammar is introduced only
+                        // by authored `When this token dies`. Keep that
+                        // one-shot intro distinct from the generic
+                        // `Whenever a creature dies` surface.
+                        trigger: Trigger::this_dies()
+                            .with_intro_surface(crate::triggers::TriggerIntroSurface::When),
                         effects: crate::resolution::ResolutionProgram::from_effects(vec![
                             Effect::create_tokens(created, Value::Fixed(*count as i32)),
                         ]),
@@ -3155,16 +3237,28 @@ pub(crate) fn token_combat_damage_gain_control_target_artifact_ability() -> Abil
     }
 }
 
-pub(crate) fn token_leaves_return_named_from_graveyard_to_hand_ability(card_name: &str) -> Ability {
+pub(crate) fn token_leaves_return_named_from_graveyard_to_hand_ability(
+    card_name: &str,
+    self_surface: Option<crate::target::SourceReferenceSurface>,
+) -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(
         ObjectFilter::default()
             .in_zone(Zone::Graveyard)
             .owned_by(PlayerFilter::You)
             .named(card_name.to_string()),
     ));
+    let trigger = match self_surface {
+        Some(surface) => Trigger::new(
+            crate::triggers::ZoneChangeTrigger::new()
+                .from(Zone::Battlefield)
+                .this()
+                .this_surface(surface),
+        ),
+        None => Trigger::this_leaves_battlefield(),
+    };
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
-            trigger: Trigger::this_leaves_battlefield(),
+            trigger,
             effects: crate::resolution::ResolutionProgram::from_effects(vec![
                 Effect::return_from_graveyard_to_hand(target.clone()),
             ]),
@@ -3174,6 +3268,34 @@ pub(crate) fn token_leaves_return_named_from_graveyard_to_hand_ability(card_name
         }),
         functional_zones: vec![Zone::Battlefield],
     }
+}
+
+fn token_combat_restriction_ability(
+    restriction: token_grammar::TokenCombatRestrictionShape,
+    self_surface: Option<crate::target::SourceReferenceSurface>,
+) -> Ability {
+    let ability = match restriction {
+        token_grammar::TokenCombatRestrictionShape::CantAttackOrBlockAlone => {
+            StaticAbility::restriction(
+                crate::effect::Restriction::attack_or_block_alone(ObjectFilter::source()),
+                "this token can't attack or block alone".to_string(),
+            )
+        }
+        token_grammar::TokenCombatRestrictionShape::CantAttackOrBlock => {
+            StaticAbility::restriction(
+                crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
+                "this token can't attack or block".to_string(),
+            )
+        }
+        token_grammar::TokenCombatRestrictionShape::Unblockable => StaticAbility::unblockable(),
+        token_grammar::TokenCombatRestrictionShape::CantBlock => StaticAbility::cant_block(),
+        token_grammar::TokenCombatRestrictionShape::MustAttack => StaticAbility::must_attack(),
+    };
+    let ability = match self_surface {
+        Some(surface) => ability.with_self_subject_surface(surface),
+        None => ability,
+    };
+    Ability::static_ability(ability)
 }
 
 pub(crate) fn token_sacrifice_return_named_from_graveyard_ability(
@@ -3309,11 +3431,7 @@ fn build_builtin_token_definition(shape: token_grammar::BuiltinTokenShape) -> Ca
         token_grammar::BuiltinTokenShape::Walker => crate::cards::tokens::walker_token_definition(),
         token_grammar::BuiltinTokenShape::EldraziSpawn => eldrazi_spawn_token_definition(),
         token_grammar::BuiltinTokenShape::EldraziScion => eldrazi_scion_token_definition(),
-        token_grammar::BuiltinTokenShape::Food => CardDefinitionBuilder::new(CardId::new(), "Food")
-            .token()
-            .card_types(vec![CardType::Artifact])
-            .subtypes(vec![Subtype::Food])
-            .build(),
+        token_grammar::BuiltinTokenShape::Food => crate::cards::tokens::food_token_definition(),
         token_grammar::BuiltinTokenShape::WickedRole => {
             crate::cards::tokens::wicked_role_token_definition()
         }
@@ -3332,17 +3450,9 @@ fn build_builtin_token_definition(shape: token_grammar::BuiltinTokenShape) -> Ca
         token_grammar::BuiltinTokenShape::CursedRole => {
             crate::cards::tokens::cursed_role_token_definition()
         }
-        token_grammar::BuiltinTokenShape::Blood => {
-            CardDefinitionBuilder::new(CardId::new(), "Blood")
-                .token()
-                .card_types(vec![CardType::Artifact])
-                .build()
-        }
+        token_grammar::BuiltinTokenShape::Blood => crate::cards::tokens::blood_token_definition(),
         token_grammar::BuiltinTokenShape::Powerstone => {
-            CardDefinitionBuilder::new(CardId::new(), "Powerstone")
-                .token()
-                .card_types(vec![CardType::Artifact])
-                .build()
+            crate::cards::tokens::powerstone_token_definition()
         }
     }
 }
@@ -3411,6 +3521,7 @@ pub(crate) fn apply_standard_token_keyword(
     match keyword {
         token_grammar::TokenKeywordShape::Flying => builder.flying(),
         token_grammar::TokenKeywordShape::WardGeneric(amount) => builder.ward_generic(amount),
+        token_grammar::TokenKeywordShape::Firebending(amount) => builder.firebending(amount),
         token_grammar::TokenKeywordShape::Defender => builder.defender(),
         token_grammar::TokenKeywordShape::Prowess => builder.prowess(),
         token_grammar::TokenKeywordShape::Vigilance => builder.vigilance(),
@@ -3424,9 +3535,10 @@ pub(crate) fn apply_standard_token_keyword(
         token_grammar::TokenKeywordShape::DoubleStrike => builder.double_strike(),
         token_grammar::TokenKeywordShape::Hexproof => builder.hexproof(),
         token_grammar::TokenKeywordShape::Indestructible => builder.indestructible(),
-        other => builder.with_ability(crate::ability::Ability::static_ability(
-            static_ability_for_token_keyword(other),
-        )),
+        other => match static_ability_for_token_keyword(other) {
+            Some(ability) => builder.with_ability(crate::ability::Ability::static_ability(ability)),
+            None => builder,
+        },
     }
 }
 
@@ -3561,9 +3673,40 @@ fn build_creature_token_definition(
     if rules.combat_damage_gain_artifact {
         builder = builder.with_ability(token_combat_damage_gain_control_target_artifact_ability());
     }
-    if let Some(card_name) = rules.leaves_return_named_to_hand.as_deref() {
+    for presentation in &rules.authored_inline_rules {
+        builder = match presentation.kind {
+            token_grammar::CreatureTokenInlineRuleKind::CombatRestriction => {
+                match rules.combat_restriction {
+                    Some(restriction) => builder.with_ability(token_combat_restriction_ability(
+                        restriction,
+                        presentation.self_surface.clone(),
+                    )),
+                    None => builder,
+                }
+            }
+            token_grammar::CreatureTokenInlineRuleKind::LeavesReturnNamedToHand => {
+                match rules.leaves_return_named_to_hand.as_deref() {
+                    Some(card_name) => builder.with_ability(
+                        token_leaves_return_named_from_graveyard_to_hand_ability(
+                            card_name,
+                            presentation.self_surface.clone(),
+                        ),
+                    ),
+                    None => builder,
+                }
+            }
+        };
+    }
+    let has_authored_leaves_rule = rules.authored_inline_rules.iter().any(|presentation| {
+        presentation.kind == token_grammar::CreatureTokenInlineRuleKind::LeavesReturnNamedToHand
+    });
+    if let Some(card_name) = rules
+        .leaves_return_named_to_hand
+        .as_deref()
+        .filter(|_| !has_authored_leaves_rule)
+    {
         builder = builder.with_ability(token_leaves_return_named_from_graveyard_to_hand_ability(
-            card_name,
+            card_name, None,
         ));
     }
     if rules.pest_dies_gain_life {
@@ -3609,26 +3752,14 @@ fn build_creature_token_definition(
             };
         builder = builder.with_ability(ability);
     }
-    if let Some(restriction) = rules.combat_restriction {
-        builder = match restriction {
-            token_grammar::TokenCombatRestrictionShape::CantAttackOrBlockAlone => builder
-                .with_ability(Ability::static_ability(StaticAbility::restriction(
-                    crate::effect::Restriction::attack_or_block_alone(ObjectFilter::source()),
-                    "this token can't attack or block alone".to_string(),
-                ))),
-            token_grammar::TokenCombatRestrictionShape::CantAttackOrBlock => {
-                builder.with_ability(Ability::static_ability(StaticAbility::restriction(
-                    crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
-                    "this token can't attack or block".to_string(),
-                )))
-            }
-            token_grammar::TokenCombatRestrictionShape::Unblockable => {
-                builder.with_ability(Ability::static_ability(StaticAbility::unblockable()))
-            }
-            token_grammar::TokenCombatRestrictionShape::CantBlock => {
-                builder.with_ability(Ability::static_ability(StaticAbility::cant_block()))
-            }
-        };
+    let has_authored_combat_rule = rules.authored_inline_rules.iter().any(|presentation| {
+        presentation.kind == token_grammar::CreatureTokenInlineRuleKind::CombatRestriction
+    });
+    if let Some(restriction) = rules
+        .combat_restriction
+        .filter(|_| !has_authored_combat_rule)
+    {
+        builder = builder.with_ability(token_combat_restriction_ability(restriction, None));
     }
     if rules.can_block_only_flying {
         builder = builder.with_ability(Ability::static_ability(

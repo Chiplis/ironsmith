@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::ids::{ObjectId, PlayerId};
 use crate::provenance::ProvNodeId;
 use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 
 use super::{EventKind, GameEventType};
 
@@ -19,6 +21,8 @@ pub struct RawEvent {
     simultaneous_batch: Option<ProvNodeId>,
     source_snapshot: Option<ObjectSnapshot>,
     lookback_source_snapshots: Vec<ObjectSnapshot>,
+    /// Contextual player bindings carried across delayed-trigger boundaries.
+    player_tags: HashMap<TagKey, Vec<PlayerId>>,
 }
 
 impl RawEvent {
@@ -29,6 +33,7 @@ impl RawEvent {
             simultaneous_batch: None,
             source_snapshot: None,
             lookback_source_snapshots: Vec::new(),
+            player_tags: HashMap::new(),
         }
     }
 
@@ -39,6 +44,7 @@ impl RawEvent {
             simultaneous_batch: None,
             source_snapshot: None,
             lookback_source_snapshots: Vec::new(),
+            player_tags: HashMap::new(),
         }
     }
 
@@ -115,6 +121,11 @@ impl RawEvent {
         &self.lookback_source_snapshots
     }
 
+    /// Player bindings captured by a delayed-trigger registration.
+    pub fn player_tags(&self) -> &HashMap<TagKey, Vec<PlayerId>> {
+        &self.player_tags
+    }
+
     /// Human-readable event description.
     pub fn display(&self) -> String {
         self.inner().display()
@@ -161,6 +172,12 @@ impl RawEvent {
         self
     }
 
+    #[must_use]
+    pub fn with_player_tags(mut self, player_tags: HashMap<TagKey, Vec<PlayerId>>) -> Self {
+        self.player_tags = player_tags;
+        self
+    }
+
     pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
     }
@@ -174,6 +191,7 @@ impl std::fmt::Debug for RawEvent {
             .field("simultaneous_batch", &self.simultaneous_batch)
             .field("source_snapshot", &self.source_snapshot)
             .field("lookback_source_snapshots", &self.lookback_source_snapshots)
+            .field("player_tags", &self.player_tags)
             .field("display", &self.inner().display())
             .finish()
     }

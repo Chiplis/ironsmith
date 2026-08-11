@@ -37,10 +37,27 @@ fn parse_for_each_object_filter_words(
     }
     restored.extend_from_slice(words);
     let tokens = synthetic_word_tokens(&restored);
+    if let Some(filter) =
+        crate::runtime_backend::grammar::filters::parse_subtype_color_shared_card_union_lexed(
+            &tokens, false,
+        )
+    {
+        return Some(filter);
+    }
     crate::runtime_backend::object_filters::parse_object_filter_lexed(&tokens, false).ok()
 }
 
 pub(crate) fn mana_from_source_spent_to_cast_value(source_words: &[&str]) -> Option<Value> {
+    mana_from_source_spent_to_cast_value_with_reference(
+        source_words,
+        ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell,
+    )
+}
+
+pub(crate) fn mana_from_source_spent_to_cast_value_with_reference(
+    source_words: &[&str],
+    reference: ironsmith_core::ManaSpentCastReferenceSurface,
+) -> Option<Value> {
     let (source_words, include_source_noun) = match source_words {
         [source @ .., "source"] if !source.is_empty() => (source, true),
         source if !source.is_empty() => (source, false),
@@ -50,6 +67,7 @@ pub(crate) fn mana_from_source_spent_to_cast_value(source_words: &[&str]) -> Opt
     Some(Value::ManaFromSourceSpentToCastThisSpell {
         source_filter,
         include_source_noun,
+        reference,
     })
 }
 
@@ -62,16 +80,30 @@ fn parse_mana_from_source_spent_count(words: &[&str], item_start: usize) -> Opti
         if words[spent_idx] != "spent" {
             continue;
         }
-        let consumed = if words
+        let (consumed, reference) = if words
             .get(spent_idx..spent_idx + 5)
             .is_some_and(|tail| tail == ["spent", "to", "cast", "this", "spell"])
         {
-            spent_idx + 5
+            (
+                spent_idx + 5,
+                ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell,
+            )
+        } else if words
+            .get(spent_idx..spent_idx + 5)
+            .is_some_and(|tail| tail == ["spent", "to", "cast", "this", "creature"])
+        {
+            (
+                spent_idx + 5,
+                ironsmith_core::ManaSpentCastReferenceSurface::ThisCreature,
+            )
         } else if words
             .get(spent_idx..spent_idx + 4)
             .is_some_and(|tail| matches!(tail, ["spent", "to", "cast", "it" | "them"]))
         {
-            spent_idx + 4
+            (
+                spent_idx + 4,
+                ironsmith_core::ManaSpentCastReferenceSurface::It,
+            )
         } else {
             continue;
         };
@@ -81,7 +113,7 @@ fn parse_mana_from_source_spent_count(words: &[&str], item_start: usize) -> Opti
             source_end -= 2;
         }
         let source_words = words.get(item_start + 2..source_end)?;
-        let value = mana_from_source_spent_to_cast_value(source_words)?;
+        let value = mana_from_source_spent_to_cast_value_with_reference(source_words, reference)?;
         return Some((value, consumed));
     }
     None
@@ -485,6 +517,16 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                     ));
                 }
             }
+            if permission_shapes::starts_at_words(count_words, counter_idx + 1, &["among"]) {
+                let reference = &count_words[counter_idx + 2..];
+                if let Ok(filter) = parse_object_filter_words(reference, false) {
+                    return Some((
+                        Value::CountersOn(Box::new(ChooseSpec::All(filter)), Some(counter_type))
+                            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersAmong),
+                        filter_end,
+                    ));
+                }
+            }
         }
     }
 
@@ -731,6 +773,21 @@ mod tests {
     }
 
     #[test]
+    fn for_each_shared_terminal_subtype_color_card_keeps_union_semantics() {
+        let words = ["for", "each", "forest", "and", "green", "card"];
+        let (value, used) =
+            parse_for_each_count_value_words(&words).expect("shared-terminal union count");
+        assert_eq!(used, words.len());
+        let Value::Count(filter) = value.unhinted() else {
+            panic!("expected a typed object count, got {value:#?}");
+        };
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert_eq!(filter.any_of[0].subtypes, [crate::Subtype::Forest]);
+        assert_eq!(filter.any_of[1].colors, Some(crate::ColorSet::GREEN));
+        assert!(filter.has_conjunctive_set_surface());
+    }
+
+    #[test]
     fn typed_counter_removed_count_uses_action_count_and_preserves_counter_kind() {
         let words = ["for", "each", "lore", "counter", "removed", "this", "way"];
         let (value, used) =
@@ -760,11 +817,13 @@ mod tests {
         let Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
             include_source_noun,
+            reference,
         } = cave_value
         else {
             panic!("expected a typed mana-source count");
         };
         assert!(!include_source_noun);
+        assert_eq!(reference, ironsmith_core::ManaSpentCastReferenceSurface::It);
         assert_eq!(source_filter.subtypes, [crate::types::Subtype::Cave]);
 
         let artifact_words = [
@@ -777,11 +836,16 @@ mod tests {
         let Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
             include_source_noun,
+            reference,
         } = artifact_value
         else {
             panic!("expected a typed mana-source count");
         };
         assert!(include_source_noun);
+        assert_eq!(
+            reference,
+            ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell
+        );
         assert_eq!(source_filter.card_types, [crate::types::CardType::Artifact]);
     }
 
@@ -1008,5 +1072,35 @@ mod tests {
             query.action,
             Some(ironsmith_core::PriorEffectAction::Tapped)
         );
+    }
+
+    #[test]
+    fn counts_typed_counters_among_a_filtered_object_set() {
+        let words = [
+            "for",
+            "each",
+            "+1/+1",
+            "counter",
+            "among",
+            "other",
+            "creatures",
+            "you",
+            "control",
+        ];
+        let (value, used) =
+            parse_for_each_count_value_words(&words).expect("typed counter aggregate");
+        assert_eq!(used, words.len());
+        assert!(value.has_surface_hint(ValueSurfaceHint::CountersAmong));
+        let Value::CountersOn(spec, Some(crate::object::CounterType::PlusOnePlusOne)) =
+            value.unhinted()
+        else {
+            panic!("expected a typed +1/+1 counter aggregate, got {value:#?}");
+        };
+        let ChooseSpec::All(filter) = spec.unhinted() else {
+            panic!("expected an aggregate object filter, got {spec:#?}");
+        };
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert!(filter.other);
     }
 }

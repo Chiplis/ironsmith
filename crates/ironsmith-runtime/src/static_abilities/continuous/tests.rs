@@ -2,7 +2,7 @@ use super::*;
 use crate::card::{CardBuilder, PowerToughness};
 use crate::cards::builders::CardDefinitionBuilder;
 use crate::color::Color;
-use crate::filter::StackObjectKind;
+use crate::filter::{CountersPutOnThisTurnConstraint, StackObjectKind};
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::AttachmentTarget;
@@ -67,6 +67,61 @@ fn serial_compound_anthem_pluralizes_every_characteristic_arm() {
 }
 
 #[test]
+fn global_colorless_domain_applies_in_hand_on_stack_and_on_battlefield() {
+    let mut global = ObjectFilter::default();
+    global.set_global_characteristic_domain_surface(Some(
+        ironsmith_core::GlobalCharacteristicDomainSurface::CardsOutsideBattlefieldSpellsAndPermanents,
+    ));
+    let surfaced = MakeColorlessForFilter::new(global.clone());
+    assert_eq!(
+        surfaced.display(),
+        "All cards that aren't on the battlefield, spells, and permanents are colorless"
+    );
+    assert_eq!(
+        MakeColorlessForFilter::new(ObjectFilter::default()).display(),
+        "All permanents are colorless",
+        "an ordinary global filter must not inherit the authored multi-domain surface"
+    );
+
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = CardDefinitionBuilder::new(CardId::new(), "Global Colorless Source")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::static_ability(StaticAbility::make_colorless(
+            global,
+        )))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let red_card = |name: &str, card_type: CardType| {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![card_type])
+            .color_indicator(crate::color::ColorSet::RED)
+            .build()
+    };
+    let hand =
+        game.create_object_from_card(&red_card("Hand Card", CardType::Sorcery), alice, Zone::Hand);
+    let spell = game.create_object_from_card(
+        &red_card("Stack Spell", CardType::Instant),
+        alice,
+        Zone::Stack,
+    );
+    let permanent = game.create_object_from_card(
+        &red_card("Battlefield Permanent", CardType::Artifact),
+        alice,
+        Zone::Battlefield,
+    );
+
+    for object in [hand, spell, permanent] {
+        let colors = game
+            .calculated_characteristics(object)
+            .expect("global colorless object should be calculable")
+            .colors;
+        assert!(colors.is_empty(), "{object:?} should be colorless");
+    }
+}
+
+#[test]
 fn relative_enchanted_by_subject_preserves_each_filter_arm() {
     let mut filter = ObjectFilter::creature().controlled_by(PlayerFilter::You);
     filter.other = true;
@@ -104,6 +159,88 @@ fn plural_subject_does_not_pluralize_already_plural_card_type_nouns_twice() {
             "lands you control and land cards you own that aren't on the battlefield",
         ),
         "lands you control and land cards you own that aren't on the battlefield"
+    );
+}
+
+#[test]
+fn counter_placement_history_grant_uses_source_controller_and_resets_each_turn() {
+    let constraint = CountersPutOnThisTurnConstraint::new(
+        Some(crate::object::CounterType::PlusOnePlusOne),
+        PlayerFilter::You,
+        1,
+    );
+    let filter = ObjectFilter::creature()
+        .you_control()
+        .with_counters_put_on_this_turn(constraint);
+    let grant = GrantObjectAbilityForFilter::new(
+        filter,
+        Ability::static_ability(StaticAbility::hexproof()),
+        "hexproof".to_string(),
+    )
+    .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+    assert_eq!(
+        grant.display(),
+        "Each creature you control that you've put one or more +1/+1 counters on this turn has hexproof"
+    );
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let grant_source = CardDefinitionBuilder::new(CardId::new(), "Counter History Grant")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(StaticAbility::new(grant)))
+        .build();
+    let grant_source = game.create_object_from_definition(&grant_source, alice, Zone::Battlefield);
+    let opponent_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Opponent Counter Source")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let creature = CardBuilder::new(CardId::new(), "History Candidate")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let placed_by_alice = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let placed_by_bob = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+
+    let alice_event = game
+        .add_counters_with_source(
+            placed_by_alice,
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            Some(grant_source),
+            Some(alice),
+        )
+        .expect("Alice's counter placement should emit an event");
+    game.record_turn_history_event(&alice_event);
+    let bob_event = game
+        .add_counters_with_source(
+            placed_by_bob,
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            Some(opponent_source),
+            Some(bob),
+        )
+        .expect("Bob's counter placement should emit an event");
+    game.record_turn_history_event(&bob_event);
+
+    assert!(game.current_has_static_ability_id(placed_by_alice, StaticAbilityId::Hexproof));
+    assert!(
+        !game.current_has_static_ability_id(placed_by_bob, StaticAbilityId::Hexproof),
+        "a counter placed by an opponent must not satisfy ‘you've put’"
+    );
+
+    game.next_turn_single_lane();
+    assert_eq!(
+        game.counter_count(placed_by_alice, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "the counter remains after the turn changes"
+    );
+    assert!(
+        !game.current_has_static_ability_id(placed_by_alice, StaticAbilityId::Hexproof),
+        "the turn-history qualification must reset even though the counter remains"
     );
 }
 
@@ -544,6 +681,18 @@ fn describe_static_condition_displays_kicked_spell_condition() {
     assert_eq!(
         describe_static_condition(&crate::ConditionExpr::ThisSpellWasKicked),
         "as long as this spell was kicked"
+    );
+}
+
+#[test]
+fn describe_static_condition_displays_x_value_threshold() {
+    assert_eq!(
+        super::describe_static_condition(&crate::ConditionExpr::XValueAtLeast(5)),
+        "as long as X is 5 or more"
+    );
+    assert_eq!(
+        super::describe_static_condition(&crate::ConditionExpr::XValueAtLeast(6)),
+        "as long as X is 6 or more"
     );
 }
 
@@ -1662,6 +1811,48 @@ fn test_grant_ability_displays_spell_subjects_with_cast_and_origin() {
         "the first spell you cast from exile each turn has cascade"
     );
 
+    let treasure_mana_spell = ObjectFilter {
+        zone: Some(Zone::Stack),
+        cast_by: Some(PlayerFilter::You),
+        first_spell_cast_each_turn: true,
+        mana_from_source_spent_to_cast: Some(Box::new(
+            ObjectFilter::default().with_subtype(Subtype::Treasure),
+        )),
+        has_mana_cost: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        GrantAbility::new(treasure_mana_spell, StaticAbility::cascade()).display(),
+        "the first spell you cast each turn that mana from a Treasure was spent to cast has cascade"
+    );
+
+    let mut trailing_if_spell = ObjectFilter::spell().cast_by(PlayerFilter::You);
+    trailing_if_spell.mana_from_source_spent_to_cast = Some(Box::new(ObjectFilter::artifact()));
+    trailing_if_spell.set_mana_source_spent_trailing_if_surface(true);
+    assert_eq!(
+        GrantAbility::new(trailing_if_spell.clone(), StaticAbility::split_second())
+            .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each))
+            .display(),
+        "Each spell you cast has split second if mana from an artifact was spent to cast it. (As long as it's on the stack, players can't cast spells or activate abilities that aren't mana abilities.)"
+    );
+    assert_eq!(
+        GrantObjectAbilityForFilter::new(
+            trailing_if_spell.clone(),
+            Ability::static_ability(StaticAbility::split_second()),
+            "Split second".to_string(),
+        )
+        .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each))
+        .display(),
+        "Each spell you cast has split second if mana from an artifact was spent to cast it. (As long as it's on the stack, players can't cast spells or activate abilities that aren't mana abilities.)",
+        "object-ability grants must preserve the same typed trailing-if surface"
+    );
+    trailing_if_spell.set_mana_source_spent_trailing_if_surface(false);
+    assert_eq!(
+        GrantAbility::new(trailing_if_spell, StaticAbility::split_second()).display(),
+        "spells you cast that mana from an artifact was spent to cast have split second",
+        "without the authored trailing-if bit, the same executable predicate stays canonical"
+    );
+
     let all_from_exile = ObjectFilter {
         zone: Some(Zone::Exile),
         cast_by: Some(PlayerFilter::You),
@@ -1708,6 +1899,20 @@ fn parsed_compound_spell_keyword_grants_keep_shared_cast_scope() {
             vec![text.to_string()]
         );
     }
+}
+
+#[test]
+fn parsed_first_spell_mana_source_grant_keeps_exact_surface() {
+    let text = "The first spell you cast each turn that mana from a Treasure was spent to cast has cascade.";
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Typed Mana Source Grant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(text)
+        .expect("typed mana-source grant should compile");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition),
+        vec![text.to_string()]
+    );
 }
 
 #[test]
@@ -1834,6 +2039,104 @@ fn first_matching_spell_cast_from_zone_grant_resets_each_turn() {
     assert!(
         game.current_has_static_ability_id(next_turn_exile_spell, StaticAbilityId::Cascade),
         "the first matching exile cast on a new turn should have cascade again"
+    );
+}
+
+#[test]
+fn first_matching_spell_cast_with_mana_source_uses_spent_source_lki() {
+    fn record_spell_cast(
+        game: &mut GameState,
+        caster: PlayerId,
+        name: &str,
+        mana_source_subtype: Subtype,
+    ) -> ObjectId {
+        let mana_source = CardBuilder::new(CardId::new(), format!("{mana_source_subtype} Source"))
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![mana_source_subtype])
+            .build();
+        let mana_source = game.create_object_from_card(&mana_source, caster, Zone::Battlefield);
+        let mana_source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(mana_source)
+                .expect("mana source should exist for its LKI snapshot"),
+            game,
+        );
+
+        let spell_card = CardBuilder::new(CardId::new(), name)
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell = game.create_object_from_card(&spell_card, caster, Zone::Stack);
+        game.object_mut(spell)
+            .expect("spell should exist")
+            .cast_tagged_objects
+            .insert(
+                crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG),
+                vec![mana_source_snapshot],
+            );
+        game.push_to_stack(crate::game_state::StackEntry::new(spell, caster));
+        let snapshot =
+            crate::snapshot::ObjectSnapshot::from_object(game.object(spell).unwrap(), game);
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::spells::SpellCastEvent::new_with_snapshot(
+                spell,
+                caster,
+                Zone::Hand,
+                snapshot,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&event);
+        spell
+    }
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source_definition = CardDefinitionBuilder::new(CardId::new(), "Mana Source Grant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "The first spell you cast each turn that mana from a Treasure was spent to cast has cascade.",
+        )
+        .expect("mana-source cascade grant should parse");
+    game.create_object_from_definition(&source_definition, alice, Zone::Battlefield);
+
+    let nonmatching = record_spell_cast(&mut game, alice, "Food-Mana Spell", Subtype::Food);
+    assert!(
+        !game.current_has_static_ability_id(nonmatching, StaticAbilityId::Cascade),
+        "a spell paid with mana from a nonmatching source must not receive or consume the grant"
+    );
+
+    let first_matching = record_spell_cast(
+        &mut game,
+        alice,
+        "First Treasure-Mana Spell",
+        Subtype::Treasure,
+    );
+    assert!(
+        game.current_has_static_ability_id(first_matching, StaticAbilityId::Cascade),
+        "the first spell paid with Treasure mana should receive cascade"
+    );
+
+    let second_matching = record_spell_cast(
+        &mut game,
+        alice,
+        "Second Treasure-Mana Spell",
+        Subtype::Treasure,
+    );
+    assert!(
+        !game.current_has_static_ability_id(second_matching, StaticAbilityId::Cascade),
+        "the earlier cast snapshot must retain its spent-mana source and consume the first-matching grant"
+    );
+
+    game.next_turn();
+    let next_turn = record_spell_cast(
+        &mut game,
+        alice,
+        "Next-Turn Treasure-Mana Spell",
+        Subtype::Treasure,
+    );
+    assert!(
+        game.current_has_static_ability_id(next_turn, StaticAbilityId::Cascade),
+        "the first matching Treasure-mana cast on a new turn should receive cascade"
     );
 }
 
@@ -2813,6 +3116,21 @@ fn party_scaled_anthem_display_uses_for_each_party_surface() {
     assert_eq!(
         anthem.display(),
         "this creature gets +1/+0 for each creature in your party"
+    );
+}
+
+#[test]
+fn typed_color_aggregate_anthem_display_uses_for_each_surface() {
+    let colors = Value::ColorsAmong(ObjectFilter::permanent().you_control())
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+    let anthem = Anthem::for_source(0, 0).with_values(
+        AnthemValue::Dynamic(colors.clone()),
+        AnthemValue::Dynamic(colors),
+    );
+
+    assert_eq!(
+        anthem.display(),
+        "this creature gets +1/+1 for each color among permanents you control"
     );
 }
 

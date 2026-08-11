@@ -113,8 +113,13 @@ pub(crate) enum CombatDividedAmountError {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum CombatDividedAmountShape<'a> {
-    EvenlyEach { filter_tokens: &'a [OwnedLexToken] },
-    Distributed { target_tokens: &'a [OwnedLexToken] },
+    EvenlyEach {
+        filter_tokens: &'a [OwnedLexToken],
+    },
+    Distributed {
+        target_tokens: &'a [OwnedLexToken],
+        evenly_rounded_down: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -173,6 +178,10 @@ pub(crate) enum CombatDamageTargetShape<'a> {
         filter_tokens: &'a [OwnedLexToken],
     },
     OpponentAndControlledCreaturePlaneswalker,
+    HistoricalDamageRecipients {
+        players: CombatPlayerDamageTargetShape,
+        filter_tokens: &'a [OwnedLexToken],
+    },
     EachFilter {
         filter_tokens: &'a [OwnedLexToken],
     },
@@ -495,7 +504,11 @@ pub(crate) fn parse_combat_divided_amount_shape_lexed(
     let target_tokens = primitives::parse_prefix(after_damage, primitives::kw("to").void())
         .map(|(_, rest)| rest)
         .unwrap_or(after_damage);
-    if primitives::find_prefix(target_tokens, || primitives::kw("evenly")).is_some()
+    let evenly_rounded_down = primitives::find_prefix(target_tokens, || primitives::kw("evenly"))
+        .is_some()
+        && primitives::find_prefix(target_tokens, || primitives::phrase(&["rounded", "down"]))
+            .is_some();
+    if evenly_rounded_down
         && let Some((_among_idx, (), after_among)) =
             primitives::find_prefix(target_tokens, || primitives::kw("among").void())
     {
@@ -508,7 +521,10 @@ pub(crate) fn parse_combat_divided_amount_shape_lexed(
             return Ok(CombatDividedAmountShape::EvenlyEach { filter_tokens });
         }
     }
-    Ok(CombatDividedAmountShape::Distributed { target_tokens })
+    Ok(CombatDividedAmountShape::Distributed {
+        target_tokens,
+        evenly_rounded_down,
+    })
 }
 
 fn phrase_occurs(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
@@ -720,6 +736,28 @@ pub(crate) fn parse_combat_damage_target_shape_lexed(
         return Ok(CombatDamageTargetShape::OpponentAndControlledCreaturePlaneswalker);
     }
 
+    if let Some((history_idx, (), after_history)) = primitives::find_prefix(target_tokens, || {
+        primitives::phrase(&["it", "has", "dealt", "damage", "to", "this", "game"]).void()
+    }) && parser_token_word_refs(after_history).is_empty()
+    {
+        let domains = trim_lexed_commas(&target_tokens[..history_idx]);
+        if let Some((and_idx, (), _)) =
+            primitives::find_prefix(domains, || primitives::kw("and").void())
+        {
+            let player_tokens = trim_lexed_commas(&domains[..and_idx]);
+            let filter_tokens = trim_lexed_commas(&domains[and_idx + 1..]);
+            if !filter_tokens.is_empty()
+                && let Some(players) =
+                    parse_combat_player_damage_target_shape_lexed(player_tokens, false)
+            {
+                return Ok(CombatDamageTargetShape::HistoricalDamageRecipients {
+                    players,
+                    filter_tokens,
+                });
+            }
+        }
+    }
+
     if let Some((_head, filter_tokens)) = each_or_all {
         if filter_tokens.is_empty() {
             return Err(CombatDamageTargetShapeError::MissingEachFilter);
@@ -822,6 +860,35 @@ mod tests {
     }
 
     #[test]
+    fn parses_player_object_union_with_full_game_source_damage_history() {
+        let tokens = lex_line(
+            "1 damage to each opponent and planeswalker it has dealt damage to this game",
+            0,
+        )
+        .unwrap();
+        let shape = parse_combat_damage_target_shape_lexed(&tokens, 1).unwrap();
+        let CombatDamageTargetShape::HistoricalDamageRecipients {
+            players,
+            filter_tokens,
+        } = shape
+        else {
+            panic!("expected historical mixed-recipient shape");
+        };
+        assert_eq!(players, CombatPlayerDamageTargetShape::EachOpponent);
+        assert_eq!(parser_token_word_refs(filter_tokens), ["planeswalker"]);
+
+        let near_miss = lex_line(
+            "1 damage to each opponent and planeswalker it has dealt damage to this turn",
+            0,
+        )
+        .unwrap();
+        assert!(!matches!(
+            parse_combat_damage_target_shape_lexed(&near_miss, 1),
+            Ok(CombatDamageTargetShape::HistoricalDamageRecipients { .. })
+        ));
+    }
+
+    #[test]
     fn parses_damage_pronouns_as_the_bound_event_player() {
         for text in ["the player", "that player", "them"] {
             let tokens = lex_line(text, 0).unwrap();
@@ -848,5 +915,34 @@ mod tests {
             parse_combat_embedded_target_controller_shape_lexed(&tokens),
             None
         );
+    }
+
+    #[test]
+    fn distinguishes_even_rounded_down_from_chosen_distribution() {
+        let evenly = lex_line(
+            "damage divided evenly, rounded down, among any number of targets",
+            0,
+        )
+        .unwrap();
+        assert!(matches!(
+            parse_combat_divided_amount_shape_lexed(&evenly, 0).unwrap(),
+            CombatDividedAmountShape::Distributed {
+                evenly_rounded_down: true,
+                ..
+            }
+        ));
+
+        let chosen = lex_line(
+            "damage divided as you choose among any number of targets",
+            0,
+        )
+        .unwrap();
+        assert!(matches!(
+            parse_combat_divided_amount_shape_lexed(&chosen, 0).unwrap(),
+            CombatDividedAmountShape::Distributed {
+                evenly_rounded_down: false,
+                ..
+            }
+        ));
     }
 }

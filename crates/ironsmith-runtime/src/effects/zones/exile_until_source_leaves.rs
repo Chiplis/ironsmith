@@ -79,6 +79,7 @@ impl EffectExecutor for ExileUntilEffect {
 
         let objects = resolve_objects_for_effect(game, ctx, &self.spec)?;
         let mut exiled_count = 0_i32;
+        let mut monarch_duration_stable_ids = Vec::new();
         for object_id in objects {
             let Some(obj) = game.object(object_id) else {
                 continue;
@@ -112,6 +113,11 @@ impl EffectExecutor for ExileUntilEffect {
                     } else {
                         game.add_exiled_with_source_link(ctx.source, new_id);
                     }
+                    if self.duration == ExileUntilDuration::OpponentBecomesMonarch
+                        && let Some(exiled) = game.object(new_id)
+                    {
+                        monarch_duration_stable_ids.push(exiled.stable_id);
+                    }
                     exiled_count += 1;
                 }
             }
@@ -119,6 +125,15 @@ impl EffectExecutor for ExileUntilEffect {
 
         if exiled_count > 0 && self.duration == ExileUntilDuration::SourceLeavesBattlefield {
             game.mark_return_exiled_when_source_leaves(leave_watcher);
+        }
+        if !monarch_duration_stable_ids.is_empty()
+            && self.duration == ExileUntilDuration::OpponentBecomesMonarch
+        {
+            game.track_exiled_until_opponent_becomes_monarch(
+                ctx.controller,
+                monarch_duration_stable_ids,
+                self.return_zone,
+            );
         }
         Ok(EffectOutcome::count(exiled_count))
     }
@@ -369,5 +384,60 @@ mod tests {
             game.object(*id)
                 .is_some_and(|object| object.name == "Bloodflow Connoisseur")
         }));
+    }
+
+    #[test]
+    fn opponent_becomes_monarch_duration_survives_source_leaving_and_returns_for_opponent() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature_on_battlefield(&mut game, "Palace Jailer", alice);
+        let creature_id = create_creature_on_battlefield(&mut game, "Exiled Creature", bob);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = ExileUntilEffect::new(
+            ChooseSpec::SpecificObject(creature_id),
+            ExileUntilDuration::OpponentBecomesMonarch,
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        assert!(game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Exiled Creature")
+        }));
+
+        game.move_object_by_effect(source, Zone::Graveyard);
+        crate::game_loop::drain_pending_trigger_events(
+            &mut game,
+            &mut crate::triggers::TriggerQueue::new(),
+        );
+        assert!(
+            game.exile.iter().any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Exiled Creature")),
+            "leaving Palace Jailer must not end its monarch-event duration"
+        );
+
+        game.set_monarch(Some(alice));
+        assert!(
+            game.exile.iter().any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Exiled Creature")),
+            "the effect controller becoming monarch is not the duration event"
+        );
+
+        game.set_monarch(Some(bob));
+        assert!(game.exile.is_empty());
+        let returned = game
+            .battlefield
+            .iter()
+            .copied()
+            .find(|id| {
+                game.object(*id)
+                    .is_some_and(|object| object.name == "Exiled Creature")
+            })
+            .expect("the exiled creature should return under its owner's control");
+        assert_eq!(game.controller_of_id(returned), Some(bob));
     }
 }

@@ -2150,7 +2150,7 @@ pub(crate) fn valid_revealed_choice<'a>(
 ) -> Option<(String, &'a crate::TagKey)> {
     if choose.chooser != PlayerFilter::You
         || choose.is_search
-        || choose.count.min != 0
+        || choose.count.min > 1
         || choose.count.max != Some(1)
         || !choose_references_revealed_tag(choose, revealed_tag)
     {
@@ -2233,33 +2233,55 @@ pub(crate) fn for_each_reveals_iterated_tag(effect: &Effect, tag: &crate::TagKey
     )
 }
 
-pub(crate) fn for_each_conditionally_returns_iterated_to_hand(
+fn for_each_moves_partition_remainder_to_zone(
     effect: &Effect,
-    tag: &crate::TagKey,
+    iterated_tag: &crate::TagKey,
+    kept_tag: &crate::TagKey,
+    zone: Zone,
 ) -> bool {
     let Some((_, for_each)) = for_each_tagged_for_compaction(effect) else {
         return false;
     };
-    if for_each.tag != *tag || for_each.effects.len() != 1 {
+    if for_each.tag != *iterated_tag || for_each.effects.len() != 1 {
         return false;
     }
-    let Some(conditional) = for_each.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()
+    let Some(conditional) = structural_unwrap_render_wrappers(&for_each.effects[0])
+        .downcast_ref::<crate::effects::ConditionalEffect>()
     else {
         return false;
     };
-    if !conditional.if_true.is_empty() || conditional.if_false.len() != 1 {
+    let Condition::TaggedObjectMatches(iterated, filter) = &conditional.condition else {
+        return false;
+    };
+    if iterated.as_str() != "__it__"
+        || filter != &ObjectFilter::tagged(kept_tag.clone())
+        || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+        || !conditional.if_true.is_empty()
+        || conditional.if_false.len() != 1
+    {
         return false;
     }
-    let effect = unwrap_tag_wrappers(&conditional.if_false[0]);
-    if let Some(return_to_hand) = effect.downcast_ref::<crate::effects::ReturnToHandEffect>() {
-        return matches!(return_to_hand.spec.base(), ChooseSpec::Iterated);
-    }
     matches!(
-        effect.downcast_ref::<crate::effects::MoveToZoneEffect>(),
+        structural_unwrap_render_wrappers(&conditional.if_false[0])
+            .downcast_ref::<crate::effects::MoveToZoneEffect>(),
         Some(move_to_zone)
-            if move_to_zone.zone == Zone::Hand
+            if move_to_zone.zone == zone
+                && !move_to_zone.to_top
+                && !move_to_zone.enters_tapped
                 && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
     )
+}
+
+fn choose_is_exact_tagged_library_partition(
+    choose: &crate::effects::ChooseObjectsEffect,
+    tag: &crate::TagKey,
+) -> bool {
+    if choose_primary_zone(choose) != Some(Zone::Library) || !choose.additional_zones.is_empty() {
+        return false;
+    }
+    let mut filter = choose.filter.clone();
+    filter.zone = None;
+    filter == ObjectFilter::tagged(tag.clone())
 }
 
 pub(crate) fn for_each_moves_any_remainder_to_zone(
@@ -2835,6 +2857,14 @@ pub(crate) fn is_card_type_choice_label(label: &str) -> bool {
 }
 
 pub(crate) fn render_look_reveal_repeated_choices(effects: &[&Effect]) -> Option<(String, usize)> {
+    // Effect ids and result tags carry execution identity, but do not change
+    // the authored look/reveal/choice partition. Normalize those transparent
+    // wrappers before matching the complete typed sequence so parser-assigned
+    // ids cannot force the renderer back to one sentence per internal effect.
+    let effects = effects
+        .iter()
+        .map(|effect| structural_unwrap_render_wrappers(effect))
+        .collect::<Vec<_>>();
     let look = effects
         .first()?
         .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
@@ -2954,7 +2984,11 @@ pub(crate) fn render_look_reveal_repeated_choices(effects: &[&Effect]) -> Option
             }
         } else if !looked_pool_is_public && reveals_selection {
             let hand_reference = if labels.len() == 1 {
-                "that card"
+                // The revealed object and the immediately moved object share
+                // the same typed result tag.  For a singular selection, keep
+                // that identity relationship concise instead of redeclaring
+                // the noun after "reveal a ... card".
+                "it"
             } else {
                 "those cards"
             };
@@ -2986,13 +3020,22 @@ pub(crate) fn render_look_reveal_repeated_choices(effects: &[&Effect]) -> Option
         && let Some(battlefield_choose) =
             effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
         && battlefield_choose.chooser == PlayerFilter::You
-        && battlefield_choose.count.min == 0
+        && battlefield_choose.count.min <= 1
         && battlefield_choose.count.max == Some(1)
-        && filter_is_tagged_as(&battlefield_choose.filter, chosen_tag.as_str())
+        && choose_is_exact_tagged_library_partition(battlefield_choose, &chosen_tag)
         && put_battlefield_uses_tag(effects[idx + 1], &battlefield_choose.tag)
-        && (for_each_returns_iterated_to_hand(effects[idx + 2], &chosen_tag)
-            || for_each_conditionally_returns_iterated_to_hand(effects[idx + 2], &chosen_tag))
-        && for_each_moves_any_remainder_to_zone(effects[idx + 3], &look.tag, Zone::Graveyard)
+        && for_each_moves_partition_remainder_to_zone(
+            effects[idx + 2],
+            &chosen_tag,
+            &battlefield_choose.tag,
+            Zone::Hand,
+        )
+        && for_each_moves_partition_remainder_to_zone(
+            effects[idx + 3],
+            &look.tag,
+            &chosen_tag,
+            Zone::Graveyard,
+        )
     {
         let labels = labels
             .iter()

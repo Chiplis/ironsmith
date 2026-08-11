@@ -30,6 +30,7 @@ pub(crate) use sequence_shapes::*;
 pub(crate) enum ChoiceClauseActor {
     Implicit,
     You,
+    Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -353,15 +354,12 @@ pub(crate) fn parse_choice_card_type_reveal_shape_words(
 }
 
 fn parse_choice_head_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ChoiceClauseActor> {
-    let actor = opt(primitives::kw("you"))
-        .map(|you| {
-            if you.is_some() {
-                ChoiceClauseActor::You
-            } else {
-                ChoiceClauseActor::Implicit
-            }
-        })
-        .parse_next(input)?;
+    let actor = opt(alt((
+        primitives::phrase(&["an", "opponent"]).value(ChoiceClauseActor::Opponent),
+        primitives::kw("you").value(ChoiceClauseActor::You),
+    )))
+    .map(|actor| actor.unwrap_or(ChoiceClauseActor::Implicit))
+    .parse_next(input)?;
     alt((primitives::kw("choose"), primitives::kw("chooses"))).parse_next(input)?;
     Ok(actor)
 }
@@ -729,6 +727,35 @@ mod tests {
         assert!(parsed.references.references_it);
         assert!(parsed.references.references_container_it);
         assert!(parsed.references.explicit_container_reference);
+    }
+
+    #[test]
+    fn singular_opponent_choice_keeps_the_authored_chooser() {
+        let tokens = lex_line(
+            "An opponent chooses a permanent you control other than this creature.",
+            0,
+        )
+        .unwrap();
+        let ChoiceObjectClauseKind::Object(parsed) =
+            parse_choice_object_clause_tokens(&tokens[..tokens.len() - 1])
+                .unwrap()
+                .unwrap()
+        else {
+            panic!("expected object choice");
+        };
+        assert_eq!(parsed.actor, ChoiceClauseActor::Opponent);
+        assert_eq!(
+            parsed.filter_words,
+            [
+                "permanent",
+                "you",
+                "control",
+                "other",
+                "than",
+                "this",
+                "creature"
+            ]
+        );
     }
 
     #[test]

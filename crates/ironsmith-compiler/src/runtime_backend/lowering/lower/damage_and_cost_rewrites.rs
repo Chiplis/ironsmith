@@ -73,6 +73,113 @@ fn remember_single_cross_ability_player_choice(builder: &mut CardDefinitionBuild
         crate::effect::Effect::new(choice.clone().remember_as_chosen_player());
 }
 
+fn filter_uses_persistent_chosen_object(filter: &ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == ironsmith_core::CHOSEN_OBJECTS_TAG
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    | crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+            )
+    }) || filter
+        .any_of
+        .iter()
+        .any(filter_uses_persistent_chosen_object)
+}
+
+fn triggered_ability_uses_persistent_chosen_object(
+    triggered: &crate::ability::TriggeredAbility,
+) -> bool {
+    fn trigger_uses_persistent_chosen_object(trigger: &crate::triggers::Trigger) -> bool {
+        match &trigger.kind {
+            crate::triggers::TriggerKind::LeavesBattlefield { filter } => {
+                filter_uses_persistent_chosen_object(filter)
+            }
+            crate::triggers::TriggerKind::ZoneChange(zone_change) => zone_change
+                .filter
+                .as_ref()
+                .is_some_and(filter_uses_persistent_chosen_object),
+            crate::triggers::TriggerKind::AnyOf(triggers) => {
+                triggers.iter().any(trigger_uses_persistent_chosen_object)
+            }
+            crate::triggers::TriggerKind::Either { left, right } => {
+                trigger_uses_persistent_chosen_object(left)
+                    || trigger_uses_persistent_chosen_object(right)
+            }
+            _ => false,
+        }
+    }
+
+    trigger_uses_persistent_chosen_object(&triggered.trigger)
+}
+
+/// Persist an object choice only when a different ability proves an authored
+/// `the chosen <object>` reference. This keeps ordinary resolution-local
+/// choices out of permanent state and avoids treating generic `it` tags as
+/// cross-ability identity.
+fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuilder) {
+    let reference_abilities = builder
+        .abilities
+        .iter()
+        .enumerate()
+        .filter_map(|(ability_index, ability)| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Triggered(triggered)
+                    if triggered_ability_uses_persistent_chosen_object(triggered)
+            )
+            .then_some(ability_index)
+        })
+        .collect::<Vec<_>>();
+    if reference_abilities.is_empty() {
+        return;
+    }
+
+    let choices = builder
+        .abilities
+        .iter()
+        .enumerate()
+        .flat_map(|(ability_index, ability)| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return Vec::new().into_iter();
+            };
+            triggered
+                .effects
+                .segments
+                .iter()
+                .enumerate()
+                .flat_map(move |(segment_index, segment)| {
+                    segment.default_effects.iter().enumerate().filter_map(
+                        move |(effect_index, effect)| {
+                            let choice =
+                                effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+                            (choice.count.min == 1
+                                && choice.count.max == Some(1)
+                                && choice.count_value.is_none())
+                            .then(|| (ability_index, segment_index, effect_index, choice.clone()))
+                        },
+                    )
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+        })
+        .collect::<Vec<_>>();
+    let [(ability_index, segment_index, effect_index, choice)] = choices.as_slice() else {
+        return;
+    };
+    if !reference_abilities
+        .iter()
+        .any(|reference_index| reference_index != ability_index)
+    {
+        return;
+    }
+    let AbilityKind::Triggered(triggered) = &mut builder.abilities[*ability_index].kind else {
+        return;
+    };
+    triggered.effects.segments[*segment_index].default_effects[*effect_index] =
+        crate::effect::Effect::new(choice.clone().remember_as_chosen_object());
+}
+
 pub(crate) fn lower_normalized_card_ast_with_facts(
     ast: NormalizedCardAst,
 ) -> Result<LoweredCardDocument, CardTextError> {
@@ -150,6 +257,7 @@ pub(crate) fn lower_normalized_card_ast_with_facts(
     }
 
     remember_single_cross_ability_player_choice(&mut builder);
+    remember_single_cross_ability_object_choice(&mut builder);
     builder = rewrite_finalize_lowered_card(builder, &mut state);
     if let Some(overload_ast) = overload_ast {
         let overloaded = lower_normalized_card_ast_with_facts(overload_ast)?;

@@ -3,10 +3,12 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::{CounterRemovalSpec, DecisionSpec as _, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
+use crate::effects::helpers::{
+    resolve_single_object_for_effect, resolve_single_target_from_spec, resolve_value,
+};
 use crate::effects::{EffectExecutor, RemoveAnyCountersAmongEffect};
-use crate::effects::{ExecutionContext, ExecutionError};
-use crate::game_state::GameState;
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::game_state::{GameState, Target};
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
 pub use ironsmith_core::RemoveUpToAnyCountersEffect;
@@ -18,7 +20,7 @@ pub use ironsmith_core::RemoveUpToAnyCountersEffect;
 /// # Fields
 ///
 /// * `max_count` - Maximum total counters the player can choose to remove
-/// * `target` - Which permanent to target
+/// * `target` - Which permanent or player to target
 ///
 /// # Example
 ///
@@ -39,19 +41,41 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
                 RemoveAnyCountersAmongEffect::dynamic(min_count, max_count, filter.clone(), false);
             return distributed.execute(game, ctx);
         }
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
+        let target = match self.target.base() {
+            ChooseSpec::Player(_)
+            | ChooseSpec::SpecificPlayer(_)
+            | ChooseSpec::AnyTarget
+            | ChooseSpec::AnyOtherTarget
+            | ChooseSpec::ObjectOrPlayer(_, _)
+            | ChooseSpec::PlayerOrPlaneswalker(_)
+            | ChooseSpec::AttackedPlayerOrPlaneswalker
+            | ChooseSpec::SourceController
+            | ChooseSpec::SourceOwner
+            | ChooseSpec::EachPlayer(_) => {
+                resolve_single_target_from_spec(game, &self.target, ctx)?
+            }
+            _ => ResolvedTarget::Object(resolve_single_object_for_effect(game, ctx, &self.target)?),
+        };
 
         // Get available counters on the target
-        let available_counters: Vec<(CounterType, u32)> = game
-            .object(target_id)
-            .map(|obj| {
-                obj.counters
+        let available_counters: Vec<(CounterType, u32)> = match target {
+            ResolvedTarget::Object(target_id) => game.object(target_id).map(|object| {
+                object
+                    .counters
                     .iter()
                     .filter(|(_, count)| **count > 0)
-                    .map(|(ct, count)| (*ct, *count))
+                    .map(|(counter_type, count)| (*counter_type, *count))
                     .collect()
-            })
-            .unwrap_or_default();
+            }),
+            ResolvedTarget::Player(target_player) => game.player(target_player).map(|player| {
+                player
+                    .counter_types_with_counters()
+                    .into_iter()
+                    .map(|counter_type| (counter_type, player.counter_count(counter_type)))
+                    .collect()
+            }),
+        }
+        .unwrap_or_default();
 
         // Count total counters available
         let total_counters: u32 = available_counters.iter().map(|(_, c)| c).sum();
@@ -66,9 +90,13 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
 
         // Ask the player which counters to remove using the spec-based system
         let min_count = if self.up_to { 0 } else { actual_max };
-        let spec = CounterRemovalSpec::new(
+        let decision_target = match target {
+            ResolvedTarget::Object(id) => Target::Object(id),
+            ResolvedTarget::Player(id) => Target::Player(id),
+        };
+        let spec = CounterRemovalSpec::for_target(
             ctx.source,
-            target_id,
+            decision_target,
             actual_max,
             available_counters.clone(),
         )
@@ -101,13 +129,23 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
             let remaining = actual_max - total_removed;
             let amount_to_remove = to_remove.min(remaining);
 
-            if let Some((removed, event)) = game.remove_counters(
-                target_id,
-                counter_type,
-                amount_to_remove,
-                Some(ctx.source),
-                Some(ctx.controller),
-            ) {
+            let removal = match target {
+                ResolvedTarget::Object(target_id) => game.remove_counters(
+                    target_id,
+                    counter_type,
+                    amount_to_remove,
+                    Some(ctx.source),
+                    Some(ctx.controller),
+                ),
+                ResolvedTarget::Player(target_player) => game.remove_player_counters_with_source(
+                    target_player,
+                    counter_type,
+                    amount_to_remove,
+                    Some(ctx.source),
+                    Some(ctx.controller),
+                ),
+            };
+            if let Some((removed, event)) = removal {
                 outcome = outcome.with_event(event);
                 total_removed += removed;
             }
@@ -225,6 +263,35 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+    }
+
+    #[test]
+    fn test_remove_up_to_any_counters_from_target_opponent() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let bob_state = game.player_mut(bob).expect("Bob should exist");
+        bob_state.poison_counters = 3;
+        bob_state.energy_counters = 4;
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Player(bob)]);
+        let target = ChooseSpec::target(ChooseSpec::ObjectOrPlayer(
+            crate::target::ObjectFilter::default()
+                .with_type(CardType::Artifact)
+                .with_type(CardType::Creature)
+                .with_type(CardType::Planeswalker),
+            crate::target::PlayerFilter::Opponent,
+        ));
+        let effect = RemoveUpToAnyCountersEffect::new(5, target);
+
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(5));
+        let bob_state = game.player(bob).expect("Bob should remain in the game");
+        assert_eq!(bob_state.poison_counters, 0);
+        assert_eq!(bob_state.energy_counters, 2);
     }
 
     #[test]

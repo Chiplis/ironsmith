@@ -235,6 +235,25 @@ pub fn can_pay_cost_with_reason(
         ));
     }
 
+    // Choice-backed costs can pass objects to a later component through a tag
+    // (for example, "choose half your lands, then sacrifice the chosen
+    // lands"). The ordinary component-by-component check has no tag state, so
+    // route those totals through the context-aware checker that can construct a
+    // legal speculative selection without making the player's actual choice.
+    if total_cost_has_tagged_choice_consumer(cost) {
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let mut execution_ctx =
+            crate::effects::ExecutionContext::new(source_id, player, &mut decision_maker);
+        return crate::special_actions::can_pay_total_cost_with_reason_in_context(
+            game,
+            player,
+            source_id,
+            cost,
+            reason,
+            &mut execution_ctx,
+        );
+    }
+
     let ctx = CostCheckContext::new(source_id, player).with_reason(reason);
 
     match cost.kind() {
@@ -262,6 +281,50 @@ pub fn can_pay_cost_with_reason(
                     "no payable alternative cost branch".to_string(),
                 ))
             }
+        }
+    }
+}
+
+fn total_cost_has_tagged_choice_consumer(cost: &TotalCost) -> bool {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(components) => components.windows(2).any(|pair| {
+            let Some(choice) = pair[0]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            else {
+                return false;
+            };
+            let Some(mut consumer) = pair[1].effect_ref() else {
+                return false;
+            };
+            while let Some(inner) = consumer.transparent_child_effect() {
+                consumer = inner;
+            }
+            let sacrifice = consumer
+                .downcast_ref::<crate::effects::SacrificeEffect>()
+                .map(|effect| (&effect.filter, &effect.player))
+                .or_else(|| {
+                    consumer
+                        .downcast_ref::<ironsmith_core::SacrificePlayerEffect>()
+                        .map(|effect| (&effect.filter, &effect.player))
+                });
+            let tagged_sacrifice = sacrifice.is_some_and(|(filter, player)| {
+                player == &crate::target::PlayerFilter::You
+                    && crate::game_loop::tagged_filter_matches(filter, &choice.tag)
+            });
+            let tagged_exile = consumer
+                .downcast_ref::<crate::effects::ExileEffect>()
+                .is_some_and(|exile| match exile.spec.base() {
+                    crate::target::ChooseSpec::Tagged(tag) => tag == &choice.tag,
+                    crate::target::ChooseSpec::Object(filter) => {
+                        crate::game_loop::tagged_filter_matches(filter, &choice.tag)
+                    }
+                    _ => false,
+                });
+            tagged_sacrifice || tagged_exile
+        }),
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            branches.iter().any(total_cost_has_tagged_choice_consumer)
         }
     }
 }
@@ -323,6 +386,7 @@ mod tests {
     fn gift_prefix_lookup_matches_descriptive_gift_label() {
         let paid = OptionalCostsPaid {
             costs: vec![("Gift a tapped Fish".into(), 1)],
+            cast_at_sorcery_timing: false,
         };
 
         assert!(paid.was_paid_label("Gift"));

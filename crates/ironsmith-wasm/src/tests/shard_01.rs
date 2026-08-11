@@ -280,20 +280,17 @@ pub(super) fn yawgmoth_proliferate_next_cost_choices_advance_in_replay_chain() {
         .expect("choosing Yawgmoth's mana cost should advance to mana payment");
 
     let mana_ctx = match mana_wasm.pending_decision.as_ref() {
-        Some(DecisionContext::SelectOptions(ctx)) => ctx,
-        other => panic!("expected mana payment prompt after choosing mana, got {other:?}"),
+        Some(DecisionContext::ManaPayment(ctx)) => ctx,
+        other => panic!("expected authoritative mana payment after choosing mana, got {other:?}"),
     };
     assert!(
-        mana_ctx.description.to_lowercase().contains("pay mana pip"),
-        "mana choice should advance to mana pip payment, got description: {}",
-        mana_ctx.description
-    );
-    assert!(
-        mana_ctx
-            .options
-            .iter()
-            .any(|option| option.legal && option.description.contains("Black Lotus")),
-        "mana payment prompt should offer Black Lotus"
+        mana_ctx.plan.mana_ability_steps.iter().any(|step| {
+            mana_wasm
+                .game
+                .object(step.source)
+                .is_some_and(|source| source.name == "Black Lotus")
+        }),
+        "the authoritative mana plan should select Black Lotus"
     );
 
     let mut discard_wasm = setup_proliferate_prompt();
@@ -1139,25 +1136,32 @@ pub(super) fn tayam_black_lotus_color_choice_keeps_paid_mana_state() {
     )
     .expect("choosing Tayam's mana cost should advance to mana payment");
 
-    let mana_ctx = match wasm.pending_decision.as_ref() {
-        Some(DecisionContext::SelectOptions(ctx)) => ctx,
-        other => panic!("expected mana payment prompt after choosing mana, got {other:?}"),
+    let (plan_id, request_hash) = match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::ManaPayment(ctx)) => {
+            assert!(
+                ctx.plan
+                    .mana_ability_steps
+                    .iter()
+                    .any(|step| step.source == lotus_id),
+                "the authoritative payment plan should select Black Lotus"
+            );
+            (ctx.plan.id.to_string(), ctx.plan.request_hash.to_string())
+        }
+        other => panic!("expected authoritative mana payment after choosing mana, got {other:?}"),
     };
-    let lotus_option = mana_ctx
-        .options
-        .iter()
-        .find(|option| option.legal && option.description.contains("Black Lotus"))
-        .map(|option| option.index)
-        .expect("mana payment prompt should offer Black Lotus");
 
     wasm.dispatch(
         serde_wasm_bindgen::to_value(&json!({
-            "type": "select_options",
-            "option_indices": [lotus_option],
+            "type": "mana_payment",
+            "response": {
+                "action": "confirm",
+                "plan_id": plan_id,
+                "request_hash": request_hash,
+            },
         }))
-        .expect("Black Lotus mana payment command should serialize"),
+        .expect("Black Lotus payment plan should serialize"),
     )
-    .expect("activating Black Lotus during Tayam payment should succeed");
+    .expect("confirming the Black Lotus payment plan should succeed");
 
     assert!(
         !wasm.game.battlefield.contains(&lotus_id),
@@ -1196,8 +1200,8 @@ pub(super) fn tayam_black_lotus_color_choice_keeps_paid_mana_state() {
         .expect("alice should exist")
         .mana_pool;
     assert_eq!(
-        pool.green, 2,
-        "one of the three chosen mana should pay the current generic pip and two should remain"
+        pool.green, 3,
+        "the full planned mana production should remain until the chosen mana cost is committed"
     );
 
     let pending_activation = wasm
@@ -1205,10 +1209,9 @@ pub(super) fn tayam_black_lotus_color_choice_keeps_paid_mana_state() {
         .pending_activation
         .as_ref()
         .expect("Tayam activation should still be in progress");
-    assert_eq!(
-        pending_activation.remaining_mana_pips.len(),
-        2,
-        "paying Black Lotus into Tayam should consume exactly one generic pip"
+    assert!(
+        pending_activation.pending_mana_payment.is_some(),
+        "the prepared whole-cost payment should remain attached to the activation"
     );
     assert!(
         matches!(

@@ -17,22 +17,190 @@ use crate::effect::{ChoiceCount, Value};
 use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
+use crate::runtime_backend::front_end::grammar::lexical::TokenWordView;
 use crate::runtime_backend::front_end::grammar::sentence_markers::{
     self, ConditionalFollowupActor, LeadingMayActor,
 };
+use crate::runtime_backend::front_end::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint;
 use crate::runtime_backend::front_end::lexer::OwnedLexToken;
 use crate::runtime_backend::grammar::effects::{
     control_copy_attach_shapes::BattlefieldControllerShape, looked_card_shapes as looked_grammar,
     sequence_quad_shapes as quad_grammar, triple_sequence_shapes as triple_grammar,
 };
+use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::util::{
-    helper_tag_for_tokens, strip_leading_token_words_any, trim_commas,
+    helper_tag_for_tokens, parse_target_phrase, strip_leading_token_words_any, trim_commas,
 };
 use crate::target::ChooseSpec;
-use crate::target::{PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::target::{ObjectRef, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
+
+/// Preserve the exact result collection across:
+///
+/// "Each player mills a card. If a land card was milled this way, create ... .
+/// Until end of turn, you may cast a spell from among those cards."
+///
+/// The tag is the semantic boundary: the land test and permission can see only
+/// cards affected by this mill instruction, never unrelated graveyard cards.
+pub(crate) fn parse_each_player_mill_then_land_result_then_cast_one_milled_spell(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = sentences[sentence_idx].lowered();
+    let second_tokens = sentences[sentence_idx + 1].lowered();
+    let third_tokens = sentences[sentence_idx + 2].lowered();
+    if crate::runtime_backend::token_word_refs(first_tokens).as_slice()
+        != ["each", "player", "mills", "a", "card"]
+        || crate::runtime_backend::token_word_refs(second_tokens).as_slice()
+            != [
+                "if", "a", "land", "card", "was", "milled", "this", "way", "create", "a",
+                "treasure", "token",
+            ]
+        || crate::runtime_backend::token_word_refs(third_tokens).as_slice()
+            != [
+                "until", "end", "of", "turn", "you", "may", "cast", "a", "spell", "from", "among",
+                "those", "cards",
+            ]
+    {
+        return Ok(None);
+    }
+
+    let Ok(mut mill_effects) = effect_sentences::parse_effect_sentence_lexed(first_tokens) else {
+        return Ok(None);
+    };
+    let [mill_effect] = mill_effects.as_mut_slice() else {
+        return Ok(None);
+    };
+    let milled_tag = helper_tag_for_tokens(first_tokens, "milled");
+    if super::pairs::tag_single_mill_effect(mill_effect, &milled_tag).is_none() {
+        let exact_each_player_mill = matches!(
+            mill_effect,
+            EffectAst::ForEachPlayer { effects }
+                if matches!(effects.as_slice(), [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Mill { .. },
+                    ..
+                })])
+        );
+        if !exact_each_player_mill {
+            return Ok(None);
+        }
+        let whole_batch = mill_effect.clone();
+        *mill_effect = EffectAst::TagAffected {
+            effect: Box::new(whole_batch),
+            tag: milled_tag.clone(),
+        };
+    }
+
+    let Some(create_start) = second_tokens
+        .iter()
+        .position(|token| token.is_word("create"))
+    else {
+        return Ok(None);
+    };
+    let Ok(create_effects) =
+        effect_sentences::parse_effect_sentence_lexed(&second_tokens[create_start..])
+    else {
+        return Ok(None);
+    };
+    if create_effects.len() != 1 {
+        return Ok(None);
+    }
+    let mut land = ObjectFilter::default();
+    land.card_types = vec![CardType::Land];
+    land.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Milled));
+
+    let permission_surface = ironsmith_core::GrantPlayTaggedSurface::default()
+        .with_leading_duration(true)
+        .with_object(ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseCards);
+    let permission =
+        EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
+            milled_tag.clone(),
+            PlayerAst::You,
+            false,
+            false,
+            ironsmith_core::value_model::ManaSpendMode::Normal,
+            Some(permission_surface),
+        )
+        .with_tagged_play_max_plays(Some(1));
+
+    Ok(Some(vec![
+        mill_effects.pop().expect("one parsed mill effect"),
+        EffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(milled_tag, land),
+            if_true: create_effects,
+            if_false: Vec::new(),
+        },
+        permission,
+    ]))
+}
+
+#[cfg(test)]
+mod mill_result_permission_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn parse_three(third: &str) -> Option<Vec<EffectAst>> {
+        let first = lex_line("Each player mills a card.", 0).expect("first sentence");
+        let second = lex_line(
+            "If a land card was milled this way, create a Treasure token.",
+            1,
+        )
+        .expect("second sentence");
+        let third = lex_line(third, 2).expect("third sentence");
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+            SentenceInput::from_lexed(&third),
+        ];
+        parse_each_player_mill_then_land_result_then_cast_one_milled_spell(&sentences, 0)
+            .expect("triple parser")
+    }
+
+    #[test]
+    fn exact_triple_shares_mill_tag_and_defers_one_cast_choice() {
+        let effects =
+            parse_three("Until end of turn, you may cast a spell from among those cards.")
+                .expect("exact result-linked permission");
+        let [
+            EffectAst::TagAffected { tag: mill_tag, .. },
+            conditional,
+            permission,
+        ] = effects.as_slice()
+        else {
+            panic!("expected tagged mill, condition, and permission: {effects:#?}");
+        };
+        assert!(matches!(
+            conditional,
+            EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(tag, filter),
+                ..
+            } if tag == mill_tag && filter.card_types == [CardType::Land]
+                && filter.prior_effect_action_surface()
+                    == Some(ironsmith_core::PriorEffectAction::Milled)
+        ));
+        assert!(matches!(
+            permission,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                    tag,
+                    max_plays: Some(1),
+                    allow_land: false,
+                    ..
+                },
+                ..
+            }) if tag == mill_tag
+        ));
+    }
+
+    #[test]
+    fn plural_permission_is_not_claimed_as_the_one_spell_rule() {
+        assert!(
+            parse_three("Until end of turn, you may cast spells from among those cards.").is_none()
+        );
+    }
+}
 
 fn look_at_top_cards_parts(effect: &EffectAst) -> Option<(PlayerAst, Value)> {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -626,6 +794,7 @@ pub(crate) fn parse_each_player_mill_then_exile_milled_creatures_then_create_pow
             | EffectAst::ForEachPlayer { effects }
             | EffectAst::ForEachOpponent { effects }
             | EffectAst::ForEachTagged { effects, .. }
+            | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. }
             | EffectAst::ForEachObject { effects, .. } => {
                 for effect in effects {
                     rewrite_total_power_effect(effect, tag);
@@ -2268,50 +2437,6 @@ pub(crate) fn parse_look_at_top_reveal_counted_to_hand_then_shuffle(
     ]))
 }
 
-fn lift_total_mana_value_choice_constraint(
-    tokens: &[OwnedLexToken],
-    filter: &mut ObjectFilter,
-) -> Option<crate::effect::ChoiceAggregateConstraint> {
-    let words = tokens
-        .iter()
-        .filter_map(OwnedLexToken::as_word)
-        .collect::<Vec<_>>();
-    if !words
-        .windows(3)
-        .any(|window| window == ["total", "mana", "value"])
-    {
-        return None;
-    }
-
-    let mut maximum = match filter.mana_value.take()? {
-        crate::filter::Comparison::LessThanOrEqual(maximum) => Value::Fixed(maximum),
-        crate::filter::Comparison::LessThanOrEqualExpr(maximum) => *maximum,
-        other => {
-            filter.mana_value = Some(other);
-            return None;
-        }
-    };
-
-    if let Some(sacrificed_idx) = words.iter().position(|word| *word == "sacrificed") {
-        let object_kind = words
-            .get(sacrificed_idx + 1)
-            .map(|word| word.trim_end_matches("'s"))
-            .filter(|word| !word.is_empty())
-            .unwrap_or("permanent");
-        maximum = Value::ManaValueOf(Box::new(
-            ChooseSpec::Tagged(TagKey::from("sacrifice_cost_0")).with_surface_hint(
-                crate::target::ChooseSpecSurfaceHint::SourceReference(
-                    crate::target::SourceReferenceSurface::ThisPermanentType(format!(
-                        "the sacrificed {object_kind}"
-                    )),
-                ),
-            ),
-        ));
-    }
-
-    Some(crate::effect::ChoiceAggregateConstraint::total_mana_value_at_most(maximum))
-}
-
 pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -2572,8 +2697,11 @@ pub(crate) fn parse_top_cards_may_cast_match_rest_bottom(
             player: chooser,
             allow_land: false,
             as_copy: false,
+            copy_cast_reminder_surface: false,
             without_paying_mana_cost: true,
+            additional_mana_cost: None,
             cost_reduction: None,
+            mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
         },
     }));
     effects.push(
@@ -2649,18 +2777,24 @@ pub(crate) fn parse_look_at_top_exile_match_and_rest_bottom_then_cast_exiled(
                     allow_land,
                     as_copy,
                     without_paying_mana_cost,
+                    additional_mana_cost,
                     cost_reduction,
+                    mana_spend_mode,
                     ..
                 },
             ..
-        }) if !as_copy => EffectAst::subject_verb_cast_tagged(
-            exiled_tag.clone(),
-            permission_player,
-            allow_land,
-            false,
-            without_paying_mana_cost,
-            cost_reduction,
-        ),
+        }) if !as_copy => {
+            EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
+                exiled_tag.clone(),
+                permission_player,
+                allow_land,
+                false,
+                without_paying_mana_cost,
+                additional_mana_cost,
+                cost_reduction,
+                mana_spend_mode,
+            )
+        }
         _ => return Ok(None),
     };
 
@@ -2690,6 +2824,562 @@ pub(crate) fn parse_look_at_top_exile_match_and_rest_bottom_then_cast_exiled(
         ),
         permission_effect,
     ]))
+}
+
+/// Preserve the selected card across the three authored sentences in the
+/// hidden-card permission shape:
+///
+/// "Look at ... . Exile one face down and put the rest ... . For as long as
+/// it remains exiled, you may cast it if ... ."
+///
+/// The ordinary two-sentence partition parser already proves the exact
+/// looked/selected/remainder relationship. This rule rebinds the final cast
+/// permission (and any explicit tagged-look instruction in the equivalent
+/// plural grammar) to that proven selected-card tag.
+pub(crate) fn parse_look_at_top_partition_face_down_then_filtered_permission(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(mut effects) = super::pairs::parse_look_at_top_then_partition_selected_and_remainder(
+        sentences,
+        sentence_idx,
+    )?
+    else {
+        return Ok(None);
+    };
+    let [look_effect, choice_effect, exile_effect, remainder_effect] = effects.as_slice() else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::LookAtTopCards {
+            tag: looked_tag, ..
+        },
+        ..
+    }) = look_effect
+    else {
+        return Ok(None);
+    };
+    let (selected_tag, count, selected_filter, chooser) = match choice_effect {
+        EffectAst::ChooseTaggedObjectsInZone {
+            tag,
+            count,
+            filter,
+            player,
+            zone: Zone::Library,
+        }
+        | EffectAst::ChooseObjects {
+            tag,
+            count,
+            count_value: None,
+            filter,
+            player,
+        } => (tag, count, filter, player),
+        _ => return Ok(None),
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Exile {
+                target: TargetAst::Tagged(exile_tag, _),
+                face_down: true,
+                ..
+            },
+        ..
+    }) = exile_effect
+    else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                tag: remainder_tag,
+                keep_tagged: Some(kept_tag),
+                order: crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
+                ..
+            },
+        ..
+    }) = remainder_effect
+    else {
+        return Ok(None);
+    };
+    let expected_selected_filter = ObjectFilter::tagged(looked_tag.clone()).in_zone(Zone::Library);
+    if !count.is_single()
+        || chooser != &PlayerAst::You
+        || selected_filter != &expected_selected_filter
+        || exile_tag != selected_tag
+        || remainder_tag != looked_tag
+        || kept_tag != selected_tag
+    {
+        return Ok(None);
+    }
+    let selected_tag = selected_tag.clone();
+
+    let permission_tokens = sentences[sentence_idx + 2].lexed();
+    let permission_words = crate::runtime_backend::lexer::parser_token_word_refs(permission_tokens);
+    if matches!(
+        permission_words.as_slice(),
+        [
+            "for", "as", "long", "as", "it", "remains", "exiled", "you", "may", "cast", "it", "if",
+            "its", "a", "creature", "spell"
+        ] | [
+            "for", "as", "long", "as", "it", "remains", "exiled", "you", "may", "cast", "it", "if",
+            "it", "s", "a", "creature", "spell"
+        ] | [
+            "for", "as", "long", "as", "it", "remains", "exiled", "you", "may", "cast", "it", "if",
+            "it", "is", "a", "creature", "spell"
+        ]
+    ) {
+        effects.push(
+            EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+                selected_tag,
+                PlayerAst::You,
+                false,
+                false,
+                false,
+                Some(ObjectFilter::creature()),
+            ),
+        );
+        return Ok(Some(effects));
+    }
+
+    let Some(permission) = parse_cast_or_play_tagged_clause(permission_tokens)? else {
+        return Ok(None);
+    };
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                player,
+                allow_land,
+                without_paying_mana_cost,
+                allow_any_color_for_cast,
+                filter,
+                during_turns_counter_put_on_source: None,
+                spell_cost_increase: None,
+                lands_enter_tapped: false,
+                ..
+            },
+        ..
+    }) = &permission
+    {
+        effects.push(
+            EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+                selected_tag,
+                *player,
+                *allow_land,
+                *without_paying_mana_cost,
+                *allow_any_color_for_cast,
+                filter.clone(),
+            ),
+        );
+        return Ok(Some(effects));
+    }
+    let EffectAst::Sequence {
+        effects: permission_effects,
+    } = permission
+    else {
+        return Ok(None);
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject:
+                crate::cards::builders::SubjectVerbSubjectAst {
+                    player: PlayerAst::You,
+                    ..
+                },
+            action:
+                SubjectVerbActionAst::LookAtObjects {
+                    filter: look_filter,
+                },
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    player,
+                    allow_land,
+                    without_paying_mana_cost,
+                    allow_any_color_for_cast,
+                    filter,
+                    during_turns_counter_put_on_source: None,
+                    spell_cost_increase: None,
+                    lands_enter_tapped: false,
+                    ..
+                },
+            ..
+        }),
+    ] = permission_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+    if look_filter.zone != Some(Zone::Exile)
+        || look_filter.tagged_constraints.len() != 1
+        || !look_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return Ok(None);
+    }
+
+    let mut rebound_look_filter = look_filter.clone();
+    rebound_look_filter.tagged_constraints[0].tag = selected_tag.clone();
+    effects.push(EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::You,
+        SubjectVerbActionAst::LookAtObjects {
+            filter: rebound_look_filter,
+        },
+    ));
+    effects.push(
+        EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+            selected_tag,
+            *player,
+            *allow_land,
+            *without_paying_mana_cost,
+            *allow_any_color_for_cast,
+            filter.clone(),
+        ),
+    );
+    Ok(Some(effects))
+}
+
+fn target_ast_contains_stack_object(target: &TargetAst) -> bool {
+    fn filter_contains_stack_object(filter: &ObjectFilter) -> bool {
+        filter.zone == Some(Zone::Stack) || filter.any_of.iter().any(filter_contains_stack_object)
+    }
+
+    match target {
+        TargetAst::Spell(_) => true,
+        TargetAst::Object(filter, _, _) | TargetAst::ObjectOrPlayer(filter, _, _) => {
+            filter_contains_stack_object(filter)
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_ast_contains_stack_object(inner)
+        }
+        _ => false,
+    }
+}
+
+/// Keep an explicitly announced stack target and its copy-assignment body in
+/// one reference-resolution program. If the two copy sentences are lowered as
+/// a later standalone statement, their otherwise-correct `__it__` reference
+/// has no declared-target import and can fall back to an unrelated object
+/// domain.
+pub(crate) fn parse_explicit_stack_target_then_copy_for_each_target(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())?;
+    let [
+        target_effect @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::TargetOnly {
+                    target: declared_target,
+                    explicit_declaration: true,
+                },
+            ..
+        }),
+    ] = first.as_slice()
+    else {
+        return Ok(None);
+    };
+    if !target_ast_contains_stack_object(declared_target) {
+        return Ok(None);
+    }
+
+    let Some(copy_effects) =
+        super::pairs::parse_copy_for_each_target_then_each_copy_targets_different(
+            sentences,
+            sentence_idx + 1,
+        )?
+    else {
+        return Ok(None);
+    };
+    let [
+        copy_effect @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpellForEachTarget {
+                    target: TargetAst::Tagged(tag, _),
+                    ..
+                },
+            ..
+        }),
+    ] = copy_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+    if tag.as_str() != IT_TAG {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![target_effect.clone(), copy_effect.clone()]))
+}
+
+/// Preserve the authored optional-action surface for a looked-card selection
+/// that enters with a counter. `May { exact-one choice }` is semantically
+/// equivalent to an up-to-one choice, but unlike a bare up-to choice it also
+/// proves Oracle's "You may put" wording for rendering.
+pub(crate) fn parse_look_at_top_may_put_with_counter_then_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, false)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let Some(action) =
+        sentence_markers::parse_leading_may_action_tokens(&second_tokens, &["put"], false)
+    else {
+        return Ok(None);
+    };
+    let chooser = effect_sentences::leading_may_actor_to_player(action.actor, player);
+    let Some((
+        selected_count,
+        mut selected_filter,
+        None,
+        Zone::Battlefield,
+        controller,
+        tapped,
+        false,
+        None,
+        false,
+    )) = parse_counted_from_looked_cards_action(action.tail_tokens)
+    else {
+        return Ok(None);
+    };
+    if !selected_count.is_single() {
+        return Ok(None);
+    }
+    let Some((counter_amount, counter_type)) =
+        triple_grammar::parse_looked_move_action_shape(action.tail_tokens)
+            .and_then(|shape| shape.entry_counter)
+    else {
+        return Ok(None);
+    };
+    let Some(triple_grammar::LookedRemainderShape::LibraryBottom(order)) =
+        triple_grammar::parse_looked_remainder_shape(sentences[sentence_idx + 2].lowered())
+    else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let selected_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "selected");
+    selected_filter.zone = Some(Zone::Library);
+    selected_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: looked_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let iterated = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+    Ok(Some(vec![
+        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
+        EffectAst::May {
+            effects: vec![
+                EffectAst::ChooseTaggedObjectsInZone {
+                    filter: selected_filter,
+                    count: ChoiceCount::exactly(1),
+                    player: chooser,
+                    tag: selected_tag.clone(),
+                    zone: Zone::Library,
+                },
+                EffectAst::ForEachTagged {
+                    tag: selected_tag.clone(),
+                    effects: vec![
+                        EffectAst::subject_verb_move_to_zone_with_attack_target(
+                            iterated.clone(),
+                            Zone::Battlefield,
+                            false,
+                            controller,
+                            tapped,
+                            false,
+                            None,
+                            false,
+                            None,
+                        ),
+                        EffectAst::subject_verb_put_counters(
+                            counter_type,
+                            Value::Fixed(counter_amount as i32).with_surface_hint(
+                                ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter,
+                            ),
+                            iterated,
+                            None,
+                            false,
+                        ),
+                    ],
+                },
+            ],
+        },
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(selected_tag),
+            order,
+            chooser,
+        ),
+    ]))
+}
+
+#[cfg(test)]
+mod hidden_filtered_permission_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn parse(third: &str) -> Option<Vec<EffectAst>> {
+        let lexed = [
+            lex_line("Look at the top three cards of your library.", 0).unwrap(),
+            lex_line(
+                "Exile one face down and put the rest on the bottom of your library in any order.",
+                1,
+            )
+            .unwrap(),
+            lex_line(third, 2).unwrap(),
+        ];
+        let sentences = lexed
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect::<Vec<_>>();
+        parse_look_at_top_partition_face_down_then_filtered_permission(&sentences, 0).unwrap()
+    }
+
+    #[test]
+    fn exact_three_sentence_shape_shares_selected_tag_and_creature_filter() {
+        let effects =
+            parse("For as long as it remains exiled, you may cast it if it's a creature spell.")
+                .expect("three-sentence hidden-card permission");
+        let EffectAst::ChooseTaggedObjectsInZone {
+            tag: selected_tag, ..
+        } = &effects[1]
+        else {
+            panic!("expected selected-card tag: {effects:#?}");
+        };
+        assert!(matches!(
+            effects.as_slice(),
+            [.., EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    tag,
+                    filter: Some(filter),
+                    ..
+                },
+                ..
+            })] if tag == selected_tag
+                && filter.card_types == [CardType::Creature]
+        ));
+    }
+
+    #[test]
+    fn ordinary_until_end_of_turn_permission_is_not_claimed() {
+        assert!(parse("Until end of turn, you may cast it if it's a creature spell.").is_none());
+    }
+}
+
+#[cfg(test)]
+mod optional_looked_entry_counter_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn may_put_keeps_an_exact_choice_inside_the_optional_action() {
+        let lexed = [
+            lex_line("Look at the top seven cards of your library.", 0).unwrap(),
+            lex_line(
+                "You may put a permanent card with mana value 3 or less from among them onto the battlefield with a shield counter on it.",
+                1,
+            )
+            .unwrap(),
+            lex_line(
+                "Put the rest on the bottom of your library in a random order.",
+                2,
+            )
+            .unwrap(),
+        ];
+        let sentences = lexed
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect::<Vec<_>>();
+        let effects = parse_look_at_top_may_put_with_counter_then_rest_bottom(&sentences, 0)
+            .unwrap()
+            .expect("optional looked-card entry");
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [_, EffectAst::May { effects: optional }, _]
+                    if matches!(optional.as_slice(), [
+                        EffectAst::ChooseTaggedObjectsInZone {
+                            count,
+                            filter,
+                            ..
+                        },
+                        EffectAst::ForEachTagged { .. }
+                    ] if count.is_single()
+                        && filter.card_types.iter().any(|kind| *kind == CardType::Artifact)
+                        && filter.card_types.iter().any(|kind| *kind == CardType::Creature))
+            ),
+            "{effects:#?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod explicit_stack_copy_assignment_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn parse(second: &str) -> Option<Vec<EffectAst>> {
+        let lexed = [
+            lex_line(
+                "Choose target instant or sorcery spell that targets only a single permanent or player.",
+                0,
+            )
+            .unwrap(),
+            lex_line(second, 1).unwrap(),
+            lex_line(
+                "Each copy targets a different one of those permanents and players.",
+                2,
+            )
+            .unwrap(),
+        ];
+        let sentences = lexed
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect::<Vec<_>>();
+        parse_explicit_stack_target_then_copy_for_each_target(&sentences, 0).unwrap()
+    }
+
+    #[test]
+    fn announced_stack_target_and_copy_share_the_unresolved_reference_tag() {
+        let tokens = lex_line(
+            "Choose target instant or sorcery spell that targets only a single permanent or player. Copy that spell for each other permanent or player the spell could target. Each copy targets a different one of those permanents and players.",
+            0,
+        )
+        .unwrap();
+        let effects = effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("public declared-target copy assignment");
+        assert!(matches!(
+            effects.as_slice(),
+            [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::TargetOnly { .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::CopySpellForEachTarget {
+                        target: TargetAst::Tagged(tag, _),
+                        exclude_current_targets: true,
+                        ..
+                    },
+                    ..
+                })
+            ] if tag.as_str() == IT_TAG
+        ));
+    }
+
+    #[test]
+    fn source_spell_reference_does_not_claim_the_declared_target_shape() {
+        assert!(
+            parse("Copy this spell for each other permanent or player the spell could target.")
+                .is_none()
+        );
+    }
 }
 
 fn parse_reveal_matching_from_looked_cards_into_hand_action(
@@ -2959,7 +3649,10 @@ pub(crate) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand
             });
         effects.push(EffectAst::ChooseTaggedObjectsInZone {
             filter: choose_filter,
-            count: ChoiceCount::up_to(1),
+            // Each authored `a card with <keyword>` slot is mandatory when a
+            // matching revealed card exists. Runtime choice bounds naturally
+            // collapse exact-one to zero when that slot has no candidates.
+            count: ChoiceCount::exactly(1),
             player,
             tag: chosen_tag.clone(),
             zone: Zone::Library,
@@ -2976,7 +3669,9 @@ pub(crate) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand
         });
     effects.push(EffectAst::ChooseTaggedObjectsInZone {
         filter: battlefield_filter,
-        count: ChoiceCount::up_to(1),
+        // "Put one of the chosen cards" is likewise mandatory whenever the
+        // preceding keyword slots produced at least one card.
+        count: ChoiceCount::exactly(1),
         player,
         tag: battlefield_tag.clone(),
         zone: Zone::Library,
@@ -3688,6 +4383,164 @@ pub(crate) fn parse_prefix_then_consult_match_move_and_bottom_remainder(
     Ok(Some(effects))
 }
 
+/// Parse the historical block provenance shared by effects of the form
+/// "destroy creatures that were blocked by target [blocker] this turn" and
+/// then reanimate one creature card from each destroyed creature's historical
+/// controller's graveyard. The target, successful destroy result, and block
+/// event controller are all represented independently so neither current
+/// combat state nor the destroyed object's later controller can stand in for
+/// the authored history.
+pub(crate) fn parse_destroy_historically_blocked_then_reanimate_from_historical_controller(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let first = TokenWordView::new(&first_tokens);
+    if !first.starts_with(&["destroy", "all", "creatures"])
+        || !first.slice_eq(first.len().saturating_sub(2), &["this", "turn"])
+    {
+        return Ok(None);
+    }
+    let Some(blocked_by_idx) =
+        first.find_window_by(4, |window| window == ["that", "were", "blocked", "by"])
+    else {
+        return Ok(None);
+    };
+    if blocked_by_idx != 3 || first.get(blocked_by_idx + 4) != Some("target") {
+        return Ok(None);
+    }
+    let blocker_end = first.len().saturating_sub(2);
+    let Some(blocker_range) = first.token_span_for_words(blocked_by_idx + 4, blocker_end) else {
+        return Ok(None);
+    };
+    let blocker_target = match parse_target_phrase(&first_tokens[blocker_range]) {
+        Ok(target @ TargetAst::Object(_, Some(_), _)) => target,
+        _ => return Ok(None),
+    };
+    let TargetAst::Object(blocker_filter, _, _) = &blocker_target else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = TokenWordView::new(&second_tokens).word_refs();
+    if !matches!(
+        second_words.as_slice(),
+        ["they", "cant", "be", "regenerated"]
+            | ["they", "can't", "be", "regenerated"]
+            | ["they", "can", "t", "be", "regenerated"]
+    ) {
+        return Ok(None);
+    }
+
+    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    let third = TokenWordView::new(&third_tokens);
+    const FOLLOWUP_PREFIX: &[&str] = &[
+        "for",
+        "each",
+        "creature",
+        "that",
+        "died",
+        "this",
+        "way",
+        "put",
+        "a",
+        "creature",
+        "card",
+        "from",
+        "the",
+        "graveyard",
+        "of",
+        "the",
+        "player",
+        "who",
+        "controlled",
+        "that",
+        "creature",
+        "the",
+        "last",
+        "time",
+        "it",
+        "became",
+        "blocked",
+        "by",
+        "that",
+    ];
+    if !third.starts_with(FOLLOWUP_PREFIX) {
+        return Ok(None);
+    }
+    let Some(onto_idx) = third.find_any_word_from(&["onto"], FOLLOWUP_PREFIX.len()) else {
+        return Ok(None);
+    };
+    if onto_idx == FOLLOWUP_PREFIX.len()
+        || !third.slice_eq(onto_idx, &["onto", "the", "battlefield", "under", "its"])
+        || !matches!(
+            third.word_refs().get(onto_idx + 5..),
+            Some(["owners", "control"])
+                | Some(["owner's", "control"])
+                | Some(["owner", "s", "control"])
+        )
+    {
+        return Ok(None);
+    }
+    let Some(repeated_blocker_range) = third.token_span_for_words(FOLLOWUP_PREFIX.len(), onto_idx)
+    else {
+        return Ok(None);
+    };
+    let Ok(repeated_blocker_filter) =
+        parse_object_filter_lexed(&third_tokens[repeated_blocker_range], false)
+    else {
+        return Ok(None);
+    };
+    if repeated_blocker_filter != *blocker_filter {
+        return Ok(None);
+    }
+
+    let blocker_tag = helper_tag_for_tokens(&first_tokens, "historical_blocker");
+    let destroyed_tag = helper_tag_for_tokens(&first_tokens, "destroyed");
+    let target_blocker = EffectAst::TagAffected {
+        effect: Box::new(EffectAst::subject_verb_explicit_target_only(blocker_target)),
+        tag: blocker_tag.clone(),
+    };
+
+    let mut destroyed_filter = ObjectFilter::creature();
+    destroyed_filter.blocked_by = Some(ObjectRef::Tagged(blocker_tag.clone()));
+    let destroy = EffectAst::TagAffected {
+        effect: Box::new(EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::DestroyAll {
+                filter: destroyed_filter,
+                no_regeneration: true,
+                creature_destroyed_this_way_surface: false,
+            },
+        )),
+        tag: destroyed_tag.clone(),
+    };
+
+    let mut creature_card = ObjectFilter::creature();
+    creature_card.zone = Some(Zone::Graveyard);
+    creature_card.owner = Some(PlayerFilter::IteratedPlayer);
+    creature_card.set_explicit_card_noun(true);
+    let reanimate_one = EffectAst::subject_verb_move_to_zone(
+        TargetAst::WithCount(
+            Box::new(TargetAst::Object(creature_card, None, None)),
+            ChoiceCount::exactly(1),
+        ),
+        Zone::Battlefield,
+        false,
+        ReturnControllerAst::Owner,
+        false,
+        None,
+    );
+    let followup = EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+        tag: destroyed_tag,
+        blocker_tag,
+        effects: vec![reanimate_one],
+    };
+
+    Ok(Some(vec![target_blocker, destroy, followup]))
+}
+
 /// A trailing reflexive result of a library consult must attach to the consult,
 /// not to the intervening cleanup instruction. Keep the cleanup last in the
 /// runtime sequence while preserving its explicit full revealed-set tag.
@@ -3745,6 +4598,142 @@ pub(crate) fn parse_consult_cleanup_then_typed_when_result(
 mod tests {
     use super::*;
     use crate::runtime_backend::front_end::lexer::{lex_line, split_lexed_sentences};
+    use crate::types::Subtype;
+
+    #[test]
+    fn historical_block_reanimation_keeps_target_success_and_controller_provenance() {
+        let tokens = lex_line(
+            "Destroy all creatures that were blocked by target Wall this turn. They can't be regenerated. For each creature that died this way, put a creature card from the graveyard of the player who controlled that creature the last time it became blocked by that Wall onto the battlefield under its owner's control.",
+            0,
+        )
+        .expect("lex");
+        let split = split_lexed_sentences(&tokens);
+        let sentences = split
+            .iter()
+            .map(|sentence| SentenceInput::from_lexed(sentence))
+            .collect::<Vec<_>>();
+        let effects = parse_destroy_historically_blocked_then_reanimate_from_historical_controller(
+            &sentences, 0,
+        )
+        .expect("parse")
+        .expect("historical block reanimation");
+
+        let [
+            EffectAst::TagAffected {
+                effect: target_effect,
+                tag: blocker_tag,
+            },
+            EffectAst::TagAffected {
+                effect: destroy_effect,
+                tag: destroyed_tag,
+            },
+            EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+                tag: loop_tag,
+                blocker_tag: historical_blocker_tag,
+                effects: reanimate,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected target/destroy/historical-controller loop: {effects:#?}");
+        };
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::TargetOnly {
+                    target: TargetAst::Object(blocker_filter, Some(_), _),
+                    explicit_declaration: true,
+                },
+            ..
+        }) = target_effect.as_ref()
+        else {
+            panic!("expected explicit target blocker: {target_effect:#?}");
+        };
+        assert!(blocker_filter.subtypes.contains(&Subtype::Wall));
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::DestroyAll {
+                    filter,
+                    no_regeneration: true,
+                    ..
+                },
+            ..
+        }) = destroy_effect.as_ref()
+        else {
+            panic!("expected no-regeneration destroy: {destroy_effect:#?}");
+        };
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert_eq!(
+            filter.blocked_by,
+            Some(ObjectRef::Tagged(blocker_tag.clone()))
+        );
+        assert!(
+            !filter.blocked,
+            "must use turn history, not current blocking"
+        );
+        assert_eq!(loop_tag, destroyed_tag);
+        assert_eq!(historical_blocker_tag, blocker_tag);
+
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::MoveToZone {
+                        target,
+                        zone: Zone::Battlefield,
+                        battlefield_controller: ReturnControllerAst::Owner,
+                        ..
+                    },
+                ..
+            }),
+        ] = reanimate.as_slice()
+        else {
+            panic!("expected owner-controlled reanimation: {reanimate:#?}");
+        };
+        let TargetAst::WithCount(inner, count) = target else {
+            panic!("expected exactly one creature card: {target:#?}");
+        };
+        assert_eq!(*count, ChoiceCount::exactly(1));
+        let TargetAst::Object(filter, _, _) = inner.as_ref() else {
+            panic!("expected graveyard object filter: {inner:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+        assert!(filter.has_explicit_card_noun());
+
+        let public_effects = effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("public sentence dispatcher should select the historical provenance rule");
+        assert!(
+            matches!(
+                public_effects.as_slice(),
+                [
+                    EffectAst::TagAffected { .. },
+                    EffectAst::TagAffected { .. },
+                    EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. }
+                ]
+            ),
+            "public dispatch bypassed the exact three-sentence rule: {public_effects:#?}"
+        );
+    }
+
+    #[test]
+    fn historical_block_reanimation_rejects_unlinked_controller_wording() {
+        let tokens = lex_line(
+            "Destroy all creatures that were blocked by target Wall this turn. They can't be regenerated. For each creature that died this way, put a creature card from its controller's graveyard onto the battlefield under its owner's control.",
+            0,
+        )
+        .expect("lex");
+        let split = split_lexed_sentences(&tokens);
+        let sentences = split
+            .iter()
+            .map(|sentence| SentenceInput::from_lexed(sentence))
+            .collect::<Vec<_>>();
+        assert!(
+            parse_destroy_historically_blocked_then_reanimate_from_historical_controller(
+                &sentences, 0,
+            )
+            .expect("parse")
+            .is_none()
+        );
+    }
 
     #[test]
     fn looked_any_number_battlefield_then_shuffle_keeps_one_tagged_pool() {

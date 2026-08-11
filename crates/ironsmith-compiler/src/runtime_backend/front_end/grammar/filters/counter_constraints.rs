@@ -88,6 +88,7 @@ fn parse_known_counter_type_word_slice(
         "ki" => CounterType::Ki,
         "energy" => CounterType::Energy,
         "experience" => CounterType::Experience,
+        "poison" => CounterType::Poison,
         "age" => CounterType::Age,
         "aim" => CounterType::Aim,
         "blood" => CounterType::Blood,

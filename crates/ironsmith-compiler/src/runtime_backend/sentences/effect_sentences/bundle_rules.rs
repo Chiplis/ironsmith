@@ -21,6 +21,7 @@ use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
     SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, Verb,
+    ZoneReplacementDurationAst,
 };
 use crate::effect::Value;
 use crate::filter::AlternativeCastKind;
@@ -325,7 +326,8 @@ fn parse_exile_top_library_then_play_bundle(
             ],
         }
     } else {
-        let Some(effect) = parse_exile_top_library_clause(&exile_tokens, exile_subject) else {
+        let Some(effect) = parse_exile_top_library_clause(&exile_tokens, exile_subject, false)
+        else {
             return Ok(None);
         };
         effect
@@ -452,6 +454,7 @@ fn parse_exile_top_library_then_play_bundle(
                     while_on_top_of_library,
                     free_cast_from_current_zone,
                     until_source_exiles_another,
+                    max_plays,
                     surface,
                 },
             ..
@@ -467,6 +470,7 @@ fn parse_exile_top_library_then_play_bundle(
                 while_on_top_of_library,
                 free_cast_from_current_zone,
                 until_source_exiles_another,
+                max_plays,
                 surface,
             },
         ),
@@ -476,6 +480,7 @@ fn parse_exile_top_library_then_play_bundle(
                     player,
                     allow_land,
                     until_next_end_step,
+                    max_plays,
                     ..
                 },
             ..
@@ -487,6 +492,7 @@ fn parse_exile_top_library_then_play_bundle(
                     allow_land,
                     false,
                 )
+                .with_tagged_play_max_plays(max_plays)
             } else {
                 EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
                     permission_tag,
@@ -494,6 +500,7 @@ fn parse_exile_top_library_then_play_bundle(
                     allow_land,
                     false,
                 )
+                .with_tagged_play_max_plays(max_plays)
             }
         }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1878,14 +1885,26 @@ fn parse_each_player_shuffle_then_consult_bundle(
 
 fn parse_proliferate_choose_phase_out_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let shape = bundle_grammar::parse_proliferate_choose_phase_out_tokens(tokens)?;
+    let proliferated_tag = helper_tag_for_tokens(tokens, "proliferated_this_way");
     let chosen_tag = TagKey::from(IT_TAG);
+    let selection_filter = shape.filter.match_tagged(
+        proliferated_tag.clone(),
+        TaggedOpbjectRelation::IsTaggedObject,
+    );
     let phase_out_filter = ObjectFilter::default()
         .in_zone(Zone::Battlefield)
         .match_tagged(chosen_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
     Some(vec![
-        EffectAst::subject_verb_proliferate(Value::Fixed(1)),
+        // Proliferate already reports the permanents that actually received a
+        // counter. Give that generic affected-object outcome a stable tag so
+        // the later choice cannot include merely countered permanents that
+        // were not selected for this proliferate action.
+        EffectAst::TagAffected {
+            effect: Box::new(EffectAst::subject_verb_proliferate(Value::Fixed(1))),
+            tag: proliferated_tag,
+        },
         EffectAst::ChooseObjects {
-            filter: shape.filter,
+            filter: selection_filter,
             count: shape.count,
             count_value: None,
             player: PlayerAst::You,
@@ -2026,6 +2045,35 @@ fn parse_untap_then_phase_out_until_source_leaves_bundle(
 
 pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() == 2 {
+        let sentence_inputs = sentences
+            .iter()
+            .map(|sentence| SentenceInput::from_lexed(sentence))
+            .collect::<Vec<_>>();
+        if let Ok(Some(effects)) = super::sequence_rules::generic_subject_verb_sequences::exile_permission_followups::parse_dynamic_exile_top_then_play_for_as_long_as_exiled(
+            &sentence_inputs,
+            0,
+        ) {
+            return Some(effects);
+        }
+    }
+    if sentences.len() == 2
+        && bundle_grammar::is_resolving_card_exile_then_return_next_end_step_shape(
+            sentences[0],
+            sentences[1],
+        )
+    {
+        return Some(vec![
+            EffectAst::subject_verb_register_zone_replacement_with_linked_exile_follow_up(
+                TargetAst::Tagged(TagKey::from("triggering"), None),
+                Some(Zone::Stack),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                ZoneReplacementDurationAst::OneShot,
+                ironsmith_core::LinkedExileFollowUp::ReturnToHandAtNextEndStep,
+            ),
+        ]);
+    }
     // A consult procedure nested under "for each of" belongs to the declared
     // mixed target collection. Claim that typed declaration/iteration shape
     // before the broad consult-disposition recognizer can start at the inner

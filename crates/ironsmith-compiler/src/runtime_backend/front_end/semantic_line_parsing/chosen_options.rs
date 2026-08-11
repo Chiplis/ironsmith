@@ -10,11 +10,14 @@ pub(crate) fn condition_for_chosen_option(context: &ChosenOptionContext) -> crat
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: crate::effect::Value::Fixed(4),
         },
-        ChosenOptionContext::StationThreshold(threshold) => crate::ConditionExpr::ValueComparison {
-            left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            right: crate::effect::Value::Fixed(*threshold),
-        },
+        ChosenOptionContext::StationThreshold(threshold)
+        | ChosenOptionContext::StationThresholdSupport(threshold) => {
+            crate::ConditionExpr::ValueComparison {
+                left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: crate::effect::Value::Fixed(*threshold),
+            }
+        }
         ChosenOptionContext::ControlsSubtypePermanent(subtype) => {
             let filter = ObjectFilter::permanent()
                 .you_control()
@@ -65,6 +68,16 @@ pub(crate) fn wrap_chosen_option_static_chunk(
                 label: "Max speed".to_string(),
             }
         }
+        ChosenOptionContext::StationThreshold(threshold) => {
+            crate::cards::builders::StaticAbilityAst::LabeledConditionalStaticAbility {
+                ability: Box::new(ability),
+                condition: condition.clone(),
+                label: format!(
+                    "{}{threshold}",
+                    ironsmith_core::static_ability_model::STATION_THRESHOLD_STATIC_LABEL_PREFIX
+                ),
+            }
+        }
         _ => crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
             ability: Box::new(ability),
             condition: condition.clone(),
@@ -85,9 +98,11 @@ pub(crate) fn wrap_chosen_option_static_chunk(
             actions
                 .into_iter()
                 .map(|action| match context {
-                    ChosenOptionContext::MaxSpeed => wrap_static_ast(
-                        crate::cards::builders::StaticAbilityAst::KeywordAction(action),
-                    ),
+                    ChosenOptionContext::MaxSpeed | ChosenOptionContext::StationThreshold(_) => {
+                        wrap_static_ast(crate::cards::builders::StaticAbilityAst::KeywordAction(
+                            action,
+                        ))
+                    }
                     _ => crate::cards::builders::StaticAbilityAst::ConditionalKeywordAction {
                         action,
                         condition: condition.clone(),
@@ -101,6 +116,15 @@ pub(crate) fn wrap_chosen_option_static_chunk(
                     ChosenOptionContext::MaxSpeed => static_ability
                         .clone()
                         .with_labeled_condition(condition.clone(), "Max speed"),
+                    ChosenOptionContext::StationThreshold(threshold) => static_ability
+                        .clone()
+                        .with_labeled_condition(
+                            condition.clone(),
+                            format!(
+                                "{}{threshold}",
+                                ironsmith_core::static_ability_model::STATION_THRESHOLD_STATIC_LABEL_PREFIX
+                            ),
+                        ),
                     _ => static_ability
                         .clone()
                         .with_condition(condition.clone())
@@ -144,6 +168,84 @@ mod tests {
                 left: crate::effect::Value::Speed(PlayerFilter::You),
                 operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 right: crate::effect::Value::Fixed(4),
+            }
+        ));
+    }
+
+    #[test]
+    fn station_static_chunk_keeps_typed_threshold_presentation_provenance() {
+        let wrapped = wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(crate::cards::builders::StaticAbilityAst::KeywordAction(
+                crate::cards::builders::KeywordAction::Flying,
+            )),
+            Some(&ChosenOptionContext::StationThreshold(3)),
+        )
+        .expect("station static chunk should wrap");
+
+        let LineAst::StaticAbility(
+            crate::cards::builders::StaticAbilityAst::LabeledConditionalStaticAbility {
+                ability,
+                condition,
+                label,
+            },
+        ) = wrapped
+        else {
+            panic!("station row must retain a typed labeled condition: {wrapped:#?}");
+        };
+        assert!(matches!(
+            ability.as_ref(),
+            crate::cards::builders::StaticAbilityAst::KeywordAction(
+                crate::cards::builders::KeywordAction::Flying
+            )
+        ));
+        assert_eq!(
+            label,
+            format!(
+                "{}3",
+                ironsmith_core::static_ability_model::STATION_THRESHOLD_STATIC_LABEL_PREFIX
+            )
+        );
+        assert!(matches!(
+            condition,
+            crate::ConditionExpr::ValueComparison {
+                left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: crate::effect::Value::Fixed(3),
+            }
+        ));
+    }
+
+    #[test]
+    fn station_implicit_creature_support_keeps_condition_without_row_marker() {
+        let wrapped = wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(crate::cards::builders::StaticAbilityAst::KeywordAction(
+                crate::cards::builders::KeywordAction::Flying,
+            )),
+            Some(&ChosenOptionContext::StationThresholdSupport(8)),
+        )
+        .expect("station support should wrap");
+
+        let LineAst::StaticAbility(
+            crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
+                ability,
+                condition,
+            },
+        ) = wrapped
+        else {
+            panic!("implicit support must not claim the authored row marker: {wrapped:#?}");
+        };
+        assert!(matches!(
+            ability.as_ref(),
+            crate::cards::builders::StaticAbilityAst::KeywordAction(
+                crate::cards::builders::KeywordAction::Flying
+            )
+        ));
+        assert!(matches!(
+            condition,
+            crate::ConditionExpr::ValueComparison {
+                left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: crate::effect::Value::Fixed(8),
             }
         ));
     }

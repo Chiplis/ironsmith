@@ -112,13 +112,6 @@ const RULES: &[UnsupportedRule] = &[
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Prefix,
         phrase: &[
-            "the", "first", "creature", "spell", "you", "cast", "each", "turn", "costs",
-        ],
-        kind: UnsupportedRewriteLineKind::FirstSpellCostModifier,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Prefix,
-        phrase: &[
             "once", "each", "turn", "you", "may", "play", "a", "card", "from", "exile",
         ],
         kind: UnsupportedRewriteLineKind::StaticClause,
@@ -569,10 +562,7 @@ mod tests {
             0,
         )
         .unwrap();
-        assert_eq!(
-            parse_unsupported_rewrite_line_kind(&prefix),
-            Some(UnsupportedRewriteLineKind::FirstSpellCostModifier)
-        );
+        assert_eq!(parse_unsupported_rewrite_line_kind(&prefix), None);
 
         let exact = lex_line("Unleash while", 0).unwrap();
         assert_eq!(

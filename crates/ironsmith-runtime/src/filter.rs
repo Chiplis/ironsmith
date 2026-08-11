@@ -9,8 +9,10 @@
 //! - Cost requirements (for sacrifice costs, etc.)
 //! - Triggered ability conditions (for triggers that watch for specific events)
 
+use crate::ability::{AbilityKind, ActivatedAbilityRuntimeExt};
 use crate::color::{Color, ColorSet};
 use crate::continuous::CalculatedCharacteristics;
+use crate::events::{CreatureAttackedEvent, MarkersChangedEvent};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::object::{CounterType, Object, ObjectKind};
@@ -21,7 +23,8 @@ use crate::target::ChooseSpec;
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 pub use ironsmith_core::filter_model::{
-    AlternativeCastKind, Comparison, CounterConstraint, ExcludedNameSurface, ObjectCharacteristic,
+    AlternativeCastKind, Comparison, CounterConstraint, CountersPutOnThisTurnConstraint,
+    ExcludedNameSurface, GlobalCharacteristicDomainSurface, ObjectCharacteristic,
     ObjectCharacteristicRelation, ObjectCharacteristicRelationKind, ObjectFilter,
     ObjectFilterUnionConnective, ObjectFilterUnionSurface, ObjectRef, ParityRequirement,
     PlayerFilter, PowerToughnessRelation, PtReference, SameNameAntecedentSurface,
@@ -103,6 +106,32 @@ fn normalize_name_for_match(name: &str) -> String {
         .collect()
 }
 
+fn counters_put_on_exact_object_this_turn(
+    game: &GameState,
+    object_id: ObjectId,
+    constraint: &CountersPutOnThisTurnConstraint,
+    ctx: &FilterContext,
+) -> u32 {
+    game.turn_store
+        .turn_history
+        .projected_records()
+        .filter_map(|record| record.event.downcast::<MarkersChangedEvent>())
+        .filter(|event| {
+            event.is_added()
+                && event.object() == Some(object_id)
+                && event.amount > 0
+                && constraint
+                    .counter_type
+                    .is_none_or(|counter_type| event.marker.as_counter() == Some(counter_type))
+                && event.source_controller.is_some_and(|source_controller| {
+                    constraint
+                        .source_controller
+                        .matches_player(source_controller, ctx)
+                })
+        })
+        .fold(0u32, |total, event| total.saturating_add(event.amount))
+}
+
 pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
     lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
 }
@@ -163,6 +192,17 @@ fn stack_spell_cast_origin_zone(
         crate::alternative_cast::CastingMethod::PlayFrom { zone, .. }
         | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => *zone,
     })
+}
+
+fn mana_from_matching_source_was_spent_to_cast(
+    source_filter: &ObjectFilter,
+    sources: &[crate::snapshot::ObjectSnapshot],
+    ctx: &FilterContext,
+    game: &GameState,
+) -> bool {
+    sources
+        .iter()
+        .any(|source| source_filter.matches_snapshot(source, ctx, game))
 }
 
 fn first_matching_spell_cast_each_turn_matches(
@@ -486,7 +526,9 @@ impl TailMatchSubject for LayeredSubject<'_> {
     }
 
     fn tail_has_ability_marker(&self, marker: &str) -> bool {
-        abilities_have_marker(&self.chars.abilities, marker)
+        object_has_ability_marker(self.object, marker)
+            || aura_attachment_has_ability_marker(self.chars.aura_attach_filter.as_ref(), marker)
+            || abilities_have_marker(&self.chars.abilities, marker)
     }
 
     fn tail_has_tap_activated_ability(&self) -> bool {
@@ -604,6 +646,24 @@ fn subject_has_attached_subtype(
     subject.subject_attachments().iter().any(|attachment_id| {
         game.object(*attachment_id)
             .is_some_and(|attachment| attachment.subtypes.contains(&subtype))
+    })
+}
+
+fn subject_could_produce_any_mana_symbol(
+    subject: &impl TailMatchSubject,
+    required: &[crate::mana::ManaSymbol],
+    game: &GameState,
+) -> bool {
+    subject.tail_abilities().iter().any(|ability| {
+        let AbilityKind::Activated(activated) = &ability.kind else {
+            return false;
+        };
+        let produced = activated.inferred_mana_symbols(
+            game,
+            subject.tail_object_id(),
+            subject.subject_controller(),
+        );
+        required.iter().any(|symbol| produced.contains(symbol))
     })
 }
 
@@ -975,6 +1035,12 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::SameManaValueAsTagged => tagged_snapshots.iter().any(|snapshot| {
             snapshot_mana_value_for_filter(snapshot) == subject.subject_mana_value()
         }),
+        TaggedOpbjectRelation::SameManaValueAsAnotherTagged => {
+            tagged_snapshots.iter().any(|snapshot| {
+                snapshot.stable_id != subject.subject_stable_id()
+                    && snapshot_mana_value_for_filter(snapshot) == subject.subject_mana_value()
+            })
+        }
         TaggedOpbjectRelation::ManaValueLteTagged => tagged_snapshots.iter().any(|snapshot| {
             subject.subject_mana_value() <= snapshot_mana_value_for_filter(snapshot)
         }),
@@ -1525,6 +1591,28 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(count * *factor)
         }
+        Value::GreatestSharedCreatureTypeCount(filter) => {
+            let mut counts = std::collections::HashMap::new();
+            for object in game.objects_in_deterministic_order() {
+                if !filter.matches(object, ctx, game) {
+                    continue;
+                }
+                let controller_group = filter
+                    .controller
+                    .as_ref()
+                    .map(|_| game.controller_of(object));
+                let subtypes = game
+                    .current_subtypes(object.id)
+                    .unwrap_or_else(|| object.subtypes.to_vec());
+                let mut types_on_object = std::collections::HashSet::new();
+                for subtype in subtypes {
+                    if subtype.is_creature_type() && types_on_object.insert(subtype) {
+                        *counts.entry((controller_group, subtype)).or_insert(0i32) += 1;
+                    }
+                }
+            }
+            Some(counts.into_values().max().unwrap_or(0))
+        }
         Value::ColorsAmong(filter) => {
             let only_is_tagged_constraints = !filter.tagged_constraints.is_empty()
                 && filter.tagged_constraints.iter().all(|constraint| {
@@ -1690,6 +1778,15 @@ fn resolve_filter_comparison_rhs_value(
                 .map(|player| player.mana_pool.total() as i32)
                 .sum(),
         ),
+        Value::Devotion { player, color } => Some(
+            game.players
+                .iter()
+                .filter(|candidate| {
+                    candidate.is_in_game() && player.matches_player(candidate.id, ctx)
+                })
+                .map(|candidate| game.devotion_to_color(candidate.id, *color) as i32)
+                .sum(),
+        ),
         _ => None,
     }
 }
@@ -1775,6 +1872,26 @@ fn creature_was_blocked_by_ref(
     blockers
         .iter()
         .any(|blocker| game.creature_was_blocked_by_this_turn(attacker, *blocker))
+}
+
+fn object_is_in_combat_with_source_lki(
+    game: &GameState,
+    ctx: &FilterContext,
+    object_id: ObjectId,
+) -> bool {
+    let Some(combat) = &game.combat else {
+        return false;
+    };
+    let source_ids = ctx.source.into_iter().chain(
+        ctx.source_snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.object_id),
+    );
+    source_ids.into_iter().any(|source_id| {
+        crate::combat_state::get_blockers(combat, source_id).contains(&object_id)
+            || crate::combat_state::get_blocked_attacker(combat, source_id)
+                .is_some_and(|attacker| attacker == object_id)
+    })
 }
 
 fn creature_blocked_or_was_blocked_by_matching_this_turn(
@@ -1938,11 +2055,22 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::LowestLifeTied => false,
             PlayerFilter::MostCardsInHand => false,
             PlayerFilter::CastCardTypeThisTurn(_) => false,
+            // Source-relative turn history requires access to GameState and
+            // is evaluated by `player_filter_matches_game` below.
+            PlayerFilter::AttackedBySourceThisTurn => false,
+            PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+                base.matches_player(player, ctx)
+            }
+            PlayerFilter::LostLifeThisTurn { base } => base.matches_player(player, ctx),
+            PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, .. } => {
+                base.matches_player(player, ctx)
+            }
             PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. } => {
                 base.matches_player(player, ctx)
             }
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
+            PlayerFilter::ControlsMost { .. } => false,
             PlayerFilter::MaxSpeed { .. } => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
@@ -1963,6 +2091,9 @@ impl PlayerFilterExt for PlayerFilter {
                 base.matches_player(player, ctx) && !excluded.matches_player(player, ctx)
             }
             PlayerFilter::Target(inner) => {
+                let inner = inner
+                    .relative_target_exclusion_base()
+                    .unwrap_or(inner.as_ref());
                 if !ctx.target_players.is_empty() {
                     return ctx.target_players.contains(&player)
                         && inner.matches_player(player, ctx);
@@ -1971,6 +2102,9 @@ impl PlayerFilterExt for PlayerFilter {
                     && inner.matches_player(player, ctx)
             }
             PlayerFilter::AliasedTarget(inner) => {
+                let inner = inner
+                    .relative_target_exclusion_base()
+                    .unwrap_or(inner.as_ref());
                 ctx.target_players.contains(&player) && inner.matches_player(player, ctx)
             }
             PlayerFilter::ControllerOf(object_ref) => {
@@ -1998,6 +2132,78 @@ pub(crate) fn player_filter_matches_game(
     ctx: &FilterContext,
 ) -> bool {
     match filter {
+        PlayerFilter::AttackedBySourceThisTurn => {
+            let Some(source) = ctx.source else {
+                return false;
+            };
+
+            game.turn_store
+                .turn_history
+                .projected_records()
+                .any(|record| {
+                    let Some(event) = record.event.downcast::<CreatureAttackedEvent>() else {
+                        return false;
+                    };
+                    if !matches!(
+                        event.target,
+                        crate::triggers::event::AttackEventTarget::Player(defender)
+                            if defender == player
+                    ) {
+                        return false;
+                    }
+
+                    // Object identity is intentional. A permanent that leaves
+                    // and returns is a new game object and must not inherit
+                    // the old object's attack history merely because the
+                    // underlying card retains its engine stable ID.
+                    event.attacker == source
+                })
+        }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+            let Some(source) = ctx.source else {
+                return false;
+            };
+            player_filter_matches_game(base, player, game, ctx)
+                && game.source_dealt_damage_to_player_this_game(source, player)
+        }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            player_filter_matches_game(base, player, game, ctx)
+                && game
+                    .turn_store
+                    .turn_history
+                    .player_lost_life_this_turn(player)
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+            base,
+            sources,
+            minimum,
+        } => {
+            if !player_filter_matches_game(base, player, game, ctx) {
+                return false;
+            }
+            let distinct_sources = game
+                .turn_store
+                .turn_history
+                .projected_records()
+                .filter_map(|record| {
+                    let damage = record.event.downcast::<crate::events::DamageEvent>()?;
+                    if !damage.is_combat
+                        || damage.amount == 0
+                        || damage.target != crate::events::DamageTarget::Player(player)
+                    {
+                        return None;
+                    }
+                    let snapshot = record
+                        .source_snapshot
+                        .as_ref()
+                        .or(record.object_snapshot.as_ref())?;
+                    sources
+                        .matches_snapshot(snapshot, ctx, game)
+                        .then_some(damage.source)
+                })
+                .collect::<std::collections::HashSet<_>>();
+            distinct_sources.len() >= *minimum as usize
+        }
         PlayerFilter::PlayerToYourLeft => ctx.you.is_some_and(|you| {
             game.closest_in_game_player_to_left_matching(you, |_| true) == Some(player)
         }),
@@ -2055,6 +2261,33 @@ pub(crate) fn player_filter_matches_game(
                             )
                 })
         }
+        PlayerFilter::ControlsMost {
+            filter: object_filter,
+        } => {
+            if ctx
+                .players_in_range
+                .as_ref()
+                .is_some_and(|players| !players.contains(&player))
+            {
+                return false;
+            }
+            let mut leaders = game
+                .players
+                .iter()
+                .filter(|candidate| candidate.is_in_game())
+                .map(|candidate| {
+                    (
+                        candidate.id,
+                        controlled_matching_object_count(game, candidate.id, object_filter, ctx),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let Some(maximum) = leaders.iter().map(|(_, count)| *count).max() else {
+                return false;
+            };
+            leaders.retain(|(_, count)| *count == maximum);
+            matches!(leaders.as_slice(), [(leader, _)] if *leader == player)
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -2063,6 +2296,9 @@ pub(crate) fn player_filter_matches_game(
                 && game.has_max_speed(player) == *has_max_speed
         }
         PlayerFilter::Target(inner) => {
+            let inner = inner
+                .relative_target_exclusion_base()
+                .unwrap_or(inner.as_ref());
             if !ctx.target_players.is_empty() {
                 return ctx.target_players.contains(&player)
                     && player_filter_matches_game(inner, player, game, ctx);
@@ -2412,6 +2648,11 @@ impl ObjectFilterExt for ObjectFilter {
         if self.has_tap_activated_ability && !subject.tail_has_tap_activated_ability() {
             return false;
         }
+        if !self.could_produce_mana.is_empty()
+            && !subject_could_produce_any_mana_symbol(subject, &self.could_produce_mana, game)
+        {
+            return false;
+        }
         if self.no_abilities && !subject.tail_abilities().is_empty() {
             return false;
         }
@@ -2459,13 +2700,26 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if let Some(attached_to_filter) = &self.attached_to_object {
-            let Some(attached_to_id) = subject.subject_attached_to() else {
-                return false;
-            };
-            let Some(attached_to) = game.object(attached_to_id) else {
-                return false;
-            };
-            if !attached_to_filter.matches(attached_to, ctx, game) {
+            let matches_current_attachment = subject
+                .subject_attached_to()
+                .and_then(|attached_to_id| game.object(attached_to_id))
+                .is_some_and(|attached_to| attached_to_filter.matches(attached_to, ctx, game));
+            let matches_departed_source_lki = !matches_current_attachment
+                && attached_to_filter.source
+                && ctx.source_snapshot.as_ref().is_some_and(|source_snapshot| {
+                    let source_has_departed = ctx.source.is_some_and(|source_id| {
+                        game.object(source_id).is_none_or(|current_source| {
+                            current_source.stable_id != source_snapshot.stable_id
+                                || current_source.zone != source_snapshot.zone
+                        })
+                    });
+                    source_has_departed
+                        && source_snapshot
+                            .attachments
+                            .contains(&subject.subject_object_id())
+                        && attached_to_filter.matches_snapshot(source_snapshot, ctx, game)
+                });
+            if !matches_current_attachment && !matches_departed_source_lki {
                 return false;
             }
         }
@@ -2476,6 +2730,17 @@ impl ObjectFilterExt for ObjectFilter {
                     .is_some_and(|attachment| with_attached_filter.matches(attachment, ctx, game))
             });
             if !has_matching_attachment {
+                return false;
+            }
+        }
+
+        if let Some(without_attached_filter) = &self.without_attached_object {
+            let has_forbidden_attachment = subject.subject_attachments().iter().any(|&id| {
+                game.object(id).is_some_and(|attachment| {
+                    without_attached_filter.matches(attachment, ctx, game)
+                })
+            });
+            if has_forbidden_attachment {
                 return false;
             }
         }
@@ -2651,6 +2916,22 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
 
+        if self.was_dealt_damage_by_source_this_game {
+            let Some(source) = ctx.source else {
+                return false;
+            };
+            if !game.source_dealt_damage_to_object_this_game(source, object.id) {
+                return false;
+            }
+        }
+
+        if let Some(constraint) = &self.counters_put_on_this_turn
+            && counters_put_on_exact_object_this_turn(game, object.id, constraint, ctx)
+                < constraint.minimum
+        {
+            return false;
+        }
+
         if let Some(targetability) = &self.could_be_targeted_by
             && !object_could_be_targeted_by(object.id, targetability, ctx, game)
         {
@@ -2704,6 +2985,19 @@ impl ObjectFilterExt for ObjectFilter {
                     .turn_store
                     .turn_history
                     .object_was_put_into_graveyard_from_battlefield_this_turn(object.stable_id))
+        {
+            return false;
+        }
+
+        if self.entered_graveyard_from_library_this_turn
+            && (object.zone != Zone::Graveyard
+                || !game
+                    .turn_store
+                    .turn_history
+                    .object_was_put_into_graveyard_from_zone_this_turn(
+                        object.stable_id,
+                        Zone::Library,
+                    ))
         {
             return false;
         }
@@ -2785,6 +3079,15 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
 
+        if self.was_dealt_damage_by_source_this_game {
+            let Some(source) = ctx.source else {
+                return false;
+            };
+            if !game.source_dealt_damage_to_object_this_game(source, object.id) {
+                return false;
+            }
+        }
+
         if let Some(player_filter) = &self.dealt_damage_to_player_this_turn {
             let dealt_damage_to_matching_player = game.players.iter().any(|player| {
                 player.is_in_game()
@@ -2841,11 +3144,17 @@ impl ObjectFilterExt for ObjectFilter {
             if object.zone == Zone::Stack {
                 // For stack spells, non-stack zone filters mean
                 // "cast from <zone>" (e.g. "target spell cast from a graveyard").
-                if game
-                    .turn_store
-                    .turn_history
-                    .spell_cast_order(object.id)
-                    .is_none()
+                // A live StackEntry's casting method is authoritative even
+                // before the SpellCastEvent has been appended to turn
+                // history. Restrict that early window to an explicitly typed
+                // spell so an arbitrary stack object cannot acquire origin
+                // semantics from a non-stack zone filter.
+                if self.stack_kind != Some(StackObjectKind::Spell)
+                    && game
+                        .turn_store
+                        .turn_history
+                        .spell_cast_order(object.id)
+                        .is_none()
                 {
                     return false;
                 }
@@ -2976,7 +3285,9 @@ impl ObjectFilterExt for ObjectFilter {
         if let Some(controller_filter) = &self.controller
             && !game
                 .current_controller(object.id)
-                .is_some_and(|controller| controller_filter.matches_player(controller, ctx))
+                .is_some_and(|controller| {
+                    player_filter_matches_game(controller_filter, controller, game, ctx)
+                })
         {
             return false;
         }
@@ -3011,6 +3322,15 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if let Some(source_filter) = &self.mana_from_source_spent_to_cast {
+            let tag = ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG;
+            if object.cast_tagged_objects.get(tag).is_none_or(|sources| {
+                !mana_from_matching_source_was_spent_to_cast(source_filter, sources, ctx, game)
+            }) {
+                return false;
+            }
+        }
+
         if self.first_spell_cast_each_turn
             && !first_matching_spell_cast_each_turn_matches(
                 self,
@@ -3025,7 +3345,7 @@ impl ObjectFilterExt for ObjectFilter {
 
         // Owner check
         if let Some(owner_filter) = &self.owner
-            && !owner_filter.matches_player(object.owner, ctx)
+            && !player_filter_matches_game(owner_filter, object.owner, game, ctx)
         {
             return false;
         }
@@ -3107,7 +3427,17 @@ impl ObjectFilterExt for ObjectFilter {
             let Some(source) = ctx.source else {
                 return false;
             };
-            if let Some(chosen_type) = game.chosen_creature_type(source) {
+            if self.has_chosen_type_this_way_surface() {
+                let Some(chosen_types) = game.chosen_subtypes(source) else {
+                    return false;
+                };
+                if !chosen_types
+                    .iter()
+                    .any(|chosen_type| object_subtypes.contains(chosen_type))
+                {
+                    return false;
+                }
+            } else if let Some(chosen_type) = game.chosen_subtype(source) {
                 if !object_subtypes.contains(&chosen_type) {
                     return false;
                 }
@@ -3155,7 +3485,7 @@ impl ObjectFilterExt for ObjectFilter {
             let Some(source) = ctx.source else {
                 return false;
             };
-            if let Some(chosen_type) = game.chosen_creature_type(source) {
+            if let Some(chosen_type) = game.chosen_subtype(source) {
                 if object_subtypes.contains(&chosen_type) {
                     return false;
                 }
@@ -3164,6 +3494,20 @@ impl ObjectFilterExt for ObjectFilter {
                     return false;
                 }
             } else {
+                return false;
+            }
+        }
+        if self.excluded_any_chosen_creature_type {
+            let Some(source) = ctx.source else {
+                return false;
+            };
+            let Some(chosen_types) = game.chosen_subtypes(source) else {
+                return false;
+            };
+            if chosen_types
+                .iter()
+                .any(|chosen_type| object_subtypes.contains(chosen_type))
+            {
                 return false;
             }
         }
@@ -3203,6 +3547,15 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             };
             if !object_colors.contains(chosen_color) {
+                return false;
+            }
+        }
+        if let Some(card_name) = &self.colors_chosen_while_drafting_named {
+            let Some(player) = ctx.you else {
+                return false;
+            };
+            let drafted = game.draft_chosen_colors(player, card_name);
+            if drafted.intersection(object_colors).is_empty() {
                 return false;
             }
         }
@@ -3275,16 +3628,34 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
-        // "Other" check (not the source)
+        // "Other" ordinarily excludes announced target objects. When the
+        // filter itself is an exact tagged-set reference, however, it means
+        // the other member of that set relative to a temporarily rebound
+        // source (for example, each of two chosen creatures affecting the
+        // other). In that shape, exclude the source rather than the full
+        // announced target set.
+        let other_member_of_tagged_set = self.other
+            && self.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Those)
+            && self.tagged_constraints.len() == 1
+            && self.tagged_constraints[0].relation == TaggedOpbjectRelation::IsTaggedObject;
         if self.other
-            && ctx.target_objects.is_empty()
+            && (ctx.target_objects.is_empty() || other_member_of_tagged_set)
             && let Some(source_id) = ctx.source
             && object.id == source_id
         {
             return false;
         }
         if self.other
+            && !other_member_of_tagged_set
             && ctx
+                .target_objects
+                .iter()
+                .any(|target| target.object_id == object.id || target.stable_id == object.stable_id)
+        {
+            return false;
+        }
+        if self.is_target_object
+            && !ctx
                 .target_objects
                 .iter()
                 .any(|target| target.object_id == object.id || target.stable_id == object.stable_id)
@@ -3310,10 +3681,42 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if self.attacking_alone {
+            let Some(combat) = game.combat.as_ref() else {
+                return false;
+            };
+            let controller = game.controller_of_id(object.id);
+            if !crate::combat_state::is_attacking(combat, object.id)
+                || combat
+                    .attackers
+                    .iter()
+                    .filter(|attacker| game.controller_of_id(attacker.creature) == controller)
+                    .count()
+                    != 1
+            {
+                return false;
+            }
+        }
         if self.attacked_this_turn && !game.creature_attacked_this_turn(object.id) {
             return false;
         }
+        if self.ability_activated_this_turn
+            && !game
+                .turn_store
+                .turn_history
+                .activated_abilities_this_turn
+                .iter()
+                .any(|(source, _)| *source == object.id)
+        {
+            return false;
+        }
+        if self.blocked_this_turn && !game.creature_blocked_this_turn(object.id) {
+            return false;
+        }
         if self.didnt_attack_this_turn && game.creature_attacked_this_turn(object.id) {
+            return false;
+        }
+        if self.could_have_attacked_this_turn && !crate::rules::combat::can_attack(object, game) {
             return false;
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
@@ -3326,6 +3729,14 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             };
             if !player_filter.matches_player(defending_player, ctx) {
+                return false;
+            }
+        }
+        if let Some(player_filter) = &self.protected_by {
+            let Some(protector) = game.battle_protector(object.id) else {
+                return false;
+            };
+            if !player_filter.matches_player(protector, ctx) {
                 return false;
             }
         }
@@ -3390,17 +3801,22 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         if self.in_combat_with_source {
-            let Some(source_id) = ctx.source else {
+            if !object_is_in_combat_with_source_lki(game, ctx, object.id) {
                 return false;
-            };
+            }
+        }
+        if let Some(reference) = &self.in_combat_with {
+            let partners = resolve_object_ref_ids(reference, ctx);
             let Some(combat) = &game.combat else {
                 return false;
             };
-            let source_attacks_object =
-                crate::combat_state::get_blockers(combat, source_id).contains(&object.id);
-            let source_blocks_object = crate::combat_state::get_blocked_attacker(combat, source_id)
-                .is_some_and(|attacker| attacker == object.id);
-            if !source_attacks_object && !source_blocks_object {
+            if partners.is_empty()
+                || !partners.iter().any(|partner| {
+                    crate::combat_state::get_blockers(combat, *partner).contains(&object.id)
+                        || crate::combat_state::get_blocked_attacker(combat, *partner)
+                            .is_some_and(|attacker| attacker == object.id)
+                })
+            {
                 return false;
             }
         }
@@ -3485,6 +3901,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PowerToughnessRelation::ToughnessGreaterThanPower if toughness <= power => {
                     return false;
                 }
+                PowerToughnessRelation::NotEqual if power == toughness => return false,
                 _ => {}
             }
         }
@@ -3606,6 +4023,16 @@ impl ObjectFilterExt for ObjectFilter {
                 _ => return false,               // No mana cost or empty
             }
         }
+        if self.has_phyrexian_mana_symbol
+            && !object.mana_cost.as_ref().is_some_and(|cost| {
+                cost.pips().iter().any(|pip| {
+                    pip.iter()
+                        .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::Life(_)))
+                })
+            })
+        {
+            return false;
+        }
 
         // No X in cost check
         if self.no_x_in_cost
@@ -3716,6 +4143,13 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
 
+        if let Some(constraint) = &self.counters_put_on_this_turn
+            && counters_put_on_exact_object_this_turn(game, snapshot.object_id, constraint, ctx)
+                < constraint.minimum
+        {
+            return false;
+        }
+
         if let Some(targetability) = &self.could_be_targeted_by
             && !object_could_be_targeted_by(snapshot.object_id, targetability, ctx, game)
         {
@@ -3734,12 +4168,44 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if self.entered_graveyard_from_library_this_turn
+            && (snapshot.zone != Zone::Graveyard
+                || !game
+                    .turn_store
+                    .turn_history
+                    .object_was_put_into_graveyard_from_zone_this_turn(
+                        snapshot.stable_id,
+                        Zone::Library,
+                    ))
+        {
+            return false;
+        }
 
         // Zone check
         if let Some(zone) = &self.zone
             && snapshot.zone != *zone
         {
-            return false;
+            if snapshot.zone == Zone::Stack
+                && *zone != Zone::Stack
+                && self.stack_kind == Some(StackObjectKind::Spell)
+            {
+                let cast_origin = game
+                    .cast_origin_snapshot(snapshot.object_id)
+                    .map(|origin| origin.zone)
+                    .or_else(|| {
+                        let object = game.object(snapshot.object_id)?;
+                        let entry = game
+                            .stack
+                            .iter()
+                            .find(|entry| entry.object_id == snapshot.object_id)?;
+                        stack_spell_cast_origin_zone(object, entry)
+                    });
+                if cast_origin != Some(*zone) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
         }
         if let Some(excluded_zone) = self.excluded_cast_origin_zone {
             if snapshot.zone != Zone::Stack {
@@ -3766,7 +4232,7 @@ impl ObjectFilterExt for ObjectFilter {
 
         // Controller check
         if let Some(controller_filter) = &self.controller
-            && !controller_filter.matches_player(snapshot.controller, ctx)
+            && !player_filter_matches_game(controller_filter, snapshot.controller, game, ctx)
         {
             return false;
         }
@@ -3799,6 +4265,17 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if let Some(source_filter) = &self.mana_from_source_spent_to_cast
+            && !mana_from_matching_source_was_spent_to_cast(
+                source_filter,
+                &snapshot.mana_sources_spent_to_cast,
+                ctx,
+                game,
+            )
+        {
+            return false;
+        }
+
         if self.first_spell_cast_each_turn
             && !first_matching_spell_cast_each_turn_matches(
                 self,
@@ -3811,9 +4288,57 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        // LKI filters must retain the same damage-history semantics as live
+        // object filters. Death triggers are matched against the departing
+        // object's snapshot, so omitting this check widens "a creature dealt
+        // damage by that creature" to every matching creature that dies.
+        if let Some(damager) = &self.dealt_damage_by_source_this_turn {
+            let Some(source) = ctx.source else {
+                return false;
+            };
+            let damage_source = match damager {
+                ironsmith_core::DamagedBySource::ThisCreature => Some(source),
+                ironsmith_core::DamagedBySource::EquippedCreature
+                | ironsmith_core::DamagedBySource::EnchantedCreature => game
+                    .object(source)
+                    .and_then(|obj| obj.attached_to.as_ref())
+                    .and_then(|target| match target {
+                        crate::object::AttachmentTarget::Object(id) => Some(*id),
+                        _ => None,
+                    }),
+            };
+            let Some(damage_source) = damage_source else {
+                return false;
+            };
+            let damage_source_stable_id = game
+                .object(damage_source)
+                .map(|object| object.stable_id)
+                .or_else(|| {
+                    if damage_source == source {
+                        ctx.source_snapshot
+                            .as_ref()
+                            .map(|snapshot| snapshot.stable_id)
+                    } else {
+                        None
+                    }
+                });
+            if !game
+                .turn_store
+                .turn_history
+                .creature_was_damaged_by_source_identity_this_turn(
+                    snapshot.object_id,
+                    Some(snapshot.stable_id),
+                    damage_source,
+                    damage_source_stable_id,
+                )
+            {
+                return false;
+            }
+        }
+
         // Owner check
         if let Some(owner_filter) = &self.owner
-            && !owner_filter.matches_player(snapshot.owner, ctx)
+            && !player_filter_matches_game(owner_filter, snapshot.owner, game, ctx)
         {
             return false;
         }
@@ -3877,7 +4402,17 @@ impl ObjectFilterExt for ObjectFilter {
             let Some(source) = ctx.source else {
                 return false;
             };
-            if let Some(chosen_type) = game.chosen_creature_type(source) {
+            if self.has_chosen_type_this_way_surface() {
+                let Some(chosen_types) = game.chosen_subtypes(source) else {
+                    return false;
+                };
+                if !chosen_types
+                    .iter()
+                    .any(|chosen_type| snapshot.subtypes.contains(chosen_type))
+                {
+                    return false;
+                }
+            } else if let Some(chosen_type) = game.chosen_subtype(source) {
                 if !snapshot.subtypes.contains(&chosen_type) {
                     return false;
                 }
@@ -3927,7 +4462,7 @@ impl ObjectFilterExt for ObjectFilter {
             let Some(source) = ctx.source else {
                 return false;
             };
-            if let Some(chosen_type) = game.chosen_creature_type(source) {
+            if let Some(chosen_type) = game.chosen_subtype(source) {
                 if snapshot.subtypes.contains(&chosen_type) {
                     return false;
                 }
@@ -3936,6 +4471,20 @@ impl ObjectFilterExt for ObjectFilter {
                     return false;
                 }
             } else {
+                return false;
+            }
+        }
+        if self.excluded_any_chosen_creature_type {
+            let Some(source) = ctx.source else {
+                return false;
+            };
+            let Some(chosen_types) = game.chosen_subtypes(source) else {
+                return false;
+            };
+            if chosen_types
+                .iter()
+                .any(|chosen_type| snapshot.subtypes.contains(chosen_type))
+            {
                 return false;
             }
         }
@@ -3975,6 +4524,15 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             };
             if !snapshot.colors.contains(chosen_color) {
+                return false;
+            }
+        }
+        if let Some(card_name) = &self.colors_chosen_while_drafting_named {
+            let Some(player) = ctx.you else {
+                return false;
+            };
+            let drafted = game.draft_chosen_colors(player, card_name);
+            if drafted.intersection(snapshot.colors).is_empty() {
                 return false;
             }
         }
@@ -4050,9 +4608,15 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
-        // "Other" check (not the source)
+        // See the live-object branch above: a tagged-set `other` is relative
+        // to the rebound source, not an instruction to exclude every announced
+        // member of that same set.
+        let other_member_of_tagged_set = self.other
+            && self.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Those)
+            && self.tagged_constraints.len() == 1
+            && self.tagged_constraints[0].relation == TaggedOpbjectRelation::IsTaggedObject;
         if self.other
-            && ctx.target_objects.is_empty()
+            && (ctx.target_objects.is_empty() || other_member_of_tagged_set)
             && let Some(source_id) = ctx.source
         {
             if snapshot.object_id == source_id {
@@ -4065,7 +4629,15 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         if self.other
+            && !other_member_of_tagged_set
             && ctx.target_objects.iter().any(|target| {
+                target.object_id == snapshot.object_id || target.stable_id == snapshot.stable_id
+            })
+        {
+            return false;
+        }
+        if self.is_target_object
+            && !ctx.target_objects.iter().any(|target| {
                 target.object_id == snapshot.object_id || target.stable_id == snapshot.stable_id
             })
         {
@@ -4087,6 +4659,22 @@ impl ObjectFilterExt for ObjectFilter {
         if self.attacking && !snapshot.attacking {
             return false;
         }
+        if self.attacking_alone {
+            let Some(combat) = game.combat.as_ref() else {
+                return false;
+            };
+            let controller = game.controller_of_id(snapshot.object_id);
+            if !snapshot.attacking
+                || combat
+                    .attackers
+                    .iter()
+                    .filter(|attacker| game.controller_of_id(attacker.creature) == controller)
+                    .count()
+                    != 1
+            {
+                return false;
+            }
+        }
         if self.nonattacking && snapshot.attacking {
             return false;
         }
@@ -4096,7 +4684,27 @@ impl ObjectFilterExt for ObjectFilter {
         if self.attacked_this_turn && !game.creature_attacked_this_turn(snapshot.object_id) {
             return false;
         }
+        if self.ability_activated_this_turn
+            && !game
+                .turn_store
+                .turn_history
+                .activated_abilities_this_turn
+                .iter()
+                .any(|(source, _)| *source == snapshot.object_id)
+        {
+            return false;
+        }
+        if self.blocked_this_turn && !game.creature_blocked_this_turn(snapshot.object_id) {
+            return false;
+        }
         if self.didnt_attack_this_turn && game.creature_attacked_this_turn(snapshot.object_id) {
+            return false;
+        }
+        if self.could_have_attacked_this_turn
+            && !game
+                .object(snapshot.object_id)
+                .is_some_and(|object| crate::rules::combat::can_attack(object, game))
+        {
             return false;
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
@@ -4112,18 +4720,32 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             }
         }
-        if self.in_combat_with_source {
-            let Some(source_id) = ctx.source else {
+        if let Some(player_filter) = &self.protected_by {
+            let Some(protector) = game.battle_protector(snapshot.object_id) else {
                 return false;
             };
+            if !player_filter.matches_player(protector, ctx) {
+                return false;
+            }
+        }
+        if self.in_combat_with_source {
+            if !object_is_in_combat_with_source_lki(game, ctx, snapshot.object_id) {
+                return false;
+            }
+        }
+        if let Some(reference) = &self.in_combat_with {
+            let partners = resolve_object_ref_ids(reference, ctx);
             let Some(combat) = &game.combat else {
                 return false;
             };
-            let source_attacks_object =
-                crate::combat_state::get_blockers(combat, source_id).contains(&snapshot.object_id);
-            let source_blocks_object = crate::combat_state::get_blocked_attacker(combat, source_id)
-                .is_some_and(|attacker| attacker == snapshot.object_id);
-            if !source_attacks_object && !source_blocks_object {
+            if partners.is_empty()
+                || !partners.iter().any(|partner| {
+                    crate::combat_state::get_blockers(combat, *partner)
+                        .contains(&snapshot.object_id)
+                        || crate::combat_state::get_blocked_attacker(combat, *partner)
+                            .is_some_and(|attacker| attacker == snapshot.object_id)
+                })
+            {
                 return false;
             }
         }
@@ -4198,6 +4820,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PowerToughnessRelation::ToughnessGreaterThanPower if toughness <= power => {
                     return false;
                 }
+                PowerToughnessRelation::NotEqual if power == toughness => return false,
                 _ => {}
             }
         }
@@ -4300,6 +4923,16 @@ impl ObjectFilterExt for ObjectFilter {
                 _ => return false,
             }
         }
+        if self.has_phyrexian_mana_symbol
+            && !snapshot.mana_cost.as_ref().is_some_and(|cost| {
+                cost.pips().iter().any(|pip| {
+                    pip.iter()
+                        .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::Life(_)))
+                })
+            })
+        {
+            return false;
+        }
 
         // No X in cost check
         if self.no_x_in_cost
@@ -4330,6 +4963,24 @@ impl ObjectFilterExt for ObjectFilter {
     ///
     /// Used primarily for trigger display text.
     fn description(&self) -> String {
+        if !self.could_produce_mana.is_empty()
+            || self
+                .any_of
+                .iter()
+                .any(|branch| !branch.could_produce_mana.is_empty())
+        {
+            return ObjectFilter::description(self);
+        }
+        // The specialized core describers below don't model has_x_in_cost;
+        // re-attach the qualifier so "target spell with {X} in its mana cost"
+        // survives whichever shape claims the rest of the filter.
+        let with_x_in_cost = |description: String| {
+            if self.has_x_in_cost && !description.contains("{X}") {
+                format!("{description} with {{X}} in its mana cost")
+            } else {
+                description
+            }
+        };
         let any_of_keyword_clause =
             describe_simple_any_of_keyword_clause(&self.any_of, self.union_connective());
         let owner_or_controller_clause =
@@ -4337,32 +4988,32 @@ impl ObjectFilterExt for ObjectFilter {
         if let Some(description) =
             ironsmith_core::filter_model::describe_relative_characteristic_list_filter(self)
         {
-            return description;
+            return with_x_in_cost(description);
         }
         if let Some(description) =
             ironsmith_core::filter_model::describe_branch_scoped_card_type_union(self)
         {
-            return description;
+            return with_x_in_cost(description);
         }
         if let Some(description) =
             ironsmith_core::filter_model::describe_controlled_battlefield_and_owned_nonbattlefield_card_union(
                 self,
             )
         {
-            return description;
+            return with_x_in_cost(description);
         }
         if let Some(description) =
             ironsmith_core::filter_model::describe_owned_nonbattlefield_card_union(self)
         {
-            return description;
+            return with_x_in_cost(description);
         }
         if let Some(description) =
             ironsmith_core::filter_model::describe_owner_scoped_zone_union(self)
         {
-            return description;
+            return with_x_in_cost(description);
         }
         if let Some(description) = owner_or_controller_clause {
-            return description;
+            return with_x_in_cost(description);
         }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let descriptions = self
@@ -4406,6 +5057,9 @@ impl ObjectFilterExt for ObjectFilter {
                 parts.push("another".to_string());
             }
         }
+        if self.is_target_object {
+            parts.push("target".to_string());
+        }
         let has_target_tag = self.tagged_constraints.iter().any(|constraint| {
             matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                 && constraint.tag.as_str().starts_with("targeted")
@@ -4430,7 +5084,8 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push("suspected".to_string());
         }
 
-        let has_leading_determiner = self.other || has_target_tag || has_chosen_tag || self.source;
+        let has_leading_determiner =
+            self.other || self.is_target_object || has_target_tag || has_chosen_tag || self.source;
 
         // Handle controller
         if let Some(ref ctrl) = self.controller {
@@ -4477,6 +5132,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::ControlsMost { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -4484,6 +5142,21 @@ impl ObjectFilterExt for ObjectFilter {
                     "a player who cast one or more {} spells this turn's",
                     card_type.to_string().to_ascii_lowercase()
                 )),
+                PlayerFilter::AttackedBySourceThisTurn => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
+                PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
+                PlayerFilter::LostLifeThisTurn { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
+                PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    post_noun_qualifiers.push(format!("controlled by {}", ctrl.description()));
+                }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
                 PlayerFilter::TaggedPlayer(_) => {
                     if !has_leading_determiner {
@@ -4534,8 +5207,16 @@ impl ObjectFilterExt for ObjectFilter {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
                     }
-                    let inner_desc = describe_player_filter(inner.as_ref());
-                    controller_suffix = Some(format!("target {inner_desc} controls"));
+                    controller_suffix = Some(if inner.relative_target_exclusion_base().is_some() {
+                        "another target player controls".to_string()
+                    } else {
+                        let inner_desc = describe_player_filter(inner.as_ref());
+                        let target_kind = inner_desc
+                            .strip_prefix("a ")
+                            .or_else(|| inner_desc.strip_prefix("an "))
+                            .unwrap_or(&inner_desc);
+                        format!("target {target_kind} controls")
+                    });
                 }
                 PlayerFilter::AliasedTarget(_) => {
                     if !has_leading_determiner {
@@ -4607,6 +5288,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
+                PlayerFilter::ControlsMost { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
                 PlayerFilter::MaxSpeed { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
@@ -4614,6 +5298,18 @@ impl ObjectFilterExt for ObjectFilter {
                     "a player who cast one or more {} spells this turn owns",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::AttackedBySourceThisTurn => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::LostLifeThisTurn { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
                 PlayerFilter::TaggedPlayer(_) => "that player owns".to_string(),
                 PlayerFilter::Teammate => "a teammate owns".to_string(),
@@ -4732,6 +5428,11 @@ impl ObjectFilterExt for ObjectFilter {
                 &mut chosen_trailing_qualifiers,
             );
         }
+        if let Some(card_name) = &self.colors_chosen_while_drafting_named {
+            post_noun_qualifiers.push(format!(
+                "that's one or more of the colors chosen as you drafted cards named {card_name}"
+            ));
+        }
         if let Some(sticker) = self.sticker {
             let sticker = match sticker {
                 crate::events::KeywordActionKind::ArtSticker => "an art sticker",
@@ -4746,7 +5447,11 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.chosen_creature_type {
             push_chosen_qualifier(
-                "of the chosen type",
+                if self.has_chosen_type_this_way_surface() {
+                    "of a type chosen this way"
+                } else {
+                    "of the chosen type"
+                },
                 &mut post_noun_qualifiers,
                 &mut chosen_trailing_qualifiers,
             );
@@ -4758,9 +5463,14 @@ impl ObjectFilterExt for ObjectFilter {
                 &mut chosen_trailing_qualifiers,
             );
         }
-        if self.excluded_chosen_creature_type {
+        if self.excluded_chosen_creature_type || self.excluded_any_chosen_creature_type {
+            let qualifier = if self.has_chosen_type_this_way_surface() {
+                "that aren't of a type chosen this way"
+            } else {
+                "that aren't of the chosen type"
+            };
             push_chosen_qualifier(
-                "that aren't of the chosen type",
+                qualifier,
                 &mut post_noun_qualifiers,
                 &mut chosen_trailing_qualifiers,
             );
@@ -4769,7 +5479,7 @@ impl ObjectFilterExt for ObjectFilter {
             let comparison = self
                 .no_shared_creature_types_with
                 .iter()
-                .map(ObjectFilter::description)
+                .map(|filter| ensure_filter_indefinite_article(filter.description()))
                 .collect::<Vec<_>>()
                 .join(" or ");
             post_noun_qualifiers.push(format!(
@@ -4847,8 +5557,14 @@ impl ObjectFilterExt for ObjectFilter {
                         post_noun_qualifiers.push("with the same mana value as it".to_string());
                     }
                 }
+                TaggedOpbjectRelation::SameManaValueAsAnotherTagged => {
+                    post_noun_qualifiers
+                        .push("with the same mana value as another tagged object".to_string());
+                }
                 TaggedOpbjectRelation::ManaValueLteTagged => {
-                    if constraint.tag.as_str() == "triggering" {
+                    if self.union_surface.equal_or_lesser_mana_value() {
+                        post_noun_qualifiers.push("with equal or lesser mana value".to_string());
+                    } else if constraint.tag.as_str() == "triggering" {
                         post_noun_qualifiers
                             .push("with equal or lesser mana value than that spell".to_string());
                     } else {
@@ -5056,26 +5772,45 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push("attacking/blocking".to_string());
         } else {
             if self.attacking
+                && !self.attacking_alone
                 && self
                     .attacking_player_or_planeswalker_controlled_by
                     .is_none()
             {
                 parts.push("attacking".to_string());
             }
-            if self.blocking {
+            if self.blocking && !self.in_combat_with_source && self.in_combat_with.is_none() {
                 parts.push("blocking".to_string());
             }
+        }
+        if self.attacking_alone {
+            post_noun_qualifiers.push("that's attacking alone".to_string());
         }
         if self.attacked_this_turn {
             post_noun_qualifiers.push("that attacked this turn".to_string());
         }
+        if self.ability_activated_this_turn {
+            let clause = if self.card_types == [CardType::Planeswalker] {
+                "that was activated this turn"
+            } else {
+                "that had an ability activated this turn"
+            };
+            post_noun_qualifiers.push(clause.to_string());
+        }
+        if self.blocked_this_turn {
+            post_noun_qualifiers.push("that blocked this turn".to_string());
+        }
         if self.didnt_attack_this_turn {
-            let clause = if self.didnt_enter_battlefield_this_turn {
+            let clause = if self.could_have_attacked_this_turn {
+                "that didn't attack this turn, except for creatures that couldn't attack"
+            } else if self.didnt_enter_battlefield_this_turn {
                 "that didn't attack or enter this turn"
             } else {
                 "that didn't attack this turn"
             };
             post_noun_qualifiers.push(clause.to_string());
+        } else if self.could_have_attacked_this_turn {
+            post_noun_qualifiers.push("that could have attacked this turn".to_string());
         }
         if let Some(with_attached) = &self.with_attached_object {
             let inner = with_attached.description();
@@ -5089,6 +5824,30 @@ impl ObjectFilterExt for ObjectFilter {
                         "a"
                     };
                 post_noun_qualifiers.push(format!("with {article} {inner} attached to it"));
+            }
+        }
+        if let Some(without_attached) = &self.without_attached_object {
+            let is_aura = without_attached.zone == Some(Zone::Battlefield)
+                && without_attached.card_types == [CardType::Enchantment]
+                && without_attached.subtypes == [Subtype::Aura]
+                && {
+                    let mut semantic = (**without_attached).clone();
+                    semantic.zone = None;
+                    semantic.card_types.clear();
+                    semantic.subtypes.clear();
+                    semantic == ObjectFilter::default()
+                };
+            if is_aura {
+                post_noun_qualifiers.push("that isn't enchanted".to_string());
+            } else {
+                let inner = without_attached.description();
+                let article =
+                    if inner.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U']) {
+                        "an"
+                    } else {
+                        "a"
+                    };
+                post_noun_qualifiers.push(format!("without {article} {inner} attached to it"));
             }
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
@@ -5118,8 +5877,32 @@ impl ObjectFilterExt for ObjectFilter {
                 ));
             }
         }
+        if let Some(player_filter) = &self.protected_by {
+            let player = match player_filter {
+                PlayerFilter::IteratedPlayer => "that player".to_string(),
+                other => other.description(),
+            };
+            post_noun_qualifiers.push(format!("{player} protects"));
+        }
         if self.in_combat_with_source {
-            post_noun_qualifiers.push("blocking or blocked by this creature".to_string());
+            post_noun_qualifiers.push(if self.blocking {
+                "blocking this creature".to_string()
+            } else {
+                "blocking or blocked by this creature".to_string()
+            });
+        }
+        if let Some(reference) = &self.in_combat_with {
+            let reference = match reference {
+                ObjectRef::Target => "target creature",
+                ObjectRef::Specific(_) => "that creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
+                ObjectRef::Tagged(_) => "that creature",
+            };
+            post_noun_qualifiers.push(if self.blocking {
+                format!("blocking {reference}")
+            } else {
+                format!("blocking or blocked by {reference}")
+            });
         }
         if self.nonattacking && self.nonblocking {
             parts.push("nonattacking, nonblocking".to_string());
@@ -5457,6 +6240,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.distinct_names {
             parts.push("with different names".to_string());
         }
+        if self.distinct_mana_values {
+            parts.push("with different mana values".to_string());
+        }
         if self.distinct_powers {
             parts.push("with different powers".to_string());
         }
@@ -5550,6 +6336,9 @@ impl ObjectFilterExt for ObjectFilter {
                     PowerToughnessRelation::ToughnessGreaterThanPower => {
                         parts.push("with toughness greater than its power".to_string());
                     }
+                    PowerToughnessRelation::NotEqual => {
+                        parts.push("with power and toughness that aren't equal".to_string());
+                    }
                 }
             }
             if let Some(relation) = self.power_relative_to_source {
@@ -5580,7 +6369,7 @@ impl ObjectFilterExt for ObjectFilter {
             ));
         }
         if self.has_x_in_cost {
-            parts.push("with a mana cost that contains {X}".to_string());
+            parts.push("with {X} in its mana cost".to_string());
         }
         if self.no_x_in_cost {
             parts.push("with no {X} in its mana cost".to_string());
@@ -5765,10 +6554,18 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push(format!("created with {source}"));
         }
 
-        if self.entered_graveyard_from_battlefield_this_turn && self.zone == Some(Zone::Graveyard) {
+        if self.entered_graveyard_from_library_this_turn && self.zone == Some(Zone::Graveyard) {
+            parts.push("that was put there from their library this turn".to_string());
+        } else if self.entered_graveyard_from_battlefield_this_turn
+            && self.zone == Some(Zone::Graveyard)
+        {
             parts.push("that was put there from the battlefield this turn".to_string());
         } else if self.entered_graveyard_this_turn && self.zone == Some(Zone::Graveyard) {
             parts.push("that was put there from anywhere this turn".to_string());
+        }
+
+        if let Some(constraint) = &self.counters_put_on_this_turn {
+            parts.push(describe_counters_put_on_this_turn_constraint(constraint));
         }
 
         if self.was_dealt_damage_this_turn {
@@ -5784,6 +6581,9 @@ impl ObjectFilterExt for ObjectFilter {
                 ironsmith_core::DamagedBySource::EnchantedCreature => "enchanted creature",
             };
             parts.push(format!("that was dealt damage by {source} this turn"));
+        }
+        if self.was_dealt_damage_by_source_this_game {
+            parts.push("that this source has dealt damage to this game".to_string());
         }
         if let Some(player) = &self.dealt_damage_to_player_this_turn {
             parts.push(format!(

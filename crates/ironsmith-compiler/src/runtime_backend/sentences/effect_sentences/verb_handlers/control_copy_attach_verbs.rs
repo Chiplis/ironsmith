@@ -430,6 +430,26 @@ fn parse_permanent_gain_control_duration(
 pub(crate) fn parse_exiled_with_source_move_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<ironsmith_core::ExiledWithSourceMoveSurface> {
+    parse_exiled_with_source_move_surface_inner(tokens, None)
+}
+
+/// Parse the noun-and-destination tail passed to `parse_return` after the
+/// subject/verb dispatcher has already consumed the authored `return` verb.
+/// Keep this separate from the full-clause entry point so arbitrary verbless
+/// fragments cannot be mistaken for source-linked zone moves.
+pub(crate) fn parse_exiled_with_source_return_tail_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::ExiledWithSourceMoveSurface> {
+    parse_exiled_with_source_move_surface_inner(
+        tokens,
+        Some(ironsmith_core::ExiledWithSourceMoveVerbSurface::Return),
+    )
+}
+
+fn parse_exiled_with_source_move_surface_inner(
+    tokens: &[OwnedLexToken],
+    assumed_verb: Option<ironsmith_core::ExiledWithSourceMoveVerbSurface>,
+) -> Option<ironsmith_core::ExiledWithSourceMoveSurface> {
     use ironsmith_core::{
         ExiledWithSourceDestinationSurface as DestinationSurface, ExiledWithSourceMoveSurface,
         ExiledWithSourceMoveVerbSurface as MoveVerbSurface,
@@ -441,16 +461,24 @@ pub(crate) fn parse_exiled_with_source_move_surface(
     let destination_marker = words
         .iter()
         .position(|word| matches!(*word, "into" | "onto" | "to" | "on"))?;
-    let target_words = &words[..destination_marker];
-    let verb = if target_words.first() == Some(&"return") {
-        MoveVerbSurface::Return
+    let clause_target_words = &words[..destination_marker];
+    // This helper is also called before the ordinary subject/verb split, so
+    // retain the move surface when an explicit actor precedes the verb (`they
+    // put`, `that player puts`, `each player returns`). The noun phrase begins
+    // immediately after the first authored move verb.
+    let (target_words, verb) = if let Some(verb) = assumed_verb {
+        (clause_target_words, verb)
     } else {
-        MoveVerbSurface::Put
+        let (verb_idx, verb) = clause_target_words
+            .iter()
+            .enumerate()
+            .find_map(|(idx, word)| match *word {
+                "put" | "puts" => Some((idx, MoveVerbSurface::Put)),
+                "return" | "returns" => Some((idx, MoveVerbSurface::Return)),
+                _ => None,
+            })?;
+        (&clause_target_words[verb_idx + 1..], verb)
     };
-    let target_words = target_words
-        .strip_prefix(&["put"])
-        .or_else(|| target_words.strip_prefix(&["return"]))
-        .unwrap_or(target_words);
     let (subject, source) = if target_words == ["the", "exiled", "card"] {
         (SubjectSurface::TheExiledCard, ReferenceSurface::Omitted)
     } else if target_words == ["the", "exiled", "cards"] {
@@ -471,18 +499,25 @@ pub(crate) fn parse_exiled_with_source_move_surface(
         } else if subject_words == ["the", "cards"] {
             SubjectSurface::TheCards
         } else {
-            let exiled_token = tokens.iter().position(|token| token.is_word("exiled"))?;
+            let subject_token_start = if assumed_verb.is_some() {
+                0
+            } else {
+                tokens.iter().position(|token| {
+                    token.is_word("put")
+                        || token.is_word("puts")
+                        || token.is_word("return")
+                        || token.is_word("returns")
+                })? + 1
+            };
+            let exiled_token = tokens
+                .iter()
+                .enumerate()
+                .skip(subject_token_start)
+                .find_map(|(idx, token)| token.is_word("exiled").then_some(idx))?;
             let rendered = crate::runtime_backend::front_end::lexer::render_token_slice(
-                &tokens[..exiled_token],
+                &tokens[subject_token_start..exiled_token],
             );
             let rendered = rendered.trim();
-            let rendered = rendered
-                .strip_prefix("Put ")
-                .or_else(|| rendered.strip_prefix("put "))
-                .or_else(|| rendered.strip_prefix("Return "))
-                .or_else(|| rendered.strip_prefix("return "))
-                .unwrap_or(rendered)
-                .trim();
             if rendered.is_empty()
                 || !subject_words
                     .iter()
@@ -497,6 +532,9 @@ pub(crate) fn parse_exiled_with_source_move_surface(
             .iter()
             .position(|word| *word == "with")?;
         let source_words = &target_words[exiled + with_offset + 1..];
+        let source_words = source_words
+            .strip_suffix(&["except", "this", "card"])
+            .unwrap_or(source_words);
         let source = if source_words == ["it"] {
             ReferenceSurface::It
         } else {
@@ -535,10 +573,102 @@ pub(crate) fn parse_exiled_with_source_move_surface(
     })
 }
 
+fn preserve_exiled_with_source_subject_cardinality(
+    target: TargetAst,
+    surface: Option<&ironsmith_core::ExiledWithSourceMoveSurface>,
+) -> TargetAst {
+    if surface.is_some_and(|surface| {
+        surface.subject == ironsmith_core::ExiledWithSourceSubjectSurface::OneCard
+    }) && !matches!(
+        target,
+        TargetAst::WithCount(..) | TargetAst::WithCountValue(..)
+    ) {
+        TargetAst::WithCount(Box::new(target), crate::effect::ChoiceCount::exactly(1))
+    } else {
+        target
+    }
+}
+
+/// "Put it onto the battlefield or into your hand" — the mover picks one
+/// destination, so lower one move mode per zone instead of failing the parse.
+fn parse_put_destination_choice(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let or_split = tokens.iter().enumerate().find_map(|(idx, token)| {
+        if !token.is_word("or") {
+            return None;
+        }
+        let next = tokens.get(idx + 1)?.as_word()?;
+        matches!(next, "into" | "onto" | "both" | "on").then_some(idx)
+    });
+    let Some(or_idx) = or_split else {
+        return Ok(None);
+    };
+    let left_tokens = &tokens[..or_idx];
+    let right_tokens = &tokens[or_idx + 1..];
+    let right_words = crate::runtime_backend::token_word_refs(right_tokens);
+    let right_words: Vec<&str> = right_words
+        .iter()
+        .copied()
+        .filter(|word| {
+            !matches!(
+                *word,
+                "your" | "the" | "their" | "its" | "owner's" | "both" | "of"
+            )
+        })
+        .collect();
+    let (right_zone, right_to_top) = match right_words.as_slice() {
+        ["into", "hand"] => (Zone::Hand, false),
+        ["into", "graveyard"] => (Zone::Graveyard, false),
+        ["onto", "battlefield"] => (Zone::Battlefield, false),
+        ["into", "exile"] => (Zone::Exile, false),
+        ["on", "bottom", "library"] => (Zone::Library, false),
+        _ => return Ok(None),
+    };
+    let left_effect = parse_put_into_hand(left_tokens, subject)?;
+    let EffectAst::SubjectVerb(left_subject_verb) = &left_effect else {
+        return Ok(None);
+    };
+    let SubjectVerbActionAst::MoveToZone { .. } = &left_subject_verb.action else {
+        return Ok(None);
+    };
+    let mut right_effect = left_effect.clone();
+    if let EffectAst::SubjectVerb(subject_verb) = &mut right_effect
+        && let SubjectVerbActionAst::MoveToZone { zone, to_top, .. } = &mut subject_verb.action
+    {
+        *zone = right_zone;
+        *to_top = right_to_top;
+    }
+    let left_display = format!(
+        "Put {}",
+        crate::runtime_backend::front_end::lexer::render_token_slice(
+            left_tokens.get(1..).unwrap_or(left_tokens),
+        )
+    );
+    let right_display = format!(
+        "Put it {}",
+        crate::runtime_backend::front_end::lexer::render_token_slice(right_tokens),
+    );
+    Ok(Some(EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::CreateTokenChoice {
+            options: vec![
+                (left_display, Box::new(left_effect)),
+                (right_display, Box::new(right_effect)),
+            ],
+        },
+    )))
+}
+
 pub(crate) fn parse_put_into_hand(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    if let Some(choice) = parse_put_destination_choice(tokens, subject.clone())? {
+        return Ok(choice);
+    }
     fn parse_put_into_hand_delayed_timing(
         tokens: &[OwnedLexToken],
     ) -> Option<DelayedReturnTimingAst> {
@@ -1198,7 +1328,10 @@ pub(crate) fn parse_put_into_hand(
 
             let (target_tokens, source_top_only) =
                 strip_source_top_only_prefix(shape.target_tokens);
-            let target = parse_target_phrase(target_tokens)?;
+            let target = preserve_exiled_with_source_subject_cardinality(
+                parse_target_phrase(target_tokens)?,
+                exiled_with_source_surface.as_ref(),
+            );
             let effect = if cca_shapes::starts_with_all_or_each(target_tokens) {
                 EffectAst::subject_verb_move_all_to_zone(
                     target,
@@ -1544,16 +1677,11 @@ mod looked_card_count_tests {
 
     #[test]
     fn explicit_that_source_controller_keeps_the_triggering_source_reference() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
-            "control of this creature.",
-            0,
-        )
-        .expect("lex triggering-source controller clause");
-        let effect = parse_gain_control(
-            &tokens,
-            Some(SubjectAst::TriggeringSourceController),
-        )
-        .expect("parse triggering-source controller clause");
+        let tokens =
+            crate::runtime_backend::front_end::lexer::lex_line("control of this creature.", 0)
+                .expect("lex triggering-source controller clause");
+        let effect = parse_gain_control(&tokens, Some(SubjectAst::TriggeringSourceController))
+            .expect("parse triggering-source controller clause");
 
         assert!(matches!(
             effect,
@@ -1565,6 +1693,39 @@ mod looked_card_count_tests {
                 },
                 ..
             }) if tag.as_str() == "triggering_source"
+        ));
+    }
+
+    #[test]
+    fn gain_control_target_keeps_distinct_combat_damage_controller_history() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "control of target nonland permanent controlled by a player who was dealt combat damage by three or more Pirates this turn.",
+            0,
+        )
+        .expect("lex historical gain-control target");
+        let effect =
+            parse_gain_control(&tokens, None).expect("parse historical gain-control target");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GainControl { target, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected gain-control effect: {effect:#?}");
+        };
+        let TargetAst::Object(filter, explicit_target, _) = target else {
+            panic!("expected object target: {target:#?}");
+        };
+
+        assert!(explicit_target.is_some());
+        assert_eq!(filter.excluded_card_types, [CardType::Land]);
+        assert!(filter.subtypes.is_empty(), "{filter:#?}");
+        assert!(matches!(
+            filter.controller,
+            Some(PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+                minimum: 3,
+                ref sources,
+                ..
+            }) if sources.subtypes == [Subtype::Pirate]
         ));
     }
 
@@ -1658,6 +1819,83 @@ mod looked_card_count_tests {
                 ..
             })
         ));
+
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "They put all cards exiled with this enchantment on the bottom of their library in a random order.",
+            0,
+        )
+        .expect("lex actor-prefixed source-exiled bottom-library move");
+        let surface = parse_exiled_with_source_move_surface(&tokens)
+            .expect("parse actor-prefixed source-exiled move surface");
+        assert_eq!(
+            surface.subject,
+            ironsmith_core::ExiledWithSourceSubjectSurface::AllCards
+        );
+    }
+
+    #[test]
+    fn source_exiled_return_tail_preserves_other_card_surface_without_a_verb() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "each other card exiled with this Vehicle to the battlefield under its owner's control",
+            0,
+        )
+        .expect("lex source-exiled return tail");
+        let surface = parse_exiled_with_source_return_tail_surface(&tokens)
+            .expect("parse verb-stripped source-exiled return tail");
+
+        assert_eq!(
+            surface.verb,
+            ironsmith_core::ExiledWithSourceMoveVerbSurface::Return
+        );
+        assert_eq!(
+            surface.subject,
+            ironsmith_core::ExiledWithSourceSubjectSurface::Custom("each other card".to_string())
+        );
+        assert!(matches!(
+            surface.source,
+            ironsmith_core::ExiledWithSourceReferenceSurface::Source(_)
+        ));
+        assert_eq!(
+            surface.destination,
+            ironsmith_core::ExiledWithSourceDestinationSurface::ItsOwner
+        );
+
+        let unrelated = crate::runtime_backend::front_end::lexer::lex_line(
+            "each other Vehicle to the battlefield under its owner's control",
+            0,
+        )
+        .expect("lex unrelated return tail");
+        assert!(parse_exiled_with_source_return_tail_surface(&unrelated).is_none());
+    }
+
+    #[test]
+    fn singular_source_exiled_move_preserves_exactly_one_choice() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "Put a card exiled with this creature into its owner's hand.",
+            0,
+        )
+        .expect("lex singular source-exiled move");
+        let effect = parse_put_into_hand(&tokens, None).expect("parse source-exiled move");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::MoveToZone {
+                    target: TargetAst::WithCount(inner, count),
+                    exiled_with_source_surface: Some(surface),
+                    zone: Zone::Hand,
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected a counted source-exiled move: {effect:#?}");
+        };
+        assert_eq!(count, ChoiceCount::exactly(1));
+        assert!(matches!(inner.as_ref(), TargetAst::Object(..)));
+        assert_eq!(
+            surface.subject,
+            ironsmith_core::ExiledWithSourceSubjectSurface::OneCard
+        );
     }
 
     #[test]
@@ -1690,6 +1928,47 @@ mod looked_card_count_tests {
         ));
         assert_eq!(zone, Zone::Hand);
         assert_eq!(destination_player_surface, Some(PlayerAst::You));
+    }
+
+    #[test]
+    fn same_hand_cards_can_move_to_top_or_bottom_as_one_typed_choice() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "Put two cards from your hand both on top of your library or both on the bottom of your library.",
+            0,
+        )
+        .expect("lex same-card destination choice");
+        let effect = parse_put_into_hand(&tokens, None).expect("parse destination choice");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CreateTokenChoice { options },
+            ..
+        }) = effect
+        else {
+            panic!("expected a typed destination choice: {effect:#?}");
+        };
+        assert_eq!(options.len(), 2);
+        let zones = options
+            .iter()
+            .map(|(_, effect)| match effect.as_ref() {
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::MoveToZone {
+                            target: TargetAst::WithCount(_, count),
+                            zone,
+                            to_top,
+                            ..
+                        },
+                    ..
+                }) => (*zone, *to_top, count.clone()),
+                other => panic!("expected a counted library move: {other:#?}"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            zones,
+            vec![
+                (Zone::Library, true, ChoiceCount::exactly(2)),
+                (Zone::Library, false, ChoiceCount::exactly(2)),
+            ]
+        );
     }
 
     #[test]

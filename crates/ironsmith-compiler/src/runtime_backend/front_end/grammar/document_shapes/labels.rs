@@ -53,6 +53,11 @@ pub(crate) fn parse_preserved_keyword_label_tokens(
 pub(crate) fn parse_numeric_result_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NumericResultPrefixShape> {
+    if matches!(tokens, [number, pipe, ..]
+        if number.kind == TokenKind::Number && pipe.kind == TokenKind::Pipe)
+    {
+        return Some(NumericResultPrefixShape);
+    }
     if tokens
         .first()
         .is_some_and(token_is_compact_ascii_numeric_range)
@@ -200,6 +205,10 @@ mod tests {
         let compact_ascii_numeric = lex_line("1-9 | Draw a card", 0).unwrap();
         assert!(parse_numeric_result_prefix_tokens(&compact_ascii_numeric).is_some());
         assert!(parse_statement_label_split_tokens(&compact_ascii_numeric).is_none());
+
+        let exact_numeric_with_label = lex_line("1 | Trapped! — You lose 3 life", 0).unwrap();
+        assert!(parse_numeric_result_prefix_tokens(&exact_numeric_with_label).is_some());
+        assert!(parse_statement_label_split_tokens(&exact_numeric_with_label).is_none());
 
         let labeled = lex_line("Landfall — Draw a card", 0).unwrap();
         let stripped = parse_statement_label_strip_tokens(&labeled);

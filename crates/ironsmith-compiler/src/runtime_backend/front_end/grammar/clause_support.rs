@@ -8,6 +8,7 @@ use crate::color::{Color, ColorSet};
 use crate::target::ObjectFilter;
 
 use super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
+use super::super::util::starts_filter_keyword_list_continuation_words;
 use super::primitives::{self, TokenWordView, WordSliceInput};
 
 #[path = "clause_support/ability_shapes.rs"]
@@ -432,6 +433,10 @@ fn parse_trigger_delimiter_facts_lexed(input: &mut LexStream<'_>) -> TriggerDeli
     while let Ok(token) = take_token(input) {
         let index = initial_len.saturating_sub(input.len() + 1);
         let kind = if token.kind == TokenKind::Comma {
+            let continuation_words = TokenWordView::new(input.as_ref()).to_word_refs();
+            if starts_filter_keyword_list_continuation_words(&continuation_words) {
+                continue;
+            }
             first_comma.get_or_insert(index);
             Some(TriggerDelimiterKind::Comma)
         } else if token.is_word("then") {

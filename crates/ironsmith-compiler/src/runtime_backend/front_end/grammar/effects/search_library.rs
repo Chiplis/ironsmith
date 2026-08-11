@@ -1,6 +1,6 @@
 use super::*;
 use crate::runtime_backend::lexer::{parser_token_word_positions, parser_token_word_refs};
-use ironsmith_core::Value;
+use ironsmith_core::{BattlefieldEntryCounterSpec, BattlefieldEntryCounterSurface, Value};
 use winnow::error::{ContextError, ErrMode, ModalResult};
 
 #[path = "search_library/duration_shapes.rs"]
@@ -30,7 +30,7 @@ const LIFE_FOLLOWUP_PREFIXES: &[&[&str]] = &[
     &["target", "player", "gain"],
 ];
 const FACE_DOWN_PHRASE: &[&str] = &["face", "down"];
-const BATTLEFIELD_HAND_OTHER_ONE_MARKER_WORDS: &[&str] = &["battlefield", "hand", "other", "one"];
+const BATTLEFIELD_HAND_ONE_MARKER_WORDS: &[&str] = &["battlefield", "hand", "one"];
 const YOUR_OR_THEIR_LIBRARY_FOR_PREFIX_PATTERN: &[&[&str]] =
     &[&["your", "library", "for"], &["their", "library", "for"]];
 const YOUR_OR_THEIR_LIBRARY_GRAVEYARD_FOR_PREFIX_PATTERN: &[&[&str]] = &[
@@ -407,16 +407,97 @@ pub(crate) struct SearchLibraryDiscardFollowupBoundary {
 pub(crate) struct SearchLibraryEffectRouting {
     pub(crate) destination: Zone,
     pub(crate) reveal: bool,
+    pub(crate) reveal_reference_surface: Option<crate::effect::SearchResultReferenceSurface>,
     pub(crate) shuffle: bool,
     pub(crate) face_down_exile: bool,
     pub(crate) split_battlefield_and_hand: bool,
     pub(crate) has_tapped_modifier: bool,
+    pub(crate) battlefield_entry_counters: Vec<BattlefieldEntryCounterSpec>,
     /// Whether the put clause hands the found card to you ("… and put it onto
     /// the battlefield under your control"). Searching another player's library
     /// otherwise leaves the card under ITS owner's control.
     pub(crate) enters_under_your_control: bool,
     pub(crate) library_position_from_top: Option<Value>,
     pub(crate) result_reference_surface: crate::effect::SearchResultReferenceSurface,
+    pub(crate) search_top_in_any_order_surface: bool,
+}
+
+/// Parse counters authored as part of a searched card's battlefield entry,
+/// for example `put it onto the battlefield tapped with a stun counter on it`.
+/// The counter belongs to the enter event itself, not to a later instruction.
+fn search_library_battlefield_entry_counters(words: &[&str]) -> Vec<BattlefieldEntryCounterSpec> {
+    let mut counters = Vec::new();
+    let Some(battlefield_idx) = words.iter().position(|word| *word == "battlefield") else {
+        return counters;
+    };
+    // Restrict the scan to the destination clause. Filter text before the put
+    // action can contain its own `with` (for example `with mana value X or
+    // less`); treating that as an entry-counter prefix duplicates the actual
+    // trailing `with X additional +1/+1 counters on it` clause.
+    for (relative_with_idx, word) in words[battlefield_idx + 1..].iter().enumerate() {
+        if *word != "with" {
+            continue;
+        }
+        let with_idx = battlefield_idx + 1 + relative_with_idx;
+        let Some(counter_offset) = words[with_idx + 1..]
+            .iter()
+            .position(|word| matches!(*word, "counter" | "counters"))
+        else {
+            continue;
+        };
+        let counter_idx = with_idx + 1 + counter_offset;
+        if words.get(counter_idx + 1..counter_idx + 3) != Some(&["on", "it"][..]) {
+            continue;
+        }
+        let descriptor = &words[with_idx + 1..=counter_idx];
+        let Some(counter_type) =
+            crate::runtime_backend::grammar::filters::parse_counter_type_words(descriptor)
+        else {
+            continue;
+        };
+        let mut amount = match descriptor.first().copied() {
+            Some("a" | "an") => Value::Fixed(1),
+            Some("x") => Value::X,
+            Some(number) => crate::runtime_backend::util::parse_number_word_i32(number)
+                .filter(|amount| *amount > 0)
+                .map(Value::Fixed)
+                .unwrap_or(Value::Fixed(1)),
+            None => continue,
+        };
+        if descriptor.contains(&"additional") {
+            amount =
+                amount.with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter);
+        }
+        counters.push(BattlefieldEntryCounterSpec::new(
+            counter_type,
+            amount,
+            BattlefieldEntryCounterSurface::Inline,
+        ));
+    }
+    counters
+}
+
+fn search_library_reference_surface_after(
+    words: &[&str],
+    action: &str,
+) -> Option<crate::effect::SearchResultReferenceSurface> {
+    words.iter().enumerate().find_map(|(action_idx, word)| {
+        if *word != action {
+            return None;
+        }
+        match words.get(action_idx + 1..) {
+            Some(["the", "card", ..]) => Some(crate::effect::SearchResultReferenceSurface::TheCard),
+            Some(["that", "card", ..]) => {
+                Some(crate::effect::SearchResultReferenceSurface::ThatCard)
+            }
+            Some(["those", "cards", ..]) => {
+                Some(crate::effect::SearchResultReferenceSurface::ThoseCards)
+            }
+            Some(["it", ..]) => Some(crate::effect::SearchResultReferenceSurface::It),
+            Some(["them", ..]) => Some(crate::effect::SearchResultReferenceSurface::Them),
+            _ => None,
+        }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1022,8 +1103,15 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
     });
     let shuffle = clause_markers.shuffle_idx.is_some() && !trailing_discard_before_shuffle;
     let split_battlefield_and_hand = clause_markers.put_idx.is_some()
-        && search_library_words_contain_all(&words_all, BATTLEFIELD_HAND_OTHER_ONE_MARKER_WORDS);
+        && search_library_words_contain_all(&words_all, BATTLEFIELD_HAND_ONE_MARKER_WORDS)
+        && (search_library_words_have_word(&words_all, "other")
+            || search_library_words_have_word(&words_all, "rest"));
     let has_tapped_modifier = search_library_words_have_word(&words_all, "tapped");
+    let battlefield_entry_counters = if destination == Zone::Battlefield {
+        search_library_battlefield_entry_counters(&words_all)
+    } else {
+        Vec::new()
+    };
 
     let enters_under_your_control = put_clause_words.as_ref().is_some_and(|words| {
         words
@@ -1034,27 +1122,23 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
     SearchLibraryEffectRouting {
         destination,
         reveal,
+        reveal_reference_surface: reveal
+            .then(|| search_library_reference_surface_after(&words_all, "reveal"))
+            .flatten(),
         shuffle,
         face_down_exile,
         split_battlefield_and_hand,
         has_tapped_modifier,
+        battlefield_entry_counters,
         enters_under_your_control,
         library_position_from_top: put_clause_words
             .as_ref()
             .and_then(|words| search_library_put_position_from_top_words(words)),
-        result_reference_surface: if words_all
+        result_reference_surface: search_library_reference_surface_after(&words_all, "put")
+            .unwrap_or(crate::effect::SearchResultReferenceSurface::It),
+        search_top_in_any_order_surface: words_all
             .windows(3)
-            .any(|words| words == ["put", "the", "card"])
-        {
-            crate::effect::SearchResultReferenceSurface::TheCard
-        } else if words_all
-            .windows(3)
-            .any(|words| words == ["put", "that", "card"])
-        {
-            crate::effect::SearchResultReferenceSurface::ThatCard
-        } else {
-            crate::effect::SearchResultReferenceSurface::It
-        },
+            .any(|words| words == ["in", "any", "order"]),
     }
 }
 
@@ -1509,14 +1593,51 @@ pub(crate) fn parse_search_library_object_filter_lexed(
     } else if search_library_words_have_word(&filter_words, "or")
         || search_library_words_have_word(&filter_words, "and/or")
     {
-        let mut filter = parse_search_library_disjunction_filter(&filter_tokens)
-            .or_else(|| parse_object_filter(&filter_tokens, false).ok())
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported search filter in search-library sentence (clause: '{}')",
-                    clause_display
-                ))
-            })?;
+        // `or` can belong to a scalar comparison rather than to the card
+        // selector (`artifact creature card with mana value X or less`). In
+        // that shape the search-specific disjunction splitter widens the
+        // intersecting types to `artifact or creature`. Let the full typed
+        // filter grammar consume comparison-bearing phrases first; retain the
+        // specialized disjunction parser as the fallback for real selector
+        // unions.
+        let comparison_or = filter_words
+            .windows(2)
+            .any(|words| matches!(words, ["or", "less" | "more" | "greater"]));
+        let mut filter = if comparison_or {
+            parse_object_filter(&filter_tokens, false)
+                .ok()
+                .or_else(|| parse_search_library_disjunction_filter(&filter_tokens))
+        } else {
+            parse_search_library_disjunction_filter(&filter_tokens)
+                .or_else(|| parse_object_filter(&filter_tokens, false).ok())
+        }
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported search filter in search-library sentence (clause: '{}')",
+                clause_display
+            ))
+        })?;
+        if comparison_or
+            && filter.all_card_types.is_empty()
+            && filter.card_types.len() >= 2
+            && let Some(qualifier_idx) = filter_tokens
+                .iter()
+                .position(|token| token.as_word() == Some("with"))
+            && let Some(prefix_filter) =
+                crate::runtime_backend::grammar::filters::parse_simple_object_filter_lexed(
+                    &filter_tokens[..qualifier_idx],
+                    false,
+                )
+            && prefix_filter.all_card_types.len() >= 2
+            && prefix_filter.card_types.is_empty()
+            && prefix_filter.all_card_types == filter.card_types
+        {
+            // The complex predicate parser preserves every selected type but
+            // can lose their adjacency once it consumes `mana value ... or
+            // less`. The simple characteristic prefix proves that no authored
+            // selector conjunction separated those types.
+            filter.all_card_types = std::mem::take(&mut filter.card_types);
+        }
         if let Some(color_count) = color_count {
             filter.color_count = Some(color_count);
         }
@@ -1840,6 +1961,20 @@ mod tests {
     }
 
     #[test]
+    fn library_and_or_graveyard_search_keeps_both_typed_origins() {
+        let tokens = lex_line("search your library and/or graveyard for a card", 0)
+            .expect("multi-zone search surface should lex");
+        let routing = derive_search_library_subject_routing_lexed(&tokens, PlayerAst::Implicit)
+            .expect("multi-zone search should route");
+
+        assert_eq!(routing.forced_library_owner, Some(PlayerFilter::You));
+        assert_eq!(
+            routing.search_zones_override,
+            Some(vec![Zone::Library, Zone::Graveyard])
+        );
+    }
+
+    #[test]
     fn search_filter_keeps_shared_characteristic_relation() {
         let tokens = lex_line(
             "a card that shares a color with a legendary creature you control",
@@ -1880,5 +2015,123 @@ mod tests {
 
             assert_eq!(routing.result_reference_surface, expected, "{line}");
         }
+    }
+
+    #[test]
+    fn search_result_reference_keeps_authored_plural_surface() {
+        for (line, expected, expected_reveal, expected_order) in [
+            (
+                "search your library for up to three creature cards, reveal them, then shuffle and put those cards on top in any order",
+                crate::effect::SearchResultReferenceSurface::ThoseCards,
+                Some(crate::effect::SearchResultReferenceSurface::Them),
+                true,
+            ),
+            (
+                "search your library for any number of creature cards, reveal those cards, then shuffle and put them on top",
+                crate::effect::SearchResultReferenceSurface::Them,
+                Some(crate::effect::SearchResultReferenceSurface::ThoseCards),
+                false,
+            ),
+        ] {
+            let tokens = lex_line(line, 0).expect("plural search surface should lex");
+            let markers = scan_search_library_clause_markers_lexed(&tokens)
+                .expect("plural search clauses should route");
+            let routing =
+                derive_search_library_effect_routing_lexed(&tokens, &tokens, markers, false);
+
+            assert_eq!(routing.result_reference_surface, expected, "{line}");
+            assert_eq!(routing.reveal_reference_surface, expected_reveal, "{line}");
+            assert_eq!(
+                routing.search_top_in_any_order_surface, expected_order,
+                "{line}"
+            );
+        }
+    }
+
+    #[test]
+    fn searched_battlefield_card_keeps_inline_entry_counter() {
+        let line = "search their library for a basic land card, put it onto the battlefield tapped with a stun counter on it, then shuffle";
+        let tokens = lex_line(line, 0).expect("countered search surface should lex");
+        let markers = scan_search_library_clause_markers_lexed(&tokens)
+            .expect("countered search clauses should route");
+        let routing = derive_search_library_effect_routing_lexed(&tokens, &tokens, markers, false);
+
+        assert_eq!(routing.destination, Zone::Battlefield);
+        assert!(routing.has_tapped_modifier);
+        let [counter] = routing.battlefield_entry_counters.as_slice() else {
+            panic!("expected one typed battlefield-entry counter");
+        };
+        assert_eq!(counter.counter_type, crate::object::CounterType::Stun);
+        assert_eq!(counter.amount, Value::Fixed(1));
+        assert_eq!(counter.surface, BattlefieldEntryCounterSurface::Inline);
+    }
+
+    #[test]
+    fn searched_battlefield_card_keeps_dynamic_additional_entry_counters_once() {
+        let line = "search your library and/or graveyard for an artifact creature card with mana value X or less and put it onto the battlefield with X additional +1/+1 counters on it";
+        let tokens = lex_line(line, 0).expect("dynamic countered search surface should lex");
+        let markers = scan_search_library_clause_markers_lexed(&tokens)
+            .expect("dynamic countered search clauses should route");
+        let routing = derive_search_library_effect_routing_lexed(&tokens, &tokens, markers, false);
+
+        let [counter] = routing.battlefield_entry_counters.as_slice() else {
+            panic!("expected exactly one typed battlefield-entry counter");
+        };
+        assert_eq!(
+            counter.counter_type,
+            crate::object::CounterType::PlusOnePlusOne
+        );
+        assert_eq!(counter.amount.unhinted(), &Value::X);
+        assert!(
+            counter
+                .amount
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+        );
+        assert_eq!(counter.surface, BattlefieldEntryCounterSurface::Inline);
+    }
+
+    #[test]
+    fn mana_value_or_less_does_not_widen_adjacent_card_types() {
+        let tokens = lex_line("an artifact creature card with mana value X or less", 0)
+            .expect("comparison-bearing search filter should lex");
+        let filter = parse_search_library_object_filter_lexed(&tokens, "test search")
+            .expect("comparison-bearing search filter should parse");
+
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.all_card_types,
+            [
+                crate::types::CardType::Artifact,
+                crate::types::CardType::Creature
+            ],
+            "adjacent card types are an intersection even when the later comparison uses `or`"
+        );
+        assert_eq!(
+            filter.mana_value,
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+                Value::X
+            )))
+        );
+    }
+
+    #[test]
+    fn search_filter_keeps_devotion_as_the_dynamic_mana_value_limit() {
+        let tokens = lex_line(
+            "a card with mana value less than or equal to your devotion to black",
+            0,
+        )
+        .expect("devotion-bounded search filter should lex");
+        let filter = parse_search_library_object_filter_lexed(&tokens, "devotion search")
+            .expect("devotion-bounded search filter should parse");
+
+        assert_eq!(
+            filter.mana_value,
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+                Value::Devotion {
+                    player: PlayerFilter::You,
+                    color: crate::color::Color::Black,
+                }
+            )))
+        );
     }
 }

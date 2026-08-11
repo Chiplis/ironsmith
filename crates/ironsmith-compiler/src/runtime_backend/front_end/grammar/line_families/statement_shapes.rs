@@ -4,7 +4,8 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use super::super::{leaf, permission_shapes, primitives, structure};
-use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, TokenKind};
+use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView};
+use crate::runtime_backend::util::starts_filter_keyword_list_continuation_words;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MultiSentenceEffectHead {
@@ -55,6 +56,10 @@ pub(crate) fn parse_statement_static_preference(
         tokens,
     )
     .is_some()
+        || super::super::static_keyword_replacement_shapes::parse_sacrifice_or_redirect_replacement(
+            tokens,
+        )
+        .is_some()
     {
         return Some(StatementStaticPreference::DiscardOrRedirectReplacement);
     }
@@ -166,6 +171,11 @@ where
 pub(crate) fn parse_filter_list_continuation(
     tokens: &[OwnedLexToken],
 ) -> Option<FilterListContinuationShape> {
+    let keyword_words = TokenWordView::new(tokens).to_word_refs();
+    if starts_filter_keyword_list_continuation_words(&keyword_words) {
+        return Some(FilterListContinuationShape);
+    }
+
     let mut saw_filter_atom = false;
     let mut saw_list_separator = false;
 

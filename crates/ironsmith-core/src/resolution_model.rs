@@ -28,6 +28,10 @@ pub struct SelfReplacementBranch<E> {
     /// This is presentation provenance only; replacement semantics are
     /// already carried by the branch itself.
     pub leading_instead_surface: bool,
+    /// This replacement was authored on a new Oracle source line even though
+    /// it semantically replaces the effects in the preceding segment.
+    /// Presentation only; resolution behavior is unchanged.
+    pub starts_new_source_line: bool,
 }
 
 impl<E> Default for ResolutionProgram<E> {
@@ -207,6 +211,7 @@ impl<E> SelfReplacementBranch<E> {
             presentation_label: self.presentation_label,
             condition_after_replacement: self.condition_after_replacement,
             leading_instead_surface: self.leading_instead_surface,
+            starts_new_source_line: self.starts_new_source_line,
         })
     }
 }
@@ -235,6 +240,7 @@ impl<E> SelfReplacementBranch<E> {
             presentation_label: None,
             condition_after_replacement: false,
             leading_instead_surface: false,
+            starts_new_source_line: false,
         }
     }
 
@@ -248,6 +254,11 @@ impl<E> SelfReplacementBranch<E> {
 
     pub fn with_leading_instead_surface(mut self, leading_instead_surface: bool) -> Self {
         self.leading_instead_surface = leading_instead_surface;
+        self
+    }
+
+    pub fn with_starts_new_source_line(mut self, starts_new_source_line: bool) -> Self {
+        self.starts_new_source_line = starts_new_source_line;
         self
     }
 }

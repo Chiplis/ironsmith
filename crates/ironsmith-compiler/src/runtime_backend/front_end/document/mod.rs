@@ -45,6 +45,7 @@ use super::ir::{
 use super::keyword_registry::{parse_keyword_line_cst, rewrite_keyword_dash_parse_tokens};
 use super::keyword_static::{
     parse_if_this_spell_costs_less_to_cast_line_lexed,
+    parse_spell_additional_life_cost_per_target_line,
     parse_spell_and_player_activated_ability_cost_modifier_line,
     parse_spell_cost_increase_per_target_beyond_first_line, parse_spells_cost_modifier_line,
 };
@@ -63,7 +64,8 @@ use super::token_primitives::{
 };
 use super::util::{
     map_span_to_original, parse_level_header, parse_level_up_line_lexed, parse_power_toughness,
-    parse_saga_chapter_prefix, parser_trace, parser_trace_enabled, span_from_tokens,
+    parse_saga_chapter_prefix, parse_subtype_flexible, parser_trace, parser_trace_enabled,
+    span_from_tokens,
 };
 use std::sync::LazyLock;
 
@@ -185,6 +187,9 @@ fn strip_trigger_frequency_suffix_tokens(
         &[
             &["for", "the", "first", "time", "each", "turn"][..],
             &["for", "the", "first", "time", "this", "turn"][..],
+            &[
+                "for", "the", "first", "time", "during", "each", "of", "your", "turns",
+            ][..],
         ],
     ) {
         return (rest, Some(1));
@@ -431,6 +436,14 @@ fn triggered_effect_tokens_have_trailing_static_sentences(tokens: &[OwnedLexToke
 }
 
 fn sentence_is_static_after_trigger_effect(tokens: &[OwnedLexToken]) -> bool {
+    if effect_grammar::followup_shapes::parse_moved_object_entry_followup_shape(tokens).is_some() {
+        // This sentence describes the object moved by the preceding optional
+        // effect. Keep it in the trigger's resolution program so the typed
+        // follow-up parser can attach its entry state and temporary grant to
+        // that move; the static parser also accepting "It enters ..." must
+        // not peel it off as a source ability.
+        return false;
+    }
     let create_tokens = strip_leading_if_you_do_lexed(tokens);
     if effect_grammar::parse_create_head_tokens(create_tokens).is_some() {
         // A conditional token creation can contain quoted static-looking
@@ -442,6 +455,23 @@ fn sentence_is_static_after_trigger_effect(tokens: &[OwnedLexToken]) -> bool {
         // Copy exceptions such as "except it has flying" describe the
         // resolving copy effect. They must not be peeled off as a source
         // static ability merely because the exception itself looks static.
+        return false;
+    }
+    if crate::parse_loss::capture(|| parse_effect_sentences_lexed(tokens))
+        .0
+        .is_ok_and(|effects| {
+            matches!(
+                effects.as_slice(),
+                [crate::runtime_backend::ast::EffectAst::Conditional { predicate, .. }]
+                    if predicate.uses_implicit_object_reference()
+            )
+        })
+    {
+        // A sentence such as "If it isn't a creature, it becomes ..." can
+        // also resemble a source-wide continuous rule.  Here the implicit
+        // object reference proves that it consumes the object chosen by the
+        // preceding resolving effect, so it belongs to that trigger's
+        // resolution program rather than becoming a separate static ability.
         return false;
     }
     semantic_grammar::parse_self_counter_entry_tokens(tokens).is_some()
@@ -1476,15 +1506,24 @@ fn replace_named_source_aliases_with_options(
         let end_word = word_idx + alias_words.len();
         let start = pieces[word_idx].span.start;
         let end = pieces[end_word - 1].span.end;
-        let preserve_surface =
-            source_alias_occurrence_looks_like_effect_verb_lexed(&pieces, word_idx, end_word)
-                || source_alias_occurrence_is_name_override_surface_lexed(
+        let remaining_words = pieces[word_idx..]
+            .iter()
+            .map(|piece| piece.text)
+            .collect::<Vec<_>>();
+        let alias_is_strict_prefix_of_compound_subtype =
+            crate::runtime_backend::front_end::grammar::filters::reference_tag_stage::compound_filter_subtype_prefix_word_len(
+                &remaining_words,
+            )
+            .is_some_and(|compound_len| compound_len > alias_words.len());
+        let preserve_surface = alias_is_strict_prefix_of_compound_subtype
+            || source_alias_occurrence_looks_like_effect_verb_lexed(&pieces, word_idx, end_word)
+            || source_alias_occurrence_is_name_override_surface_lexed(&pieces, word_idx, end_word)
+            || source_alias_occurrence_is_created_token_name_lexed(&pieces, word_idx, end_word)
+            || source_alias_occurrence_is_typed_subtype_noun_lexed(&pieces, word_idx, end_word)
+            || (preserve_surface_hints
+                && source_alias_occurrence_should_preserve_surface_lexed(
                     &pieces, word_idx, end_word,
-                )
-                || (preserve_surface_hints
-                    && source_alias_occurrence_should_preserve_surface_lexed(
-                        &pieces, word_idx, end_word,
-                    ));
+                ));
         if !preserve_surface {
             rewritten.push_str(&lower[cursor..start]);
             rewritten.push_str(replacement);
@@ -1548,6 +1587,36 @@ fn source_alias_word_span_matches(
                             && piece.text.strip_suffix('s') == Some(expected))
                 })
         })
+}
+
+fn source_alias_occurrence_is_typed_subtype_noun_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+    end_word: usize,
+) -> bool {
+    let alias = pieces
+        .get(start_word..end_word)
+        .unwrap_or_default()
+        .iter()
+        .map(|piece| piece.text)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !parse_subtype_flexible(&alias).is_some_and(|subtype| subtype.is_creature_type()) {
+        return false;
+    }
+
+    let previous_word = start_word
+        .checked_sub(1)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
+    let next_word = pieces.get(end_word).map(|piece| piece.text);
+
+    previous_word == Some("target")
+        || (matches!(previous_word, Some("a" | "an"))
+            && matches!(
+                next_word,
+                Some("card" | "cards" | "creature" | "creatures" | "token" | "tokens")
+            ))
 }
 
 fn source_alias_occurrence_looks_like_effect_verb_lexed(
@@ -1620,6 +1689,20 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
         return true;
     }
 
+    // An alias can also be ordinary characteristic data. In
+    // "becomes a Coward", the one-word front-face name happens to equal the
+    // creature subtype; rewriting that predicate noun to "this sorcery"
+    // produces the nonsensical "becomes a this sorcery" before the typed
+    // subtype grammar gets a chance to consume it.
+    let is_indefinite_become_descriptor = matches!(previous_word, Some("a" | "an"))
+        && matches!(
+            previous_previous_word,
+            Some("become" | "becomes" | "became" | "becoming")
+        );
+    if is_indefinite_become_descriptor {
+        return true;
+    }
+
     let is_control_action_noun = end_word == start_word + 1
         && pieces
             .get(start_word)
@@ -1660,6 +1743,8 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
                     | "become"
                     | "becomes"
                     | "becoming"
+                    | "get"
+                    | "gets"
                     | "deal"
                     | "deals"
                     | "counter"
@@ -1688,7 +1773,33 @@ fn source_alias_occurrence_is_name_override_surface_lexed(
         .and_then(|idx| pieces.get(idx))
         .map(|piece| piece.text);
 
-    previous_word == Some("is") && previous_previous_word == Some("name")
+    previous_word == Some("named")
+        || (previous_word == Some("is") && previous_previous_word == Some("name"))
+}
+
+fn source_alias_occurrence_is_created_token_name_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+    end_word: usize,
+) -> bool {
+    let previous_word = start_word
+        .checked_sub(1)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
+    let follows_create = matches!(previous_word, Some("create" | "creates"))
+        || pieces[..start_word]
+            .iter()
+            .rev()
+            .take_while(|piece| !matches!(piece.text, "and" | "then"))
+            .take(12)
+            .any(|piece| matches!(piece.text, "create" | "creates"));
+    follows_create
+        && pieces
+            .get(end_word..)
+            .unwrap_or_default()
+            .iter()
+            .take(8)
+            .any(|piece| matches!(piece.text, "token" | "tokens"))
 }
 
 fn normalize_named_source_enter_agreement(text: &str, subject: &str) -> String {
@@ -1845,16 +1956,18 @@ mod tests {
         normalize_named_source_sentence_for_builder, normalize_named_source_trigger_for_builder,
         normalize_statement_parse_groups_lexed,
         normalize_trailing_keyword_activation_sentence_lexed,
-        parse_colon_nonactivation_statement_fallback, parse_keyword_line_cst, parse_level_item_cst,
+        parse_colon_nonactivation_statement_fallback, parse_keyword_line_cst,
+        parse_labeled_qualified_ability_trigger_cst, parse_level_item_cst,
         parse_statement_line_cst, parse_static_line_cst, parse_text_to_semantic_document,
         parse_triggered_line_cst, preprocess_document, probe_triggered_split, render_token_slice,
         replace_named_source_aliases, replace_named_source_aliases_from_set,
         rewrite_keyword_dash_parse_tokens, rewrite_when_one_or_more_this_way_line,
-        should_parse_delayed_trigger_line_as_spell_effect, source_name_aliases_for_builder,
-        split_activation_text_parts_lexed, split_label_prefix, split_label_prefix_lexed,
-        split_reveal_first_draw_line_rewrite_lexed, split_trigger_sentence_chunks_rewrite_lexed,
-        strip_non_keyword_label_prefix, strip_trailing_trigger_cap_suffix_tokens,
-        tokens_after_non_keyword_label_prefix, trigger_presentation_from_line_tokens,
+        sentence_is_static_after_trigger_effect, should_parse_delayed_trigger_line_as_spell_effect,
+        source_name_aliases_for_builder, split_activation_text_parts_lexed, split_label_prefix,
+        split_label_prefix_lexed, split_reveal_first_draw_line_rewrite_lexed,
+        split_trigger_sentence_chunks_rewrite_lexed, strip_non_keyword_label_prefix,
+        strip_trailing_trigger_cap_suffix_tokens, tokens_after_non_keyword_label_prefix,
+        trigger_presentation_from_line_tokens,
         triggered_effect_tokens_have_trailing_static_sentences,
     };
 
@@ -2166,6 +2279,31 @@ mod tests {
             }
             other => panic!("expected one merged triggered line, got {other:?}"),
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_document_cst_merges_exact_numeric_result_with_inner_label_into_activation()
+    -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Result Table Probe")
+                .card_types(vec![CardType::Artifact]),
+            "{4}, Sacrifice this artifact: Roll a d20.\n1 | Trapped! — You lose 3 life.\n2—9 | Create five Treasure tokens.\n10—20 | Draw a card.",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        let [super::RewriteLineCst::Activated(activated)] = cst.lines.as_slice() else {
+            panic!(
+                "expected one merged activated result table, got {:#?}",
+                cst.lines
+            );
+        };
+        let effect_text = render_token_slice(&activated.effect_parse_tokens);
+        assert!(effect_text.contains("roll a d20"), "{effect_text}");
+        assert!(effect_text.contains("1 | trapped!"), "{effect_text}");
+        assert!(effect_text.contains("2—9"), "{effect_text}");
+        assert!(effect_text.contains("10—20"), "{effect_text}");
 
         Ok(())
     }
@@ -2555,6 +2693,24 @@ mod tests {
     }
 
     #[test]
+    fn historical_target_return_preempts_cst_put_clause_probe() -> Result<(), CardTextError> {
+        let line = single_preprocessed_line(
+            "Choose up to three target permanent cards in graveyards that were put there from the battlefield this turn. Return them to the battlefield tapped under their owners' control. You draw a card for each opponent who controls one or more of those permanents.",
+        );
+        let statement = parse_statement_line_cst(&line)?
+            .expect("historical target return should remain one statement");
+        assert_eq!(statement.parse_groups.len(), 1);
+        let effects = super::parse_effect_sentences_lexed(&statement.parse_groups[0])?;
+        let debug = format!("{effects:#?}");
+        assert!(
+            debug.contains("entered_graveyard_from_battlefield_this_turn: true"),
+            "{debug}"
+        );
+        assert!(debug.contains("PlayerControls"), "{debug}");
+        Ok(())
+    }
+
+    #[test]
     fn counter_linked_land_subtype_followup_routes_as_typed_statement() -> Result<(), CardTextError>
     {
         let line = single_preprocessed_line(
@@ -2712,6 +2868,16 @@ mod tests {
                 "typed copy exceptions must stay in the trigger resolution program: {copy_effect}"
             );
         }
+
+        let moved_object_followup = lex_line(
+            "Draw a card. Then you may put a creature card with mana value 3 or less from your hand onto the battlefield. It enters tapped and attacking and gains indestructible until end of turn.",
+            0,
+        )
+        .expect("moved-object follow-up should lex");
+        assert!(
+            !triggered_effect_tokens_have_trailing_static_sentences(&moved_object_followup),
+            "an entry-state follow-up belongs to the preceding optional move"
+        );
 
         let true_static_tail = lex_line("Draw a card. Creatures you control have flying.", 0)
             .expect("static-tail control should lex");
@@ -2976,6 +3142,51 @@ mod tests {
         assert_eq!(
             render_token_slice(&parsed.full_parse_tokens),
             parsed.full_text
+        );
+    }
+
+    #[test]
+    fn triggered_split_keeps_anaphoric_animation_in_the_resolution_program() {
+        let followup = lex_line(
+            "If it isn't a creature, it becomes a 0/0 Mutant creature in addition to its other types.",
+            0,
+        )
+        .expect("anaphoric animation followup should lex");
+        assert!(
+            !sentence_is_static_after_trigger_effect(&followup),
+            "a conditional that consumes the prior chosen object must not become a source static ability"
+        );
+
+        let line = single_preprocessed_line(
+            "At the beginning of your end step, if a permanent left the battlefield under your control this turn, put three +1/+1 counters on up to one other target artifact or creature. If it isn't a creature, it becomes a 0/0 Mutant creature in addition to its other types.",
+        );
+        let parsed = parse_triggered_line_cst(&line)
+            .expect("the complete trigger and its linked animation should parse");
+        let effect_text = render_token_slice(&parsed.effect_parse_tokens);
+        assert!(
+            effect_text.contains("put three +1/+1 counters"),
+            "{effect_text}"
+        );
+        assert!(
+            effect_text.contains("if it isn't a creature, it becomes a 0/0 mutant creature"),
+            "{effect_text}"
+        );
+    }
+
+    #[test]
+    fn labeled_qualified_ability_trigger_uses_the_typed_trigger_and_complete_body() {
+        let line = single_preprocessed_line(
+            "Whenever a creature entering under an opponent's control causes a triggered ability of that creature to trigger, you may copy that ability. You may choose new targets for the copy.",
+        );
+        let parsed = parse_labeled_qualified_ability_trigger_cst(&line)
+            .expect("the qualified ability trigger should have a direct typed CST");
+        assert_eq!(
+            render_token_slice(&parsed.trigger_parse_tokens),
+            "a creature entering under an opponent's control causes a triggered ability of that creature to trigger"
+        );
+        assert_eq!(
+            render_token_slice(&parsed.effect_parse_tokens),
+            "you may copy that ability. You may choose new targets for the copy."
         );
     }
 
@@ -3501,6 +3712,48 @@ mod tests {
     }
 
     #[test]
+    fn named_source_rewrite_preserves_short_alias_used_as_created_token_name() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "Create Mechtitan, a legendary 10/10 Construct artifact creature token with flying.",
+                "mechtitan",
+                "this artifact",
+            ),
+            "create mechtitan, a legendary 10/10 construct artifact creature token with flying."
+        );
+        assert_eq!(
+            replace_named_source_aliases("Mechtitan has flying.", "mechtitan", "this artifact",),
+            "this artifact has flying.",
+            "ordinary source-name subjects must still normalize"
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_registered_subtype_in_token_wording() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "Create a 0/1 white Caribou creature token.",
+                "caribou",
+                "this enchantment",
+            ),
+            "create a 0/1 white caribou creature token."
+        );
+        assert_eq!(
+            replace_named_source_aliases(
+                "Sacrifice a Caribou token: You gain 1 life.",
+                "caribou",
+                "this enchantment",
+            ),
+            "sacrifice a caribou token: you gain 1 life."
+        );
+        assert_eq!(
+            replace_named_source_aliases("Caribou has flying.", "caribou", "this enchantment",),
+            "this enchantment has flying.",
+            "ordinary source references must still normalize",
+        );
+    }
+
+    #[test]
     fn named_source_rewrite_preserves_short_alias_used_as_counter_type() {
         assert_eq!(
             replace_named_source_aliases(
@@ -3521,6 +3774,94 @@ mod tests {
                 "this permanent",
             ),
             "reveal the top five cards of your library. you may put one of them into your hand."
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_authored_source_subject_before_gets() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "Choose one and Glorfindel gets +1/+1 until end of turn.",
+                "glorfindel",
+                "this creature",
+            ),
+            "choose one and glorfindel gets +1/+1 until end of turn."
+        );
+        assert_eq!(
+            replace_named_source_aliases(
+                "Glorfindel has vigilance.",
+                "glorfindel",
+                "this creature",
+            ),
+            "this creature has vigilance.",
+            "the authored-name exception is restricted to get/gets effects"
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_alias_used_as_indefinite_become_descriptor() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "Target creature becomes a Coward in addition to its other types until end of turn.",
+                "coward",
+                "this sorcery",
+            ),
+            "target creature becomes a coward in addition to its other types until end of turn."
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_alias_used_as_typed_creature_subtype_noun() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "Until end of turn, target Time Lord you control gains vigilance.",
+                "time lord",
+                "this permanent",
+            ),
+            "until end of turn, target time lord you control gains vigilance."
+        );
+        assert_eq!(
+            replace_named_source_aliases(
+                "Reveal cards until you reveal a Time Lord creature card.",
+                "time lord",
+                "this permanent",
+            ),
+            "reveal cards until you reveal a time lord creature card."
+        );
+        assert_eq!(
+            replace_named_source_aliases(
+                "Time Lord gains vigilance.",
+                "time lord",
+                "this permanent",
+            ),
+            "time lord gains vigilance.",
+            "the existing authored-name effect surface remains independent of subtype grammar"
+        );
+        assert_eq!(
+            replace_named_source_aliases(
+                "Until end of turn, target Time Lord you control gains vigilance and reveal until you reveal a Time Lord creature card.",
+                "time",
+                "this permanent",
+            ),
+            "until end of turn, target time lord you control gains vigilance and reveal until you reveal a time lord creature card.",
+            "a one-word source alias must not consume the first word of a compound creature subtype"
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_alias_after_cards_named() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "You removed a creature card with flying from the draft with cards named Draft Mimic.",
+                "draft mimic",
+                "this creature",
+            ),
+            "you removed a creature card with flying from the draft with cards named draft mimic."
+        );
+        assert_eq!(
+            replace_named_source_aliases("Draft Mimic has flying.", "draft mimic", "this creature",),
+            "this creature has flying.",
+            "ordinary source references must still normalize",
         );
     }
 
@@ -4032,6 +4373,44 @@ fn looks_like_ability_word_label(
         && token_word_refs(label_tokens).len() <= 4
 }
 
+/// Build the labeled public-route CST for the source-qualified
+/// ability-trigger event directly from its two independently typed halves.
+///
+/// The generic triggered-line probe also speculates across every comma in a
+/// line.  In a clause such as "a creature entering ... causes a triggered
+/// ability ... to trigger", those probes can let the complete effect body be
+/// claimed as a statement after the label is removed even though both the
+/// trigger and resolution have already parsed exactly.  Restrict this fast
+/// path to the qualified `AbilityTriggered` model so ordinary labeled
+/// triggers retain the existing ambiguity handling.
+fn parse_labeled_qualified_ability_trigger_cst(
+    line: &PreprocessedLine,
+) -> Option<TriggeredLineCst> {
+    let (trigger_with_intro, effect_tokens) = grammar::split_lexed_once_on_comma(&line.tokens)?;
+    let trigger_tokens = trigger_with_intro.get(1..)?;
+    let trigger = crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens))
+        .0
+        .ok()?;
+    if !matches!(
+        trigger,
+        crate::runtime_backend::ast::TriggerSpec::AbilityTriggered {
+            source_filter: Some(_),
+            caused_by_source_entering: true,
+            ..
+        }
+    ) {
+        return None;
+    }
+    let effects = crate::parse_loss::capture(|| parse_effect_sentences_lexed(effect_tokens))
+        .0
+        .ok()?;
+    if effects.is_empty() {
+        return None;
+    }
+    let candidate = render_triggered_split_candidate(trigger_tokens, effect_tokens, None, None)?;
+    Some(candidate.into_cst(line, &line.tokens))
+}
+
 fn normalize_activation_cost_tokens_for_builder(
     builder: &CardDefinitionBuilder,
     line: &PreprocessedLine,
@@ -4358,6 +4737,32 @@ fn try_parse_labeled_line_dispatch(
     line: &PreprocessedLine,
     allow_unsupported: bool,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    // Prefer the authored token stream for the narrow labeled trigger whose
+    // event is itself a source-qualified triggered-ability event.  Generic
+    // preprocessing is allowed to strip presentation labels and rewrite
+    // source nouns before line-family dispatch; for this event both the
+    // trigger and its complete resolution already have exact typed parsers,
+    // so retain the label and build the Triggered CST before either half can
+    // be claimed as a standalone statement.
+    if let Some((label, label_tokens, body_tokens)) =
+        split_label_prefix_lexed(&line.info.source_tokens)
+    {
+        let body_line = rewrite_line_tokens(line, body_tokens);
+        if line_starts_with_trigger_intro_tokens(&body_line.tokens)
+            && let Some(mut triggered) = parse_labeled_qualified_ability_trigger_cst(&body_line)
+        {
+            if looks_like_ability_word_label(label_tokens, false) {
+                triggered.presentation = Some(trigger_presentation(label_tokens, &label));
+            }
+            let (triggered, next_idx) =
+                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+            return Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Triggered(triggered),
+                next_idx,
+            )));
+        }
+    }
+
     let Some((label, label_tokens, body_tokens)) = split_label_prefix_lexed(&line.tokens) else {
         return Ok(None);
     };
@@ -4396,7 +4801,9 @@ fn try_parse_labeled_line_dispatch(
         .is_some_and(|(cost_tokens, _)| looks_like_activation_cost_prefix(cost_tokens));
 
     if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
-        if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
+        if let Some(mut triggered) = parse_labeled_qualified_ability_trigger_cst(&body_line)
+            .or_else(|| parse_triggered_line_cst(&body_line).ok())
+        {
             restore_authored_named_source_trigger_subject(
                 &preprocessed.builder,
                 line,
@@ -4656,7 +5063,11 @@ fn apply_labeled_statement_surface_facts(
     // Static lines carry the same authored ability word ("Threshold — This
     // creature has flying as long as ..."), and the static-ability compile
     // reads its own facts slot (Mystic Visionary family).
-    statement.info.semantic_facts.static_ability.presentation_label = presentation;
+    statement
+        .info
+        .semantic_facts
+        .static_ability
+        .presentation_label = presentation;
 }
 
 fn try_parse_triggered_line_dispatch(
@@ -4678,7 +5089,21 @@ fn try_parse_triggered_line_dispatch(
         )));
     }
 
-    let trigger_chunks = split_trigger_sentence_chunks_rewrite_lexed(&line.tokens);
+    // Keep a token created by the first instruction correlated with the
+    // delayed sacrifice in the second sentence. The generic trigger-sentence
+    // splitter otherwise separates them before the semantic linked-token rule
+    // can inspect the complete authored effect tail.
+    let preserve_linked_created_token = grammar::split_lexed_once_on_comma(&line.tokens)
+        .is_some_and(|(_, effect_tokens)| {
+            super::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
+                effect_tokens,
+            )
+        });
+    let trigger_chunks = if preserve_linked_created_token {
+        Vec::new()
+    } else {
+        split_trigger_sentence_chunks_rewrite_lexed(&line.tokens)
+    };
     if trigger_chunks.len() > 1 {
         let mut lines = Vec::with_capacity(trigger_chunks.len());
         for chunk_tokens in trigger_chunks {

@@ -18,10 +18,7 @@ pub(super) fn stage_after_activation_announcements(pending: &PendingActivation) 
         ActivationStage::ChoosingTargets
     } else if !pending.pending_target_distributions.is_empty() {
         ActivationStage::ChoosingDistribution
-    } else if !pending.remaining_cost_steps.is_empty()
-        || pending.mana_cost_to_pay.is_some()
-        || !pending.remaining_mana_pips.is_empty()
-    {
+    } else if !pending.remaining_cost_steps.is_empty() || pending.mana_cost_to_pay.is_some() {
         ActivationStage::ChoosingNextCost
     } else {
         ActivationStage::ReadyToFinalize
@@ -40,6 +37,7 @@ fn build_target_assignments(
                 description: requirement.description.clone(),
                 legal_targets: requirement.legal_targets.clone(),
                 legal_target_sets: requirement.legal_target_sets.clone(),
+                aggregate_constraint: requirement.aggregate_constraint.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
                 distinct_player_group: requirement.distinct_player_group,
@@ -79,32 +77,11 @@ pub struct PriorityActionPerfMetrics {
     pub resolve_stack_entry_ms: f64,
     pub reset_priority_ms: f64,
     pub total_ms: f64,
-    pub mana_pip_payment: Option<ManaPipPaymentPerfMetrics>,
     pub nested_priority_advance: Option<crate::game_loop::PriorityAdvancePerfMetrics>,
-}
-
-#[derive(Debug, Clone, Default)]
-#[cfg_attr(feature = "serialization", derive(Serialize))]
-pub struct ManaPipPaymentPerfMetrics {
-    pub pending_kind: String,
-    pub remaining_pips_before: usize,
-    pub remaining_pips_after: usize,
-    pub cached_option_count: usize,
-    pub built_option_count: usize,
-    pub used_cached_options: bool,
-    pub build_options_ms: f64,
-    pub execute_payment_ms: f64,
-    pub queue_mana_event_ms: f64,
-    pub drain_triggers_ms: f64,
-    pub continue_cast_ms: f64,
-    pub continue_activation_ms: f64,
-    pub pip_paid: bool,
-    pub result_kind: String,
 }
 
 thread_local! {
     static LAST_PRIORITY_ACTION_PERF: RefCell<Option<PriorityActionPerfMetrics>> = const { RefCell::new(None) };
-    static LAST_MANA_PIP_PAYMENT_PERF: RefCell<Option<ManaPipPaymentPerfMetrics>> = const { RefCell::new(None) };
 }
 
 pub(super) fn store_priority_action_perf(metrics: PriorityActionPerfMetrics) {
@@ -115,42 +92,6 @@ pub(super) fn store_priority_action_perf(metrics: PriorityActionPerfMetrics) {
 
 pub fn last_priority_action_perf() -> Option<PriorityActionPerfMetrics> {
     LAST_PRIORITY_ACTION_PERF.with(|slot| slot.borrow().clone())
-}
-
-pub(super) fn clear_mana_pip_payment_perf() {
-    LAST_MANA_PIP_PAYMENT_PERF.with(|slot| {
-        *slot.borrow_mut() = None;
-    });
-}
-
-pub(super) fn store_mana_pip_payment_perf(metrics: ManaPipPaymentPerfMetrics) {
-    LAST_MANA_PIP_PAYMENT_PERF.with(|slot| {
-        *slot.borrow_mut() = Some(metrics);
-    });
-}
-
-fn last_mana_pip_payment_perf() -> Option<ManaPipPaymentPerfMetrics> {
-    LAST_MANA_PIP_PAYMENT_PERF.with(|slot| slot.borrow().clone())
-}
-
-fn progress_perf_kind(result: &Result<GameProgress, GameLoopError>) -> &'static str {
-    match result {
-        Ok(GameProgress::NeedsDecisionCtx(ctx)) => decision_context_name(ctx),
-        Ok(GameProgress::Continue) => "continue",
-        Ok(GameProgress::StackResolved) => "stack_resolved",
-        Ok(GameProgress::GameOver(_)) => "game_over",
-        Err(_) => "error",
-    }
-}
-
-fn result_has_nested_priority_advance(result: &Result<GameProgress, GameLoopError>) -> bool {
-    matches!(
-        result,
-        Ok(GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::Priority(_)
-        )) | Ok(GameProgress::Continue)
-            | Ok(GameProgress::GameOver(_))
-    )
 }
 
 pub fn apply_priority_response_with_dm(
@@ -260,103 +201,18 @@ pub fn apply_priority_response_with_dm(
         );
     }
 
-    // Handle mana payment selection for a pending cast, activation, or mana ability
-    if let PriorityResponse::ManaPayment(choice) = response {
-        // Check for pending mana ability first (most specific)
-        if state.pending_mana_ability.is_some() {
-            return apply_mana_payment_response_mana_ability(
-                game,
-                trigger_queue,
-                state,
-                *choice,
-                decision_maker,
-            );
-        }
-        // Check for pending activation
-        if state.pending_activation.is_some() {
-            return apply_mana_payment_response_activation(
-                game,
-                trigger_queue,
-                state,
-                *choice,
-                &mut *decision_maker,
-            );
-        }
-        return apply_mana_payment_response(
+    if let PriorityResponse::ManaPaymentPlan(payment_response) = response {
+        return apply_mana_payment_plan_response(
             game,
             trigger_queue,
             state,
-            *choice,
-            &mut *decision_maker,
+            payment_response,
+            decision_maker,
         );
     }
 
-    // Handle pip-by-pip mana payment for a pending activation or cast
-    if let PriorityResponse::ManaPipPayment(choice) = response {
-        let total_started_at = PerfTimer::start();
-        clear_mana_pip_payment_perf();
-        let action_kind = if state.pending_activation.is_some() {
-            "mana_pip_payment_activation"
-        } else if state.pending_cast.is_some() {
-            "mana_pip_payment_cast"
-        } else {
-            "mana_pip_payment"
-        };
-        let apply_started_at = PerfTimer::start();
-        let result = if state.pending_activation.is_some() {
-            apply_pip_payment_response_activation(
-                game,
-                trigger_queue,
-                state,
-                *choice,
-                &mut *decision_maker,
-            )
-        } else if state.pending_cast.is_some() {
-            if state
-                .pending_cast
-                .as_ref()
-                .is_some_and(|pending| matches!(pending.stage, CastStage::PayingAssistMana))
-            {
-                apply_assist_pip_payment_response(
-                    game,
-                    trigger_queue,
-                    state,
-                    *choice,
-                    &mut *decision_maker,
-                )
-            } else {
-                apply_pip_payment_response_cast(
-                    game,
-                    trigger_queue,
-                    state,
-                    *choice,
-                    &mut *decision_maker,
-                )
-            }
-        } else {
-            Err(GameLoopError::InvalidState(
-                "ManaPipPayment response but no pending activation or cast".to_string(),
-            ))
-        };
-        let response_apply_ms = apply_started_at.elapsed_ms();
-        let nested_priority_advance = result_has_nested_priority_advance(&result)
-            .then(crate::game_loop::last_priority_advance_perf)
-            .flatten();
-        let advance_priority_ms = nested_priority_advance
-            .as_ref()
-            .map(|perf| perf.total_ms)
-            .unwrap_or_default();
-        store_priority_action_perf(PriorityActionPerfMetrics {
-            action_kind: action_kind.to_string(),
-            priority_result: progress_perf_kind(&result).to_string(),
-            response_apply_ms,
-            advance_priority_ms,
-            total_ms: total_started_at.elapsed_ms(),
-            mana_pip_payment: last_mana_pip_payment_perf(),
-            nested_priority_advance,
-            ..PriorityActionPerfMetrics::default()
-        });
-        return result;
+    if let PriorityResponse::AssistChoice(choice) = response {
+        return apply_assist_choice_response(game, trigger_queue, state, *choice, decision_maker);
     }
 
     if let PriorityResponse::NextCostChoice(choice) = response {
@@ -470,6 +326,10 @@ pub fn apply_priority_response_with_dm(
                 .map_err(|e| GameLoopError::InvalidState(format!("Cannot play land: {e}")))?;
 
             let old_zone = game.object(*land_id).map(|o| o.zone).unwrap_or(Zone::Hand);
+            let shared_usage_to_consume =
+                crate::special_actions::shared_usage_to_consume_for_land_play(
+                    game, player, *land_id,
+                );
             let permission_forces_tapped = old_zone != Zone::Hand
                 && game
                     .effect_store
@@ -497,6 +357,16 @@ pub fn apply_priority_response_with_dm(
             }
             .ok_or_else(|| GameLoopError::InvalidState("Failed to move land".to_string()))?;
             let new_id = result.new_id;
+            if let Some(shared_usage_id) = shared_usage_to_consume {
+                let consumed = game
+                    .effect_store
+                    .grant_registry
+                    .consume_shared_usage(shared_usage_id);
+                debug_assert!(
+                    consumed,
+                    "selected shared land-play permission should be available"
+                );
+            }
 
             game.set_current_controller(new_id, player);
 
@@ -975,18 +845,6 @@ pub fn apply_priority_response_with_dm(
                     }
                 }
 
-                // Check if we can pay the mana cost from current pool
-                let can_pay_mana = if let Some(ref mc) = mana_cost {
-                    game.can_pay_mana_cost_with_reason(
-                        player,
-                        Some(*source),
-                        mc,
-                        0,
-                        crate::costs::PaymentReason::ActivateManaAbility,
-                    )
-                } else {
-                    true // No mana cost
-                };
                 let mana_ability_provenance =
                     game.provenance_graph_mut()
                         .alloc_root(ProvenanceNodeKind::EffectExecution {
@@ -997,7 +855,7 @@ pub fn apply_priority_response_with_dm(
                     .object(*source)
                     .map(|obj| ObjectSnapshot::from_object(obj, game));
 
-                if can_pay_mana {
+                if mana_cost.is_none() {
                     // Pay all costs immediately
                     let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
                         .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
@@ -1127,37 +985,9 @@ pub fn apply_priority_response_with_dm(
                             *source,
                             *ability_index,
                         ),
+                        pending_mana_payment: None,
                     };
-
-                    let options = compute_mana_ability_payment_options(
-                        game,
-                        player,
-                        &pending,
-                        &mut *decision_maker,
-                    );
-                    state.pending_mana_ability = Some(pending);
-
-                    // Convert ManaPaymentOption to SelectableOption
-                    let selectable_options: Vec<crate::decisions::context::SelectableOption> =
-                        options
-                            .iter()
-                            .map(|opt| {
-                                crate::decisions::context::SelectableOption::new(
-                                    opt.index,
-                                    &opt.description,
-                                )
-                            })
-                            .collect();
-
-                    let ctx = crate::decisions::context::SelectOptionsContext::mana_payment(
-                        player,
-                        *source,
-                        context,
-                        selectable_options,
-                    );
-                    return Ok(GameProgress::NeedsDecisionCtx(
-                        crate::decisions::context::DecisionContext::SelectOptions(ctx),
-                    ));
+                    return prompt_pending_mana_ability_payment(game, state, pending, context);
                 }
             }
 

@@ -3080,6 +3080,246 @@ pub(super) fn brambleback_brute_activation_cost_and_effect_runtime_regression() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn coward_killer_keeps_and_executes_the_shared_target_chain() {
+    let def = parse_oracle_card_definition("Coward // Killer");
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "Target creature can't block this turn and becomes a Coward in addition to its other types until end of turn.".to_string(),
+            "Time travel.".to_string(),
+        ]
+    );
+
+    let program = def.spell_effect.as_ref().expect("Coward spell effect");
+    let first_segment = program.segments.first().expect("Coward first instruction");
+    let debug = format!("{first_segment:#?}");
+    assert!(
+        debug.contains("CantEffect") && debug.contains("AddSubtypes") && debug.contains("Coward"),
+        "both shared-target actions must survive lowering: {debug}"
+    );
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let other = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    for effect in &first_segment.default_effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Coward's linked restriction and subtype effects should resolve");
+    }
+
+    assert!(!game.can_block(target));
+    assert!(game.can_block(other));
+    assert!(
+        game.calculated_characteristics(target)
+            .expect("target characteristics")
+            .subtypes
+            .contains(&Subtype::Coward)
+    );
+    assert!(
+        !game
+            .calculated_characteristics(other)
+            .expect("unrelated creature characteristics")
+            .subtypes
+            .contains(&Subtype::Coward)
+    );
+
+    let killer = parse_oracle_card_definition("Killer");
+    let killer_oracle = "Killer deals 3 damage to target creature and each other creature that shares a creature type with it.";
+    let killer_debug = format!("{:#?}", killer.spell_effect);
+    assert_eq!(
+        unprocessed_compiled_lines(&killer),
+        vec![killer_oracle.to_string()],
+        "the back face from the same split-card payload must retain its named source and correlated fanout: {killer_debug}"
+    );
+    assert!(
+        killer_debug.contains("DealDamageEffect")
+            && killer_debug.contains("SharesSubtypeWithTagged")
+            && killer_debug.contains("ForEachObject"),
+        "the Killer face must remain executable rather than surface-only: {killer_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn dimir_keyrune_keeps_and_executes_animation_and_unblockable() {
+    let def = parse_oracle_card_definition("Dimir Keyrune");
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "{T}: Add {U} or {B}.".to_string(),
+            "{U}{B}: This artifact becomes a 2/2 blue and black Horror artifact creature until end of turn and can't be blocked this turn.".to_string(),
+        ]
+    );
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.mana_output.is_none() => Some(activated),
+            _ => None,
+        })
+        .expect("Dimir Keyrune animation ability");
+    let debug = format!("{:#?}", activated.effects);
+    assert!(
+        debug.contains("ApplyContinuousEffect")
+            && debug.contains("SetPowerToughness")
+            && debug.contains("SetColors")
+            && debug.contains("Horror")
+            && debug.contains("CantEffect")
+            && debug.contains("BeBlocked"),
+        "the complete animation and restriction must survive lowering: {debug}"
+    );
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let keyrune = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(keyrune, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        keyrune,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Dimir Keyrune animation ability should resolve");
+
+    let characteristics = game
+        .calculated_characteristics(keyrune)
+        .expect("animated keyrune characteristics");
+    assert_eq!(
+        (characteristics.power, characteristics.toughness),
+        (Some(2), Some(2))
+    );
+    assert!(characteristics.card_types.contains(&CardType::Artifact));
+    assert!(characteristics.card_types.contains(&CardType::Creature));
+    assert!(characteristics.subtypes.contains(&Subtype::Horror));
+    assert!(characteristics.colors.contains(crate::color::Color::Blue));
+    assert!(characteristics.colors.contains(crate::color::Color::Black));
+    assert!(!game.can_be_blocked(keyrune));
+
+    crate::turn::execute_cleanup_step(&mut game);
+    let restored = game
+        .calculated_characteristics(keyrune)
+        .expect("keyrune characteristics after cleanup");
+    assert!(restored.card_types.contains(&CardType::Artifact));
+    assert!(!restored.card_types.contains(&CardType::Creature));
+    assert!(!restored.subtypes.contains(&Subtype::Horror));
+    assert_eq!((restored.power, restored.toughness), (None, None));
+    assert!(!restored.colors.contains(crate::color::Color::Blue));
+    assert!(!restored.colors.contains(crate::color::Color::Black));
+    assert!(game.can_be_blocked(keyrune));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn ogre_marauder_keeps_and_executes_defending_player_sacrifice_choice() {
+    let def = parse_oracle_card_definition("Ogre Marauder");
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "Whenever this creature attacks, it gains \"this creature can't be blocked\" until end of turn unless defending player sacrifices a creature of their choice."
+                .to_string(),
+        ]
+    );
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.display() == "Whenever this creature attacks" =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Ogre Marauder attack trigger");
+    let debug = format!("{:#?}", triggered.effects);
+    assert!(debug.contains("UnlessPaysEffect"), "{debug}");
+    assert!(debug.contains("Defending"), "{debug}");
+    assert!(debug.contains("SacrificeEffect"), "{debug}");
+    assert!(debug.contains("ApplyContinuousEffect"), "{debug}");
+    assert!(debug.contains("RuleRestriction"), "{debug}");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    // With no creature to sacrifice, the defending player cannot pay and the
+    // source receives the temporary unblockable restriction.
+    let mut no_payment_game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let no_payment_marauder =
+        no_payment_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut no_payment_dm = crate::decision::SelectFirstDecisionMaker;
+    let mut no_payment_ctx =
+        crate::effects::ExecutionContext::new(no_payment_marauder, alice, &mut no_payment_dm)
+            .with_defending_player(bob);
+    crate::game_loop::execute_resolution_program(
+        &mut no_payment_game,
+        &mut no_payment_ctx,
+        alice,
+        no_payment_marauder,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("unpaid Ogre Marauder trigger should resolve");
+    assert!(
+        no_payment_game
+            .object_has_static_ability_id(no_payment_marauder, StaticAbilityId::RuleRestriction),
+        "the unpaid trigger should grant the typed can't-be-blocked restriction"
+    );
+
+    // A defending player who accepts the sacrifice pays that cost and
+    // prevents the grant from being applied.
+    let mut payment_game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let payment_marauder =
+        payment_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let fodder = CardDefinitionBuilder::new(CardId::new(), "Sacrifice Fodder")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let fodder_id = payment_game.create_object_from_definition(&fodder, bob, Zone::Battlefield);
+    let mut payment_dm = crate::decision::SelectFirstDecisionMaker;
+    let mut payment_ctx =
+        crate::effects::ExecutionContext::new(payment_marauder, alice, &mut payment_dm)
+            .with_defending_player(bob);
+    crate::game_loop::execute_resolution_program(
+        &mut payment_game,
+        &mut payment_ctx,
+        alice,
+        payment_marauder,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("paid Ogre Marauder trigger should resolve");
+    assert_eq!(
+        payment_game.object(fodder_id).expect("fodder object").zone,
+        Zone::Graveyard,
+        "the defending player should sacrifice their chosen creature"
+    );
+    assert!(
+        !payment_game
+            .object_has_static_ability_id(payment_marauder, StaticAbilityId::RuleRestriction,),
+        "paying the sacrifice cost should prevent the restriction grant"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn rankle_master_of_pranks_models_zero_to_all_modal_selection_bounds() {
     let def = parse_oracle_card_definition("Rankle, Master of Pranks");
     let modal = def
@@ -3413,26 +3653,6 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
         &crate::PriorityResponse::PriorityAction(ordinary_room_action),
         &mut dm,
     );
-    let room_activation = match room_activation {
-        Ok(crate::decision::GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
-        )) => {
-            let finish_index = ctx
-                .options
-                .iter()
-                .find(|option| option.description == "Finish activating mana abilities")
-                .map(|option| option.index)
-                .expect("activation payment should expose the mana-ability-window finish action");
-            crate::game_loop::apply_priority_response_with_dm(
-                &mut game,
-                &mut trigger_queue,
-                &mut state,
-                &crate::PriorityResponse::ManaPayment(finish_index),
-                &mut dm,
-            )
-        }
-        other => other,
-    };
     assert!(
         room_activation.is_err(),
         "Creeping Peeper mana must not be offered for ordinary activated abilities on Room permanents: {room_activation:?}"
@@ -3577,5 +3797,63 @@ pub(super) fn cemetery_prowler_preserves_shared_card_type_cost_reduction() {
             && debug.contains("characteristic: CardType")
             && debug.contains("cards exiled with this creature"),
         "expected typed spell/comparison-set card-type intersection, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn excess_noncombat_damage_trigger_preserves_amount_and_other_target_partition() {
+    let oracle = "Trample\nWhenever a creature or planeswalker an opponent controls is dealt excess noncombat damage, Excess Herald deals damage equal to the excess to any target other than that permanent.";
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Excess Herald")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("generic excess-damage trigger should compile");
+
+    assert_eq!(
+        canonical_compiled_lines(&definition),
+        vec![
+            "Trample",
+            "Whenever a creature or planeswalker an opponent controls is dealt excess noncombat damage, Excess Herald deals damage equal to the excess to any target other than that permanent.",
+        ],
+        "{definition:#?}"
+    );
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("noncombat_only: true")
+            && debug.contains("excess_only: true")
+            && debug.contains("TagTriggeringDamageTargetEffect")
+            && debug.contains("EventValue(\n")
+            && debug.contains("IsNotTaggedObject"),
+        "expected executable excess amount and damaged-permanent exclusion, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn linked_graveyard_cast_preserves_additional_cost_and_triggering_spell() {
+    let oracle = "First strike\nWhenever this creature attacks, you may cast target instant or sorcery card from your graveyard by paying {R}{R} in addition to its other costs. If that spell would be put into a graveyard, exile it instead. When you cast that spell, this creature gets +X/+0 until end of turn, where X is that spell's mana value.";
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Graveyard Battlecaster")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("linked graveyard-cast instructions should compile");
+
+    assert_eq!(
+        canonical_compiled_lines(&definition),
+        vec![
+            "First strike",
+            "Whenever this creature attacks, you may cast target instant or sorcery card from your graveyard by paying {R}{R} in addition to its other costs. If that spell would be put into a graveyard, exile it instead.",
+            "When you cast that spell, this creature gets +X/+0 until end of turn, where X is that spell's mana value.",
+        ],
+        "{definition:#?}"
+    );
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("additional_mana_cost: Some")
+            && debug.contains("stack_kind: Some(\n")
+            && debug.contains("\"__it__\"")
+            && debug.contains("\"triggering\"")
+            && debug.contains("ManaValueOf(\n")
+            && debug.contains("Tagged(\n"),
+        "expected typed additional cost and linked triggering-spell identity, got {debug}"
     );
 }

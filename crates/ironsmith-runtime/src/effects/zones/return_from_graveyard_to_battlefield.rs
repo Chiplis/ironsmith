@@ -337,6 +337,34 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_x_entry_counters_are_part_of_the_return_event() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature_in_graveyard(&mut game, "Awakened Relic", alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)])
+            .with_x(3);
+        let effect = ReturnFromGraveyardToBattlefieldEffect::creature().with_entry_counter(
+            ironsmith_core::BattlefieldEntryCounterSpec::new(
+                crate::CounterType::PlusOnePlusOne,
+                crate::effect::Value::X,
+                ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+            ),
+        );
+
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("expected returned object");
+        };
+        assert_eq!(ids.len(), 1);
+        assert_eq!(
+            game.counter_count(ids[0], crate::CounterType::PlusOnePlusOne),
+            3
+        );
+    }
+
+    #[test]
     fn test_reanimate_creature_tapped() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -393,6 +421,15 @@ mod tests {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let creature_id = create_creature_in_graveyard(&mut game, "Returned Aura", alice);
+        game.object_mut(creature_id)
+            .expect("returned card exists")
+            .abilities_mut()
+            .push(crate::ability::Ability {
+                kind: crate::ability::AbilityKind::Static(
+                    crate::static_abilities::StaticAbility::indestructible(),
+                ),
+                functional_zones: vec![Zone::Battlefield],
+            });
         let bear = create_creature_on_battlefield(&mut game, "Bear", alice);
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice)
@@ -414,6 +451,10 @@ mod tests {
         assert!(game.current_has_card_type(returned, CardType::Enchantment));
         assert!(!game.current_has_card_type(returned, CardType::Creature));
         assert!(game.current_has_subtype(returned, Subtype::Aura));
+        assert!(!game.current_has_static_ability_id(
+            returned,
+            crate::static_abilities::StaticAbilityId::Indestructible
+        ));
     }
 
     #[test]

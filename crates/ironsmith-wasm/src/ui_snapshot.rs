@@ -697,6 +697,23 @@ pub(super) fn protected_object_ids_for_decision(
     };
 
     match decision {
+        DecisionContext::ManaPayment(payment) => {
+            ids.insert(payment.source);
+            ids.extend(
+                payment
+                    .plan
+                    .mana_ability_steps
+                    .iter()
+                    .map(|step| step.source),
+            );
+            ids.extend(payment.plan.allocations.iter().filter_map(|allocation| {
+                match allocation.payment {
+                    ironsmith::mana_payment::PlannedPipPayment::Convoke(source)
+                    | ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => Some(source),
+                    _ => None,
+                }
+            }));
+        }
         DecisionContext::Priority(_) => {}
         DecisionContext::Targets(targets) => {
             for requirement in &targets.requirements {

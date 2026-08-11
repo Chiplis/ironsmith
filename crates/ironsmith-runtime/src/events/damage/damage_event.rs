@@ -18,6 +18,12 @@ pub struct DamageEvent {
     pub target: DamageTarget,
     /// The amount of damage to deal
     pub amount: u32,
+    /// Damage beyond lethal damage or the recipient's remaining counters.
+    ///
+    /// This is computed after replacement effects, immediately before damage
+    /// is applied, and is therefore the authoritative value for triggers that
+    /// refer to the triggering event's excess damage.
+    pub excess_damage: u32,
     /// Whether this is combat damage
     pub is_combat: bool,
     /// Whether this damage cannot be prevented
@@ -46,6 +52,7 @@ impl DamageEvent {
             source,
             target,
             amount,
+            excess_damage: 0,
             is_combat,
             is_unpreventable: false,
             cause,
@@ -66,6 +73,7 @@ impl DamageEvent {
             source,
             target,
             amount,
+            excess_damage: 0,
             is_combat,
             is_unpreventable: true,
             cause,
@@ -94,6 +102,14 @@ impl DamageEvent {
     pub fn with_amount(&self, amount: u32) -> Self {
         Self {
             amount,
+            ..self.clone()
+        }
+    }
+
+    /// Return a new event with its already-computed excess-damage amount.
+    pub fn with_excess_damage(&self, excess_damage: u32) -> Self {
+        Self {
+            excess_damage,
             ..self.clone()
         }
     }

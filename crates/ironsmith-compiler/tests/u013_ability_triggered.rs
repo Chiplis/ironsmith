@@ -22,6 +22,8 @@ fn ability_trigger_clause_lowers_to_the_typed_trigger_model() {
             triggered.trigger.kind,
             TriggerKind::AbilityTriggered {
                 another: expected_another,
+                source_filter: None,
+                caused_by_source_entering: false,
             }
         );
     }

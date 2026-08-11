@@ -164,9 +164,10 @@ pub fn combat_damage_assignment_player_for_attacker(
     Some(attacking_player)
 }
 
-pub(super) fn generic_attack_tax_per_attacker_against_player(
+fn generic_attack_tax_per_attacker_against_defender(
     game: &GameState,
     defending_player: PlayerId,
+    target_kind: crate::static_abilities::AttackTaxTargetKind,
     effects: &[crate::continuous::ContinuousEffect],
 ) -> u32 {
     let mut tax = 0u32;
@@ -182,6 +183,9 @@ pub(super) fn generic_attack_tax_per_attacker_against_player(
         let abilities = static_abilities_for_object_with_effects(game, object_id, effects);
 
         for ability in abilities {
+            if !ability.generic_attack_tax_applies_to(target_kind) {
+                continue;
+            }
             if let Some(per_attacker_tax) = ability.generic_attack_tax_per_attacker_against_you(
                 game,
                 object_id,
@@ -200,14 +204,55 @@ pub(super) fn generic_attack_tax_per_attacker_against_player(
         }
         if let crate::effect::Restriction::AttackYouUnlessControllerPaysPerAttacker(
             per_attacker_tax,
-            _,
+            covers_planeswalkers,
         ) = &restriction.restriction
         {
-            tax = tax.saturating_add(*per_attacker_tax);
+            let applies = matches!(
+                target_kind,
+                crate::static_abilities::AttackTaxTargetKind::Player
+            ) || (*covers_planeswalkers
+                && matches!(
+                    target_kind,
+                    crate::static_abilities::AttackTaxTargetKind::Planeswalker
+                ));
+            if applies {
+                tax = tax.saturating_add(*per_attacker_tax);
+            }
         }
     }
 
     tax
+}
+
+pub(super) fn generic_attack_tax_per_attacker_against_player(
+    game: &GameState,
+    defending_player: PlayerId,
+    effects: &[crate::continuous::ContinuousEffect],
+) -> u32 {
+    generic_attack_tax_per_attacker_against_defender(
+        game,
+        defending_player,
+        crate::static_abilities::AttackTaxTargetKind::Player,
+        effects,
+    )
+}
+
+fn generic_attack_tax_per_attacker_against_target(
+    game: &GameState,
+    target: &AttackTarget,
+    effects: &[crate::continuous::ContinuousEffect],
+) -> u32 {
+    let Some(defending_player) =
+        crate::combat_state::defending_player_for_attack_target(game, target)
+    else {
+        return 0;
+    };
+    generic_attack_tax_per_attacker_against_defender(
+        game,
+        defending_player,
+        crate::static_abilities::AttackTaxTargetKind::from(target),
+        effects,
+    )
 }
 
 fn required_attack_cost_message_for_unpreviewed_attack(
@@ -244,7 +289,7 @@ fn required_attack_cost_message_for_unpreviewed_attack(
     }
 
     let total_generic_attack_mana_cost = abilities.iter().fold(
-        generic_attack_tax_per_attacker_against_player(game, defending_player, all_effects),
+        generic_attack_tax_per_attacker_against_target(game, target, all_effects),
         |acc, ability| {
             acc.saturating_add(
                 ability
@@ -329,8 +374,6 @@ fn prepare_attacker_declarations_internal(
     }
 
     let mut attackers_per_defending_player: HashMap<PlayerId, u32> = HashMap::new();
-    let mut attackers_per_controller_and_defender: HashMap<(PlayerId, PlayerId), u32> =
-        HashMap::new();
     let mut generic_attack_mana_costs: HashMap<PlayerId, u32> = HashMap::new();
     let mut has_post_tap_attack_costs = false;
     let mut requirements_obeyed = 0usize;
@@ -448,9 +491,12 @@ fn prepare_attacker_declarations_internal(
             *attackers_per_defending_player
                 .entry(defending_player)
                 .or_default() += 1;
-            *attackers_per_controller_and_defender
-                .entry((creature_controller, defending_player))
-                .or_default() += 1;
+            let per_attacker_tax =
+                generic_attack_tax_per_attacker_against_target(game, &decl.target, all_effects);
+            let entry = generic_attack_mana_costs
+                .entry(creature_controller)
+                .or_default();
+            *entry = entry.saturating_add(per_attacker_tax);
         }
     }
 
@@ -501,13 +547,6 @@ fn prepare_attacker_declarations_internal(
             )
             .into());
         }
-    }
-
-    for ((controller, defending_player), attackers) in attackers_per_controller_and_defender {
-        let per_attacker_tax =
-            generic_attack_tax_per_attacker_against_player(game, defending_player, all_effects);
-        let entry = generic_attack_mana_costs.entry(controller).or_default();
-        *entry = entry.saturating_add(per_attacker_tax.saturating_mul(attackers));
     }
 
     let total_generic_attack_mana_cost = generic_attack_mana_costs
@@ -567,15 +606,11 @@ fn attack_declaration_obeying_more_requirements_exists(
                                 )
                                 .is_some_and(|cost| cost > 0)
                     });
-                    let has_defender_tax =
-                        crate::combat_state::defending_player_for_attack_target(game, target)
-                            .is_some_and(|defending_player| {
-                                generic_attack_tax_per_attacker_against_player(
-                                    game,
-                                    defending_player,
-                                    view.effects(),
-                                ) > 0
-                            });
+                    let has_defender_tax = generic_attack_tax_per_attacker_against_target(
+                        game,
+                        target,
+                        view.effects(),
+                    ) > 0;
                     has_creature_cost || has_defender_tax
                 })
                 .collect::<Vec<_>>();

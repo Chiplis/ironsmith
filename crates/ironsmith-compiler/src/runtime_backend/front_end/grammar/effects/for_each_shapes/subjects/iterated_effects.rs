@@ -67,14 +67,28 @@ pub(crate) fn parse_for_each_spent_mana_effect_shape(
         trim_lexed_commas(subject_tokens),
         primitives::phrase(&["for", "each", "mana", "from"]),
     )?;
-    let (source_tokens, ()) = primitives::split_lexed_once_before_suffix(after_prefix, 1, || {
-        primitives::phrase(&["spent", "to", "cast", "this", "spell"]).void()
-    })?;
+    let spent_index = after_prefix
+        .iter()
+        .position(|token| token.is_word("spent"))?;
+    let source_tokens = &after_prefix[..spent_index];
+    let reference_words =
+        primitives::TokenWordView::new(&after_prefix[spent_index..]).to_word_refs();
+    let reference = match reference_words.as_slice() {
+        ["spent", "to", "cast", "it"] => ironsmith_core::ManaSpentCastReferenceSurface::It,
+        ["spent", "to", "cast", "this", "spell"] => {
+            ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell
+        }
+        ["spent", "to", "cast", "this", "creature"] => {
+            ironsmith_core::ManaSpentCastReferenceSurface::ThisCreature
+        }
+        _ => return None,
+    };
     let source_tokens = trim_lexed_commas(source_tokens);
     let effect_tokens = trim_lexed_commas(effect_tokens);
     (!source_tokens.is_empty() && !effect_tokens.is_empty()).then_some(
         ForEachSpentManaEffectShape {
             source_tokens,
+            reference,
             effect_tokens,
         },
     )

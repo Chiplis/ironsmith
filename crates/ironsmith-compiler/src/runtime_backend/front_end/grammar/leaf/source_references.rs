@@ -156,7 +156,11 @@ fn parse_leaf_source_reference_alias_words_with_mode(
     words: &[&str],
     allow_possessive: bool,
 ) -> Option<SourceReferenceSurface> {
-    let normalized = words.join(" ");
+    let normalized = words
+        .iter()
+        .map(|word| word.to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join(" ");
     for alias in aliases {
         if alias.words.len() != words.len() {
             continue;
@@ -601,6 +605,17 @@ mod tests {
                 ))
             );
         }
+    }
+
+    #[test]
+    fn source_alias_matching_is_case_insensitive_after_lexical_name_restoration() {
+        let aliases = parse_leaf_source_reference_aliases_for_name("Ghyrson Starn, Kelermorph");
+        assert_eq!(
+            exact(&aliases, &["ghyrson", "Starn"]),
+            Some(SourceReferenceSurface::ShortName(
+                "Ghyrson Starn".to_string()
+            ))
+        );
     }
 
     #[test]

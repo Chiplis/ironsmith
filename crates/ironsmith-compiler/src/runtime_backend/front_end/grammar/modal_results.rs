@@ -395,18 +395,30 @@ fn parse_direct_prior_effect_result_surface(
         let (action, verb_len, action_only) = match normalized_words.get(1).copied()? {
             "cast" => (PriorEffectAction::Cast, 1, false),
             "discard" | "discarded" => (PriorEffectAction::Discarded, 1, false),
+            "exile" | "exiled" => (PriorEffectAction::Exiled, 1, false),
+            "mill" | "milled" => (PriorEffectAction::Milled, 1, false),
             "reveal" | "revealed" => (PriorEffectAction::Revealed, 1, false),
+            "sacrifice" | "sacrificed" => (PriorEffectAction::Sacrificed, 1, false),
             "tap" | "tapped" => (PriorEffectAction::Tapped, 1, false),
             "search" | "searched" => (PriorEffectAction::Searched, 1, true),
             _ => return None,
         };
-        let filter = if action_only {
-            crate::target::ObjectFilter::default()
+        let filter_tokens = if action_only {
+            &tokens[0..0]
         } else {
             // The result prefix is lexicalized as ordinary words, so the
             // first two raw tokens are the actor and action as well.
             let this_way_idx = tokens.iter().position(|token| token.is_word("this"))?;
-            parse_prior_result_object_filter(&tokens[1 + verb_len..this_way_idx])?
+            &tokens[1 + verb_len..this_way_idx]
+        };
+        let active_one_or_more = starts_with_phrase(
+            &normalized_word_tokens(filter_tokens),
+            &["one", "or", "more"],
+        );
+        let filter = if action_only {
+            crate::target::ObjectFilter::default()
+        } else {
+            parse_prior_result_object_filter(filter_tokens)?
         };
         return Some(PriorEffectResultSurface::new(
             action,
@@ -414,8 +426,10 @@ fn parse_direct_prior_effect_result_surface(
             PriorEffectResultActor::You,
             if action_only {
                 PriorEffectResultQuantifier::ActionOnly
+            } else if active_one_or_more {
+                PriorEffectResultQuantifier::OneOrMore
             } else {
-                ordinary_quantifier
+                PriorEffectResultQuantifier::One
             },
         ));
     }
@@ -441,6 +455,13 @@ fn parse_direct_prior_effect_result_surface(
         PriorEffectAction::Prevented
     } else if after.first() == Some(&"countered") {
         PriorEffectAction::Countered
+    } else if after.starts_with(&["returned", "to", "its", "owners", "hand"])
+        || after.starts_with(&["returned", "to", "their", "owners", "hands"])
+    {
+        // This is an outcome predicate, not a present-zone characteristic:
+        // "that card is returned to its owner's hand this way" must observe
+        // whether the preceding return actually moved that exact object.
+        PriorEffectAction::Returned
     } else {
         return None;
     };
@@ -503,13 +524,39 @@ pub(crate) fn parse_if_result_predicate_lexed_tokens(
     {
         return Some(IfResultPredicate::PriorEffectResult(surface));
     }
-    if let Some(surface) = parse_direct_prior_effect_result_surface(tokens)
-        .or_else(|| parse_typed_prior_effect_result_surface(tokens))
+    let normalized = normalized_word_tokens(tokens);
+    let shape = parse_modal_result_shape(&normalized);
+    let direct_surface = parse_direct_prior_effect_result_surface(tokens);
+    // A passive, unfiltered negated result such as "no counters were removed
+    // this way" asks whether the antecedent action changed anything at all.
+    // Preserve that negation as the ordinary executable DidNot predicate.
+    // Qualified object-result negatives need a filter-aware negated model and
+    // deliberately do not enter this action-only equivalence.
+    let passive_no_result = normalized.first().is_some_and(|token| token.is_word("no"))
+        && ends_with_phrase(&normalized, &["this", "way"]);
+    let explicit_negated_result = matches!(
+        shape,
+        Some(ModalResultShape::ThisWay {
+            subject: ModalResultSubject::If | ModalResultSubject::When,
+            negated: true,
+        })
+    );
+    if (passive_no_result || explicit_negated_result)
+        && direct_surface.as_ref().is_some_and(|surface| {
+            surface.actor == PriorEffectResultActor::Passive
+                && surface.quantifier == PriorEffectResultQuantifier::ActionOnly
+                && surface.filter == crate::target::ObjectFilter::default()
+                && surface.required_count.is_none()
+                && surface.shared_characteristic.is_none()
+        })
+    {
+        return Some(IfResultPredicate::DidNot);
+    }
+    if let Some(surface) =
+        direct_surface.or_else(|| parse_typed_prior_effect_result_surface(tokens))
     {
         return Some(IfResultPredicate::PriorEffectResult(surface));
     }
-    let normalized = normalized_word_tokens(tokens);
-    let shape = parse_modal_result_shape(&normalized);
     let word_count = normalized.len();
     let words = normalized
         .iter()
@@ -845,11 +892,28 @@ mod tests {
                     )
                 }),
             ),
+            (
+                "no counters were removed this way",
+                IfResultPredicate::DidNot,
+            ),
         ] {
             let tokens = lex_line(raw, 0).unwrap();
             let actual = parse_if_result_predicate_lexed_tokens(&tokens);
             assert_eq!(actual, Some(expected));
         }
+    }
+
+    #[test]
+    fn positive_counter_removal_result_remains_typed_and_positive() {
+        let tokens = lex_line("one or more counters were removed this way", 0).unwrap();
+        let Some(IfResultPredicate::PriorEffectResult(surface)) =
+            parse_if_result_predicate_lexed_tokens(&tokens)
+        else {
+            panic!("expected a positive typed counter-removal result");
+        };
+        assert_eq!(surface.action, PriorEffectAction::Removed);
+        assert_eq!(surface.actor, PriorEffectResultActor::Passive);
+        assert_eq!(surface.quantifier, PriorEffectResultQuantifier::ActionOnly);
     }
 
     #[test]
@@ -866,6 +930,52 @@ mod tests {
             constraint.tag.as_str() == "__chosen_name__"
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
         }));
+    }
+
+    #[test]
+    fn typed_prior_result_preserves_active_counted_sacrifice_surface() {
+        let tokens = lex_line("you sacrifice one or more artifacts this way", 0).unwrap();
+        let Some(IfResultPredicate::PriorEffectResult(surface)) =
+            parse_if_result_predicate_lexed_tokens(&tokens)
+        else {
+            panic!("expected typed prior-effect result");
+        };
+
+        assert_eq!(surface.action, PriorEffectAction::Sacrificed);
+        assert_eq!(surface.actor, PriorEffectResultActor::You);
+        assert_eq!(surface.quantifier, PriorEffectResultQuantifier::OneOrMore);
+        assert_eq!(
+            surface.filter.card_types,
+            vec![crate::types::CardType::Artifact]
+        );
+    }
+
+    #[test]
+    fn destination_qualified_return_is_a_typed_prior_result() {
+        let tokens = lex_line("that card is returned to its owner's hand this way", 0).unwrap();
+        let Some(IfResultPredicate::PriorEffectResult(surface)) =
+            parse_if_result_predicate_lexed_tokens(&tokens)
+        else {
+            panic!("expected a typed return-to-hand result");
+        };
+
+        assert_eq!(surface.action, PriorEffectAction::Returned);
+        assert_eq!(surface.actor, PriorEffectResultActor::Passive);
+        assert_eq!(surface.quantifier, PriorEffectResultQuantifier::One);
+        assert_eq!(
+            surface.filter.demonstrative_antecedent_surface(),
+            Some(ironsmith_core::DemonstrativeAntecedentSurface::Card)
+        );
+    }
+
+    #[test]
+    fn present_zone_state_is_not_a_prior_return_result() {
+        let tokens = lex_line("that card is in its owner's hand", 0).unwrap();
+        assert!(!matches!(
+            parse_if_result_predicate_lexed_tokens(&tokens),
+            Some(IfResultPredicate::PriorEffectResult(surface))
+                if surface.action == PriorEffectAction::Returned
+        ));
     }
 
     #[test]

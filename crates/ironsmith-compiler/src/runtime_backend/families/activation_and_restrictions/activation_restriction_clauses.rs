@@ -160,6 +160,20 @@ fn damage_cause_life_loss_restriction_from_tail(
 }
 
 pub(crate) fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
+    let authored_self_surface = tokens
+        .iter()
+        .position(|token| {
+            token.is_word("can't")
+                || token.is_word("cant")
+                || token.is_word("cannot")
+                || token.is_word("can")
+        })
+        .and_then(|negation| {
+            source_reference_surface_for_span(span_from_tokens(&tokens[..negation])).or_else(|| {
+                let subject_words = words(&tokens[..negation]);
+                source_reference_surface_for_words(&subject_words)
+            })
+        });
     let words = crate::runtime_backend::token_word_refs(tokens);
     let mut out = Vec::with_capacity(words.len());
     let mut idx = 0usize;
@@ -195,7 +209,13 @@ pub(crate) fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> St
             }
         }
     }
-    out.join(" ")
+    let rendered = out.join(" ");
+    if let Some(surface) = authored_self_surface
+        && let Some((_, tail)) = rendered.split_once(" can't ")
+    {
+        return format!("{} can't {tail}", surface.display_text());
+    }
+    rendered
 }
 
 pub(crate) fn parse_cant_restrictions(
@@ -465,6 +485,13 @@ pub(crate) fn strip_static_restriction_condition(
                 trim_commas(&tokens[remainder_first..]).to_vec(),
             )))
         }
+        StaticRestrictionConditionShape::ExtraTurn {
+            remainder_first,
+            remainder_end,
+        } => Ok(Some((
+            crate::ConditionExpr::CurrentTurnIsExtra,
+            trim_commas(&tokens[remainder_first..remainder_end]).to_vec(),
+        ))),
     }
 }
 
@@ -1326,6 +1353,34 @@ mod blocker_union_tests {
             panic!("expected a blocker restriction");
         };
         blockers
+    }
+
+    #[test]
+    fn named_self_subject_is_preserved_in_negated_restriction_display() {
+        let named = crate::runtime_backend::util::with_card_source_reference_context(
+            "Locke, Treasure Hunter",
+            &[CardType::Creature],
+            &[],
+            || {
+                let tokens = lex_line("Locke can't be blocked by creatures with greater power.", 0)
+                    .expect("named restriction should lex");
+                format_negated_restriction_display(&tokens)
+            },
+        );
+        assert_eq!(
+            named,
+            "Locke can't be blocked by creatures with greater power"
+        );
+
+        let ordinary = lex_line(
+            "This creature can't be blocked by creatures with greater power.",
+            0,
+        )
+        .expect("ordinary restriction should lex");
+        assert_eq!(
+            format_negated_restriction_display(&ordinary),
+            "this creature can't be blocked by creatures with greater power"
+        );
     }
 
     #[test]

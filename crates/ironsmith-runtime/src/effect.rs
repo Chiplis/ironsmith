@@ -230,6 +230,7 @@ impl OutcomeObjectMemory {
                 x_value: None,
                 cast_order_this_turn: None,
                 mana_spent_to_cast: crate::player::ManaPool::default(),
+                mana_sources_spent_to_cast: Vec::new(),
                 counters: std::collections::HashMap::new(),
                 is_token: self.is_token,
                 tapped: false,
@@ -1007,6 +1008,10 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                         .any(|memory| memory.card_types.contains(card_type) != *negated)
                 })
             }
+            // This predicate requires both the resolving player's identity
+            // and the producer's per-player partitions. The context-aware
+            // `IfEffect` evaluator handles it.
+            Self::PlayerAffectedObjectHasGreatestManaValue { .. } => false,
             Self::PriorEffectResult(surface) => {
                 if !prior_result_filter_has_lki_constraints(&surface.filter) {
                     return Self::Happened.evaluate_outcome(outcome);
@@ -1805,6 +1810,21 @@ impl Effect {
     pub fn tag_triggering_blockers(tag: impl Into<TagKey>, filter: Option<ObjectFilter>) -> Self {
         use crate::effects::TagTriggeringBlockersEffect;
         Self::new(TagTriggeringBlockersEffect::new(tag.into(), filter))
+    }
+
+    /// Tag the attacking creature from the triggering block event.
+    pub fn tag_triggering_attacker(tag: impl Into<TagKey>, filter: Option<ObjectFilter>) -> Self {
+        use crate::effects::TagTriggeringAttackerEffect;
+        Self::new(TagTriggeringAttackerEffect::new(tag.into(), filter))
+    }
+
+    /// Tag whichever participant in a block event is not this ability's source.
+    pub fn tag_other_block_participant(
+        tag: impl Into<TagKey>,
+        filter: Option<ObjectFilter>,
+    ) -> Self {
+        use crate::effects::TagOtherBlockParticipantEffect;
+        Self::new(TagOtherBlockParticipantEffect::new(tag.into(), filter))
     }
 
     /// Tag the damaged object from the triggering damage event.
@@ -3897,6 +3917,11 @@ impl Effect {
     ) -> Self {
         use crate::effects::ChooseCreatureTypeEffect;
         Self::new(ChooseCreatureTypeEffect::new(chooser, excluded_subtypes))
+    }
+
+    pub fn choose_subtype_type(chooser: PlayerFilter, family: crate::types::SubtypeFamily) -> Self {
+        use crate::effects::ChooseCreatureTypeEffect;
+        Self::new(ChooseCreatureTypeEffect::for_family(chooser, family))
     }
 
     /// Create a conditional effect based on game state.

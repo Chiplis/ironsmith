@@ -295,6 +295,28 @@ pub(crate) fn parse_sentence_destroy_multi_target(
         {
             return Ok(None);
         }
+        if let Some(choice) =
+            crate::runtime_backend::front_end::grammar::choices::parse_possessive_object_choice_tokens(
+                segment_clause.tokens(),
+            )
+            && choice.actor
+                == crate::runtime_backend::front_end::grammar::choices::PossessiveObjectChoiceActor::Opponent
+        {
+            let target = parse_target_phrase(&choice.object_tokens)?;
+            effects.push(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::subject_verb_explicit_target_only_for_chooser(
+                        target,
+                        PlayerAst::Opponent,
+                    ),
+                    EffectAst::subject_verb_destroy(TargetAst::Tagged(
+                        TagKey::from(IT_TAG),
+                        segment_clause.span(),
+                    )),
+                ],
+            });
+            continue;
+        }
         let target = match parse_target_phrase(segment_clause.tokens()) {
             Ok(target) => target,
             Err(_)
@@ -679,6 +701,35 @@ pub(crate) fn parse_sentence_unless_pays(
         return Ok(None);
     }
 
+    // In `A, then B unless you pay C`, only the final action B is replaced
+    // by the payment. Parsing the entire prefix as the UnlessPays body both
+    // weakens the temporal boundary and lets a prefix-tolerant parser claim A
+    // while silently dropping B. Split only on the grammar-proven comma/then
+    // boundary, retain every earlier action, and wrap the final action in the
+    // payment choice.
+    let comma_then_segments =
+        super::super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![
+            shape.action_tokens,
+        ]);
+    if comma_then_segments.len() > 1 {
+        let (last, leading) = comma_then_segments
+            .split_last()
+            .expect("comma/then split has at least two segments");
+        let mut effects = Vec::new();
+        for segment in leading {
+            effects.extend(parse_effect_chain(*segment)?);
+        }
+        let final_effects = parse_effect_chain(*last)?;
+        if effects.is_empty() || final_effects.is_empty() {
+            return Ok(None);
+        }
+        let Some(unless_effect) = try_build_unless(final_effects, clause, unless_idx)? else {
+            return Ok(None);
+        };
+        effects.push(unless_effect);
+        return Ok(Some(effects));
+    }
+
     let sentence_words = clause.word_refs();
     if let Some(special) =
         choice_shapes::parse_each_opponent_return_unless_draw_shape(&sentence_words)
@@ -776,4 +827,51 @@ pub(crate) fn parse_sentence_unless_pays(
         return Ok(Some(vec![unless_effect]));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod opponent_choice_target_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn multi_target_destroy_keeps_opponent_chooser_on_second_target() {
+        let tokens = lex_line(
+            "Destroy target nonbasic land you don't control and target nonbasic land of an opponent's choice you don't control.",
+            0,
+        )
+        .expect("destroy pair should lex");
+        let parsed = parse_sentence_destroy_multi_target(SubjectVerbPrimitiveClause::new(&tokens))
+            .expect("destroy pair should parse")
+            .expect("multi-target destroy rule should claim the sentence");
+        let [EffectAst::Coordinated { effects, .. }] = parsed.as_slice() else {
+            panic!("expected one coordinated destroy pair: {parsed:#?}");
+        };
+        let [_, EffectAst::Sequence { effects: chosen }] = effects.as_slice() else {
+            panic!("the second destroy must retain its delegated choice: {effects:#?}");
+        };
+        let [
+            EffectAst::SubjectVerb(target_only),
+            EffectAst::SubjectVerb(destroy),
+        ] = chosen.as_slice()
+        else {
+            panic!("expected target declaration followed by destroy: {chosen:#?}");
+        };
+        assert_eq!(target_only.subject.role, SubjectVerbRoleAst::Chooser);
+        assert_eq!(target_only.subject.player, PlayerAst::Opponent);
+        assert!(matches!(
+            target_only.action,
+            SubjectVerbActionAst::TargetOnly {
+                explicit_declaration: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            destroy.action,
+            SubjectVerbActionAst::Destroy {
+                target: TargetAst::Tagged(_, _),
+                ..
+            }
+        ));
+    }
 }

@@ -92,7 +92,8 @@ impl EffectExecutor for CastTaggedEffect {
                     use_alternative: None,
                 }
             };
-            let result = crate::game_loop::cast_spell_from_resolving_effect(
+            let cast_tags = ctx.tagged_objects.clone();
+            let result = crate::game_loop::cast_spell_from_resolving_effect_with_context(
                 game,
                 copy_id,
                 from_zone,
@@ -100,6 +101,9 @@ impl EffectExecutor for CastTaggedEffect {
                 &casting_method,
                 self.without_paying_mana_cost,
                 self.cost_reduction.as_ref(),
+                self.additional_mana_cost.as_ref(),
+                self.mana_spend_mode,
+                cast_tags,
                 ctx.provenance,
                 &mut ctx.decision_maker,
             )
@@ -151,7 +155,8 @@ impl EffectExecutor for CastTaggedEffect {
             }
         };
 
-        let result = crate::game_loop::cast_spell_from_resolving_effect(
+        let cast_tags = ctx.tagged_objects.clone();
+        let result = crate::game_loop::cast_spell_from_resolving_effect_with_context(
             game,
             object_id,
             from_zone,
@@ -159,6 +164,9 @@ impl EffectExecutor for CastTaggedEffect {
             &casting_method,
             self.without_paying_mana_cost,
             self.cost_reduction.as_ref(),
+            self.additional_mana_cost.as_ref(),
+            self.mana_spend_mode,
+            cast_tags,
             ctx.provenance,
             &mut ctx.decision_maker,
         )
@@ -192,6 +200,8 @@ mod tests {
     use crate::snapshot::ObjectSnapshot;
     use crate::tag::TagKey;
     use crate::target::PlayerFilter;
+    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+    use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
     use crate::types::CardType;
 
     fn setup_game() -> GameState {
@@ -242,6 +252,133 @@ mod tests {
                 .any(|event| event.kind() == crate::events::EventKind::SpellCast),
             "cast-tagged spells should emit SpellCastEvent"
         );
+    }
+
+    #[test]
+    fn cast_tagged_pays_additional_mana_and_retains_linked_spell_identity() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Red, 3);
+        let card = CardBuilder::new(CardId::new(), "Linked Graveyard Spell")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+            .build();
+        let graveyard_id = game.create_object_from_card(&card, alice, Zone::Graveyard);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(graveyard_id).expect("tagged card"), &game);
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("chosen_spell"), vec![snapshot.clone()]);
+        tags.insert(TagKey::from("__it__"), vec![snapshot]);
+
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+        let outcome = CastTaggedEffect::new("chosen_spell", PlayerFilter::You)
+            .additional_mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Red,
+                ManaSymbol::Red,
+            ]))
+            .execute(&mut game, &mut ctx)
+            .expect("cast tagged should resolve");
+
+        let crate::effect::OutcomeValue::Objects(ids) = &outcome.value else {
+            panic!("expected linked cast on the stack: {outcome:#?}");
+        };
+        let cast_id = ids[0];
+        assert_eq!(game.player(alice).expect("alice exists").mana_pool.red, 0);
+        assert!(
+            game.object(cast_id)
+                .expect("cast spell")
+                .cast_tagged_objects
+                .contains_key(&TagKey::from("__it__"))
+        );
+
+        let spell_cast = outcome
+            .events
+            .iter()
+            .find_map(|event| event.downcast::<crate::events::spells::SpellCastEvent>())
+            .expect("spell cast event");
+        let mut linked_filter = ObjectFilter::spell();
+        linked_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from("__it__"),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let trigger =
+            crate::triggers::SpellCastTrigger::new(Some(linked_filter), PlayerFilter::You);
+        let event =
+            crate::triggers::TriggerEvent::new_with_provenance(spell_cast.clone(), ctx.provenance);
+        assert!(trigger.matches(&event, &TriggerContext::for_source(source, alice, &game),));
+    }
+
+    #[test]
+    fn cast_tagged_any_type_mode_is_scoped_to_that_cast() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Red, 1);
+        let card = CardBuilder::new(CardId::new(), "Blue Graveyard Spell")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+            .build();
+        let graveyard_id = game.create_object_from_card(&card, alice, Zone::Graveyard);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(graveyard_id).expect("tagged card"), &game);
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("chosen_spell"), vec![snapshot]);
+
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+        let outcome = CastTaggedEffect::new("chosen_spell", PlayerFilter::You)
+            .mana_spend_mode(ironsmith_core::value_model::ManaSpendMode::AnyType)
+            .execute(&mut game, &mut ctx)
+            .expect("any-type cast should resolve");
+
+        assert!(outcome.status.is_success(), "{outcome:#?}");
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.player(alice).expect("alice exists").mana_pool.red, 0);
+        assert_eq!(
+            game.mana_spend_policy(alice, None).mode,
+            ironsmith_core::value_model::ManaSpendMode::Normal,
+            "the resolving instruction must not create a lasting permission"
+        );
+    }
+
+    #[test]
+    fn ordinary_cast_tagged_does_not_spend_red_mana_as_blue() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Red, 1);
+        let card = CardBuilder::new(CardId::new(), "Blue Graveyard Spell")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+            .build();
+        let graveyard_id = game.create_object_from_card(&card, alice, Zone::Graveyard);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(graveyard_id).expect("tagged card"), &game);
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("chosen_spell"), vec![snapshot]);
+
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+        let outcome = CastTaggedEffect::new("chosen_spell", PlayerFilter::You)
+            .execute(&mut game, &mut ctx)
+            .expect("declined ordinary cast should not fail resolution");
+
+        assert!(!outcome.status.is_success(), "{outcome:#?}");
+        assert!(game.stack.is_empty());
+        assert_eq!(game.player(alice).expect("alice exists").mana_pool.red, 1);
     }
 
     #[test]

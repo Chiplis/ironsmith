@@ -41,6 +41,7 @@ pub(crate) struct GrantedAbilityConditionSplit<'a> {
 pub(crate) enum SpecialGrantedKeyword {
     Blitz,
     Emerge,
+    Scavenge,
 }
 
 pub(crate) fn parse_granted_ability_candidates(
@@ -170,6 +171,11 @@ pub(crate) fn parse_special_granted_keyword(
         && super::parse_granted_emerge_cost_equals_mana(&trailing)
     {
         return Some(SpecialGrantedKeyword::Emerge);
+    }
+    if parse_complete_keyword(leading, "scavenge")
+        && super::parse_granted_scavenge_cost_equals_mana(&trailing)
+    {
+        return Some(SpecialGrantedKeyword::Scavenge);
     }
     None
 }

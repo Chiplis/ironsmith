@@ -44,6 +44,42 @@ pub(crate) struct TokenReminderFollowupFacts {
     pub(crate) pronoun_trigger_prefix: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MovedObjectEntryFollowupShape {
+    /// Index in the original token slice of the authored `gains` verb.  The
+    /// caller can prepend the leading object pronoun and feed the resulting
+    /// clause through the ordinary typed ability-grant parser.
+    pub(crate) grant_verb_token_idx: usize,
+}
+
+/// Recognize a result sentence that modifies the exact object just moved to
+/// the battlefield: `It enters tapped and attacking and gains ... until end
+/// of turn.`  This is deliberately only the grammatical boundary; the
+/// follow-up dispatcher still has to prove an immediately preceding optional
+/// single-object battlefield move before it may bind the pronoun.
+pub(crate) fn parse_moved_object_entry_followup_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<MovedObjectEntryFollowupShape> {
+    let words_with_indices = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, token)| token.as_word().map(|word| (idx, word)))
+        .collect::<Vec<_>>();
+    let words = words_with_indices
+        .iter()
+        .map(|(_, word)| *word)
+        .collect::<Vec<_>>();
+    if !words.starts_with(&["it", "enters", "tapped", "and", "attacking", "and", "gains"])
+        || words.len() <= 10
+        || !words.ends_with(&["until", "end", "of", "turn"])
+    {
+        return None;
+    }
+    Some(MovedObjectEntryFollowupShape {
+        grant_verb_token_idx: words_with_indices[6].0,
+    })
+}
+
 fn marker_anywhere<'a, O, P>(tokens: &'a [OwnedLexToken], parser: P) -> bool
 where
     P: Parser<LexStream<'a>, O, ErrMode<ContextError>>,

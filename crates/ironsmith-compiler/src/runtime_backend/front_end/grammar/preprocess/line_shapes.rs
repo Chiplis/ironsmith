@@ -173,6 +173,13 @@ pub(crate) fn parse_resolution_timing_tail(text: &str) -> Option<ResolutionTimin
     let tokens = lex_line(text, 0).ok()?;
     let (tail_index, _, _) =
         primitives::find_prefix(&tokens, || primitives::phrase(&["as", "it", "resolves"]))?;
+    if tokens
+        .iter()
+        .skip(tail_index.saturating_add(3))
+        .any(|token| token.as_word().is_some())
+    {
+        return None;
+    }
     Some(ResolutionTimingTailSurface {
         tail_start: tokens.get(tail_index)?.span.start,
         terminal_period: tokens.last().is_some_and(OwnedLexToken::is_period),
@@ -245,5 +252,14 @@ mod tests {
 
         let wrapped = parse_wrapped_activation_surface("(Tap: Draw a card.)").expect("wrapped");
         assert_eq!(wrapped.inner, "Tap: Draw a card.");
+
+        assert!(parse_resolution_timing_tail("Draw a card as it resolves.").is_some());
+        assert!(
+            parse_resolution_timing_tail(
+                "Exile it as it resolves. If you do, return it at the next end step."
+            )
+            .is_none(),
+            "a timing phrase in the first sentence is not a line tail"
+        );
     }
 }

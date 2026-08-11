@@ -8,10 +8,10 @@ use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
     LibraryBottomOrderAst, ObjectFilter, OwnedLexToken, PlayerAst, PredicateAst,
     ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
+    SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan, TriggerSpec,
     ZoneReplacementDurationAst,
 };
-use crate::effect::Value;
+use crate::effect::{EffectPredicate, Value};
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
 use crate::runtime_backend::front_end::grammar::sentence_markers::{
@@ -21,7 +21,11 @@ use crate::runtime_backend::grammar::effects::triple_sequence_shapes as triple_g
 use crate::runtime_backend::grammar::effects::{
     self as effect_grammar, parse_reciprocal_creature_control_sequence_tokens,
 };
-use crate::runtime_backend::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed;
+use crate::runtime_backend::grammar::structure::{
+    LeadingResultPrefixKind, parse_predicate_with_grammar_entrypoint_lexed,
+    split_leading_result_prefix_lexed,
+};
+use crate::runtime_backend::lexer::LexedClause;
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::util::trim_commas;
@@ -30,6 +34,1549 @@ use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
+
+fn target_opponent_filter(player: &PlayerFilter) -> bool {
+    matches!(
+        player,
+        PlayerFilter::Target(inner)
+            if matches!(inner.as_ref(), PlayerFilter::Opponent)
+                || target_opponent_filter(inner)
+    )
+}
+
+fn tagged_subset_destroy_words(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    words.starts_with(&["destroy", "any", "of", "them", "that", "are"])
+        || words.starts_with(&["destroy", "any", "of", "those", "creatures", "that", "are"])
+        || words.starts_with(&["destroy", "any", "of", "those", "permanents", "that", "are"])
+}
+
+fn counted_target_object_filter(target: &TargetAst) -> Option<&ObjectFilter> {
+    let TargetAst::WithCount(inner, count) = target else {
+        return None;
+    };
+    if count.is_random() || count.max.is_some_and(|max| max < 2) {
+        return None;
+    }
+    let TargetAst::Object(filter, _, _) = inner.as_ref() else {
+        return None;
+    };
+    Some(filter)
+}
+
+/// Preserve the selected opponent as both the copier and the retargeting
+/// decision owner for clauses of the form "up to one target opponent may
+/// also copy that spell. They may choose new targets for that copy."
+pub(crate) fn parse_target_opponent_may_copy_triggering_spell_then_retarget(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(first) = sentences.get(sentence_idx) else {
+        return Ok(None);
+    };
+    let Some(second) = sentences.get(sentence_idx + 1) else {
+        return Ok(None);
+    };
+    if crate::runtime_backend::token_word_refs(first.lowered())
+        != [
+            "up", "to", "one", "target", "opponent", "may", "also", "copy", "that", "spell",
+        ]
+        || crate::runtime_backend::token_word_refs(second.lowered())
+            != [
+                "they", "may", "choose", "new", "targets", "for", "that", "copy",
+            ]
+    {
+        return Ok(None);
+    }
+
+    let target = crate::runtime_backend::front_end::shared::util::parse_target_phrase(
+        &first.lowered()[..5],
+    )?;
+    let copy = EffectAst::subject_verb_copy_spell(
+        TargetAst::Tagged(TagKey::from("triggering"), None),
+        Value::Fixed(1),
+        PlayerAst::TargetOpponent,
+        true,
+        false,
+        Vec::new(),
+    );
+    Ok(Some(vec![
+        EffectAst::subject_verb_explicit_target_only(target),
+        EffectAst::MayByPlayer {
+            player: PlayerAst::TargetOpponent,
+            effects: vec![copy],
+        },
+    ]))
+}
+
+#[cfg(test)]
+mod target_opponent_copy_triggering_spell_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn parse(first: &str, second: &str) -> Option<Vec<EffectAst>> {
+        let first = lex_line(first, 0).expect("first sentence should lex");
+        let second = lex_line(second, 1).expect("second sentence should lex");
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+        ];
+        parse_target_opponent_may_copy_triggering_spell_then_retarget(&sentences, 0)
+            .expect("target-opponent copy parser should not error")
+    }
+
+    #[test]
+    fn keeps_selected_opponent_as_copier_and_new_target_chooser() {
+        let effects = parse(
+            "Up to one target opponent may also copy that spell",
+            "They may choose new targets for that copy",
+        )
+        .expect("the exact two-sentence copy family should parse");
+        let [
+            EffectAst::SubjectVerb(target),
+            EffectAst::MayByPlayer { player, effects },
+        ] = effects.as_slice()
+        else {
+            panic!("expected a target declaration and opponent-scoped offer: {effects:#?}");
+        };
+        assert!(matches!(
+            target.action,
+            SubjectVerbActionAst::TargetOnly {
+                explicit_declaration: true,
+                ..
+            }
+        ));
+        assert_eq!(*player, PlayerAst::TargetOpponent);
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CopySpell {
+                    target: TargetAst::Tagged(tag, None),
+                    player: PlayerAst::TargetOpponent,
+                    may_choose_new_targets: true,
+                    ..
+                },
+                ..
+            })] if tag.as_str() == "triggering"
+        ));
+    }
+
+    #[test]
+    fn changed_recipient_or_missing_retarget_sentence_is_not_claimed() {
+        assert!(
+            parse(
+                "Up to one target player may also copy that spell",
+                "They may choose new targets for that copy",
+            )
+            .is_none()
+        );
+        assert!(
+            parse(
+                "Up to one target opponent may also copy that spell",
+                "Draw a card",
+            )
+            .is_none()
+        );
+    }
+}
+
+/// Parse the authored inverted form "copy the next spell ... when you cast
+/// it" as the same one-shot cast watcher used by the canonical "when you next
+/// cast" spelling. The following retarget sentence is part of the copy
+/// effect, not a second action on the currently resolving stack object.
+pub(crate) fn parse_copy_next_spell_when_cast_then_retarget(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(first) = sentences.get(sentence_idx) else {
+        return Ok(None);
+    };
+    let Some(second) = sentences.get(sentence_idx + 1) else {
+        return Ok(None);
+    };
+    if crate::runtime_backend::token_word_refs(second.lowered())
+        != [
+            "you", "may", "choose", "new", "targets", "for", "the", "copy",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let words = crate::runtime_backend::token_word_refs(first.lowered());
+    if words
+        != [
+            "copy", "the", "next", "spell", "you", "cast", "this", "turn", "when", "you", "cast",
+            "it",
+        ]
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+        trigger: TriggerSpec::SpellCast {
+            filter: None,
+            mana_source_filter: None,
+            caster: PlayerFilter::You,
+            timing: None,
+            during_turn: None,
+            min_spells_this_turn: None,
+            exact_spells_this_turn: None,
+            from_not_hand: false,
+        },
+        effects: vec![EffectAst::subject_verb_copy_spell(
+            TargetAst::Tagged(TagKey::from("triggering"), None),
+            Value::Fixed(1),
+            PlayerAst::You,
+            true,
+            false,
+            Vec::new(),
+        )],
+        one_shot: true,
+        until_end_of_combat: false,
+        attach_to_previous_ability: false,
+    }]))
+}
+
+#[cfg(test)]
+mod copy_next_spell_when_cast_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn parse(first: &str, second: &str) -> Option<Vec<EffectAst>> {
+        let first = lex_line(first, 0).expect("first sentence should lex");
+        let second = lex_line(second, 1).expect("second sentence should lex");
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+        ];
+        parse_copy_next_spell_when_cast_then_retarget(&sentences, 0)
+            .expect("copy-next-spell parser should not error")
+    }
+
+    #[test]
+    fn builds_one_shot_spell_cast_watcher_and_copies_that_spell() {
+        let effects = parse(
+            "Copy the next spell you cast this turn when you cast it",
+            "You may choose new targets for the copy",
+        )
+        .expect("inverted delayed-copy wording should parse");
+        let [
+            EffectAst::DelayedTriggerThisTurn {
+                trigger:
+                    TriggerSpec::SpellCast {
+                        filter: None,
+                        caster: PlayerFilter::You,
+                        ..
+                    },
+                effects: delayed,
+                one_shot: true,
+                until_end_of_combat: false,
+                attach_to_previous_ability: false,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one-shot spell watcher: {effects:#?}");
+        };
+        assert!(matches!(
+            delayed.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CopySpell {
+                    target: TargetAst::Tagged(tag, None),
+                    count: Value::Fixed(1),
+                    player: PlayerAst::You,
+                    may_choose_new_targets: true,
+                    ..
+                },
+                ..
+            })] if tag.as_str() == "triggering"
+        ));
+    }
+
+    #[test]
+    fn does_not_claim_an_existing_stack_object_or_missing_retarget_sentence() {
+        assert!(
+            parse(
+                "Copy target spell you control",
+                "You may choose new targets for the copy"
+            )
+            .is_none()
+        );
+        assert!(
+            parse(
+                "Copy the next spell you cast this turn when you cast it",
+                "Draw a card"
+            )
+            .is_none()
+        );
+    }
+}
+
+/// Preserve an attached object's combat history as a condition rather than
+/// letting the postfix `if` words collapse into the counter target filter.
+pub(crate) fn parse_counter_on_enchanted_if_attacked_or_blocked_since_last_upkeep(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(first) = sentences.get(sentence_idx) else {
+        return Ok(None);
+    };
+    let Some(second) = sentences.get(sentence_idx + 1) else {
+        return Ok(None);
+    };
+    let first_words = crate::runtime_backend::token_word_refs(first.lowered());
+    let expected_tail = [
+        "if", "it", "attacked", "or", "blocked", "since", "your", "last", "upkeep",
+    ];
+    let Some(if_word_index) = first_words
+        .windows(expected_tail.len())
+        .position(|window| window == expected_tail)
+    else {
+        return Ok(None);
+    };
+    if if_word_index == 0 || if_word_index + expected_tail.len() != first_words.len() {
+        return Ok(None);
+    }
+    let Some(if_index) = first
+        .lowered()
+        .iter()
+        .position(|token| token.as_word() == Some("if"))
+    else {
+        return Ok(None);
+    };
+    let second_words = crate::runtime_backend::token_word_refs(second.lowered());
+    if !matches!(second_words.first(), Some(&"otherwise")) {
+        return Ok(None);
+    }
+
+    let true_effects = effect_sentences::parse_effect_sentence_lexed(&first.lowered()[..if_index])?;
+    let false_effects = effect_sentences::parse_effect_sentence_lexed(
+        second.lowered().get(1..).unwrap_or_default(),
+    )?;
+    if true_effects.is_empty() || false_effects.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::Conditional {
+        predicate: PredicateAst::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep,
+        if_true: true_effects,
+        if_false: false_effects,
+    }]))
+}
+
+/// Preserve the source creature's two-sided block history in the postfix
+/// condition instead of allowing the object-filter grammar to reinterpret
+/// "blocked" as a current characteristic.
+pub(crate) fn parse_counter_on_source_if_blocked_or_been_blocked_since_last_upkeep(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(first) = sentences.get(sentence_idx) else {
+        return Ok(None);
+    };
+    let Some(second) = sentences.get(sentence_idx + 1) else {
+        return Ok(None);
+    };
+    let expected_tail = [
+        "if", "it", "has", "blocked", "or", "been", "blocked", "since", "your", "last", "upkeep",
+    ];
+    let first_words = crate::runtime_backend::token_word_refs(first.lowered());
+    let Some(if_word_index) = first_words
+        .windows(expected_tail.len())
+        .position(|window| window == expected_tail)
+    else {
+        return Ok(None);
+    };
+    if if_word_index == 0 || if_word_index + expected_tail.len() != first_words.len() {
+        return Ok(None);
+    }
+    let Some(if_index) = first
+        .lowered()
+        .iter()
+        .position(|token| token.as_word() == Some("if"))
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        crate::runtime_backend::token_word_refs(second.lowered()).first(),
+        Some(&"otherwise")
+    ) {
+        return Ok(None);
+    }
+
+    let true_effects = effect_sentences::parse_effect_sentence_lexed(&first.lowered()[..if_index])?;
+    let false_effects = effect_sentences::parse_effect_sentence_lexed(
+        second.lowered().get(1..).unwrap_or_default(),
+    )?;
+    if true_effects.is_empty() || false_effects.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::Conditional {
+        predicate: PredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep,
+        if_true: true_effects,
+        if_false: false_effects,
+    }]))
+}
+
+/// Preserve a simultaneous participant loot and gate a follow-up on whether
+/// one participant's affected object tied for the greatest mana value among
+/// every object affected by the shared discard action.
+///
+/// The nested `Excluding` expression is the exact set union `{you, defending
+/// player}`: remove every non-you player except the defending player from the
+/// full player set. This keeps the execution on the generic simultaneous
+/// `ForPlayersEffect` path without inventing a bespoke participant filter.
+pub(crate) fn parse_controller_defending_loot_then_greatest_mana_value_followup(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = sentences[sentence_idx].lowered();
+    let first_words = crate::runtime_backend::token_word_refs(first_tokens);
+    if first_words
+        != [
+            "you",
+            "and",
+            "defending",
+            "player",
+            "each",
+            "draw",
+            "a",
+            "card",
+            "then",
+            "discard",
+            "a",
+            "card",
+        ]
+        && first_words
+            != [
+                "you",
+                "and",
+                "the",
+                "defending",
+                "player",
+                "each",
+                "draw",
+                "a",
+                "card",
+                "then",
+                "discard",
+                "a",
+                "card",
+            ]
+    {
+        return Ok(None);
+    }
+
+    let second_tokens = sentences[sentence_idx + 1].lowered();
+    let Some(if_idx) = second_tokens.iter().position(|token| token.is_word("if")) else {
+        return Ok(None);
+    };
+    if crate::runtime_backend::token_word_refs(&second_tokens[if_idx..])
+        != [
+            "if",
+            "you",
+            "discarded",
+            "the",
+            "card",
+            "with",
+            "the",
+            "greatest",
+            "mana",
+            "value",
+            "among",
+            "those",
+            "cards",
+            "or",
+            "tied",
+            "for",
+            "greatest",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let followup_tokens = trim_commas(&second_tokens[..if_idx]);
+    let followup = effect_sentences::parse_effect_sentence_lexed(&followup_tokens)?;
+    if !matches!(
+        followup.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PutCounters {
+                target: TargetAst::Source(_),
+                target_count: None,
+                distributed: false,
+                ..
+            },
+            ..
+        })]
+    ) {
+        return Ok(None);
+    }
+
+    let participants = PlayerFilter::excluding(
+        PlayerFilter::Any,
+        PlayerFilter::excluding(PlayerFilter::NotYou, PlayerFilter::Defending),
+    );
+    let loot = EffectAst::ForEachPlayersFiltered {
+        filter: participants,
+        effects: vec![
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::That,
+                SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            ),
+            EffectAst::subject_verb_discard(
+                PlayerAst::That,
+                Value::Fixed(1),
+                false,
+                false,
+                None,
+                None,
+            ),
+        ],
+    };
+    Ok(Some(vec![EffectAst::IfEffectResult {
+        effect: Box::new(loot),
+        predicate: EffectPredicate::PlayerAffectedObjectHasGreatestManaValue {
+            player: PlayerFilter::You,
+        },
+        if_true: followup,
+    }]))
+}
+
+#[cfg(test)]
+mod participant_loot_extremum_tests {
+    use super::*;
+    use crate::runtime_backend::{lex_line, split_lexed_sentences};
+
+    fn sentence_inputs(text: &str) -> Vec<SentenceInput> {
+        let tokens = lex_line(text, 0).expect("participant loot text should lex");
+        split_lexed_sentences(&tokens)
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect()
+    }
+
+    #[test]
+    fn preserves_participant_fanout_and_greatest_mana_value_ties() {
+        let sentences = sentence_inputs(
+            "You and defending player each draw a card, then discard a card. Put two +1/+1 counters on this creature if you discarded the card with the greatest mana value among those cards or tied for greatest.",
+        );
+        let parsed =
+            parse_controller_defending_loot_then_greatest_mana_value_followup(&sentences, 0)
+                .expect("typed participant loot parser")
+                .expect("exact participant loot shape");
+        let [
+            EffectAst::IfEffectResult {
+                effect,
+                predicate:
+                    EffectPredicate::PlayerAffectedObjectHasGreatestManaValue {
+                        player: PlayerFilter::You,
+                    },
+                if_true,
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected typed producer/result gate: {parsed:#?}");
+        };
+        assert!(matches!(
+            effect.as_ref(),
+            EffectAst::ForEachPlayersFiltered { filter, effects }
+                if *filter == PlayerFilter::excluding(
+                    PlayerFilter::Any,
+                    PlayerFilter::excluding(PlayerFilter::NotYou, PlayerFilter::Defending),
+                ) && effects.len() == 2
+        ));
+        assert!(matches!(
+            if_true.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutCounters { .. },
+                ..
+            })]
+        ));
+    }
+
+    #[test]
+    fn rejects_a_different_extremum_condition() {
+        let sentences = sentence_inputs(
+            "You and defending player each draw a card, then discard a card. Put two +1/+1 counters on this creature if you discarded the card with the lowest mana value among those cards or tied for lowest.",
+        );
+        assert!(
+            parse_controller_defending_loot_then_greatest_mana_value_followup(&sentences, 0)
+                .expect("near-miss parser")
+                .is_none()
+        );
+    }
+}
+
+/// Keep a later typed subset action tied to the exact objects selected by an
+/// earlier multi-target restriction. The second sentence still parses its own
+/// quality filter (for example, `Wall`); the stable tag supplies only the
+/// authored "of them" membership relation.
+pub(crate) fn parse_multi_target_restriction_then_destroy_typed_subset(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = sentences[sentence_idx].lowered();
+    let second_tokens = sentences[sentence_idx + 1].lowered();
+    if !tagged_subset_destroy_words(second_tokens) {
+        return Ok(None);
+    }
+
+    let mut first_effects = effect_sentences::parse_effect_sentence_lexed(first_tokens)?;
+    let [target_effect, cant_effect] = first_effects.as_mut_slice() else {
+        return Ok(None);
+    };
+    let target_filter = match target_effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::TargetOnly {
+                    target,
+                    explicit_declaration: false,
+                },
+            ..
+        }) => counted_target_object_filter(target).cloned(),
+        _ => None,
+    };
+    let Some(target_filter) = target_filter else {
+        return Ok(None);
+    };
+
+    let target_set_tag = helper_tag_for_tokens(first_tokens, "restricted_target_set");
+    let restriction_filter = match cant_effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Cant {
+                    restriction: crate::effect::Restriction::Block(filter),
+                    duration: crate::effect::Until::EndOfTurn,
+                    start: crate::effect::RestrictionStart::Immediate,
+                    duration_surface: crate::effect::RestrictionDurationSurface::Default,
+                    condition: None,
+                },
+            ..
+        }) => filter,
+        _ => return Ok(None),
+    };
+    let expected_it_constraint = TaggedObjectConstraint {
+        tag: TagKey::from(IT_TAG),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    };
+    if restriction_filter.tagged_constraints.as_slice() != [expected_it_constraint] {
+        return Ok(None);
+    }
+    let mut restriction_base = restriction_filter.clone();
+    restriction_base.tagged_constraints.clear();
+    if restriction_base != target_filter {
+        return Ok(None);
+    }
+    restriction_filter.tagged_constraints[0].tag = target_set_tag.clone();
+
+    let mut second_effects = effect_sentences::parse_effect_sentence_lexed(second_tokens)?;
+    let [destroy_effect] = second_effects.as_mut_slice() else {
+        return Ok(None);
+    };
+    let destroy_filter = match destroy_effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Destroy {
+                    target: TargetAst::Object(filter, _, _),
+                    no_regeneration: false,
+                    ..
+                },
+            ..
+        }) => filter,
+        _ => return Ok(None),
+    };
+    if !destroy_filter.tagged_constraints.is_empty() {
+        return Ok(None);
+    }
+    destroy_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: target_set_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+    let original_target = target_effect.clone();
+    *target_effect = EffectAst::TagAffected {
+        effect: Box::new(original_target),
+        tag: target_set_tag,
+    };
+    first_effects.extend(second_effects);
+    Ok(Some(first_effects))
+}
+
+#[cfg(test)]
+mod tagged_target_subset_tests {
+    use super::*;
+    use crate::runtime_backend::{lex_line, split_lexed_sentences};
+    use crate::types::Subtype;
+
+    #[test]
+    fn later_wall_subset_reuses_the_exact_multi_target_set() {
+        let tokens = lex_line(
+            "Up to three target creatures can't block this turn. Destroy any of them that are Walls.",
+            0,
+        )
+        .expect("targeted subset probe should lex");
+        let split = split_lexed_sentences(&tokens);
+        let sentences = split
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect::<Vec<_>>();
+        let effects = parse_multi_target_restriction_then_destroy_typed_subset(&sentences, 0)
+            .expect("targeted subset parser should not error")
+            .expect("targeted subset shape should match");
+
+        let [
+            EffectAst::TagAffected {
+                effect: target_effect,
+                tag: target_tag,
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Cant {
+                        restriction: crate::effect::Restriction::Block(restricted),
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Destroy {
+                        target: TargetAst::Object(destroyed, _, _),
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected target/restrict/subset-destroy AST: {effects:#?}");
+        };
+        assert!(matches!(
+            target_effect.as_ref(),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::TargetOnly {
+                        target: TargetAst::WithCount(_, count),
+                        explicit_declaration: false,
+                    },
+                ..
+            }) if count == &ChoiceCount::up_to(3)
+        ));
+        assert!(restricted.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *target_tag
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(destroyed.subtypes.contains(&Subtype::Wall));
+        assert!(destroyed.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *target_tag
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+    }
+}
+
+/// Preserve the independently targeted library procedure after a global
+/// destroy clause. Parsing the complete first sentence as one object filter
+/// lets the broad union grammar absorb `search ... library` into the destroy
+/// domain; splitting the authored comma-then boundary first keeps the two
+/// executable actions and their distinct subjects.
+pub(crate) fn parse_destroy_all_then_search_target_opponent_to_graveyard_then_shuffle(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((destroy_clause, search_clause)) =
+        LexedClause::new(sentences[sentence_idx].lowered()).split_comma_then()
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        effect_grammar::followup_shapes::parse_library_shuffle_followup_shape(
+            sentences[sentence_idx + 1].lowered(),
+        ),
+        Some(effect_grammar::followup_shapes::LibraryShuffleFollowupShape::ThatPlayer)
+    ) {
+        return Ok(None);
+    }
+
+    let destroy_effects = effect_sentences::parse_effect_sentence_lexed(destroy_clause.tokens())?;
+    let [
+        destroy @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DestroyAll { .. },
+            ..
+        }),
+    ] = destroy_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+
+    let Some(search_effects) =
+        effect_sentences::parse_search_library_sentence(search_clause.tokens())?
+    else {
+        return Ok(None);
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::TargetOnly {
+                    target: TargetAst::Player(target, _),
+                    ..
+                },
+            ..
+        }),
+        search @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::SearchLibrary {
+                    filter,
+                    destination: Zone::Graveyard,
+                    chooser: PlayerAst::Implicit,
+                    player: PlayerAst::That,
+                    shuffle: false,
+                    ..
+                },
+            ..
+        }),
+    ] = search_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+    if !target_opponent_filter(target)
+        || filter.zone != Some(Zone::Library)
+        || filter
+            .owner
+            .as_ref()
+            .is_none_or(|owner| !target_opponent_filter(owner))
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        destroy.clone(),
+        search_effects[0].clone(),
+        search.clone(),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::That,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ),
+    ]))
+}
+
+#[cfg(test)]
+mod destroy_search_partition_tests {
+    use super::*;
+    use crate::runtime_backend::{lex_line, split_lexed_sentences};
+
+    #[test]
+    fn global_destroy_keeps_targeted_search_owner_chooser_and_destination_separate() {
+        let tokens = lex_line(
+            "Destroy all creatures, then search target opponent's library for up to three creature cards and put them into their graveyard. Then that player shuffles.",
+            0,
+        )
+        .expect("destroy/search probe should lex");
+        let split = split_lexed_sentences(&tokens);
+        let sentences = split
+            .iter()
+            .map(|sentence| SentenceInput::from_lexed(sentence))
+            .collect::<Vec<_>>();
+        let effects =
+            parse_destroy_all_then_search_target_opponent_to_graveyard_then_shuffle(&sentences, 0)
+                .expect("destroy/search parser should not error")
+                .expect("destroy/search shape should match");
+
+        let [destroy, target, search, shuffle] = effects.as_slice() else {
+            panic!("expected destroy/target/search/shuffle effects: {effects:#?}");
+        };
+        assert!(matches!(
+            destroy,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DestroyAll { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            target,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::TargetOnly {
+                    target: TargetAst::Player(player, _),
+                    ..
+                },
+                ..
+            }) if target_opponent_filter(player)
+        ));
+        assert!(matches!(
+            search,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::SearchLibrary {
+                    filter,
+                    destination: Zone::Graveyard,
+                    chooser: PlayerAst::Implicit,
+                    player: PlayerAst::That,
+                    count,
+                    shuffle: false,
+                    ..
+                },
+                ..
+            }) if filter.zone == Some(Zone::Library)
+                && filter.owner.as_ref().is_some_and(target_opponent_filter)
+                && filter.card_types == vec![CardType::Creature]
+                && count == &ChoiceCount::up_to(3)
+        ));
+        assert!(matches!(
+            shuffle,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject: SubjectVerbSubjectAst {
+                    role: SubjectVerbRoleAst::LibraryOwner,
+                    player: PlayerAst::That,
+                    ..
+                },
+                action: SubjectVerbActionAst::ShuffleLibrary,
+            })
+        ));
+    }
+}
+
+pub(crate) fn parse_resolving_card_exile_then_return_next_end_step(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let replacement = sentences[sentence_idx].lowered();
+    let delayed_return = sentences[sentence_idx + 1].lowered();
+    if !effect_grammar::is_resolving_card_exile_then_return_next_end_step_shape(
+        replacement,
+        delayed_return,
+    ) {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_register_zone_replacement_with_linked_exile_follow_up(
+            TargetAst::Tagged(TagKey::from("triggering"), None),
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ZoneReplacementDurationAst::OneShot,
+            ironsmith_core::LinkedExileFollowUp::ReturnToHandAtNextEndStep,
+        ),
+    ]))
+}
+
+#[cfg(test)]
+mod resolving_card_exile_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn resolving_card_exile_registers_exact_one_shot_replacement_and_linked_return() {
+        let first = lex_line(
+            "Exile that card instead of putting it into your graveyard as it resolves.",
+            0,
+        )
+        .expect("replacement sentence should lex");
+        let second = lex_line(
+            "If you do, return it to your hand at the beginning of the next end step.",
+            1,
+        )
+        .expect("conditional return sentence should lex");
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+        ];
+
+        let effects = parse_resolving_card_exile_then_return_next_end_step(&sentences, 0)
+            .expect("linked replacement parser should not error")
+            .expect("linked replacement sequence should match");
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RegisterZoneReplacement {
+                    target: TargetAst::Tagged(tag, _),
+                    from_zone: Some(Zone::Stack),
+                    to_zone: Some(Zone::Graveyard),
+                    replacement_zone: Zone::Exile,
+                    duration: ZoneReplacementDurationAst::OneShot,
+                    linked_exile_follow_up: Some(
+                        ironsmith_core::LinkedExileFollowUp::ReturnToHandAtNextEndStep
+                    ),
+                    ..
+                },
+                ..
+            })] if tag.as_str() == "triggering"
+        ));
+    }
+}
+
+/// Bind `in it` in a following subtype/color count to the hand revealed by
+/// the immediately preceding targeted reveal. The generic count parser cannot
+/// infer that pronoun's zone or player in isolation, so this pair rule keeps
+/// the existing reveal effect and supplies the exact typed hand domain.
+pub(crate) fn parse_reveal_hand_then_draw_shared_terminal_union(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Ok(reveal_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let [reveal_effect] = reveal_effects.as_slice() else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject:
+            SubjectVerbSubjectAst {
+                player: revealed_player,
+                ..
+            },
+        action: SubjectVerbActionAst::RevealHand,
+    }) = reveal_effect
+    else {
+        return Ok(None);
+    };
+    let revealed_player = match revealed_player {
+        PlayerAst::Target => PlayerFilter::Any,
+        PlayerAst::TargetOpponent => PlayerFilter::Opponent,
+        _ => return Ok(None),
+    };
+
+    let draw_words = crate::runtime_backend::token_word_refs(sentences[sentence_idx + 1].lowered());
+    if draw_words.len() < 10
+        || draw_words.get(..6) != Some(["you", "draw", "a", "card", "for", "each"].as_slice())
+        || draw_words.get(draw_words.len() - 2..) != Some(["in", "it"].as_slice())
+    {
+        return Ok(None);
+    }
+    let filter_words = &draw_words[6..draw_words.len() - 2];
+    let filter_tokens =
+        crate::runtime_backend::front_end::lexer::synthetic_word_tokens(filter_words);
+    let Some(mut filter) =
+        crate::runtime_backend::grammar::filters::parse_subtype_color_shared_card_union_lexed(
+            &filter_tokens,
+            false,
+        )
+    else {
+        return Ok(None);
+    };
+    filter.zone = Some(Zone::Hand);
+    filter.owner = Some(PlayerFilter::AliasedTarget(Box::new(revealed_player)));
+    let count = Value::Count(filter).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+
+    Ok(Some(vec![
+        reveal_effect.clone(),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw { count },
+        ),
+    ]))
+}
+
+/// Bind the two disjoint domains in "a nonland card from it or a card from
+/// that player's graveyard" to the exact opponent whose hand was revealed.
+/// The hand branch alone carries the nonland restriction and revealed-set
+/// tag; the graveyard branch alone carries that opponent's ownership.
+pub(crate) fn parse_reveal_opponent_hand_then_choose_from_it_or_their_graveyard(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Ok(reveal_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let [
+        reveal_effect @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject:
+                SubjectVerbSubjectAst {
+                    player: PlayerAst::TargetOpponent,
+                    ..
+                },
+            action: SubjectVerbActionAst::RevealHand,
+        }),
+    ] = reveal_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+    let words = crate::runtime_backend::token_word_refs(sentences[sentence_idx + 1].lowered());
+    if !matches!(
+        words.as_slice(),
+        [
+            "you",
+            "choose",
+            "a",
+            "nonland",
+            "card",
+            "from",
+            "it",
+            "or",
+            "a",
+            "card",
+            "from",
+            "their",
+            "graveyard"
+        ] | [
+            "you",
+            "choose",
+            "a",
+            "nonland",
+            "card",
+            "from",
+            "it",
+            "or",
+            "a",
+            "card",
+            "from",
+            "that",
+            "players",
+            "graveyard"
+        ]
+    ) {
+        return Ok(None);
+    }
+
+    let mut hand = ObjectFilter::default();
+    hand.zone = Some(Zone::Hand);
+    hand.excluded_card_types = vec![CardType::Land];
+    hand.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(IT_TAG),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let mut graveyard = ObjectFilter::default();
+    graveyard.zone = Some(Zone::Graveyard);
+    graveyard.owner = Some(PlayerFilter::AliasedTarget(Box::new(
+        PlayerFilter::Opponent,
+    )));
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![hand, graveyard];
+
+    Ok(Some(vec![
+        reveal_effect.clone(),
+        EffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: TagKey::from(IT_TAG),
+        },
+    ]))
+}
+
+#[cfg(test)]
+mod revealed_hand_graveyard_disjunction_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn parse(second: &str) -> Option<Vec<EffectAst>> {
+        let lexed = [
+            lex_line("Target opponent reveals their hand.", 0).unwrap(),
+            lex_line(second, 1).unwrap(),
+        ];
+        let sentences = lexed
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect::<Vec<_>>();
+        parse_reveal_opponent_hand_then_choose_from_it_or_their_graveyard(&sentences, 0).unwrap()
+    }
+
+    #[test]
+    fn exact_choice_keeps_branch_specific_nonland_and_opponent_constraints() {
+        let effects = parse("You choose a nonland card from it or a card from their graveyard.")
+            .expect("revealed-hand/graveyard choice");
+        let EffectAst::ChooseObjects { filter, .. } = &effects[1] else {
+            panic!("expected cross-zone choice: {effects:#?}");
+        };
+        let [hand, graveyard] = filter.any_of.as_slice() else {
+            panic!("expected exact disjunction: {filter:#?}");
+        };
+        assert_eq!(hand.zone, Some(Zone::Hand));
+        assert_eq!(hand.excluded_card_types, [CardType::Land]);
+        assert!(hand.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert_eq!(graveyard.zone, Some(Zone::Graveyard));
+        assert_eq!(
+            graveyard.owner,
+            Some(PlayerFilter::AliasedTarget(Box::new(
+                PlayerFilter::Opponent
+            )))
+        );
+        assert!(graveyard.excluded_card_types.is_empty());
+    }
+
+    #[test]
+    fn different_graveyard_owner_is_not_rebound() {
+        assert!(
+            parse("You choose a nonland card from it or a card from your graveyard.").is_none()
+        );
+    }
+}
+
+/// Bind an optional free cast to the exact cards revealed from a targeted
+/// opponent's hand. Parsing the cast sentence by itself cannot recover either
+/// the hand owner or the optional one-card choice from "among those cards";
+/// this pair rule retains both as executable structure.
+pub(crate) fn parse_reveal_target_opponent_hand_then_may_cast_from_those_cards(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Ok(reveal_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let [reveal_effect] = reveal_effects.as_slice() else {
+        return Ok(None);
+    };
+    if !matches!(
+        reveal_effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: SubjectVerbSubjectAst {
+                player: PlayerAst::TargetOpponent,
+                ..
+            },
+            action: SubjectVerbActionAst::RevealHand,
+        })
+    ) {
+        return Ok(None);
+    }
+
+    let cast_tokens = sentences[sentence_idx + 1].lowered();
+    let cast_words = crate::runtime_backend::token_word_refs(cast_tokens);
+    let exact_spell_surface = [
+        "you", "may", "cast", "an", "instant", "or", "sorcery", "spell", "from", "among", "those",
+        "cards", "without", "paying", "its", "mana", "cost",
+    ];
+    let exact_card_surface = [
+        "you", "may", "cast", "an", "instant", "or", "sorcery", "card", "from", "among", "those",
+        "cards", "without", "paying", "its", "mana", "cost",
+    ];
+    if cast_words.as_slice() != exact_spell_surface && cast_words.as_slice() != exact_card_surface {
+        return Ok(None);
+    }
+
+    let chosen_tag = helper_tag_for_tokens(cast_tokens, "chosen_revealed_spell");
+    let mut filter = ObjectFilter::tagged(TagKey::from(crate::tag::REVEALED_THIS_WAY_TAG));
+    filter.zone = Some(Zone::Hand);
+    filter.owner = Some(PlayerFilter::AliasedTarget(Box::new(
+        PlayerFilter::Opponent,
+    )));
+    filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+
+    Ok(Some(vec![
+        reveal_effect.clone(),
+        EffectAst::May {
+            effects: vec![
+                EffectAst::ChooseTaggedObjectsInZone {
+                    filter,
+                    count: ChoiceCount::exactly(1),
+                    player: PlayerAst::You,
+                    tag: chosen_tag.clone(),
+                    zone: Zone::Hand,
+                },
+                EffectAst::subject_verb_cast_tagged(
+                    chosen_tag,
+                    PlayerAst::You,
+                    false,
+                    false,
+                    true,
+                    None,
+                ),
+            ],
+        },
+    ]))
+}
+
+/// Bind an optional free cast to the exact hand established by a preceding
+/// look instruction. The standalone permission parser treats "those cards"
+/// as an exiled collection because it cannot see the prior sentence; this
+/// two-sentence rule retains the looked player's hand as the executable zone
+/// and owner without introducing a new effect capability.
+pub(crate) fn parse_look_at_players_hand_then_may_cast_from_those_cards(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Ok(look_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let [look_effect] = look_effects.as_slice() else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::LookAtHand {
+                target: TargetAst::Player(hand_owner, _),
+            },
+        ..
+    }) = look_effect
+    else {
+        return Ok(None);
+    };
+    let is_damaged_player_reference = matches!(hand_owner, PlayerFilter::DamagedPlayer)
+        || matches!(
+            hand_owner,
+            PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)
+        );
+    if !is_damaged_player_reference {
+        return Ok(None);
+    }
+
+    // Keep the authored collection phrase for this pair. Generic reference
+    // normalization rewrites `a spell from among those cards` to `it`, which
+    // is fine for a standalone cast but destroys both the optional choice and
+    // the looked-hand zone provenance that this sequence rule owns.
+    let cast_tokens = sentences[sentence_idx + 1].lexed();
+    let cast_words = crate::runtime_backend::token_word_refs(cast_tokens);
+    let exact_surface = [
+        "you", "may", "cast", "a", "spell", "from", "among", "those", "cards", "without", "paying",
+        "its", "mana", "cost",
+    ];
+    if cast_words.as_slice() != exact_surface {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        look_effect.clone(),
+        EffectAst::may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
+            PlayerAst::You,
+            PlayerAst::That,
+            ObjectFilter::nonland().in_zone(Zone::Hand),
+            Zone::Hand,
+        ),
+    ]))
+}
+
+#[cfg(test)]
+mod looked_hand_optional_cast_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn lex_inputs(first: &str, second: &str) -> [Vec<OwnedLexToken>; 2] {
+        [
+            lex_line(first, 0).expect("first sentence should lex"),
+            lex_line(second, 1).expect("second sentence should lex"),
+        ]
+    }
+
+    #[test]
+    fn looked_players_hand_optional_free_cast_keeps_zone_owner_and_may_semantics() {
+        let lexed = lex_inputs(
+            "Look at that player's hand.",
+            "You may cast a spell from among those cards without paying its mana cost.",
+        );
+        let sentences = [
+            SentenceInput::from_lexed(&lexed[0]),
+            SentenceInput::from_lexed(&lexed[1]),
+        ];
+        let effects = parse_look_at_players_hand_then_may_cast_from_those_cards(&sentences, 0)
+            .expect("pair parser should not error")
+            .expect("looked-hand optional cast should match");
+
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::LookAtHand {
+                        target:
+                            TargetAst::Player(
+                                PlayerFilter::DamagedPlayer
+                                | PlayerFilter::Target(_)
+                                | PlayerFilter::AliasedTarget(_),
+                                _,
+                            ),
+                    },
+                ..
+            }),
+            EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player: PlayerAst::You,
+                zone_owner: PlayerAst::That,
+                filter,
+                zone: Zone::Hand,
+                payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected looked hand plus typed optional hand cast: {effects:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert_eq!(filter.excluded_card_types, [CardType::Land]);
+    }
+
+    #[test]
+    fn public_two_sentence_route_keeps_looked_hand_cast_optional() {
+        let tokens = lex_line(
+            "Look at that player's hand. You may cast a spell from among those cards without paying its mana cost.",
+            0,
+        )
+        .expect("look-and-cast sentence pair should lex");
+        let effects = effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("look-and-cast sentence pair should parse");
+
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::LookAtHand { .. },
+                        ..
+                    }),
+                    EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                        player: PlayerAst::You,
+                        zone_owner: PlayerAst::That,
+                        filter,
+                        zone: Zone::Hand,
+                        payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
+                    }
+                ] if filter.zone == Some(Zone::Hand)
+                    && filter.excluded_card_types == [CardType::Land]
+            ),
+            "public route must preserve the optional cast from the looked player's hand: {effects:#?}"
+        );
+    }
+
+    #[test]
+    fn looked_hand_pair_does_not_claim_unrelated_or_nonoptional_casts() {
+        let wrong_reference_lexed = lex_inputs(
+            "Look at that player's hand.",
+            "You may cast a spell from your hand without paying its mana cost.",
+        );
+        let wrong_reference = [
+            SentenceInput::from_lexed(&wrong_reference_lexed[0]),
+            SentenceInput::from_lexed(&wrong_reference_lexed[1]),
+        ];
+        assert!(
+            parse_look_at_players_hand_then_may_cast_from_those_cards(&wrong_reference, 0)
+                .unwrap()
+                .is_none()
+        );
+
+        let mandatory_lexed = lex_inputs(
+            "Look at that player's hand.",
+            "Cast a spell from among those cards without paying its mana cost.",
+        );
+        let mandatory = [
+            SentenceInput::from_lexed(&mandatory_lexed[0]),
+            SentenceInput::from_lexed(&mandatory_lexed[1]),
+        ];
+        assert!(
+            parse_look_at_players_hand_then_may_cast_from_those_cards(&mandatory, 0)
+                .unwrap()
+                .is_none()
+        );
+    }
+}
+
+#[cfg(test)]
+mod revealed_hand_optional_cast_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
+        let first = lex_line("Target opponent reveals their hand.", 0).unwrap();
+        let second = lex_line(
+            "You may cast an instant or sorcery spell from among those cards without paying its mana cost.",
+            1,
+        )
+        .unwrap();
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+        ];
+        let effects =
+            parse_reveal_target_opponent_hand_then_may_cast_from_those_cards(&sentences, 0)
+                .expect("pair parser should not error")
+                .expect("revealed-hand optional cast should match");
+
+        let [_, EffectAst::May { effects: optional }] = effects.as_slice() else {
+            panic!("expected reveal plus one optional program: {effects:#?}");
+        };
+        let [
+            EffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count,
+                player: PlayerAst::You,
+                tag: chosen_tag,
+                zone: Zone::Hand,
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CastTagged {
+                        tag: cast_tag,
+                        player: PlayerAst::You,
+                        allow_land: false,
+                        as_copy: false,
+                        copy_cast_reminder_surface: false,
+                        without_paying_mana_cost: true,
+                        additional_mana_cost: None,
+                        cost_reduction: None,
+                        mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
+                    },
+                ..
+            }),
+        ] = optional.as_slice()
+        else {
+            panic!("expected exact choice/cast optional program: {optional:#?}");
+        };
+        assert_eq!(*count, ChoiceCount::exactly(1));
+        assert_eq!(chosen_tag, cast_tag);
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert_eq!(
+            filter.owner,
+            Some(PlayerFilter::AliasedTarget(Box::new(
+                PlayerFilter::Opponent
+            )))
+        );
+        assert_eq!(filter.card_types, [CardType::Instant, CardType::Sorcery]);
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::REVEALED_THIS_WAY_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+    }
+}
+
+#[cfg(test)]
+mod revealed_hand_union_count_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn revealed_target_hand_scopes_shared_terminal_union_count() {
+        let first = lex_line("Target opponent reveals their hand.", 0).unwrap();
+        let second = lex_line("You draw a card for each Forest and green card in it.", 1).unwrap();
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+        ];
+        let effects = parse_reveal_hand_then_draw_shared_terminal_union(&sentences, 0)
+            .expect("pair parser")
+            .expect("revealed-hand union pair");
+
+        let [
+            _,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Draw { count },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected reveal plus draw, got {effects:#?}");
+        };
+        let Value::Count(filter) = count.unhinted() else {
+            panic!("expected an object count, got {count:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert_eq!(
+            filter.owner,
+            Some(PlayerFilter::AliasedTarget(Box::new(
+                PlayerFilter::Opponent
+            )))
+        );
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert_eq!(filter.any_of[0].subtypes, [crate::Subtype::Forest]);
+        assert_eq!(filter.any_of[1].colors, Some(crate::ColorSet::GREEN));
+    }
+}
 
 pub(crate) fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
     sentences: &[SentenceInput],
@@ -1504,12 +3051,36 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
     else {
         return Ok(None);
     };
-    let target_end = first[target_start..]
+    let without = first[target_start..]
         .iter()
         .position(|token| token.is_word("without"))
-        .map(|index| target_start + index)
+        .map(|index| target_start + index);
+    let by_paying = first[target_start..]
+        .windows(2)
+        .position(|pair| pair[0].is_word("by") && pair[1].is_word("paying"))
+        .map(|index| target_start + index);
+    let mana_spend_clause =
+        if shape.mana_spend_mode == ironsmith_core::value_model::ManaSpendMode::AnyType {
+            first
+                .windows(4)
+                .position(|tokens| {
+                    tokens[0].is_word("mana")
+                        && tokens[1].is_word("of")
+                        && tokens[2].is_word("any")
+                        && tokens[3].is_word("type")
+                })
+                .and_then(|mana| first[..mana].iter().rposition(|token| token.is_word("and")))
+        } else {
+            None
+        };
+    let target_end = without
+        .into_iter()
+        .chain(by_paying)
+        .chain(mana_spend_clause)
+        .min()
         .unwrap_or(first.len());
-    let Ok(filter) = parse_object_filter_lexed(&first[target_start..target_end], false) else {
+    let target_filter_tokens = trim_commas(&first[target_start..target_end]);
+    let Ok(filter) = parse_object_filter_lexed(&target_filter_tokens, false) else {
         return Ok(None);
     };
     let spell_card = filter.card_types.contains(&CardType::Instant)
@@ -1555,7 +3126,10 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
         ]));
     }
 
-    let replacement_filter = ObjectFilter::tagged(cast_spell_tag.clone()).in_zone(Zone::Stack);
+    let replacement_filter = ObjectFilter::spell().match_tagged(
+        cast_spell_tag.clone(),
+        TaggedOpbjectRelation::IsTaggedObject,
+    );
 
     Ok(Some(vec![
         EffectAst::TagAffected {
@@ -1568,14 +3142,18 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
         },
         EffectAst::May {
             effects: vec![EffectAst::TagAffected {
-                effect: Box::new(EffectAst::subject_verb_cast_tagged(
-                    chosen_tag,
-                    PlayerAst::You,
-                    false,
-                    false,
-                    shape.without_paying_mana_cost,
-                    None,
-                )),
+                effect: Box::new(
+                    EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
+                        chosen_tag,
+                        PlayerAst::You,
+                        false,
+                        false,
+                        shape.without_paying_mana_cost,
+                        shape.additional_mana_cost,
+                        None,
+                        shape.mana_spend_mode,
+                    ),
+                ),
                 tag: cast_spell_tag,
             }],
         },
@@ -1592,6 +3170,39 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
             )],
         },
     ]))
+}
+
+/// Preserve a targeted graveyard cast and its one-shot exile replacement
+/// inside an authored reflexive "When you do" clause. The ordinary leading
+/// result parser sees the cast sentence in isolation and can collapse its
+/// target to the preceding payment result; delegate the trailing body to the
+/// existing strict cast/replacement pair instead.
+pub(crate) fn parse_when_result_may_cast_target_graveyard_spell_then_exile_replacement(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(prefix) = split_leading_result_prefix_lexed(sentences[sentence_idx].lexed()) else {
+        return Ok(None);
+    };
+    if prefix.kind != LeadingResultPrefixKind::When
+        || prefix.predicate != IfResultPredicate::Did
+        || !crate::runtime_backend::token_word_refs(prefix.trailing_tokens)
+            .starts_with(&["you", "may", "cast", "target"])
+    {
+        return Ok(None);
+    }
+
+    let trailing = SentenceInput::from_lexed(prefix.trailing_tokens);
+    let replacement = SentenceInput::from_lexed(sentences[sentence_idx + 1].lexed());
+    let pair = [trailing, replacement];
+    let Some(effects) = parse_may_cast_target_graveyard_spell_then_exile_replacement(&pair, 0)?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(vec![EffectAst::WhenResult {
+        predicate: IfResultPredicate::Did,
+        effects,
+    }]))
 }
 
 pub(crate) fn parse_filtered_future_exile_then_return_next_end_step(
@@ -1687,10 +3298,13 @@ pub(crate) fn parse_tempting_offer_copy_spell_sequence(
         true,
         false,
         Vec::new(),
+    )
+    .with_copy_count_surface(
+        ironsmith_core::effect::CopyCountSurface::OncePlusAdditionalPerOpponentWhoCopiedThisWay,
     );
 
     Ok(Some(vec![
-        EffectAst::subject_verb_target_only(TargetAst::Object(
+        EffectAst::subject_verb_explicit_target_only(TargetAst::Object(
             stack_spell_filter,
             Some(TextSpan::synthetic()),
             None,
@@ -1703,6 +3317,56 @@ pub(crate) fn parse_tempting_offer_copy_spell_sequence(
         },
         your_copy,
     ]))
+}
+
+#[cfg(test)]
+mod tempting_offer_copy_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn additional_copy_count_keeps_typed_authored_surface() {
+        let raw = [
+            "Choose target instant or sorcery spell.",
+            "Each opponent may copy that spell and may choose new targets for the copy they control.",
+            "You copy that spell once plus an additional time for each opponent who copied the spell this way.",
+            "You may choose new targets for the copies you control.",
+        ];
+        let lexed: Vec<Vec<OwnedLexToken>> = raw
+            .iter()
+            .enumerate()
+            .map(|(index, text)| lex_line(text, index).expect("tempting-offer sentence should lex"))
+            .collect();
+        let sentences: Vec<SentenceInput> = lexed
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect();
+        let effects = parse_tempting_offer_copy_spell_sequence(&sentences, 0)
+            .expect("tempting-offer parser should not error")
+            .expect("tempting-offer copy sequence should match");
+        assert!(matches!(
+            effects.first(),
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::TargetOnly {
+                    explicit_declaration: true,
+                    ..
+                },
+                ..
+            }))
+        ));
+        assert!(matches!(
+            effects.last(),
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CopySpell {
+                    count_surface: Some(
+                        ironsmith_core::effect::CopyCountSurface::OncePlusAdditionalPerOpponentWhoCopiedThisWay
+                    ),
+                    ..
+                },
+                ..
+            }))
+        ));
+    }
 }
 
 fn parse_copy_for_each_candidate_filter(
@@ -2211,7 +3875,233 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand(
     Ok(Some(effects))
 }
 
-fn tag_single_mill_effect(effect: &mut EffectAst, tag: &TagKey) -> Option<PlayerAst> {
+/// Bind "from among them" to the exact cards affected by the immediately
+/// preceding mill instruction. The up-to-one tagged choice is both the
+/// optionality and the executable provenance boundary; unrelated cards that
+/// were already in the graveyard cannot be chosen.
+pub(crate) fn parse_mill_then_may_cast_from_among(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = sentences[sentence_idx].lowered();
+    let second_tokens = sentences[sentence_idx + 1].lowered();
+    let second_words = crate::runtime_backend::token_word_refs(second_tokens);
+    let maximum_mana_value = match second_words.as_slice() {
+        [
+            "you",
+            "may",
+            "cast",
+            "an",
+            "instant",
+            "or",
+            "sorcery",
+            "spell",
+            "from",
+            "among",
+            "them",
+            "without",
+            "paying",
+            "its",
+            "mana",
+            "cost",
+        ] => None,
+        [
+            "you",
+            "may",
+            "cast",
+            "an",
+            "instant",
+            "or",
+            "sorcery",
+            "spell",
+            "with",
+            "mana",
+            "value",
+            "x",
+            "or",
+            "less",
+            "from",
+            "among",
+            "them",
+            "without",
+            "paying",
+            "its",
+            "mana",
+            "cost",
+        ] => Some(Value::X),
+        _ => return Ok(None),
+    };
+
+    let Ok(mut effects) = effect_sentences::parse_effect_sentence_lexed(first_tokens)
+        .or_else(|_| effect_sentences::parse_effect_chain(first_tokens))
+    else {
+        return Ok(None);
+    };
+    let allowed_prefix = |effect: &EffectAst| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::TargetOnly { .. },
+                ..
+            })
+        )
+    };
+    let mill_index = effects
+        .iter()
+        .enumerate()
+        .filter_map(|(index, effect)| {
+            let mut probe = effect.clone();
+            tag_single_mill_effect(&mut probe, &TagKey::from("__mill_probe__")).map(|_| index)
+        })
+        .collect::<Vec<_>>();
+    let [mill_index] = mill_index.as_slice() else {
+        return Ok(None);
+    };
+    if effects
+        .iter()
+        .enumerate()
+        .any(|(index, effect)| index != *mill_index && !allowed_prefix(effect))
+    {
+        return Ok(None);
+    }
+
+    let milled_tag = helper_tag_for_tokens(first_tokens, "milled_castable");
+    let Some(_milled_player) = tag_single_mill_effect(&mut effects[*mill_index], &milled_tag)
+    else {
+        return Ok(None);
+    };
+    let chosen_tag = helper_tag_for_tokens(second_tokens, "chosen_milled_castable");
+    let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+    if let Some(maximum) = maximum_mana_value {
+        let mut instant = ObjectFilter::default();
+        instant.card_types = vec![CardType::Instant];
+        let mut sorcery = ObjectFilter::default();
+        sorcery.card_types = vec![CardType::Sorcery];
+        let comparison = crate::filter::Comparison::LessThanOrEqualExpr(Box::new(maximum));
+        instant.mana_value = Some(comparison.clone());
+        sorcery.mana_value = Some(comparison);
+        filter.any_of = vec![instant, sorcery];
+    } else {
+        filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+    }
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: milled_tag,
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    effects.push(EffectAst::ChooseTaggedObjectsInZone {
+        filter,
+        count: ChoiceCount::up_to(1),
+        player: PlayerAst::You,
+        tag: chosen_tag.clone(),
+        zone: Zone::Graveyard,
+    });
+    effects.push(EffectAst::subject_verb_cast_tagged(
+        chosen_tag,
+        PlayerAst::You,
+        false,
+        false,
+        true,
+        None,
+    ));
+    Ok(Some(effects))
+}
+
+#[cfg(test)]
+mod mill_result_cast_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn parse_pair(second: &str) -> Option<Vec<EffectAst>> {
+        let first = lex_line("Target opponent mills five cards.", 0).expect("mill sentence");
+        let second = lex_line(second, 1).expect("cast sentence");
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+        ];
+        parse_mill_then_may_cast_from_among(&sentences, 0).expect("pair parser")
+    }
+
+    #[test]
+    fn choice_is_optional_and_scoped_to_the_milled_result() {
+        let effects = parse_pair(
+            "You may cast an instant or sorcery spell from among them without paying its mana cost.",
+        )
+        .expect("exact mill-result cast pair");
+        let mill_tag = effects.iter().find_map(|effect| match effect {
+            EffectAst::TagAffected { tag, .. } => Some(tag),
+            _ => None,
+        });
+        let Some(mill_tag) = mill_tag else {
+            panic!("mill result must be tagged: {effects:#?}");
+        };
+        let choose = effects.iter().find_map(|effect| match effect {
+            EffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count,
+                tag,
+                zone,
+                ..
+            } => Some((filter, count, tag, zone)),
+            _ => None,
+        });
+        let Some((filter, count, chosen_tag, zone)) = choose else {
+            panic!("milled-card choice missing: {effects:#?}");
+        };
+        assert_eq!(*count, ChoiceCount::up_to(1));
+        assert_eq!(*zone, Zone::Graveyard);
+        assert_eq!(
+            filter.card_types,
+            vec![CardType::Instant, CardType::Sorcery]
+        );
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *mill_tag
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CastTagged {
+                    tag,
+                    without_paying_mana_cost: true,
+                    ..
+                },
+                ..
+            }) if tag == chosen_tag
+        )));
+    }
+
+    #[test]
+    fn dynamic_mana_value_cap_is_shared_by_both_spell_types() {
+        let effects = parse_pair(
+            "You may cast an instant or sorcery spell with mana value X or less from among them without paying its mana cost.",
+        )
+        .expect("exact capped mill-result cast pair");
+        let filter = effects.iter().find_map(|effect| match effect {
+            EffectAst::ChooseTaggedObjectsInZone { filter, .. } => Some(filter),
+            _ => None,
+        });
+        let filter = filter.expect("milled-card choice");
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert!(filter.any_of.iter().all(|branch| matches!(
+            branch.mana_value.as_ref(),
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
+                if value.as_ref() == &Value::X
+        )));
+    }
+
+    #[test]
+    fn ordinary_graveyard_cast_is_not_claimed_as_a_mill_result() {
+        assert!(
+            parse_pair(
+                "You may cast an instant or sorcery spell from your graveyard without paying its mana cost."
+            )
+            .is_none()
+        );
+    }
+}
+
+pub(super) fn tag_single_mill_effect(effect: &mut EffectAst, tag: &TagKey) -> Option<PlayerAst> {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: SubjectVerbSubjectAst { player, .. },
         action: SubjectVerbActionAst::Mill { .. },
@@ -2378,8 +4268,8 @@ fn parse_put_from_milled_cards_followup(
         None,
     );
     if action_match.verb == "return" {
-        move_effect =
-            move_effect.with_move_to_zone_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return);
+        move_effect = move_effect
+            .with_move_to_zone_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return);
     }
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag,
@@ -3484,6 +5374,86 @@ mod looked_partition_tests {
     }
 
     #[test]
+    fn reflexive_targeted_graveyard_cast_keeps_target_x_and_replacement_scope() {
+        let first = lex_line(
+            "When you do, you may cast target instant or sorcery card with mana value X from a graveyard without paying its mana cost",
+            0,
+        )
+        .expect("reflexive cast sentence should lex");
+        let second = lex_line(
+            "If that spell would be put into a graveyard, exile it instead",
+            1,
+        )
+        .expect("replacement sentence should lex");
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+        ];
+
+        let effects =
+            parse_when_result_may_cast_target_graveyard_spell_then_exile_replacement(&sentences, 0)
+                .expect("reflexive graveyard cast parser should not error")
+                .expect("reflexive graveyard cast pair should parse");
+        let [
+            EffectAst::WhenResult {
+                predicate: IfResultPredicate::Did,
+                effects: body,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one typed reflexive result wrapper: {effects:#?}");
+        };
+        let debug = format!("{body:#?}");
+        assert!(debug.contains("TargetOnly"), "{debug}");
+        assert!(debug.contains("ManaValue"), "{debug}");
+        assert!(debug.contains("CastTagged"), "{debug}");
+        assert!(debug.contains("RegisterFutureZoneReplacement"), "{debug}");
+
+        let nonreflexive = lex_line(
+            "If you do, you may cast target instant or sorcery card with mana value X from a graveyard without paying its mana cost",
+            0,
+        )
+        .unwrap();
+        let near_miss = [
+            SentenceInput::from_lexed(&nonreflexive),
+            SentenceInput::from_lexed(&second),
+        ];
+        assert!(
+            parse_when_result_may_cast_target_graveyard_spell_then_exile_replacement(&near_miss, 0)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn targeted_graveyard_cast_preserves_instruction_additional_mana_cost() {
+        let first = lex_line(
+            "You may cast target instant or sorcery card from your graveyard by paying {R}{R} in addition to its other costs",
+            0,
+        )
+        .expect("cast sentence should lex");
+        let second = lex_line(
+            "If that spell would be put into a graveyard, exile it instead",
+            1,
+        )
+        .expect("replacement sentence should lex");
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+        ];
+
+        let effects = parse_may_cast_target_graveyard_spell_then_exile_replacement(&sentences, 0)
+            .expect("graveyard cast parser should not error")
+            .expect("additional-cost graveyard cast should parse");
+        let debug = format!("{effects:#?}");
+        assert!(!debug.contains("other: true"), "{debug}");
+        assert!(debug.contains("additional_mana_cost: Some"), "{debug}");
+        assert!(debug.contains("Red"), "{debug}");
+        assert!(debug.contains("stack_kind: Some(\n"), "{debug}");
+        assert!(debug.contains("Spell"), "{debug}");
+    }
+
+    #[test]
     fn targeted_graveyard_cast_keeps_dynamic_source_power_and_exact_spell_tag() {
         let first = lex_line(
             "You may cast target instant or sorcery card with mana value less than or equal to his power from your graveyard",
@@ -3616,6 +5586,33 @@ mod looked_partition_tests {
                     constraint.tag == *cast_spell_tag
                         && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 })
+        );
+    }
+
+    #[test]
+    fn targeted_graveyard_cast_keeps_one_shot_any_type_mana_permission() {
+        let first = lex_line(
+            "You may cast target instant or sorcery card from a graveyard, and mana of any type can be spent to cast that spell",
+            0,
+        )
+        .expect("cast sentence should lex");
+        let second = lex_line(
+            "If that spell would be put into a graveyard, exile it instead",
+            1,
+        )
+        .expect("replacement sentence should lex");
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+        ];
+        let effects = parse_may_cast_target_graveyard_spell_then_exile_replacement(&sentences, 0)
+            .expect("graveyard cast parser should not error")
+            .expect("typed any-type graveyard cast should parse");
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("mana_spend_mode: AnyType"), "{debug}");
+        assert!(
+            debug.contains("zone: Some(\n                    Graveyard"),
+            "{debug}"
         );
     }
 

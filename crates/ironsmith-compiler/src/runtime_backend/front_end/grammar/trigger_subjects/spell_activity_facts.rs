@@ -15,6 +15,10 @@ pub(crate) enum SpellOriginSurface {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SpellOwnerSurface {
     SubjectActor,
+    /// A possessive pronoun agreeing with the already parsed casting actor
+    /// (`a player casts a spell from their hand`). The trigger owns this
+    /// correlation; it is not a standalone object-owner filter.
+    SubjectActorPronoun,
     Opponent,
 }
 
@@ -56,7 +60,13 @@ pub(crate) fn parse_spell_activity_surface_facts(words: &[&str]) -> SpellActivit
             &["during", "that", "players", "turn"],
         ],
     );
-    let during_turn = if exact_phrase_occurs(words, &["during", "your", "turn"]) {
+    let during_turn = if any_sequence_present(
+        words,
+        &[
+            &["during", "your", "turn"],
+            &["during", "each", "of", "your", "turns"],
+        ],
+    ) {
         Some(TriggerControllerReference::You)
     } else if any_sequence_present(words, opponent_turn_phrases()) {
         Some(TriggerControllerReference::Opponent)
@@ -118,22 +128,9 @@ pub(crate) fn parse_spell_filter_surface_facts<'a>(
     let is_unqualified_spell =
         word_slice_is_any(words, &[&["a", "spell"], &["spells"], &["spell"]]);
     let has_spell_noun = exact_word_occurs(words, &["spell", "spells"]);
-    let origin = if exact_word_occurs(words, &["graveyard"]) {
-        Some(SpellOriginSurface::Graveyard)
-    } else if exact_word_occurs(words, &["exile"]) {
-        Some(SpellOriginSurface::Exile)
-    } else if exact_word_occurs(words, &["hand"]) {
-        Some(SpellOriginSurface::Hand)
-    } else {
-        None
-    };
-    let owner = if exact_word_occurs(words, &["your"]) {
-        Some(SpellOwnerSurface::SubjectActor)
-    } else if exact_word_occurs(words, &["opponent", "their"]) {
-        Some(SpellOwnerSurface::Opponent)
-    } else {
-        None
-    };
+    let (origin, owner) = direct_spell_origin_surface(words)
+        .map(|(origin, owner)| (Some(origin), owner))
+        .unwrap_or((None, None));
 
     let mut compact_words = words
         .iter()
@@ -168,6 +165,89 @@ pub(crate) fn parse_spell_filter_surface_facts<'a>(
         qualifier_words,
         chosen_color_qualifier,
     }
+}
+
+/// Return only an origin phrase that modifies the spell candidate itself.
+///
+/// A zone word elsewhere in the filter can belong to a nested comparison
+/// object, as in "a creature spell that doesn't share a creature type with a
+/// creature card in your graveyard." Treating that nested graveyard as the
+/// spell's origin changes the event to "cast from your graveyard." Requiring
+/// an authored `from` phrase, and rejecting one whose nearest spell noun has
+/// already introduced another object head, keeps that scope distinction.
+fn direct_spell_origin_surface(
+    words: &[&str],
+) -> Option<(SpellOriginSurface, Option<SpellOwnerSurface>)> {
+    for (from, word) in words.iter().enumerate() {
+        if *word != "from" {
+            continue;
+        }
+        let Some(spell) = words[..from]
+            .iter()
+            .rposition(|word| matches!(*word, "spell" | "spells"))
+        else {
+            continue;
+        };
+        if words[spell + 1..from]
+            .iter()
+            .any(|word| is_nested_object_head(word))
+        {
+            continue;
+        }
+
+        let tail = &words[from + 1..];
+        let Some((zone_offset, origin)) = tail.iter().enumerate().find_map(|(offset, word)| {
+            let origin = match *word {
+                "graveyard" | "graveyards" => SpellOriginSurface::Graveyard,
+                "exile" => SpellOriginSurface::Exile,
+                "hand" | "hands" => SpellOriginSurface::Hand,
+                _ => return None,
+            };
+            Some((offset, origin))
+        }) else {
+            continue;
+        };
+        let origin_words = &tail[..=zone_offset];
+        let owner = if exact_word_occurs(origin_words, &["your"]) {
+            Some(SpellOwnerSurface::SubjectActor)
+        } else if exact_word_occurs(origin_words, &["their"]) {
+            Some(SpellOwnerSurface::SubjectActorPronoun)
+        } else if exact_word_occurs(origin_words, &["opponent", "opponents"]) {
+            Some(SpellOwnerSurface::Opponent)
+        } else {
+            None
+        };
+        return Some((origin, owner));
+    }
+    None
+}
+
+fn is_nested_object_head(word: &str) -> bool {
+    matches!(
+        word,
+        "artifact"
+            | "artifacts"
+            | "battle"
+            | "battles"
+            | "card"
+            | "cards"
+            | "creature"
+            | "creatures"
+            | "enchantment"
+            | "enchantments"
+            | "land"
+            | "lands"
+            | "object"
+            | "objects"
+            | "permanent"
+            | "permanents"
+            | "planeswalker"
+            | "planeswalkers"
+            | "player"
+            | "players"
+            | "source"
+            | "sources"
+    )
 }
 
 pub(crate) fn spell_activity_words_are_or_separator(words: &[&str]) -> bool {
@@ -260,6 +340,7 @@ fn first_spell_turn_surface(words: &[&str]) -> bool {
             &["this", "turn"],
             &["of", "a", "turn"],
             &["during", "your", "turn"],
+            &["during", "each", "of", "your", "turns"],
             &["during", "their", "turn"],
         ],
     ) || any_sequence_present(words, opponent_turn_phrases());
@@ -453,6 +534,17 @@ mod tests {
     }
 
     #[test]
+    fn first_spell_during_each_own_turn_preserves_count_and_turn_scope() {
+        let facts = parse_spell_activity_surface_facts(&[
+            "whenever", "you", "cast", "your", "first", "spell", "during", "each", "of", "your",
+            "turns",
+        ]);
+
+        assert_eq!(facts.exact_spells_this_turn, Some(1));
+        assert_eq!(facts.during_turn, Some(TriggerControllerReference::You));
+    }
+
+    #[test]
     fn typed_draw_facts_preserve_draw_step_exception() {
         let facts = parse_draw_turn_surface_facts(&[
             "a", "card", "except", "the", "first", "one", "they", "draw", "in", "each", "of",
@@ -481,5 +573,79 @@ mod tests {
             parse_spell_filter_surface_facts(&["a", "spell", "from", "your", "graveyard"]);
         assert_eq!(graveyard.origin, Some(SpellOriginSurface::Graveyard));
         assert_eq!(graveyard.owner, Some(SpellOwnerSurface::SubjectActor));
+    }
+
+    #[test]
+    fn typed_spell_filter_facts_do_not_promote_nested_comparison_zone() {
+        let in_graveyard = parse_spell_filter_surface_facts(&[
+            "a",
+            "creature",
+            "spell",
+            "that",
+            "doesnt",
+            "share",
+            "a",
+            "creature",
+            "type",
+            "with",
+            "a",
+            "creature",
+            "you",
+            "control",
+            "or",
+            "a",
+            "creature",
+            "card",
+            "in",
+            "your",
+            "graveyard",
+        ]);
+        assert_eq!(in_graveyard.origin, None);
+        assert_eq!(in_graveyard.owner, None);
+
+        let from_graveyard = parse_spell_filter_surface_facts(&[
+            "a",
+            "spell",
+            "that",
+            "shares",
+            "a",
+            "type",
+            "with",
+            "a",
+            "card",
+            "from",
+            "your",
+            "graveyard",
+        ]);
+        assert_eq!(from_graveyard.origin, None);
+        assert_eq!(from_graveyard.owner, None);
+    }
+
+    #[test]
+    fn typed_spell_filter_facts_keep_direct_qualified_origin() {
+        let facts = parse_spell_filter_surface_facts(&[
+            "a",
+            "creature",
+            "spell",
+            "with",
+            "mana",
+            "value",
+            "four",
+            "or",
+            "less",
+            "from",
+            "your",
+            "graveyard",
+        ]);
+        assert_eq!(facts.origin, Some(SpellOriginSurface::Graveyard));
+        assert_eq!(facts.owner, Some(SpellOwnerSurface::SubjectActor));
+
+        let actor_relative =
+            parse_spell_filter_surface_facts(&["a", "spell", "from", "their", "hand"]);
+        assert_eq!(actor_relative.origin, Some(SpellOriginSurface::Hand));
+        assert_eq!(
+            actor_relative.owner,
+            Some(SpellOwnerSurface::SubjectActorPronoun)
+        );
     }
 }

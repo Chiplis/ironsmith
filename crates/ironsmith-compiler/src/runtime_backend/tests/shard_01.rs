@@ -96,6 +96,67 @@ pub(super) fn attach_up_to_one_target_equipment_to_it_parses_target_object() {
 }
 
 #[test]
+pub(super) fn attach_source_to_up_to_one_target_preserves_optional_destination_count() {
+    let tokens = lex_line(
+        "Attach this Equipment to up to one target creature you control.",
+        0,
+    )
+    .expect("rewrite lexer should classify attach clause");
+    let parsed = parse_effect_sentence_lexed(&tokens).expect("attach clause should parse");
+
+    let [
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Attach { target, .. },
+                ..
+            },
+        ),
+    ] = parsed.as_slice()
+    else {
+        panic!("expected attach effect, got {parsed:?}");
+    };
+
+    assert!(
+        matches!(target,
+            crate::cards::builders::TargetAst::WithCount(inner, count)
+                if *count == ChoiceCount::up_to(1)
+                    && matches!(inner.as_ref(),
+                        crate::cards::builders::TargetAst::Object(filter, Some(_), _)
+                            if filter.card_types.contains(&CardType::Creature)
+                                && filter.controller
+                                    == Some(crate::cards::builders::PlayerFilter::You))),
+        "optional attachment destination should retain its authored target count: {target:#?}"
+    );
+
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Optional Attach Variant")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "When this Equipment enters, attach it to up to one target creature you control.",
+        )
+        .expect("optional attachment destination should lower");
+    let attach = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
+                .cloned(),
+            _ => None,
+        })
+        .expect("trigger should contain an attachment effect");
+
+    assert_eq!(
+        attach.target.count(),
+        ChoiceCount::up_to(1),
+        "lowering must preserve the optional target cardinality: {attach:#?}"
+    );
+}
+
+#[test]
 pub(super) fn attach_to_that_creature_reuses_trigger_identity_without_a_fresh_choice()
 -> Result<(), CardTextError> {
     let definition = CardDefinitionBuilder::new(CardId::new(), "Kemba, Kha Enduring")
@@ -1155,6 +1216,7 @@ pub(super) fn rewrite_zone_handlers_parse_destroy_unless_target_color_sets_diffe
                 crate::cards::builders::SubjectVerbActionAst::Destroy {
                     target,
                     no_regeneration: false,
+                    ..
                 },
             ..
         }),
@@ -1203,6 +1265,7 @@ pub(super) fn rewrite_destroy_target_unless_controller_chooses_source_power_dama
                 action: crate::cards::builders::SubjectVerbActionAst::Destroy {
                     target: crate::cards::builders::TargetAst::Object(_, _, _),
                     no_regeneration: false,
+                    ..
                 },
                 ..
             }
@@ -2201,6 +2264,31 @@ pub(super) fn rewrite_effect_sentence_routes_cant_family_through_grammar_entrypo
 }
 
 #[test]
+pub(super) fn leading_if_result_restriction_yields_to_the_result_parser() {
+    let text = "If the player doesn't, creatures they control can't attack you this turn.";
+    let lexed = lex_line(text, 0).expect("result-dependent restriction should lex");
+
+    let bare_restriction =
+        parse_cant_effect_sentence_lexed(&lexed).expect("the cant-family probe should not fail");
+    assert!(
+        bare_restriction.is_none(),
+        "the restriction parser must leave the leading result predicate intact: {bare_restriction:#?}"
+    );
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("the generic result parser should own the complete sentence");
+    let debug = format!("{parsed:#?}");
+    assert!(
+        debug.contains("IfResult")
+            && debug.contains("DidNot")
+            && debug.contains("AttackPlayer")
+            && debug.contains("IteratedPlayer")
+            && debug.contains("EndOfTurn"),
+        "the result predicate, affected player, defender, and duration must remain typed: {debug}"
+    );
+}
+
+#[test]
 pub(super) fn rewrite_lexed_cant_sentence_preserves_hyphenated_spell_filter_for_next_turn_silence()
 {
     let text = "Each opponent can't cast non-Creature spells during that player's next turn.";
@@ -2236,8 +2324,57 @@ pub(super) fn semantic_document_supports_proliferate_then_choose_permanents_phas
     let builder = CardDefinitionBuilder::new(CardId::new(), "Ripples of Potential")
         .card_types(vec![CardType::Instant]);
     let text = "Proliferate, then choose any number of permanents you control that had a counter put on them this way. Those permanents phase out.";
-    parse_text_to_semantic_document(builder, text.to_string(), false)
-        .expect("expected proliferate/phase-out line to parse in semantic document");
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)
+        .expect("expected proliferate/phase-out line to parse and lower");
+    let debug = format!("{:?}", definition.spell_effect);
+    assert!(
+        debug.contains("TaggedEffect")
+            && debug.contains("proliferated_this_way")
+            && debug.contains("IsTaggedObject")
+            && debug.contains("PhaseOutEffect"),
+        "the later choice must consume the proliferate action's stable affected-object set: {debug}"
+    );
+}
+
+#[test]
+pub(super) fn semantic_document_supports_flash_cast_timing_cleanup_sacrifice() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Lightning Reflexes Timing Probe")
+        .card_types(vec![CardType::Enchantment]);
+    let text = "You may cast this spell as though it had flash. If you cast it any time a sorcery couldn't have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step.";
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)
+        .expect("expected flash/next-cleanup line to parse and lower");
+
+    let abilities = format!("{:#?}", definition.abilities);
+    let spell = format!("{:#?}", definition.spell_effect);
+    assert!(abilities.contains("Flash"), "{abilities}");
+    assert!(
+        spell.contains("SourceWasCast")
+            && spell.contains("ThisSpellWasCastAtSorceryTiming")
+            && spell.contains("BeginningOfNextCleanupStep")
+            && spell.contains("SacrificeTargetEffect")
+            && spell.contains("Source"),
+        "the timing consequence must remain a conditional next-cleanup sacrifice of the resulting permanent: {spell}"
+    );
+}
+
+#[test]
+pub(super) fn semantic_document_supports_scavenge_granted_at_each_cards_mana_cost() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Dynamic Scavenge Grant Probe")
+        .card_types(vec![CardType::Creature]);
+    let text = "Each creature card in your graveyard has scavenge. The scavenge cost is equal to its mana cost.";
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)
+        .expect("expected recipient-derived scavenge grant to parse and lower");
+    let debug = format!("{:#?}", definition.abilities);
+    assert!(
+        debug.contains("GrantObjectAbilityForFilter")
+            && debug.contains("source_mana_cost: true")
+            && debug.contains("DynamicMana")
+            && debug.contains("ExileSelf")
+            && debug.contains("SorcerySpeed")
+            && debug.contains("SourcePower")
+            && debug.contains("Graveyard"),
+        "expected a graveyard activated-ability grant with a recipient-derived mana cost: {debug}"
+    );
 }
 
 #[test]
@@ -3254,6 +3391,39 @@ pub(super) fn rewrite_lexed_permission_helpers_distinguish_next_end_step_from_ne
 }
 
 #[test]
+pub(super) fn rewrite_lexed_permission_helpers_keep_one_shared_play_for_tagged_pool() {
+    let tokens = lex_line(
+        "Until your next end step, you may play one of those cards",
+        0,
+    )
+    .expect("one-of tagged permission should lex");
+
+    assert!(matches!(
+        super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+        Ok(Some(super::super::PermissionClauseSpec::Tagged {
+            lifetime: super::super::PermissionLifetime::UntilYourNextEndStep,
+            max_plays: Some(1),
+            ..
+        }))
+    ));
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("one-of tagged permission should parse as an effect");
+    assert!(effects.iter().any(|effect| matches!(
+        effect,
+        crate::cards::builders::EffectAst::SubjectVerb(subject_verb)
+            if matches!(
+                &subject_verb.action,
+                crate::cards::builders::SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                    until_next_end_step: true,
+                    max_plays: Some(1),
+                    ..
+                }
+            )
+    )));
+}
+
+#[test]
 pub(super) fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast() {
     let tokens = lex_line("Until the end of your next turn, you may cast that card", 0)
         .expect("rewrite lexer should classify until-next-turn cast permission clause");
@@ -3813,8 +3983,8 @@ pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), C
         .expect("Blue Dragon should have a triggered ability");
     assert_eq!(
         triggered.choices.len(),
-        2,
-        "the normalized target-choice registry keeps the two distinct target specs: {triggered:#?}"
+        3,
+        "the target-choice registry must keep all three independent target specs: {triggered:#?}"
     );
 
     let sequence = triggered.effects.flattened_default_effects()[0]
@@ -3822,8 +3992,8 @@ pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), C
         .expect("the coordinated P/T clauses should remain a sequence");
     assert_eq!(
         sequence.effects.len(),
-        2,
-        "the leading target is a choice, not a sequence child"
+        3,
+        "the required leading target and both optional targets must remain executable children"
     );
     assert!(
         sequence
@@ -3832,6 +4002,16 @@ pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), C
             .all(|effect| effect.as_tagged().is_some()),
         "each independently targeted child must carry its own tag: {sequence:#?}"
     );
+    assert!(sequence.effects.iter().all(|effect| {
+        effect
+            .as_tagged()
+            .and_then(|tagged| {
+                tagged
+                    .effect
+                    .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            })
+            .is_some_and(|apply| apply.until == crate::effect::Until::YourNextTurn)
+    }));
     Ok(())
 }
 
@@ -4093,6 +4273,27 @@ pub(super) fn rewrite_spell_cost_increase_per_target_beyond_first_hits_specific_
 }
 
 #[test]
+pub(super) fn spell_life_cost_per_target_uses_typed_nonmana_cost_parser() {
+    let tokens = lex_line("This spell costs 3 life more to cast for each target.", 0)
+        .expect("rewrite lexer should classify per-target life cost");
+
+    let parsed =
+        super::super::keyword_static::parse_spell_additional_life_cost_per_target_line(&tokens)
+            .expect("per-target life cost parser should not error")
+            .expect("per-target life cost should be recognized");
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        matches!(
+            parsed.payload,
+            ironsmith_core::StaticAbilityPayload::AdditionalLifeCostPerTarget(3)
+        ),
+        "{debug}"
+    );
+    assert!(!debug.contains("ManaCost"), "{debug}");
+}
+
+#[test]
 pub(super) fn spell_tax_controller_turn_exception_becomes_active_player_exclusion() {
     let tokens = lex_line(
         "Each spell costs {3} more to cast except during its controller's turn.",
@@ -4187,6 +4388,36 @@ pub(super) fn equal_to_number_of_cards_you_ve_discarded_this_turn_parses() {
     assert!(matches!(
         parsed.unhinted(),
         crate::Value::CardsDiscardedThisTurn(crate::PlayerFilter::You)
+    ));
+}
+
+#[test]
+pub(super) fn draw_for_target_opponents_discard_history_declares_and_reuses_one_target() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Targeted Discard History")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Draw cards equal to the number of cards target opponent discarded this turn.")
+        .expect("targeted discard-history draw should parse and lower");
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("spell should lower")
+        .flattened_default_effects();
+    let [target_effect, draw_effect] = effects else {
+        panic!("expected one target declaration and one draw, got {effects:#?}");
+    };
+    let target = target_effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        .expect("targeted value should synthesize a target declaration");
+    assert_eq!(target.target, crate::target::ChooseSpec::target_opponent());
+    assert!(!target.explicit_declaration);
+
+    let draw = draw_effect
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .expect("second effect should draw cards");
+    assert!(matches!(
+        draw.count.unhinted(),
+        crate::Value::CardsDiscardedThisTurn(crate::PlayerFilter::Target(inner))
+            if inner.as_ref() == &crate::PlayerFilter::Opponent
     ));
 }
 

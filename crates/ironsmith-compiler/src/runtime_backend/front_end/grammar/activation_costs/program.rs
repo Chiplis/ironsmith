@@ -24,7 +24,8 @@ use super::{
     parse_activation_cost_segment_kind_tokens, parse_bare_symbol_segment_tokens,
     parse_behold_segment_tokens, parse_blight_segment_tokens, parse_discard_segment_tokens,
     parse_exert_segment_tokens, parse_exile_segment_tokens as parse_typed_exile_segment_tokens,
-    parse_mill_segment_tokens, parse_move_to_library_top_cost_tokens, parse_pay_segment_tokens,
+    parse_mill_segment_tokens, parse_move_source_to_library_bottom_cost_tokens,
+    parse_move_to_library_top_cost_tokens, parse_pay_segment_tokens,
     parse_put_counter_segment_tokens, parse_remove_counter_segment_tokens,
     parse_return_segment_tokens, parse_reveal_segment_tokens,
     parse_sacrifice_segment_tokens as parse_typed_sacrifice_segment_tokens,
@@ -76,6 +77,7 @@ fn is_exile_it_cost_segment(tokens: &[OwnedLexToken]) -> bool {
 fn cost_segment_preserves_source_identity(segment: &ActivationCostSegmentCst) -> bool {
     match segment {
         ActivationCostSegmentCst::PutCounters { .. }
+        | ActivationCostSegmentCst::MoveSelfToLibraryBottom { .. }
         | ActivationCostSegmentCst::RemoveCounters { .. }
         | ActivationCostSegmentCst::RemoveCountersDynamic { .. } => true,
         ActivationCostSegmentCst::RemoveCountersAmong { filter, .. } => filter.source,
@@ -144,8 +146,11 @@ fn parse_activation_cost_segment_tokens(
         ActivationCostSegmentKind::Reveal => Some(parse_reveal_segment_tokens(tokens)),
         ActivationCostSegmentKind::Return => Some(parse_return_segment_tokens(tokens)),
         ActivationCostSegmentKind::Exert => Some(parse_exert_segment_tokens(tokens)),
-        ActivationCostSegmentKind::PutCounter => parse_move_to_library_top_cost_tokens(tokens)
-            .or_else(|| Some(parse_put_counter_segment_tokens(tokens))),
+        ActivationCostSegmentKind::PutCounter => {
+            parse_move_source_to_library_bottom_cost_tokens(tokens)
+                .or_else(|| parse_move_to_library_top_cost_tokens(tokens))
+                .or_else(|| Some(parse_put_counter_segment_tokens(tokens)))
+        }
         ActivationCostSegmentKind::RemoveCounter => {
             Some(parse_remove_counter_segment_tokens(tokens))
         }
@@ -153,7 +158,7 @@ fn parse_activation_cost_segment_tokens(
     }
 }
 
-fn parse_source_plus_chosen_sacrifice_segment_tokens(
+fn parse_source_and_chosen_sacrifice_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<ActivationCostSegmentCst>> {
     if !token_slice_first_is(tokens, "sacrifice") {
@@ -164,36 +169,42 @@ fn parse_source_plus_chosen_sacrifice_segment_tokens(
         if !tokens[conjunction].is_word("and") {
             continue;
         }
-        let Ok(source) = parse_typed_sacrifice_segment_tokens(
+        let Ok(left) = parse_typed_sacrifice_segment_tokens(
             &tokens[..conjunction],
             named_source_reference_surface_for_words,
         ) else {
             continue;
         };
-        if !matches!(source, ActivationCostSegmentCst::SacrificeSelf { .. }) {
-            continue;
-        }
 
-        // The second operand inherits the authored sacrifice verb:
-        // "Sacrifice this artifact and any number of creatures" is two
-        // executable costs, not one object filter.
+        // The second operand inherits the authored sacrifice verb. Exactly
+        // one operand must be the source and the other a chosen set, in either
+        // authored order: both "Sacrifice this artifact and two lands" and
+        // "Sacrifice two lands and this artifact" are two executable costs,
+        // not one union filter.
         let mut inherited = Vec::with_capacity(tokens.len() - conjunction);
         inherited.push(tokens[0].clone());
         inherited.extend_from_slice(&tokens[conjunction + 1..]);
-        let Ok(chosen) = parse_typed_sacrifice_segment_tokens(
+        let Ok(right) = parse_typed_sacrifice_segment_tokens(
             &inherited,
             named_source_reference_surface_for_words,
         ) else {
             continue;
         };
-        if !matches!(
-            chosen,
-            ActivationCostSegmentCst::SacrificeChosen { .. }
-                | ActivationCostSegmentCst::SacrificeCreature
-        ) {
+
+        let is_source = |segment: &ActivationCostSegmentCst| {
+            matches!(segment, ActivationCostSegmentCst::SacrificeSelf { .. })
+        };
+        let is_chosen = |segment: &ActivationCostSegmentCst| {
+            matches!(
+                segment,
+                ActivationCostSegmentCst::SacrificeChosen { .. }
+                    | ActivationCostSegmentCst::SacrificeCreature
+            )
+        };
+        if !((is_source(&left) && is_chosen(&right)) || (is_chosen(&left) && is_source(&right))) {
             continue;
         }
-        return Some(vec![source, chosen]);
+        return Some(vec![left, right]);
     }
     None
 }
@@ -357,7 +368,7 @@ fn parse_activation_cost_cst_tokens(
             continue;
         }
 
-        if let Some(compound) = parse_source_plus_chosen_sacrifice_segment_tokens(segment_tokens) {
+        if let Some(compound) = parse_source_and_chosen_sacrifice_segment_tokens(segment_tokens) {
             segments.extend(compound);
             continue;
         }
@@ -567,5 +578,40 @@ mod tests {
         assert!(count.is_any_number());
         assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
         assert_eq!(filter.controller, Some(crate::target::PlayerFilter::You));
+    }
+
+    #[test]
+    fn chosen_set_then_source_sacrifice_is_two_typed_cost_segments_in_authored_order() {
+        let parsed = parse("{T}, Sacrifice two lands and this artifact");
+        let [
+            ActivationCostSegmentCst::Tap,
+            ActivationCostSegmentCst::SacrificeChosen { count, filter },
+            ActivationCostSegmentCst::SacrificeSelf { surface: None },
+        ] = parsed.segments.as_slice()
+        else {
+            panic!("expected chosen-land and source sacrifice costs, got {parsed:?}");
+        };
+        assert_eq!(count.min, 2);
+        assert_eq!(count.max, Some(2));
+        assert_eq!(filter.card_types, [crate::types::CardType::Land]);
+        assert!(
+            filter.any_of.is_empty(),
+            "the source must not enter the land filter"
+        );
+    }
+
+    #[test]
+    fn two_chosen_sacrifice_arms_remain_one_filter_union_near_miss() {
+        let parsed = parse("Sacrifice two lands and artifacts");
+        let [ActivationCostSegmentCst::SacrificeChosen { filter, .. }] = parsed.segments.as_slice()
+        else {
+            panic!("two ordinary chosen types should remain one cost: {parsed:?}");
+        };
+        assert!(filter.card_types.contains(&crate::types::CardType::Land));
+        assert!(
+            filter
+                .card_types
+                .contains(&crate::types::CardType::Artifact)
+        );
     }
 }

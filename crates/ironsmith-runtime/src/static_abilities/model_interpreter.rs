@@ -386,6 +386,7 @@ impl StaticAbilityModelInterpreter {
             beneficiary: spec.beneficiary.clone(),
             usage_limit: spec.usage_limit,
             cast_this_way_filter: spec.cast_this_way_filter.clone(),
+            source_exiled_surface: spec.source_exiled_surface.clone(),
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .iter()
@@ -880,11 +881,28 @@ impl StaticAbilityModelInterpreter {
         }
 
         Some(match &model.payload {
+            ironsmith_core::StaticAbilityPayload::SelfSubjectSurface { .. } => {
+                StaticAbility::from_compiler_model_parts(model.id, model.label.clone()).ok()?
+            }
             ironsmith_core::StaticAbilityPayload::SourceLineKeywordGroup { keyword_count } => {
                 StaticAbility::source_line_keyword_group(*keyword_count)
             }
             ironsmith_core::StaticAbilityPayload::SourceLineStaticGroup { member_count } => {
                 StaticAbility::source_line_static_group(*member_count)
+            }
+            ironsmith_core::StaticAbilityPayload::CountersRemainAcrossZoneChanges {
+                excluded_destinations,
+                display,
+            } => StaticAbility::counters_remain_across_zone_changes(
+                excluded_destinations.clone(),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::LegendRuleDoesntApplyToController { filter } => {
+                if model.id == Some(StaticAbilityId::LegendRuleDoesntApplyToControllerTokens) {
+                    StaticAbility::legend_rule_doesnt_apply_to_tokens_you_control()
+                } else {
+                    StaticAbility::legend_rule_doesnt_apply_to_controller_matching(filter.clone())
+                }
             }
             ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
                 let mut converted = match &anthem.filter {
@@ -894,6 +912,7 @@ impl StaticAbilityModelInterpreter {
                         .with_values(anthem.power.clone(), anthem.toughness.clone()),
                 }
                 .with_count_uses_where_x(anthem.count_uses_where_x)
+                .with_additional_surface(anthem.additional_surface)
                 .with_set_quantifier_surface(anthem.set_quantifier_surface);
                 if let Some(surface) = anthem.replacement_surface {
                     converted = converted
@@ -915,6 +934,9 @@ impl StaticAbilityModelInterpreter {
                         .iter()
                         .map(Self::ability_from_model)
                         .collect(),
+                )
+                .with_protection_attachment_exception(
+                    grant.protection_does_not_remove_controlled_attachments,
                 );
                 if let Some(condition) = &grant.condition {
                     converted = converted.with_condition(condition.clone());
@@ -929,6 +951,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::PlayerSkipsDrawStep { player } => {
                 StaticAbility::player_skips_draw_step(player.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
+                StaticAbility::players_skip_extra_turns(player.clone())
             }
             ironsmith_core::StaticAbilityPayload::ConditionalSpellKeyword(spec) => {
                 StaticAbility::conditional_spell_keyword(*spec)
@@ -1397,8 +1422,8 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbility::minimum_spell_total_mana(*amount)
             }
-            ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
-                StaticAbility::choose_player_as_enters(display.clone())
+            ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters { filter, display } => {
+                StaticAbility::choose_player_as_enters_matching(filter.clone(), display.clone())
             }
             ironsmith_core::StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbility::note_life_total_as_enters(display.clone())
@@ -1617,6 +1642,17 @@ impl StaticAbilityModelInterpreter {
                 *additional,
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::PlayerCounterPerTurnLimitReplacement {
+                player_filter,
+                counter_type,
+                maximum,
+                display,
+            } => StaticAbility::player_counter_per_turn_limit_replacement(
+                player_filter.clone(),
+                *counter_type,
+                *maximum,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::DoubleTokenCreationReplacement {
                 controller,
                 display,
@@ -1640,11 +1676,13 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
+                performer_filter,
                 replacement_effects,
                 display,
-            } => StaticAbility::keyword_action_replacement(
+            } => StaticAbility::keyword_action_replacement_with_performer(
                 *action,
                 source_filter.clone(),
+                performer_filter.clone(),
                 replacement_effects.clone(),
                 display.clone(),
             ),
@@ -1685,6 +1723,15 @@ impl StaticAbilityModelInterpreter {
                 filter,
                 redirect_zone,
             } => StaticAbility::discard_or_redirect_replacement(filter.clone(), *redirect_zone),
+            ironsmith_core::StaticAbilityPayload::SacrificeOrRedirectReplacement {
+                filter,
+                count,
+                redirect_zone,
+            } => StaticAbility::sacrifice_or_redirect_replacement(
+                filter.clone(),
+                *count,
+                *redirect_zone,
+            ),
             ironsmith_core::StaticAbilityPayload::PayLifeOrEnterTapped(value) => {
                 StaticAbility::pay_life_or_enter_tapped(*value)
             }
@@ -1713,11 +1760,18 @@ impl StaticAbilityModelInterpreter {
                 counter_type,
                 amount,
                 follow_up,
-            } => StaticAbility::prevent_damage_to_self_remove_counter_with_follow_up(
-                *counter_type,
-                amount.clone(),
-                *follow_up,
-            ),
+                one_damage_per_counter,
+            } => {
+                if *one_damage_per_counter {
+                    StaticAbility::prevent_one_damage_to_self_per_removed_counter(*counter_type)
+                } else {
+                    StaticAbility::prevent_damage_to_self_remove_counter_with_follow_up(
+                        *counter_type,
+                        amount.clone(),
+                        *follow_up,
+                    )
+                }
+            }
             ironsmith_core::StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
                 counter_type,
                 display,
@@ -1809,13 +1863,27 @@ impl StaticAbilityModelInterpreter {
                 filter,
                 counter,
                 count,
+                count_condition,
+                otherwise_count,
                 subtypes,
-            } => StaticAbility::enters_with_counters_and_subtypes_for_filter(
-                filter.clone(),
-                *counter,
-                count.clone(),
-                subtypes.clone(),
-            ),
+            } => match (count_condition, otherwise_count) {
+                (Some(condition), Some(otherwise_count)) => {
+                    StaticAbility::enters_with_counters_and_subtypes_for_filter_if_otherwise(
+                        filter.clone(),
+                        *counter,
+                        count.clone(),
+                        condition.clone(),
+                        otherwise_count.clone(),
+                        subtypes.clone(),
+                    )
+                }
+                _ => StaticAbility::enters_with_counters_and_subtypes_for_filter(
+                    filter.clone(),
+                    *counter,
+                    count.clone(),
+                    subtypes.clone(),
+                ),
+            },
             ironsmith_core::StaticAbilityPayload::EntersWithCharacteristicsForFilter {
                 filter,
                 card_types,
@@ -1869,9 +1937,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn authored_line_surface(&self) -> Option<String> {
-        (self.model.id == Some(StaticAbilityId::SetCardTypes)
+        ((self.model.id == Some(StaticAbilityId::SetCardTypes)
             && self.model.label != "set card types")
-            .then(|| self.model.label.clone())
+            || (self.model.id == Some(StaticAbilityId::Flash)
+                && !self.model.label.eq_ignore_ascii_case("flash"))
+            || (self.model.id == Some(StaticAbilityId::Menace)
+                && !self.model.label.eq_ignore_ascii_case("menace")))
+        .then(|| self.model.label.clone())
     }
 
     fn display(&self) -> String {
@@ -2073,6 +2145,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         })
     }
 
+    fn skips_extra_turn_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.leaf_static_ability().is_some_and(|ability| {
+            ability.skips_extra_turn_for_player(game, source, controller, player)
+        })
+    }
+
     fn is_keyword(&self) -> bool {
         Self::is_simple_keyword_id(self.id())
     }
@@ -2258,6 +2342,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
+    fn legend_rule_exemption_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::LegendRuleDoesntApplyToController { filter } => {
+                Some(filter)
+            }
+            _ => self.leaf_static_ability()?.legend_rule_exemption_filter(),
+        }
+    }
+
     fn has_shroud(&self) -> bool {
         self.id() == StaticAbilityId::Shroud
     }
@@ -2343,11 +2436,14 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn player_choice_as_enters(&self) -> Option<super::ChoosePlayerAsEntersSpec> {
-        matches!(
-            self.payload(),
-            ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters(_)
-        )
-        .then_some(super::ChoosePlayerAsEntersSpec)
+        let ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters { filter, .. } =
+            self.payload()
+        else {
+            return None;
+        };
+        Some(super::ChoosePlayerAsEntersSpec {
+            filter: filter.clone(),
+        })
     }
 
     fn reveal_from_hand_as_enters(&self) -> Option<super::RevealFromHandAsEntersSpec> {
@@ -2529,6 +2625,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             .map(|increase| &increase.cost)
     }
 
+    fn additional_life_cost_per_target(&self) -> Option<u32> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::AdditionalLifeCostPerTarget(amount) => {
+                Some(*amount)
+            }
+            _ => None,
+        }
+    }
+
     fn is_anthem(&self) -> bool {
         matches!(
             self.payload(),
@@ -2571,6 +2676,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             || self.this_spell_cost_reduction.is_some()
             || self.this_spell_cost_reduction_mana_cost.is_some()
             || self.cost_increase_per_additional_target().is_some()
+            || self.additional_life_cost_per_target().is_some()
             || self.minimum_total_spell_mana().is_some()
     }
 
@@ -2661,6 +2767,11 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     ) -> Option<u32> {
         self.leaf_static_ability()?
             .generic_attack_tax_per_attacker_against_you(game, source, controller)
+    }
+
+    fn generic_attack_tax_applies_to(&self, target: super::AttackTaxTargetKind) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(|ability| ability.generic_attack_tax_applies_to(target))
     }
 
     fn enters_tapped(&self) -> bool {

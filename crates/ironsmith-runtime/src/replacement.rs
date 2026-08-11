@@ -103,6 +103,10 @@ pub enum ReplacementAction {
     /// Prevent up to the specified amount of damage and emit the CR 615.13 event.
     PreventDamageAmount(u32),
 
+    /// Prevent one point of damage for each matching counter available on this
+    /// replacement effect's source, then remove exactly that many counters.
+    PreventDamageByRemovingSourceCounters { counter_type: CounterType },
+
     /// Prevent the damage, then perform the prevention effect's additional part.
     ///
     /// The additional part still happens with an amount of zero when the damage
@@ -176,6 +180,10 @@ pub enum ReplacementAction {
     EnterWithCounters {
         counter_type: CounterType,
         count: Value,
+        /// Selects `count` when true and `otherwise_count` when false. The
+        /// condition is evaluated with the entering object as its source.
+        count_condition: Option<crate::ConditionExpr>,
+        otherwise_count: Option<Value>,
         added_subtypes: Vec<Subtype>,
         added_abilities: Vec<Ability>,
     },
@@ -237,6 +245,13 @@ pub enum ReplacementAction {
         additional: u32,
     },
 
+    /// Replace one player-counter event with a fixed amount and establish a
+    /// turn-scoped prohibition on additional counters of that type.
+    SetPlayerCountersAndLockForTurn {
+        counter_type: CounterType,
+        amount: u32,
+    },
+
     /// Add an additional effect
     Additionally(Vec<Effect>),
 
@@ -271,6 +286,14 @@ pub enum ReplacementAction {
         /// Filter for cards that can be discarded to satisfy the replacement.
         filter: ObjectFilter,
         /// Where the permanent goes if no card is discarded.
+        redirect_zone: Zone,
+    },
+
+    /// Interactive: Sacrifice an exact number of matching controlled
+    /// permanents, or redirect the entering permanent to another zone.
+    InteractiveSacrificeOrRedirect {
+        filter: ObjectFilter,
+        count: u32,
         redirect_zone: Zone,
     },
 
@@ -452,6 +475,15 @@ pub struct ReplacementEffectManager {
     /// These are removed after being applied once.
     one_shot_effects: std::collections::HashSet<ReplacementEffectId>,
 
+    /// One-shot entry replacements that apply to every matching member of one
+    /// simultaneous ETB batch, then are consumed together after proposals for
+    /// that batch have been prepared.
+    batch_one_shot_effects: std::collections::HashSet<ReplacementEffectId>,
+
+    /// Batch-scoped one-shots applied by at least one proposal in the current
+    /// ETB batch. These remain live while sibling proposals are evaluated.
+    pending_batch_one_shot_effects: std::collections::HashSet<ReplacementEffectId>,
+
     /// Temporary replacement effects that expire during cleanup.
     until_end_of_turn_effects: std::collections::HashSet<ReplacementEffectId>,
 
@@ -483,7 +515,12 @@ impl ReplacementEffectManager {
 
     /// Snapshot one-shot effect ids in deterministic order.
     pub fn one_shot_effects_snapshot(&self) -> Vec<u64> {
-        let mut entries: Vec<u64> = self.one_shot_effects.iter().map(|id| id.0).collect();
+        let mut entries: Vec<u64> = self
+            .one_shot_effects
+            .iter()
+            .chain(&self.batch_one_shot_effects)
+            .map(|id| id.0)
+            .collect();
         entries.sort();
         entries
     }
@@ -518,6 +555,8 @@ impl ReplacementEffectManager {
         self.effects.retain(|e| e.id != id);
         self.effect_sources.remove(&id.0);
         self.one_shot_effects.remove(&id);
+        self.batch_one_shot_effects.remove(&id);
+        self.pending_batch_one_shot_effects.remove(&id);
         self.until_end_of_turn_effects.remove(&id);
     }
 
@@ -534,7 +573,11 @@ impl ReplacementEffectManager {
         let ids: Vec<_> = self
             .effects
             .iter()
-            .filter(|e| e.source == source && self.one_shot_effects.contains(&e.id))
+            .filter(|e| {
+                e.source == source
+                    && (self.one_shot_effects.contains(&e.id)
+                        || self.batch_one_shot_effects.contains(&e.id))
+            })
             .map(|e| e.id)
             .collect();
         for id in ids {
@@ -640,6 +683,15 @@ impl ReplacementEffectManager {
         id
     }
 
+    /// Add an entry replacement consumed after the next simultaneous ETB
+    /// batch containing at least one matching object. Cleanup clears an
+    /// unused effect just like an ordinary turn-scoped one-shot.
+    pub fn add_batch_one_shot_effect(&mut self, effect: ReplacementEffect) -> ReplacementEffectId {
+        let id = self.add_effect(effect);
+        self.batch_one_shot_effects.insert(id);
+        id
+    }
+
     /// Add a replacement effect that lasts until cleanup.
     pub fn add_until_end_of_turn_effect(
         &mut self,
@@ -655,6 +707,10 @@ impl ReplacementEffectManager {
     /// Returns true if the effect was found and removed, false if it wasn't
     /// a one-shot effect or didn't exist.
     pub fn mark_effect_used(&mut self, id: ReplacementEffectId) -> bool {
+        if self.batch_one_shot_effects.contains(&id) {
+            self.pending_batch_one_shot_effects.insert(id);
+            return true;
+        }
         if self.one_shot_effects.remove(&id) {
             self.remove_effect(id);
             true
@@ -665,16 +721,33 @@ impl ReplacementEffectManager {
 
     /// Check if an effect is a one-shot effect.
     pub fn is_one_shot(&self, id: ReplacementEffectId) -> bool {
-        self.one_shot_effects.contains(&id)
+        self.one_shot_effects.contains(&id) || self.batch_one_shot_effects.contains(&id)
+    }
+
+    /// Consume every batch-scoped one-shot applied while preparing the current
+    /// simultaneous ETB event. Called only after all sibling proposals have
+    /// had a chance to see the same replacement.
+    pub fn consume_pending_batch_one_shot_effects(&mut self) {
+        let used: Vec<_> = self.pending_batch_one_shot_effects.drain().collect();
+        for id in used {
+            self.remove_effect(id);
+        }
     }
 
     /// Clear all one-shot effects (e.g., at end of turn).
     pub fn clear_one_shot_effects(&mut self) {
-        let one_shot_ids: Vec<_> = self.one_shot_effects.iter().copied().collect();
+        let one_shot_ids: Vec<_> = self
+            .one_shot_effects
+            .iter()
+            .chain(&self.batch_one_shot_effects)
+            .copied()
+            .collect();
         for id in one_shot_ids {
             self.remove_effect(id);
         }
         self.one_shot_effects.clear();
+        self.batch_one_shot_effects.clear();
+        self.pending_batch_one_shot_effects.clear();
     }
 
     /// Clear all replacement effects that expire during cleanup.
@@ -692,7 +765,11 @@ impl ReplacementEffectManager {
     pub fn count_one_shot_effects_from_source(&self, source: ObjectId) -> u32 {
         self.effects
             .iter()
-            .filter(|e| e.source == source && self.one_shot_effects.contains(&e.id))
+            .filter(|e| {
+                e.source == source
+                    && (self.one_shot_effects.contains(&e.id)
+                        || self.batch_one_shot_effects.contains(&e.id))
+            })
             .count() as u32
     }
 }
@@ -810,6 +887,8 @@ impl ReplacementEffect {
             ReplacementAction::EnterWithCounters {
                 counter_type,
                 count,
+                count_condition: None,
+                otherwise_count: None,
                 added_subtypes: Vec::new(),
                 added_abilities: Vec::new(),
             },

@@ -2439,8 +2439,6 @@ impl WasmGame {
         // available for visible objects and later hidden-card openings.
         self.trigger_queue = TriggerQueue::new();
         self.priority_state = PriorityLoopState::new(checkpoint.players.len());
-        self.priority_state
-            .set_auto_choose_single_pip_payment(false);
         self.priority_state.restore_priority_tracker_for_sync(
             checkpoint.priority_runtime.consecutive_priority_passes,
             checkpoint.priority_runtime.priority_players_in_game,
@@ -2846,7 +2844,6 @@ impl WasmGame {
                         .priority_players_in_game
                         .max(self.game.players_in_game()),
                 );
-                priority_state.set_auto_choose_single_pip_payment(false);
                 priority_state.restore_priority_tracker_for_sync(
                     marker.consecutive_priority_passes,
                     marker.priority_players_in_game,

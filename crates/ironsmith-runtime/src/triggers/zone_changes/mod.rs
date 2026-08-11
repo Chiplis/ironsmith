@@ -6,12 +6,14 @@
 //! `ZoneChangeTrigger` is the composable primitive for these patterns.
 
 mod cards_leave_your_graveyard;
+mod dies_damaged_by_filtered_source_this_turn;
 mod dies_damaged_by_this_turn;
 mod enters_tapped;
 mod enters_untapped;
 mod zone_change_trigger;
 
 pub use cards_leave_your_graveyard::CardsLeaveYourGraveyardTrigger;
+pub use dies_damaged_by_filtered_source_this_turn::DiesDamagedByFilteredSourceThisTurnTrigger;
 pub use dies_damaged_by_this_turn::DiesDamagedByThisTurnTrigger;
 pub use enters_tapped::EntersBattlefieldTappedTrigger;
 pub use enters_untapped::EntersBattlefieldUntappedTrigger;

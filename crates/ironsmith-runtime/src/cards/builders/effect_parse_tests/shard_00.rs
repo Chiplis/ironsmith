@@ -66,6 +66,71 @@ fn parse_dauthi_voidwalker_full_text_without_parser_fallback() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn each_player_coin_face_followup_round_trips_with_typed_correlation() {
+    let oracle = "Whenever this creature or another Goblin enters, each player flips a coin. Each player whose coin comes up tails sacrifices a creature of their choice.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Goblin Coin Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Goblin])
+        .parse_text(oracle)
+        .expect("each-player coin-face follow-up should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("kind: FaceOnly")
+            && debug.contains("ForPlayersEffect")
+            && debug.contains("DidNotHappen")
+            && debug.contains("IteratedPlayer")
+            && debug.contains("SacrificePlayerEffect"),
+        "expected a face-only per-player result gate into sacrifice: {debug}"
+    );
+    assert_eq!(unprocessed_compiled_lines(&def).join("\n"), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn face_down_top_card_per_opponent_round_trips_as_ordered_exile() {
+    let oracle = "When this creature enters, exile a card from the top of your library face down for each opponent you have.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mourning Wall Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Wall])
+        .parse_text(oracle)
+        .expect("face-down top-card-per-opponent trigger should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ExileTopOfLibraryEffect")
+            && debug.contains("CountPlayers")
+            && debug.contains("Opponent")
+            && debug.contains("ForEach")
+            && debug.contains("face_down: true"),
+        "expected ordered face-down exile with a typed opponent count: {debug}"
+    );
+    assert_eq!(unprocessed_compiled_lines(&def).join("\n"), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn singular_source_exiled_move_round_trips_with_an_exact_choice() {
+    let oracle = "At the beginning of your end step, put a card exiled with this creature into its owner's hand.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Source-Linked Return Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("singular source-linked return should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("MoveToZoneEffect")
+            && debug.contains("WithCount")
+            && debug.contains("min: 1")
+            && debug.contains("max: Some(1)")
+            && !debug.contains("target: All("),
+        "expected an exact one-card source-linked choice: {debug}"
+    );
+    assert_eq!(unprocessed_compiled_lines(&def).join("\n"), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_enchanted_land_with_quoted_activated_ability() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Quoted Aura")
         .parse_text(
@@ -1835,6 +1900,37 @@ fn parse_create_token_copy_of_target_from_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_create_token_copy_keeps_serial_target_type_union() {
+    let text = "Create a token that's a copy of target artifact, creature, or land.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Serial Copy Target Variant")
+        .parse_text(text)
+        .expect("serial copy target should parse");
+    let effects = def.spell_effect.as_ref().expect("spell effect");
+    let create = effects
+        .iter()
+        .find_map(|effect| {
+            effect.downcast_ref::<CreateTokenCopyEffect>().or_else(|| {
+                effect
+                    .downcast_ref::<TaggedEffect>()
+                    .and_then(|tagged| tagged.effect.downcast_ref::<CreateTokenCopyEffect>())
+            })
+        })
+        .unwrap_or_else(|| panic!("expected a typed token copy effect: {effects:#?}"));
+    let ChooseSpec::Target(target) = &create.target else {
+        panic!("expected a targeted copy source: {:?}", create.target);
+    };
+    let ChooseSpec::Object(filter) = target.as_ref() else {
+        panic!("expected an object target union: {:?}", create.target);
+    };
+    assert_eq!(
+        filter.card_types,
+        [CardType::Artifact, CardType::Creature, CardType::Land]
+    );
+    assert_eq!(crate::compiled_text::compiled_text_lines(&def), vec![text]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_dino_dna_style_copy_modifier_with_trample() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Dino DNA Variant")
             .parse_text("Create a token that's a copy of target creature card exiled with this artifact, except it's a 6/6 green Dinosaur creature with trample.")
@@ -2678,6 +2774,192 @@ fn parse_energy_pay_clause_includes_pay_energy_effect() {
         debug.contains("PutCountersEffect"),
         "expected +1/+1 counter effect in if-you-do branch, got {debug}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_exchange_then_energy_and_sacrifice_unless_payment_keeps_final_action_scoped() {
+    let oracle = "Flying, hexproof from activated and triggered abilities\nWhen this creature enters, exchange control of this creature and target creature an opponent controls. If you do, you get {E}{E}{E}{E}, then sacrifice that creature unless you pay an amount of {E} equal to its mana value.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Exchange Energy Variant")
+        .parse_text(oracle)
+        .expect("exchange followed by energy and sacrifice-unless should parse");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected enter trigger");
+    let debug = format!("{:#?}", triggered.effects);
+    let energy = debug
+        .find("EnergyCountersEffect")
+        .expect("fixed energy gain must survive");
+    let unless = debug
+        .find("UnlessPaysEffect")
+        .expect("payment choice must survive");
+    let sacrifice = debug[unless..]
+        .find("SacrificeTargetEffect")
+        .map(|offset| unless + offset)
+        .expect("only the sacrifice belongs inside UnlessPays");
+    assert!(energy < unless && unless < sacrifice, "{debug}");
+    assert!(debug[unless..].contains("ManaValueOf"), "{debug}");
+    assert!(
+        debug.matches("exchanged_0").count() >= 2,
+        "the sacrifice and dynamic energy payment must share the exchanged-creature tag: {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("hexproof from activated and triggered abilities"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "you get {E}{E}{E}{E}, then sacrifice that creature unless you pay an amount of {E} equal to its mana value"
+        ),
+        "{rendered}"
+    );
+    assert_eq!(rendered, oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn goad_all_then_restrict_the_exact_result_set_keeps_plural_back_reference() {
+    let oracle = "Goad all creatures your opponents control. Until your next turn, those creatures can't block.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Goaded Set Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("linked goad and blocking restriction should parse");
+    let program = def.spell_effect.as_ref().expect("spell effect");
+    let [goad_segment, restriction_segment] = program.segments.as_slice() else {
+        panic!("expected two linked source segments, got {program:#?}");
+    };
+    let [goad_effect] = goad_segment.default_effects.as_slice() else {
+        panic!("expected one tagged goad effect, got {goad_segment:#?}");
+    };
+    let tagged = goad_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .expect("goaded set should retain a result tag");
+    let goad = tagged
+        .effect
+        .downcast_ref::<crate::effects::GoadEffect>()
+        .expect("tag should wrap the goad effect");
+    let ChooseSpec::All(goad_filter) = &goad.target else {
+        panic!("goad should affect all matching creatures: {goad:#?}");
+    };
+    assert_eq!(goad_filter.controller, Some(PlayerFilter::Opponent));
+    assert!(goad_filter.card_types.contains(&CardType::Creature));
+
+    let [restriction_effect] = restriction_segment.default_effects.as_slice() else {
+        panic!("expected one blocking restriction, got {restriction_segment:#?}");
+    };
+    let cant = restriction_effect
+        .downcast_ref::<crate::effects::CantEffect>()
+        .expect("followup should be an executable restriction");
+    let crate::effect::Restriction::Block(block_filter) = &cant.restriction else {
+        panic!("expected a blocking restriction, got {cant:#?}");
+    };
+    assert!(block_filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == tagged.tag
+    }));
+    assert_eq!(unprocessed_compiled_lines(&def).join("\n"), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn repeatable_instant_timing_prevention_payment_keeps_duration_target_and_surface() {
+    let oracle = "Prevent the next X damage that would be dealt to any target this turn. Until end of turn, you may pay {1} any time you could cast an instant. If you do, prevent the next 1 damage that would be dealt to that permanent or player this turn.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Repeatable Prevention Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("repeatable prevention permission should parse");
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("GrantRepeatableManaPaymentActionUntilEndOfTurnEffect"),
+        "{debug}"
+    );
+    assert_eq!(unprocessed_compiled_lines(&def).join(" "), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn target_player_choice_chain_and_cipher_keep_exact_structure_and_source_lines() {
+    let oracle = "Target player loses 1 life, discards a card, then sacrifices a permanent of their choice.\nCipher";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Target Player Choice Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("target-player choice chain should parse");
+    let debug = format!("{def:#?}");
+
+    for expected in [
+        "SequenceEffect",
+        "LoseLifeEffect",
+        "DiscardEffect",
+        "ChooseObjectsEffect",
+        "SacrificePlayerEffect",
+        "IsTaggedObject",
+        "CipherEffect",
+    ] {
+        assert!(debug.contains(expected), "missing {expected}: {debug}");
+    }
+    assert_eq!(unprocessed_compiled_lines(&def).join("\n"), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn three_action_counter_trigger_keeps_typed_children_and_oracle_conjunction() {
+    let oracle = "Whenever a creature you control enters, scry 1 and put a plan counter on this enchantment.\nWhen the fourth plan counter is put on this enchantment, sacrifice it, draw a card, and put a +1/+1 counter on each creature you control.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Counter Plan Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("counter-plan triggers should parse");
+    let debug = format!("{def:#?}");
+    let compact_debug = debug
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>();
+
+    for expected in [
+        "CounterPutOnTrigger",
+        "SacrificeTargetEffect",
+        "DrawCardsEffect",
+        "ForEachObject",
+        "PlusOnePlusOne",
+        "Iterated",
+    ] {
+        assert!(debug.contains(expected), "missing {expected}: {debug}");
+    }
+    assert!(
+        compact_debug.contains("counter_number:Some(4)"),
+        "fourth-counter threshold was not preserved: {debug}"
+    );
+    assert_eq!(unprocessed_compiled_lines(&def).join("\n"), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn revealed_hand_choice_discard_keeps_linked_card_and_independent_followup() {
+    let oracle = "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card. Destroy up to one target Attraction that player controls.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Hand Inspection Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("revealed-hand choice followed by an independent action should parse");
+    let debug = format!("{def:#?}");
+
+    for expected in [
+        "LookAtHandEffect",
+        "ChooseObjectsEffect",
+        "DiscardEffect",
+        "DestroyEffect",
+        "Attraction",
+        "__revealed_this_way__",
+        "__it__",
+    ] {
+        assert!(debug.contains(expected), "missing {expected}: {debug}");
+    }
+    assert_eq!(unprocessed_compiled_lines(&def).join(" "), oracle);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3576,6 +3858,28 @@ fn parse_spell_cost_increase_per_target_beyond_first_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_spell_life_cost_per_target_preserves_nonmana_payment_and_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Phyrexian Purge Variant")
+        .parse_text(
+            "This spell costs 3 life more to cast for each target.\nDestroy any number of target creatures.",
+        )
+        .expect("per-target life cost should parse");
+
+    let life_cost = def.abilities.iter().find_map(|ability| {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        static_ability.additional_life_cost_per_target()
+    });
+    assert_eq!(life_cost, Some(3), "{:?}", def.abilities);
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join("\n"),
+        "This spell costs 3 life more to cast for each target.\nDestroy any number of target creatures."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_spell_tax_except_during_controller_turn_preserves_semantics_and_surface() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Defense Grid Variant")
         .parse_text("Each spell costs {3} more to cast except during its controller's turn.")
@@ -3607,4 +3911,29 @@ fn parse_destroy_target_blocked_creature_keeps_targeting_legality() {
         debug.contains("blocked: true") && !debug.contains("TargetIsBlocked"),
         "expected blocked to remain part of target legality, got {debug}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn radiant_solar_keeps_venture_and_life_gain_in_the_discard_ability() {
+    let oracle = "Flying, lifelink\n\
+Whenever this creature or another nontoken creature you control enters, venture into the dungeon.\n\
+{W}, Discard this card: Venture into the dungeon and you gain 3 life.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Radiant Solar")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Radiant Solar text should parse");
+
+    assert_eq!(unprocessed_compiled_lines(&def).join("\n"), oracle);
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("discard ability");
+    let debug = format!("{:#?}", activated.effects);
+    assert!(debug.contains("VentureIntoDungeonEffect"), "{debug}");
+    assert!(debug.contains("GainLifeEffect"), "{debug}");
 }

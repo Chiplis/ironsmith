@@ -14,10 +14,22 @@ fn suffixes_preserve_owner_controller_and_zone_semantics() {
     assert_eq!(owned.zone, Some(Zone::Graveyard));
     assert_eq!(owned.card_types, vec![CardType::Artifact]);
 
+    let defending = parse("creature card from defending player's graveyard");
+    assert_eq!(defending.owner, Some(PlayerFilter::Defending));
+    assert_eq!(defending.zone, Some(Zone::Graveyard));
+    assert_eq!(defending.card_types, vec![CardType::Creature]);
+
     let controlled = parse("land you control but don't own");
     assert_eq!(controlled.controller, Some(PlayerFilter::You));
     assert_eq!(controlled.owner, Some(PlayerFilter::NotYou));
     assert_eq!(controlled.zone, Some(Zone::Battlefield));
+}
+
+#[test]
+fn compound_time_lord_surface_keeps_its_distinct_subtype() {
+    let filter = parse("a Time Lord");
+    assert_eq!(filter.subtypes, vec![Subtype::TimeLord]);
+    assert!(filter.all_subtypes.is_empty(), "{filter:#?}");
 }
 
 #[test]
@@ -195,6 +207,25 @@ fn explicit_land_noun_is_preserved_separately_from_subtype_semantics() {
 }
 
 #[test]
+fn compound_urzas_land_names_preserve_both_required_subtypes() {
+    for (raw, land_subtype) in [
+        ("Urza's Mine you control", Subtype::Mine),
+        ("Urza's Power-Plant you control", Subtype::PowerPlant),
+        ("Urza's Tower you control", Subtype::Tower),
+    ] {
+        let filter = parse(raw);
+        assert!(filter.subtypes.is_empty(), "{raw}: {filter:#?}");
+        assert_eq!(
+            filter.all_subtypes,
+            vec![Subtype::Urzas, land_subtype],
+            "{raw}: {filter:#?}"
+        );
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+}
+
+#[test]
 fn abuelos_awakening_preserves_non_aura_on_only_the_enchantment_arm() {
     let filter = parse("artifact or non-Aura enchantment card from your graveyard");
 
@@ -310,6 +341,23 @@ fn spell_markers_preserve_stack_inference() {
     assert_eq!(bare_spell.zone, Some(Zone::Stack));
     assert_eq!(bare_spell.controller, Some(PlayerFilter::You));
     assert_eq!(bare_spell.stack_kind, Some(StackObjectKind::Spell));
+}
+
+#[test]
+fn coordinated_spell_and_ability_uses_the_complete_stack_domain() {
+    let tokens = lex_line("spell and ability your opponents control", 0).unwrap();
+    let filter = crate::runtime_backend::grammar::filters::
+        parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
+        .expect("coordinated stack domain should parse");
+
+    assert_eq!(filter.zone, Some(Zone::Stack));
+    assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+    assert_eq!(filter.stack_kind, Some(StackObjectKind::SpellOrAbility));
+    assert!(!filter.has_mana_cost, "abilities do not have mana costs");
+    assert!(filter.has_conjunctive_set_surface());
+
+    let near_miss = parse("spell or permanent your opponents control");
+    assert_ne!(near_miss.stack_kind, Some(StackObjectKind::SpellOrAbility));
 }
 
 #[test]

@@ -54,3 +54,17 @@ fn parses_discard_or_redirect_replacement_as_one_typed_shape() {
         assert_eq!(shape.redirect_zone, Zone::Graveyard, "{text}");
     }
 }
+
+#[test]
+fn parses_sacrifice_or_redirect_replacement_as_one_typed_shape() {
+    let text = "If this land would enter, sacrifice two untapped lands instead. If you do, put this land onto the battlefield. If you don't, put it into its owner's graveyard.";
+    let line = lex_line(text, 0).expect("replacement text should lex");
+    let shape = parse_sacrifice_or_redirect_replacement(&line)
+        .expect("replacement sentences should form one typed shape");
+    assert_eq!(shape.count, 2);
+    assert_eq!(
+        TokenWordView::new(shape.filter_tokens).word_refs(),
+        ["untapped", "lands"]
+    );
+    assert_eq!(shape.redirect_zone, Zone::Graveyard);
+}

@@ -563,12 +563,121 @@ pub(super) fn spree_requires_a_payable_mode_and_charges_every_selected_mode() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn assist_gives_the_chosen_player_the_first_mana_window_and_only_pays_generic() {
+pub(super) fn fire_magic_tiered_modes_bind_each_cost_to_exactly_its_damage_effect() {
+    struct ChooseTier(usize);
+
+    impl DecisionMaker for ChooseTier {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.description.starts_with("Choose mode for") {
+                return vec![self.0];
+            }
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
+    for (mode, additional_generic, expected_damage) in [(0, 0, 1), (1, 2, 2), (2, 5, 3)] {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Fire Magic")
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
+            .card_types(vec![CardType::Instant])
+            .parse_text(
+                "Tiered (Choose one additional cost.)\n\
+                 • Fire — {0} — Fire Magic deals 1 damage to each creature.\n\
+                 • Fira — {2} — Fire Magic deals 2 damage to each creature.\n\
+                 • Firaga — {5} — Fire Magic deals 3 damage to each creature.",
+            )
+            .expect("Fire Magic should parse through the generic Tiered path");
+        let creature = |name: &str| {
+            CardDefinitionBuilder::new(CardId::new(), name)
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(10, 10))
+                .build()
+        };
+        let alice_creature = game.create_object_from_definition(
+            &creature("Alice Creature"),
+            alice,
+            Zone::Battlefield,
+        );
+        let bob_creature =
+            game.create_object_from_definition(&creature("Bob Creature"), bob, Zone::Battlefield);
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        game.player_mut(alice)
+            .expect("Alice exists")
+            .mana_pool
+            .add(ManaSymbol::Red, 1);
+        game.player_mut(alice)
+            .expect("Alice exists")
+            .mana_pool
+            .add(ManaSymbol::Colorless, additional_generic);
+
+        assert!(
+            crate::decision::compute_legal_actions(&game, alice)
+                .iter()
+                .any(|action| matches!(
+                    action,
+                    LegalAction::CastSpell {
+                        spell_id,
+                        casting_method: CastingMethod::Normal,
+                        ..
+                    } if *spell_id == spell
+                )),
+            "Tiered mode {mode} should be affordable with its printed additional cost"
+        );
+
+        let mut decisions = ChooseTier(mode);
+        let stack_id = super::cast_spell_from_resolving_effect(
+            &mut game,
+            spell,
+            Zone::Hand,
+            alice,
+            &CastingMethod::Normal,
+            false,
+            None,
+            crate::provenance::ProvNodeId::default(),
+            &mut decisions,
+        )
+        .expect("Fire Magic cast proposal should run")
+        .expect("the selected Tiered mode should commit");
+        let entry = game
+            .stack
+            .iter()
+            .find(|entry| entry.object_id == stack_id)
+            .expect("Fire Magic should be on the stack");
+        assert_eq!(entry.chosen_modes.as_deref(), Some(&[mode][..]));
+        assert_eq!(
+            game.player(alice).expect("Alice exists").mana_pool.total(),
+            0,
+            "the cast should consume {{R}} plus only mode {mode}'s additional cost"
+        );
+
+        resolve_stack_entry(&mut game).expect("Fire Magic should resolve");
+        assert_eq!(game.damage_on(alice_creature), expected_damage);
+        assert_eq!(game.damage_on(bob_creature), expected_damage);
+    }
+}
+
+#[test]
+pub(super) fn assist_uses_authoritative_plans_for_the_assistant_then_the_caster() {
     struct AssistDecisionMaker {
-        bob: PlayerId,
-        alice: PlayerId,
-        mana_window_players: Vec<PlayerId>,
+        payment_plan_players: Vec<PlayerId>,
     }
 
     impl DecisionMaker for AssistDecisionMaker {
@@ -602,14 +711,9 @@ pub(super) fn assist_gives_the_chosen_player_the_first_mana_window_and_only_pays
             {
                 return vec![1];
             }
-            if ctx
-                .description
-                .starts_with("Activate mana abilities before paying costs")
-            {
-                self.mana_window_players.push(ctx.player);
-                if ctx.player == self.bob || ctx.player == self.alice {
-                    return vec![0];
-                }
+            if ctx.description.starts_with("Confirm mana payment for") {
+                self.payment_plan_players.push(ctx.player);
+                return vec![1];
             }
             if ctx.description.starts_with("Choose how much generic mana") {
                 return vec![2];
@@ -678,9 +782,7 @@ pub(super) fn assist_gives_the_chosen_player_the_first_mana_window_and_only_pays
     );
 
     let mut decision_maker = AssistDecisionMaker {
-        bob,
-        alice,
-        mana_window_players: Vec::new(),
+        payment_plan_players: Vec::new(),
     };
     let stack_id = super::cast_spell_from_resolving_effect(
         &mut game,
@@ -697,12 +799,15 @@ pub(super) fn assist_gives_the_chosen_player_the_first_mana_window_and_only_pays
     .expect("the chosen player and caster should jointly pay the spell");
 
     assert!(game.stack.iter().any(|entry| entry.object_id == stack_id));
-    assert!(game.is_tapped(bob_land), "Bob should activate mana first");
+    assert!(
+        game.is_tapped(bob_land),
+        "Bob's payment plan should commit first"
+    );
     assert!(
         game.is_tapped(alice_land),
-        "Alice should receive the caster mana window after Bob"
+        "Alice's payment plan should commit after Bob's"
     );
-    assert_eq!(decision_maker.mana_window_players, vec![bob, alice]);
+    assert_eq!(decision_maker.payment_plan_players, vec![bob, alice]);
     assert_eq!(
         game.player(bob).expect("Bob exists").mana_pool.total(),
         0,
@@ -754,6 +859,9 @@ pub(super) fn assist_cannot_cover_colored_mana_and_the_chosen_player_may_pay_zer
             }
             if ctx.description.starts_with("Choose how much generic mana") {
                 return vec![0];
+            }
+            if ctx.description.starts_with("Confirm mana payment for") {
+                return vec![1];
             }
             ctx.options
                 .iter()

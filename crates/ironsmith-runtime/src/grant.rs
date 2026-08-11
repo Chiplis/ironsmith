@@ -54,7 +54,7 @@ pub type GrantSpec = ironsmith_core::GrantSpec<
     Cost,
     crate::static_abilities::ThisSpellCostCondition,
 >;
-pub use ironsmith_core::{GrantDuration, GrantUsageLimit};
+pub use ironsmith_core::{GrantDuration, GrantUsageLimit, SourceExiledGrantSurface};
 
 impl ironsmith_core::GrantStaticAbility for StaticAbility {
     fn grant_flash() -> Self {

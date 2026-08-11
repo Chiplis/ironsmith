@@ -25,5 +25,5 @@ pub const ADDITIONAL_COST_OBJECT_TAG: &str = "__additional_cost_object__";
 /// an intervening instruction establishes the source as the newest ordinary
 /// pronoun antecedent.
 pub const THIS_WAY_SACRIFICED_TAG: &str = "__this_way_sacrificed__";
-pub const CHOSEN_OBJECTS_TAG: &str = "__chosen_objects__";
+pub const CHOSEN_OBJECTS_TAG: &str = ironsmith_core::CHOSEN_OBJECTS_TAG;
 pub const COPIED_STACK_OBJECT_TAG: &str = "__copied_stack_object__";

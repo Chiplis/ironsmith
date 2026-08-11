@@ -107,8 +107,58 @@ fn collapse_filter_to_current_matching_objects(
         .iter()
         .copied()
         .filter(|object_id| {
-            game.object(*object_id)
-                .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+            game.object(*object_id).is_some_and(|object| {
+                if game.is_phased_out(*object_id) {
+                    let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
+                    filter.matches_snapshot(&snapshot, &filter_ctx, game)
+                } else {
+                    filter.matches(object, &filter_ctx, game)
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+
+    match object_ids.as_slice() {
+        [] => ObjectFilter::specific(crate::ids::ObjectId::from_raw(0)),
+        [object_id] => ObjectFilter::specific(*object_id),
+        _ => ObjectFilter {
+            any_of: object_ids.into_iter().map(ObjectFilter::specific).collect(),
+            ..Default::default()
+        },
+    }
+}
+
+/// Freeze a resolving effect's affected object set while its full execution
+/// context is still available.
+///
+/// Unlike a battlefield static restriction, a temporary restriction created
+/// by a resolving spell or ability does not keep reevaluating an authored X
+/// or a transient result tag. Materialize those matches as concrete object
+/// identities before registering the duration.
+fn lock_filter_to_current_matching_objects(
+    filter: &ObjectFilter,
+    ctx: &ExecutionContext,
+    game: &GameState,
+) -> ObjectFilter {
+    let filter_ctx = ctx.filter_context(game);
+    let object_ids = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|object_id| {
+            game.object(*object_id).is_some_and(|object| {
+                // Phased-out permanents are intentionally absent from normal
+                // battlefield queries, but a resolving "they can't phase in"
+                // restriction must freeze the set just phased out.  Snapshot
+                // matching preserves that identity without making phased-out
+                // objects generally visible to other filters.
+                if game.is_phased_out(*object_id) {
+                    let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
+                    filter.matches_snapshot(&snapshot, &filter_ctx, game)
+                } else {
+                    filter.matches(object, &filter_ctx, game)
+                }
+            })
         })
         .collect::<Vec<_>>();
 
@@ -161,6 +211,12 @@ fn normalize_restriction_for_resolution(
         Restriction::Block(filter) => Restriction::block(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
+        Restriction::AttackOrBlock(filter) => {
+            Restriction::attack_or_block(lock_filter_to_current_matching_objects(filter, ctx, game))
+        }
+        Restriction::PhaseIn(filter) => {
+            Restriction::phase_in(lock_filter_to_current_matching_objects(filter, ctx, game))
+        }
         _ => restriction.clone(),
     }
 }

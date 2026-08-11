@@ -43,6 +43,11 @@ pub(crate) struct RelativeControlClauseShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub(crate) struct SourceAttackedPlayerClauseShape<'a> {
+    pub(crate) effect_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum WhoClauseShape<'a> {
     TappedLandForMana {
         effect_tokens: &'a [OwnedLexToken],
@@ -238,6 +243,27 @@ pub(crate) fn parse_participant_clause_shape(
         participant_is_actor,
         inner_tokens,
     })
+}
+
+/// Parse the source-relative participant qualifier in clauses such as
+/// "each player this creature attacked this turn loses the game."
+pub(crate) fn parse_source_attacked_player_clause_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceAttackedPlayerClauseShape<'_>> {
+    let (_, effect_tokens) = primitives::parse_prefix(
+        trim(tokens),
+        (
+            alt((
+                primitives::phrase(&["this", "creature"]),
+                primitives::phrase(&["this", "permanent"]),
+                primitives::phrase(&["this", "source"]),
+            )),
+            primitives::phrase(&["attacked", "this", "turn"]),
+        )
+            .void(),
+    )?;
+    let effect_tokens = trim(effect_tokens);
+    (!effect_tokens.is_empty()).then_some(SourceAttackedPlayerClauseShape { effect_tokens })
 }
 
 fn effect_start(tokens: &[OwnedLexToken]) -> Option<usize> {
@@ -643,6 +669,16 @@ mod tests {
         assert!(
             parse_participant_clause_shape(&imperative).is_none(),
             "the quantified-subject family must not claim imperative fanout"
+        );
+    }
+
+    #[test]
+    fn parses_source_attacked_player_qualifier_without_absorbing_action() {
+        let tokens = lex_line("this creature attacked this turn loses the game", 0).unwrap();
+        let shape = parse_source_attacked_player_clause_shape(&tokens).unwrap();
+        assert_eq!(
+            TokenWordView::new(shape.effect_tokens).to_word_refs(),
+            vec!["loses", "the", "game"]
         );
     }
 

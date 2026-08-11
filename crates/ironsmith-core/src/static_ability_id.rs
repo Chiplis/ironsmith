@@ -92,6 +92,7 @@ pub enum StaticAbilityId {
     AllCreaturesAttackAttachedControllerEachCombatIfAble,
     AttachedGoadedBySourceController,
     AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn,
+    AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn,
     ExertAttack,
     EnlistAttack,
     MustBlock,
@@ -169,10 +170,12 @@ pub enum StaticAbilityId {
     OpponentsCantDrawExtraCards,
     CantHaveCountersPlaced,
     CounterLimit,
+    CountersRemainAcrossZoneChanges,
     CantBeCountered,
     PlayersCantCycle,
     PlayersSkipUpkeep,
     PlayerSkipsDrawStep,
+    PlayersSkipExtraTurns,
     DamageNotRemovedDuringCleanup,
     BlackManaMayBePaidWithLife,
     DieRollResultAdjustment,
@@ -272,6 +275,7 @@ pub enum StaticAbilityId {
     ModifyDamageAmountReplacement,
     DoubleCountersReplacement,
     AddCountersPlacementReplacement,
+    PlayerCounterPerTurnLimitReplacement,
     DoubleTokenCreationReplacement,
     AddTokenCreationReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
@@ -289,6 +293,7 @@ pub enum StaticAbilityId {
     SpendManaAsAnyColorActivationCosts,
     RuleRestriction,
     DiscardOrRedirectReplacement,
+    SacrificeOrRedirectReplacement,
     PayLifeOrEnterTappedReplacement,
     PregameAction,
     DeckConstructionRuleText,
@@ -396,6 +401,7 @@ impl StaticAbilityId {
             | AllCreaturesAttackAttachedControllerEachCombatIfAble
             | AttachedGoadedBySourceController
             | AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
+            | AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
             | ExertAttack
             | EnlistAttack
             | MustBlock
@@ -473,10 +479,12 @@ impl StaticAbilityId {
             | OpponentsCantDrawExtraCards
             | CantHaveCountersPlaced
             | CounterLimit
+            | CountersRemainAcrossZoneChanges
             | CantBeCountered
             | PlayersCantCycle
             | PlayersSkipUpkeep
             | PlayerSkipsDrawStep
+            | PlayersSkipExtraTurns
             | DamageNotRemovedDuringCleanup
             | BlackManaMayBePaidWithLife
             | DieRollResultAdjustment
@@ -576,6 +584,7 @@ impl StaticAbilityId {
             | ModifyDamageAmountReplacement
             | DoubleCountersReplacement
             | AddCountersPlacementReplacement
+            | PlayerCounterPerTurnLimitReplacement
             | DoubleTokenCreationReplacement
             | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger
@@ -593,6 +602,7 @@ impl StaticAbilityId {
             | SpendManaAsAnyColorActivationCosts
             | RuleRestriction
             | DiscardOrRedirectReplacement
+            | SacrificeOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
             | PregameAction
             | DeckConstructionRuleText

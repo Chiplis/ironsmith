@@ -1440,6 +1440,22 @@ fn parse_dependent_doesnt_untap_during_controller_untap_step<'a>(
         .parse_next(input)
 }
 
+fn parse_dependent_cant_become_untapped<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        winnow::combinator::alt((
+            primitives::kw("can't").void(),
+            primitives::kw("cant").void(),
+            primitives::kw("cannot").void(),
+            (primitives::kw("can"), primitives::kw("not")).void(),
+        )),
+        primitives::phrase(&["become", "untapped"]),
+    )
+        .void()
+        .parse_next(input)
+}
+
 pub(crate) fn is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
@@ -1447,6 +1463,15 @@ pub(crate) fn is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(
         trim_edge_punctuation_tokens(tokens),
         parse_dependent_doesnt_untap_during_controller_untap_step,
         "dependent doesn't-untap during controller untap step",
+    )
+    .is_ok()
+}
+
+pub(crate) fn is_dependent_cant_become_untapped_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_all(
+        trim_edge_punctuation_tokens(tokens),
+        parse_dependent_cant_become_untapped,
+        "dependent can't-become-untapped",
     )
     .is_ok()
 }
@@ -2005,6 +2030,52 @@ pub(crate) fn is_cast_this_spell_as_though_it_had_flash_line_lexed(
             ],
         ],
     )
+}
+
+/// Recognizes the two-sentence timing permission used by cards such as
+/// Lightning Reflexes. Keep this as a grammar-owned shape rather than a
+/// card-name exception: the second sentence is meaningful spell-resolution
+/// text coupled to the flash permission in the first sentence.
+pub(crate) fn is_cast_as_though_flash_with_next_cleanup_sacrifice_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let sentences = super::structure::split_lexed_sentences(tokens);
+    let [permission, consequence] = sentences.as_slice() else {
+        return false;
+    };
+
+    is_cast_this_spell_as_though_it_had_flash_line_lexed(permission)
+        && primitives::parse_prefix(
+            consequence,
+            (
+                primitives::phrase(&[
+                    "if", "you", "cast", "it", "any", "time", "a", "sorcery", "couldn't", "have",
+                    "been", "cast",
+                ]),
+                primitives::comma(),
+                primitives::phrase(&[
+                    "the",
+                    "controller",
+                    "of",
+                    "the",
+                    "permanent",
+                    "it",
+                    "becomes",
+                    "sacrifices",
+                    "it",
+                    "at",
+                    "the",
+                    "beginning",
+                    "of",
+                    "the",
+                    "next",
+                    "cleanup",
+                    "step",
+                ]),
+                primitives::sentence_end(),
+            ),
+        )
+        .is_some()
 }
 
 pub(crate) fn is_play_lands_from_graveyard_line_lexed(tokens: &[OwnedLexToken]) -> bool {

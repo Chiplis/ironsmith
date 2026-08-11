@@ -1,4 +1,5 @@
 use super::*;
+use crate::ChoiceCount;
 use crate::cards::builders::SubjectVerbSubjectAst;
 use crate::runtime_backend::grammar::effects::followup_shapes;
 use crate::runtime_backend::grammar::structure::parse_trailing_if_predicate_lexed;
@@ -458,6 +459,202 @@ fn pre_rule_library_shuffle_followups(
     Ok(None)
 }
 
+/// Parse the optional source-exile plus collect-evidence procedure as one
+/// correlated result. The evidence cards are a real graveyard selection with
+/// an aggregate lower bound, and the `if you do` return is linked to the exact
+/// source object moved to exile by the optional branch.
+fn pre_rule_optional_source_exile_and_collect_evidence(
+    _state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
+    let expected_head = ["you", "may", "exile", "it", "and", "collect", "evidence"];
+    if words.len() != 8
+        || !words[..7]
+            .iter()
+            .zip(expected_head)
+            .all(|(word, expected)| word.eq_ignore_ascii_case(expected))
+    {
+        return Ok(None);
+    }
+    let Some(amount) =
+        crate::runtime_backend::front_end::shared::util::parse_number_word_u32(words[7])
+    else {
+        return Ok(None);
+    };
+    let Some(followup) = sentences.get(sentence_idx + 1) else {
+        return Ok(None);
+    };
+    let followup_words = crate::runtime_backend::token_word_refs(followup.lexed());
+    let expected_followup = [
+        "if",
+        "you",
+        "do",
+        "return",
+        "this",
+        "card",
+        "to",
+        "the",
+        "battlefield",
+        "tapped",
+    ];
+    if followup_words.len() != expected_followup.len()
+        || !followup_words
+            .iter()
+            .zip(expected_followup)
+            .all(|(word, expected)| word.eq_ignore_ascii_case(expected))
+    {
+        return Ok(None);
+    }
+
+    let source_exiled_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+        sentence_tokens,
+        "exiled",
+    );
+    let evidence_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+        sentence_tokens,
+        "evidence",
+    );
+    let evidence_filter = ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You)
+        .match_tagged(
+            TagKey::from("triggering"),
+            crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+        );
+    let choose_evidence = EffectAst::ChooseObjectsWithAggregateConstraint {
+        filter: evidence_filter,
+        count: ChoiceCount::any_number(),
+        player: PlayerAst::You,
+        tag: evidence_tag.clone(),
+        constraint: crate::effect::ChoiceAggregateConstraint::total_mana_value_at_least(amount),
+    };
+    let exile_source = EffectAst::TagAffected {
+        effect: Box::new(EffectAst::subject_verb_exile(
+            TargetAst::Tagged(TagKey::from("triggering"), None),
+            false,
+        )),
+        tag: source_exiled_tag.clone(),
+    };
+    let collect_evidence = EffectAst::MoveTaggedGroupToZone {
+        tag: evidence_tag,
+        zone: Zone::Exile,
+    };
+    let return_source = EffectAst::subject_verb_return_to_battlefield(
+        TargetAst::Tagged(source_exiled_tag, None),
+        true,
+        false,
+        false,
+        ReturnControllerAst::Preserve,
+        None,
+    );
+
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![
+            EffectAst::May {
+                effects: vec![choose_evidence, exile_source, collect_evidence],
+            },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: vec![return_source],
+            },
+        ]),
+        consumed_sentences: 2,
+    })))
+}
+
+#[cfg(test)]
+mod collect_evidence_followup_tests {
+    use super::*;
+
+    #[test]
+    fn optional_self_exile_collects_a_real_aggregate_evidence_set() {
+        let tokens = crate::runtime_backend::lex_line(
+            "You may exile it and collect evidence 4. If you do, return this card to the battlefield tapped.",
+            0,
+        )
+        .expect("collect-evidence procedure should lex");
+        let effects =
+            parse_effect_sentences_lexed(&tokens).expect("collect-evidence procedure should parse");
+        let [
+            EffectAst::May { effects: optional },
+            EffectAst::IfResult {
+                effects: returned, ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one optional procedure and linked return: {effects:#?}");
+        };
+        let [
+            EffectAst::ChooseObjectsWithAggregateConstraint {
+                filter,
+                count,
+                tag: evidence_tag,
+                constraint,
+                ..
+            },
+            EffectAst::TagAffected {
+                tag: source_exiled_tag,
+                ..
+            },
+            EffectAst::MoveTaggedGroupToZone {
+                tag: moved_evidence_tag,
+                zone: Zone::Exile,
+            },
+        ] = optional.as_slice()
+        else {
+            panic!("expected choose, source exile, and evidence exile: {optional:#?}");
+        };
+        assert!(count.is_any_number());
+        assert_eq!(evidence_tag, moved_evidence_tag);
+        assert!(matches!(
+            constraint.minimum.as_ref().map(|value| value.unhinted()),
+            Some(Value::Fixed(4))
+        ));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "triggering"
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+        }));
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::ReturnToBattlefield {
+                        target,
+                        tapped: true,
+                        ..
+                    },
+                ..
+            }),
+        ] = returned.as_slice()
+        else {
+            panic!("expected a tapped return from exile: {returned:#?}");
+        };
+        assert!(matches!(
+            target,
+            TargetAst::Tagged(tag, _) if tag == source_exiled_tag
+        ));
+    }
+
+    #[test]
+    fn plain_optional_self_exile_does_not_gain_evidence_selection() {
+        let tokens = crate::runtime_backend::lex_line(
+            "You may exile it. If you do, return this card to the battlefield tapped.",
+            0,
+        )
+        .expect("plain optional exile should lex");
+        let effects =
+            parse_effect_sentences_lexed(&tokens).expect("plain optional exile should parse");
+        assert!(
+            !format!("{effects:#?}").contains("ChooseObjectsWithAggregateConstraint"),
+            "evidence must not be inferred without the keyword action: {effects:#?}"
+        );
+    }
+}
+
 fn pre_rule_return_source_exiled_cards_if_source_sacrificed(
     state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -704,6 +901,9 @@ fn pre_rule_cant_be_regenerated_followup(
         apply_cant_be_regenerated_to_last_destroy_effect(state.effects)
     };
     if applied {
+        if shape.subject == followup_shapes::CantBeRegeneratedSubject::CreatureDestroyedThisWay {
+            super::mark_last_destroy_creature_destroyed_this_way_surface(state.effects);
+        }
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
             route: None,
@@ -1050,6 +1250,208 @@ fn pre_rule_token_followups(
     Ok(None)
 }
 
+fn append_moved_object_entry_followup_to_optional_move(
+    previous: &mut EffectAst,
+    grant: EffectAst,
+) -> bool {
+    let effects = match previous {
+        EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. } => effects,
+        _ => return false,
+    };
+    let [move_effect] = effects.as_mut_slice() else {
+        return false;
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::MoveToZone {
+                target,
+                source_top_only,
+                zone,
+                to_top,
+                library_order,
+                destination_player_surface,
+                destination_player_reference_surface,
+                exiled_with_source_surface,
+                battlefield_tapped,
+                battlefield_attacking,
+                battlefield_attack_target_player_or_planeswalker_controlled_by,
+                battlefield_face_down,
+                battlefield_transformed,
+                attached_to,
+                all,
+                ..
+            },
+        ..
+    }) = move_effect
+    else {
+        return false;
+    };
+    let TargetAst::WithCount(inner, count) = target else {
+        return false;
+    };
+    let TargetAst::Object(filter, _, _) = inner.as_ref() else {
+        return false;
+    };
+    let exact_single_hand_object =
+        *count == ChoiceCount::exactly(1) && filter.zone == Some(Zone::Hand) && !filter.source;
+    let clean_battlefield_move = !*source_top_only
+        && *zone == Zone::Battlefield
+        && !*to_top
+        && library_order.is_none()
+        && destination_player_surface.is_none()
+        && destination_player_reference_surface.is_none()
+        && exiled_with_source_surface.is_none()
+        && !*battlefield_tapped
+        && !*battlefield_attacking
+        && battlefield_attack_target_player_or_planeswalker_controlled_by.is_none()
+        && !*battlefield_face_down
+        && !*battlefield_transformed
+        && attached_to.is_none()
+        && !*all;
+    let exact_result_grant = matches!(
+        &grant,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                    target: TargetAst::Tagged(tag, _),
+                    abilities,
+                    duration: Until::EndOfTurn,
+                    condition: None,
+                    set_quantifier_surface: None,
+                },
+            ..
+        }) if tag.as_str() == IT_TAG && !abilities.is_empty()
+    );
+    if !exact_single_hand_object || !clean_battlefield_move || !exact_result_grant {
+        return false;
+    }
+
+    *battlefield_tapped = true;
+    *battlefield_attacking = true;
+    effects.push(grant);
+    true
+}
+
+fn pre_rule_moved_object_entry_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let Some(shape) = followup_shapes::parse_moved_object_entry_followup_shape(sentence_tokens)
+    else {
+        return Ok(None);
+    };
+    let Some(leading_pronoun) = sentence_tokens.first() else {
+        return Ok(None);
+    };
+    let mut grant_tokens = Vec::with_capacity(
+        sentence_tokens
+            .len()
+            .saturating_sub(shape.grant_verb_token_idx)
+            + 1,
+    );
+    grant_tokens.push(leading_pronoun.clone());
+    grant_tokens.extend_from_slice(&sentence_tokens[shape.grant_verb_token_idx..]);
+    let Some(mut grants) = super::super::gain_ability::parse_gain_ability_sentence(&grant_tokens)?
+    else {
+        return Ok(None);
+    };
+    let [grant] = grants.as_mut_slice() else {
+        return Ok(None);
+    };
+    let Some(previous) = state.effects.last_mut() else {
+        return Ok(None);
+    };
+    if !append_moved_object_entry_followup_to_optional_move(previous, grant.clone()) {
+        return Ok(None);
+    }
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some(
+            "subject-verb verb=Enter subject=previous-moved-object recognizer=entry-grant-followup",
+        ),
+    }))
+}
+
+#[cfg(test)]
+mod moved_object_entry_followup_tests {
+    use super::*;
+
+    #[test]
+    fn optional_single_hand_move_keeps_entry_state_and_grant_in_may_scope() {
+        let tokens = crate::runtime_backend::lex_line(
+            "You may put a creature card with mana value 3 or less from your hand onto the battlefield. It enters tapped and attacking and gains indestructible until end of turn.",
+            0,
+        )
+        .expect("follow-up fixture should lex");
+        let parsed = parse_effect_sentences_lexed(&tokens).expect("follow-up should parse");
+        let [EffectAst::May { effects }] = parsed.as_slice() else {
+            panic!("expected one optional procedure: {parsed:#?}");
+        };
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::MoveToZone {
+                        battlefield_tapped: true,
+                        battlefield_attacking: true,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantAbilitiesToTarget {
+                        target: TargetAst::Tagged(tag, _),
+                        abilities,
+                        duration: Until::EndOfTurn,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("entry follow-up escaped the may branch: {effects:#?}");
+        };
+        assert_eq!(tag.as_str(), IT_TAG);
+        assert_eq!(
+            abilities,
+            &[GrantedAbilityAst::KeywordAction(
+                KeywordAction::Indestructible
+            )]
+        );
+    }
+
+    #[test]
+    fn entry_followup_does_not_attach_to_a_mandatory_move() {
+        let mut hand_creature = ObjectFilter::creature();
+        hand_creature.zone = Some(Zone::Hand);
+        let mut previous = EffectAst::subject_verb_move_to_zone(
+            TargetAst::WithCount(
+                Box::new(TargetAst::Object(hand_creature, None, None)),
+                ChoiceCount::exactly(1),
+            ),
+            Zone::Battlefield,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        );
+        let grant = EffectAst::subject_verb_grant_abilities_to_target(
+            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+            vec![GrantedAbilityAst::KeywordAction(
+                KeywordAction::Indestructible,
+            )],
+            Until::EndOfTurn,
+        );
+
+        assert!(!append_moved_object_entry_followup_to_optional_move(
+            &mut previous,
+            grant
+        ));
+    }
+}
+
 fn pre_rule_draw_count_demonstrative_gain_followup(
     state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -1090,10 +1492,20 @@ fn parse_create_more_of_prior_tokens(
     let EffectAst::SubjectVerb(subject_verb) = &mut create else {
         return None;
     };
-    let SubjectVerbActionAst::CreateTokenWithMods { count, .. } = &mut subject_verb.action else {
-        return None;
+    let (count, previous_target) = match &mut subject_verb.action {
+        SubjectVerbActionAst::CreateTokenWithMods { count, .. }
+        | SubjectVerbActionAst::CreateTokenCopy { count, .. } => (count, None),
+        SubjectVerbActionAst::CreateTokenCopyFromSource { source, count, .. } => {
+            (count, Some(source.clone()))
+        }
+        _ => return None,
     };
     *count = Value::Fixed(shape.count as i32);
+    let predicate = bind_self_replacement_condition_to_previous_target(
+        predicate,
+        shape.predicate_tokens,
+        previous_target.as_ref(),
+    );
 
     Some(PriorTokenCreateFollowup {
         predicate,
@@ -1357,6 +1769,183 @@ fn pre_rule_if_you_win_followup(
     Ok(Some(PreParseFollowupResult::Plan(plan)))
 }
 
+fn rewrite_each_player_choice_complement_chooser(effect: &mut EffectAst) -> bool {
+    let EffectAst::ForEachPlayer { effects } = effect else {
+        return false;
+    };
+    let Some((sacrifice, choices)) = effects.split_last_mut() else {
+        return false;
+    };
+    if choices.is_empty() {
+        return false;
+    }
+
+    let mut keep_tag = None::<TagKey>;
+    for choice in choices {
+        let EffectAst::ChooseObjects {
+            filter,
+            player,
+            tag,
+            ..
+        } = choice
+        else {
+            return false;
+        };
+        if *player != PlayerAst::That
+            || filter.zone != Some(Zone::Battlefield)
+            || filter.controller != Some(PlayerFilter::IteratedPlayer)
+        {
+            return false;
+        }
+        if let Some(expected) = keep_tag.as_ref() {
+            if expected != tag {
+                return false;
+            }
+        } else {
+            keep_tag = Some(tag.clone());
+        }
+    }
+    let Some(keep_tag) = keep_tag else {
+        return false;
+    };
+    let valid_complement = matches!(
+        sacrifice,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: SubjectVerbSubjectAst { player: PlayerAst::That, .. },
+            action: SubjectVerbActionAst::SacrificeAll { filter },
+            ..
+        }) if filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == keep_tag
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        })
+    );
+    if !valid_complement {
+        return false;
+    }
+
+    let choice_count = effects.len() - 1;
+    for choice in effects.iter_mut().take(choice_count) {
+        let EffectAst::ChooseObjects { player, .. } = choice else {
+            unreachable!("choice-complement shape was validated above");
+        };
+        *player = PlayerAst::You;
+    }
+    true
+}
+
+/// Materialize a chooser-only self replacement for a preceding per-player
+/// choose-and-sacrifice-complement procedure. The replacement changes who
+/// makes each selection; the iterated player's eligible permanents and their
+/// sacrifice of the unchosen remainder remain unchanged.
+fn pre_rule_choose_for_each_player_instead(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let Some((condition_tokens, replacement_tokens)) =
+        grammar::split_lexed_once_on_delimiter(sentence_tokens, TokenKind::Comma)
+    else {
+        return Ok(None);
+    };
+    let replacement_words = crate::runtime_backend::token_word_refs(replacement_tokens);
+    if !matches!(
+        replacement_words.as_slice(),
+        [
+            "you",
+            "choose",
+            "the",
+            "permanents",
+            "for",
+            "each",
+            "player",
+            "instead"
+        ]
+    ) {
+        return Ok(None);
+    }
+    let Some(predicate) = parse_trailing_if_predicate_lexed(condition_tokens) else {
+        return Ok(None);
+    };
+    let Some(default) = state.effects.last().cloned() else {
+        return Ok(None);
+    };
+    let mut replacement = default.clone();
+    if !rewrite_each_player_choice_complement_chooser(&mut replacement) {
+        return Ok(None);
+    }
+
+    state.effects.pop();
+    state.effects.push(EffectAst::SelfReplacement {
+        predicate,
+        if_true: vec![replacement],
+        if_false: vec![default],
+        attach_to_previous_ability: false,
+    });
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: None,
+    }))
+}
+
+#[cfg(test)]
+mod choose_for_each_player_instead_tests {
+    use super::*;
+
+    fn choice_players(effect: &EffectAst) -> Vec<PlayerAst> {
+        let EffectAst::ForEachPlayer { effects } = effect else {
+            panic!("expected per-player procedure: {effect:#?}");
+        };
+        effects
+            .iter()
+            .filter_map(|effect| match effect {
+                EffectAst::ChooseObjects { player, .. } => Some(*player),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn paid_colors_can_replace_only_the_per_player_chooser() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Each player chooses an artifact, a creature, an enchantment, and a planeswalker from among the nonland permanents they control, then sacrifices the rest. If {B}{R} was spent to cast this spell, you choose the permanents for each player instead.",
+            0,
+        )
+        .expect("chooser replacement should lex");
+        let parsed =
+            parse_effect_sentences_lexed(&tokens).expect("chooser replacement should parse");
+        let [
+            EffectAst::SelfReplacement {
+                predicate,
+                if_true,
+                if_false,
+                ..
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected one self replacement: {parsed:#?}");
+        };
+        assert!(format!("{predicate:#?}").contains("Mana"), "{predicate:#?}");
+        assert_eq!(choice_players(&if_true[0]), vec![PlayerAst::You; 4]);
+        assert_eq!(choice_players(&if_false[0]), vec![PlayerAst::That; 4]);
+    }
+
+    #[test]
+    fn chooser_rewrite_rejects_a_non_complement_procedure() {
+        let mut effect = EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::ChooseObjects {
+                filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::That,
+                tag: TagKey::from("chosen"),
+            }],
+        };
+        assert!(!rewrite_each_player_choice_complement_chooser(&mut effect));
+        assert_eq!(choice_players(&effect), vec![PlayerAst::That]);
+    }
+}
+
 fn is_destroy_those_creatures_sentence(tokens: &[OwnedLexToken]) -> bool {
     followup_shapes::is_destroy_those_creatures_followup(tokens)
 }
@@ -1556,6 +2145,119 @@ fn take_self_replacement_condition(
     }
 }
 
+fn first_library_search_shape(
+    effects: &[EffectAst],
+) -> Option<(ObjectFilter, Vec<Zone>, ChoiceCount)> {
+    for effect in effects {
+        if let EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count,
+            zones,
+            ..
+        } = effect
+            && zones.contains(&Zone::Library)
+        {
+            return Some((filter.clone(), zones.clone(), count.clone()));
+        }
+        let mut nested_shape = None;
+        for_each_nested_effects(effect, true, |nested| {
+            if nested_shape.is_none() {
+                nested_shape = first_library_search_shape(nested);
+            }
+        });
+        if nested_shape.is_some() {
+            return nested_shape;
+        }
+    }
+    None
+}
+
+fn replace_matching_library_search_count(
+    effects: &mut [EffectAst],
+    replacement_filter: &ObjectFilter,
+    replacement_zones: &[Zone],
+    replacement_count: &ChoiceCount,
+) -> bool {
+    for effect in effects {
+        if let EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count,
+            zones,
+            ..
+        } = effect
+            && zones.as_slice() == replacement_zones
+            && filter == replacement_filter
+        {
+            *count = replacement_count.clone();
+            return true;
+        }
+        let mut replaced = false;
+        for_each_nested_effects_mut(effect, true, |nested| {
+            if !replaced {
+                replaced = replace_matching_library_search_count(
+                    nested,
+                    replacement_filter,
+                    replacement_zones,
+                    replacement_count,
+                );
+            }
+        });
+        if replaced {
+            return true;
+        }
+    }
+    false
+}
+
+/// A count-only search self-replacement ("search for up to three ... instead
+/// of two") changes the selection count of the earlier search procedure. It
+/// does not discard that procedure's reveal, split destinations, or trailing
+/// shuffle. Clone the complete prior procedure into both arms and change only
+/// the matching library selection in the replacement arm.
+fn materialize_search_count_self_replacement(
+    state_effects: &mut Vec<EffectAst>,
+    predicate: PredicateAst,
+    parsed_replacement: &[EffectAst],
+    sentence_tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let words = LexedClause::new(sentence_tokens).word_refs();
+    let count_only_surface = words.windows(2).any(|window| window == ["instead", "of"])
+        && words.iter().filter(|word| **word == "search").count() == 1
+        && !words
+            .iter()
+            .any(|word| matches!(*word, "put" | "reveal" | "shuffle" | "exile"));
+    if !count_only_surface {
+        return None;
+    }
+
+    let (replacement_filter, replacement_zones, replacement_count) =
+        first_library_search_shape(parsed_replacement)?;
+    let search_idx = state_effects.iter().rposition(|effect| {
+        first_library_search_shape(std::slice::from_ref(effect)).is_some_and(
+            |(filter, zones, _)| filter == replacement_filter && zones == replacement_zones,
+        )
+    })?;
+
+    let default_effects = state_effects.split_off(search_idx);
+    let mut replacement_effects = default_effects.clone();
+    if !replace_matching_library_search_count(
+        &mut replacement_effects,
+        &replacement_filter,
+        &replacement_zones,
+        &replacement_count,
+    ) {
+        state_effects.extend(default_effects);
+        return None;
+    }
+
+    Some(EffectAst::SelfReplacement {
+        predicate,
+        if_true: replacement_effects,
+        if_false: default_effects,
+        attach_to_previous_ability: false,
+    })
+}
+
 fn target_is_explicitly_chosen(target: &TargetAst) -> bool {
     match target {
         TargetAst::AnyTarget(span)
@@ -1575,7 +2277,9 @@ fn target_is_explicitly_chosen(target: &TargetAst) -> bool {
 
 fn rebind_source_match_to_target(predicate: PredicateAst) -> PredicateAst {
     match predicate {
-        PredicateAst::SourceMatches(filter) => PredicateAst::TargetMatches(filter),
+        PredicateAst::SourceMatches(filter) | PredicateAst::ItMatches(filter) => {
+            PredicateAst::TargetMatches(filter)
+        }
         PredicateAst::Not(inner) => {
             PredicateAst::Not(Box::new(rebind_source_match_to_target(*inner)))
         }
@@ -1591,6 +2295,63 @@ fn rebind_source_match_to_target(predicate: PredicateAst) -> PredicateAst {
     }
 }
 
+fn predicate_explicitly_says_that_land(predicate: &PredicateAst) -> bool {
+    match predicate {
+        PredicateAst::SourceMatches(filter)
+        | PredicateAst::ItMatches(filter)
+        | PredicateAst::TargetMatches(filter) => {
+            filter.demonstrative_antecedent_surface()
+                == Some(ironsmith_core::DemonstrativeAntecedentSurface::Land)
+        }
+        PredicateAst::Not(inner) => predicate_explicitly_says_that_land(inner),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            predicate_explicitly_says_that_land(left) || predicate_explicitly_says_that_land(right)
+        }
+        _ => false,
+    }
+}
+
+fn bind_demonstrative_land_match_to_triggering_object(predicate: PredicateAst) -> PredicateAst {
+    match predicate {
+        PredicateAst::SourceMatches(filter)
+        | PredicateAst::ItMatches(filter)
+        | PredicateAst::TargetMatches(filter)
+            if filter.demonstrative_antecedent_surface()
+                == Some(ironsmith_core::DemonstrativeAntecedentSurface::Land) =>
+        {
+            PredicateAst::TaggedMatches(crate::TagKey::from("triggering"), filter)
+        }
+        PredicateAst::Not(inner) => PredicateAst::Not(Box::new(
+            bind_demonstrative_land_match_to_triggering_object(*inner),
+        )),
+        PredicateAst::And(left, right) => PredicateAst::And(
+            Box::new(bind_demonstrative_land_match_to_triggering_object(*left)),
+            Box::new(bind_demonstrative_land_match_to_triggering_object(*right)),
+        ),
+        PredicateAst::Or(left, right) => PredicateAst::Or(
+            Box::new(bind_demonstrative_land_match_to_triggering_object(*left)),
+            Box::new(bind_demonstrative_land_match_to_triggering_object(*right)),
+        ),
+        other => other,
+    }
+}
+
+fn target_is_explicitly_a_land(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::Object(filter, _, _) | TargetAst::ObjectOrPlayer(filter, _, _) => {
+            filter.card_types.contains(&crate::CardType::Land)
+                || filter
+                    .subtypes
+                    .iter()
+                    .any(crate::Subtype::is_basic_land_type)
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_is_explicitly_a_land(inner)
+        }
+        _ => false,
+    }
+}
+
 /// The standalone condition parser conservatively treats a bare `it has
 /// <keyword>` clause as a source predicate. In an `instead` follow-up after an
 /// explicit target, however, that pronoun repeats the targeted object from the
@@ -1602,12 +2363,153 @@ fn bind_self_replacement_condition_to_previous_target(
     previous_target: Option<&TargetAst>,
 ) -> PredicateAst {
     let words = LexedClause::new(sentence_tokens).word_refs();
-    if !words.starts_with(&["if", "it"])
-        || !previous_target.is_some_and(target_is_explicitly_chosen)
-    {
+    let has_local_it_condition = words.windows(2).any(|window| {
+        window[0] == "if" && matches!(window[1], "it" | "its" | "it's" | "that" | "those")
+    });
+    if !has_local_it_condition || !previous_target.is_some_and(target_is_explicitly_chosen) {
         return predicate;
     }
+    // A typed demonstrative can point past a later action target to an
+    // earlier event subject. Landfall's "that land" is the canonical case:
+    // Akoum Hellkite damages any target and Emeria Shepherd targets a nonland
+    // graveyard card, but their replacement gate must inspect the land that
+    // triggered the ability. Only bind an explicit "that land" locally when
+    // the previous target was itself authored as a land target.
+    if predicate_explicitly_says_that_land(&predicate)
+        && !previous_target.is_some_and(target_is_explicitly_a_land)
+    {
+        return bind_demonstrative_land_match_to_triggering_object(predicate);
+    }
     rebind_source_match_to_target(predicate)
+}
+
+/// Effects authored after a self-replacement happen regardless of which arm
+/// replaced the original event. Keep that common suffix in both arms so the
+/// lowering boundary remains one executable self-replacement segment and
+/// branch-local pronouns resolve against the object produced by that arm.
+fn post_rule_self_replacement_common_suffix(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    if sentence_effects.is_empty()
+        || matches!(
+            classify_instead_followup_tokens(sentence_tokens),
+            InsteadSemantics::SelfReplacement
+        )
+    {
+        return Ok(None);
+    }
+    let Some(EffectAst::SelfReplacement {
+        if_true, if_false, ..
+    }) = state.effects.last_mut()
+    else {
+        return Ok(None);
+    };
+
+    if_true.extend(sentence_effects.iter().cloned());
+    if_false.append(sentence_effects);
+    Ok(Some(PostParseFollowupResult::Handled {
+        consumed_sentences: 1,
+    }))
+}
+
+/// Retain an authored label inside an exact numeric-result row.
+///
+/// The document grammar keeps `N | ...` rows attached to the roll instruction,
+/// while the ordinary statement-label parser intentionally strips a label such
+/// as `Trapped! —` before parsing its executable body. Reattach that label only
+/// when both pieces are still proven here: the outer typed numeric predicate and
+/// the inner label/body split from the same source sentence.
+fn post_rule_numeric_result_branch_label(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let Some(prefix) =
+        crate::runtime_backend::grammar::structure::split_leading_result_prefix_lexed(
+            sentence_tokens,
+        )
+    else {
+        return Ok(None);
+    };
+    let IfResultPredicate::Value(_) = &prefix.predicate else {
+        return Ok(None);
+    };
+    let Some(label_split) =
+        crate::runtime_backend::grammar::document_shapes::parse_statement_label_split_tokens(
+            prefix.trailing_tokens,
+        )
+    else {
+        return Ok(None);
+    };
+    let label = crate::runtime_backend::lexer::render_token_slice(label_split.label_tokens)
+        .trim()
+        .to_string();
+    if label.is_empty() {
+        return Ok(None);
+    }
+    let [EffectAst::IfResult { predicate, effects }] = sentence_effects.as_mut_slice() else {
+        return Ok(None);
+    };
+    if predicate != &prefix.predicate || effects.is_empty() {
+        return Ok(None);
+    }
+    let nested = std::mem::take(effects);
+    effects.push(EffectAst::ResultBranchLabel {
+        label,
+        effects: nested,
+    });
+    // This is a local annotation of the current sentence, not a follow-up
+    // consumed into an earlier effect. Let ordinary dispatch append it.
+    Ok(None)
+}
+
+#[cfg(test)]
+mod numeric_result_branch_label_tests {
+    use super::*;
+
+    fn parsed_row(text: &str) -> EffectAst {
+        let tokens =
+            crate::runtime_backend::lex_line(text, 0).expect("numeric result row should lex");
+        let mut effects =
+            parse_effect_sentences_lexed(&tokens).expect("numeric result row should parse");
+        assert_eq!(effects.len(), 1, "{effects:#?}");
+        effects.pop().expect("one parsed row")
+    }
+
+    #[test]
+    fn exact_numeric_result_row_retains_its_authored_inner_label() {
+        let effect = parsed_row("1 | Trapped! — You lose 3 life.");
+        let EffectAst::IfResult {
+            predicate: IfResultPredicate::Value(crate::effect::Comparison::Equal(1)),
+            effects,
+        } = effect
+        else {
+            panic!("expected exact numeric result predicate: {effect:#?}");
+        };
+        let [EffectAst::ResultBranchLabel { label, effects }] = effects.as_slice() else {
+            panic!("expected one typed labeled result body: {effects:#?}");
+        };
+        assert_eq!(label, "Trapped!");
+        assert!(!effects.is_empty());
+    }
+
+    #[test]
+    fn unlabeled_numeric_result_row_does_not_gain_a_label_wrapper() {
+        let effect = parsed_row("1 | You lose 3 life.");
+        let EffectAst::IfResult { effects, .. } = effect else {
+            panic!("expected numeric result branch: {effect:#?}");
+        };
+        assert!(
+            !matches!(effects.as_slice(), [EffectAst::ResultBranchLabel { .. }]),
+            "{effects:#?}"
+        );
+    }
 }
 
 fn post_rule_future_zone_and_self_replacement(
@@ -1628,18 +2530,29 @@ fn post_rule_future_zone_and_self_replacement(
             Some(EffectAst::Conditional { .. } | EffectAst::TrailingIf { .. })
         )
     {
-        let Some(previous) = state.effects.pop() else {
-            return Err(CardTextError::InvariantViolation(
-                "expected previous effect for 'instead' conditional rewrite".to_string(),
-            ));
-        };
-        let previous_target = primary_target_from_effect(&previous);
-        let previous_damage_target = primary_damage_target_from_effect(&previous);
-        let previous_damage_source = primary_damage_source_from_effect(&previous);
         if let Some((predicate, mut if_true, mut if_false)) = sentence_effects
             .pop()
             .and_then(take_self_replacement_condition)
         {
+            if let Some(replacement) = materialize_search_count_self_replacement(
+                &mut state.effects,
+                predicate.clone(),
+                &if_true,
+                sentence_tokens,
+            ) {
+                state.effects.push(replacement);
+                return Ok(Some(PostParseFollowupResult::Handled {
+                    consumed_sentences: 1,
+                }));
+            }
+            let Some(previous) = state.effects.pop() else {
+                return Err(CardTextError::InvariantViolation(
+                    "expected previous effect for 'instead' conditional rewrite".to_string(),
+                ));
+            };
+            let previous_target = primary_target_from_effect(&previous);
+            let previous_damage_target = primary_damage_target_from_effect(&previous);
+            let previous_damage_source = primary_damage_source_from_effect(&previous);
             let predicate = bind_self_replacement_condition_to_previous_target(
                 predicate,
                 sentence_tokens,
@@ -1786,6 +2699,106 @@ fn post_rule_correlated_plural_sacrifice_result(
     Ok(None)
 }
 
+/// Correlate a physical coin face with the player who flipped it. A called
+/// coin flip models win/loss and is not equivalent: a player may call tails.
+/// Rewriting the antecedent to the face-only producer makes its per-player
+/// result count `1` for heads and `0` for tails, which the existing
+/// `ForEachPlayerDid` lowering can consume without losing player identity.
+fn post_rule_each_player_coin_face_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
+    let result_predicate = match words.get(..7) {
+        Some(["each", "player", "whose", "coin", "comes", "up", "heads"]) => IfResultPredicate::Did,
+        Some(["each", "player", "whose", "coin", "comes", "up", "tails"]) => {
+            IfResultPredicate::DidNot
+        }
+        _ => return Ok(None),
+    };
+
+    let Some(EffectAst::ForEachPlayer {
+        effects: flip_effects,
+    }) = state.effects.last_mut()
+    else {
+        return Ok(None);
+    };
+    let [EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })] = flip_effects.as_mut_slice()
+    else {
+        return Ok(None);
+    };
+    if !matches!(action, SubjectVerbActionAst::FlipCoin) {
+        return Ok(None);
+    }
+
+    let [
+        EffectAst::ForEachPlayer {
+            effects: followup_effects,
+        },
+    ] = sentence_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+    if followup_effects.is_empty() {
+        return Ok(None);
+    }
+
+    *action = SubjectVerbActionAst::FlipCoinFaceOnly;
+    *sentence_effects = vec![EffectAst::ForEachPlayerDid {
+        effects: followup_effects.clone(),
+        predicate: None,
+        result_predicate,
+    }];
+    Ok(None)
+}
+
+#[cfg(test)]
+mod each_player_coin_face_followup_tests {
+    use super::*;
+
+    #[test]
+    fn heads_and_tails_followups_keep_face_only_player_correlation() {
+        for (face, expected_predicate) in [
+            ("heads", IfResultPredicate::Did),
+            ("tails", IfResultPredicate::DidNot),
+        ] {
+            let text = format!(
+                "Each player flips a coin. Each player whose coin comes up {face} sacrifices a creature of their choice."
+            );
+            let tokens = crate::runtime_backend::lex_line(&text, 0)
+                .expect("coin-face player sequence should lex");
+            let effects = parse_effect_sentences_lexed(&tokens)
+                .expect("coin-face player sequence should parse");
+
+            let [
+                EffectAst::ForEachPlayer {
+                    effects: flip_effects,
+                },
+                EffectAst::ForEachPlayerDid {
+                    result_predicate,
+                    effects: followups,
+                    ..
+                },
+            ] = effects.as_slice()
+            else {
+                panic!("expected correlated flip/follow-up pair: {effects:#?}");
+            };
+            assert!(matches!(
+                flip_effects.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::FlipCoinFaceOnly,
+                    ..
+                })]
+            ));
+            assert_eq!(result_predicate, &expected_predicate);
+            assert!(!followups.is_empty());
+        }
+    }
+}
+
 /// Connect a typed `for each ... sacrificed this way` iterator to the exact
 /// result set of the preceding each-player sacrifice.  Wrapping the complete
 /// player loop is important: one shared tag must contain every player's
@@ -1859,6 +2872,144 @@ fn post_rule_typed_sacrificed_result_iterator(
     };
     *tag = result_tag;
     Ok(None)
+}
+
+/// Preserve the comparison set in "for each of those cards that has the same
+/// mana value as another card revealed this way." A plain `ForEachTagged`
+/// would otherwise count every revealed card, while comparing the iterated
+/// card to the implicit `__it__` tag would make every card match itself.
+fn post_rule_revealed_same_mana_value_as_another_iterator(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
+    const PREFIX: &[&str] = &[
+        "for", "each", "of", "those", "cards", "that", "has", "the", "same", "mana", "value", "as",
+        "another", "card", "revealed", "this", "way",
+    ];
+    if !words.starts_with(PREFIX) {
+        return Ok(None);
+    }
+
+    let Some(revealed_tag) = state.effects.iter().rev().find_map(|effect| match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::RevealTagged { tag },
+            ..
+        }) => Some(tag.clone()),
+        _ => None,
+    }) else {
+        return Ok(None);
+    };
+
+    let conditional_effects = match sentence_effects.as_mut_slice() {
+        [EffectAst::ForEachTagged { tag, effects }]
+            if tag.as_str() == IT_TAG && !effects.is_empty() =>
+        {
+            std::mem::take(effects)
+        }
+        [EffectAst::RepeatEffects { count, effects }]
+            if !effects.is_empty()
+                && matches!(
+                    count.unhinted(),
+                    Value::PendingPriorEffectMetric(query)
+                        if query.source == ironsmith_core::EffectMetricSource::AffectedObjects
+                            && query.metric == ironsmith_core::EffectMetric::Count
+                            && query.player.is_none()
+                            && query.action.is_none()
+                            && query.counter_type.is_none()
+                            && query.filter.as_ref().is_some_and(|filter| {
+                                let expected = ObjectFilter::default().match_tagged(
+                                    TagKey::from(IT_TAG),
+                                    crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                                );
+                                filter == &expected
+                            })
+                ) =>
+        {
+            std::mem::take(effects)
+        }
+        _ => return Ok(None),
+    };
+    let filter = ObjectFilter::default().match_tagged(
+        revealed_tag.clone(),
+        crate::filter::TaggedOpbjectRelation::SameManaValueAsAnotherTagged,
+    );
+    *sentence_effects = vec![EffectAst::ForEachTagged {
+        tag: revealed_tag,
+        effects: vec![EffectAst::TrailingIf {
+            predicate: PredicateAst::ItMatches(filter),
+            effects: conditional_effects,
+        }],
+    }];
+    Ok(None)
+}
+
+#[cfg(test)]
+mod revealed_same_mana_value_iterator_tests {
+    use super::*;
+
+    #[test]
+    fn revealed_cards_compare_against_a_different_card_in_the_revealed_set() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Reveal up to five nonland cards from your hand. For each of those cards that has the same mana value as another card revealed this way, create a Treasure token.",
+            0,
+        )
+        .expect("correlated revealed-card sentence should lex");
+        let effects = parse_effect_sentences_lexed(&tokens)
+            .expect("correlated revealed-card sentence should parse");
+
+        let reveal_tag = effects.iter().find_map(|effect| match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RevealTagged { tag },
+                ..
+            }) => Some(tag),
+            _ => None,
+        });
+        let Some(reveal_tag) = reveal_tag else {
+            panic!("expected an explicitly tagged reveal: {effects:#?}");
+        };
+        let Some(EffectAst::ForEachTagged {
+            tag,
+            effects: iterator_effects,
+        }) = effects.last()
+        else {
+            panic!("expected a tagged revealed-card iterator: {effects:#?}");
+        };
+        assert_eq!(tag, reveal_tag);
+        let [
+            EffectAst::TrailingIf {
+                predicate: PredicateAst::ItMatches(filter),
+                effects: create_effects,
+            },
+        ] = iterator_effects.as_slice()
+        else {
+            panic!("expected one typed per-card condition: {iterator_effects:#?}");
+        };
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *reveal_tag
+                && constraint.relation
+                    == crate::filter::TaggedOpbjectRelation::SameManaValueAsAnotherTagged
+        }));
+        assert!(!create_effects.is_empty());
+    }
+
+    #[test]
+    fn ordinary_for_each_revealed_card_does_not_gain_a_mana_value_condition() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Reveal up to five nonland cards from your hand. For each card revealed this way, create a Treasure token.",
+            0,
+        )
+        .expect("ordinary revealed-card sentence should lex");
+        let effects = parse_effect_sentences_lexed(&tokens)
+            .expect("ordinary revealed-card sentence should parse");
+        assert!(
+            !format!("{effects:#?}").contains("SameManaValueAsAnotherTagged"),
+            "the qualifier must not be inferred: {effects:#?}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -2456,10 +3607,9 @@ fn effect_references_prior_exiled_card(effect: &EffectAst) -> bool {
 
 fn bind_cast_tag_to_prior_exiled_card(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::CastTagged {
-                tag, as_copy: true, ..
-            },
+        action: SubjectVerbActionAst::CastTagged {
+            tag, as_copy: true, ..
+        },
         ..
     }) = effect
         && tag.as_str() == IT_TAG
@@ -2470,6 +3620,48 @@ fn bind_cast_tag_to_prior_exiled_card(effect: &mut EffectAst) {
     for_each_nested_effects_mut(effect, true, |nested| {
         for effect in nested {
             bind_cast_tag_to_prior_exiled_card(effect);
+        }
+    });
+}
+
+/// Bind an authored cross-ability "the exiled card" reference to cards
+/// linked to the source permanent.  A same-ability exile is handled by
+/// `tag_latest_prior_exile`; when there is no such effect, Magic's linked
+/// ability wording refers to the object exiled by another ability of this
+/// source (for example, an Imprint ability).
+fn bind_prior_exiled_card_to_source_link(effect: &mut EffectAst) {
+    let is_prior_exiled_copy = matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CopySpell {
+                target: TargetAst::Tagged(tag, _),
+                ..
+            },
+            ..
+        }) if tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG
+    );
+    if is_prior_exiled_copy {
+        // Copying a card outside the stack is represented by selecting the
+        // linked exiled card and letting the following CastTagged(as_copy)
+        // create/cast the copy. This is the same generic program used for the
+        // explicit "a card exiled with this artifact" wording.
+        *effect = EffectAst::ChooseObjectsAcrossZones {
+            filter: ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
+                TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            ),
+            count: crate::ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: TagKey::from(IT_TAG),
+            zones: vec![Zone::Exile],
+            search_mode: None,
+        };
+        return;
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for effect in nested {
+            bind_prior_exiled_card_to_source_link(effect);
         }
     });
 }
@@ -2531,10 +3723,122 @@ fn post_rule_prior_exiled_card_reference(
         return Ok(None);
     }
     if !tag_latest_prior_exile(&mut state.effects) {
-        return Err(CardTextError::InvariantViolation(
-            "an explicit exiled-card reference has no prior exile effect".to_string(),
-        ));
+        for effect in sentence_effects {
+            bind_prior_exiled_card_to_source_link(effect);
+        }
     }
+    Ok(None)
+}
+
+fn bind_targeted_leaves_filter(
+    trigger: &mut crate::cards::builders::TriggerSpec,
+    tag: &TagKey,
+) -> bool {
+    match trigger {
+        crate::cards::builders::TriggerSpec::WithIntro { trigger, .. } => {
+            bind_targeted_leaves_filter(trigger, tag)
+        }
+        crate::cards::builders::TriggerSpec::LeavesBattlefield(filter) => {
+            *filter = filter
+                .clone()
+                .match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// A later delayed trigger whose subject is "the targeted ..." watches the
+/// exact object selected by the nearest earlier target declaration. Keeping
+/// only the noun filter (for example, `creature`) makes every matching object
+/// capable of firing the delayed trigger.
+fn post_rule_targeted_object_delayed_leave(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
+    if !words.starts_with(&["when", "the", "targeted"])
+        && !words.starts_with(&["whenever", "the", "targeted"])
+    {
+        return Ok(None);
+    }
+    let Some(tag) = state.effects.iter().rev().find_map(|effect| match effect {
+        EffectAst::ChooseObjects { tag, .. } => Some(tag.clone()),
+        _ => None,
+    }) else {
+        return Ok(None);
+    };
+    for effect in sentence_effects {
+        if let EffectAst::DelayedTriggerThisTurn { trigger, .. }
+        | EffectAst::DelayedTriggerForDuration { trigger, .. } = effect
+        {
+            bind_targeted_leaves_filter(trigger, &tag);
+        }
+    }
+    Ok(None)
+}
+
+fn is_singular_explicit_return_to_battlefield(effect: &EffectAst) -> bool {
+    let EffectAst::SubjectVerb(subject_verb) = effect else {
+        return false;
+    };
+    let SubjectVerbActionAst::ReturnToBattlefield { target, .. } = &subject_verb.action else {
+        return false;
+    };
+    if !target_is_explicitly_chosen(target) {
+        return false;
+    }
+    match target {
+        TargetAst::WithCount(_, count) | TargetAst::WithCountValue(_, count, _) => {
+            count.is_single()
+        }
+        _ => true,
+    }
+}
+
+/// A spell can create a one-shot delayed trigger tied to the exact permanent
+/// returned by its preceding instruction. Keep the trigger typed instead of
+/// allowing the sentence parser to flatten its payload into an immediate
+/// follow-up effect.
+fn post_rule_returned_permanent_enters(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let Some(comma_idx) = sentence_tokens.iter().position(OwnedLexToken::is_comma) else {
+        return Ok(None);
+    };
+    if crate::runtime_backend::token_word_refs(&sentence_tokens[..comma_idx])
+        != ["when", "that", "permanent", "enters"]
+        || !state
+            .effects
+            .last()
+            .is_some_and(is_singular_explicit_return_to_battlefield)
+        || sentence_effects.is_empty()
+    {
+        return Ok(None);
+    }
+
+    let effects = std::mem::take(sentence_effects);
+    sentence_effects.push(EffectAst::DelayedTriggerForDuration {
+        trigger: crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface {
+            surface: crate::target::SourceReferenceSurface::ThisPermanentType(
+                "that permanent".to_string(),
+            ),
+            subject_number: ironsmith_core::trigger_model::TriggerSubjectNumber::Singular,
+            origin_condition: None,
+        },
+        effects,
+        one_shot: true,
+        duration: Until::Forever,
+        either_of_watched_objects: false,
+        while_any_tagged_object_in_zone: None,
+    });
     Ok(None)
 }
 
@@ -2557,7 +3861,9 @@ fn post_rule_delayed_trigger_result_followup(
         | EffectAst::DelayedUntilNextUntapStep { effects, .. }
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
         | EffectAst::DelayedUntilNextDrawStep { effects, .. }
-        | EffectAst::DelayedUntilNextMainPhase { effects, .. },
+        | EffectAst::DelayedUntilNextMainPhase { effects, .. }
+        | EffectAst::DelayedUntilNextFirstMainPhase { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects },
     ) = state.effects.last_mut()
     else {
         return Ok(None);
@@ -2570,32 +3876,185 @@ fn post_rule_delayed_trigger_result_followup(
 
 fn effects_are_copy_retarget_followup(effects: &[EffectAst]) -> bool {
     fn contains_retarget(effect: &EffectAst) -> bool {
-        match effect {
-            EffectAst::SubjectVerb(subject_verb) => matches!(
-                subject_verb.action,
-                SubjectVerbActionAst::RetargetStackObject { .. }
-            ),
-            EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. } => {
-                effects.iter().any(contains_retarget)
-            }
-            _ => false,
+        if matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RetargetStackObject {
+                    target: TargetAst::Tagged(tag, _),
+                    ..
+                },
+                ..
+            }) if tag.as_str() == crate::cards::builders::COPIED_STACK_OBJECT_TAG
+        ) {
+            return true;
         }
+        let mut found = false;
+        for_each_nested_effects(effect, true, |nested| {
+            found |= nested.iter().any(contains_retarget);
+        });
+        found
     }
 
     effects.iter().any(contains_retarget)
 }
 
+fn effects_are_one_copy_retarget_followup(effects: &[EffectAst]) -> bool {
+    fn is_one_retarget(effect: &EffectAst) -> bool {
+        if matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RetargetStackObject {
+                    target: TargetAst::Tagged(tag, _),
+                    ..
+                },
+                ..
+            }) if tag.as_str() == crate::cards::builders::COPIED_STACK_OBJECT_TAG
+        ) {
+            return true;
+        }
+        match effect {
+            EffectAst::SourceSentence { effects, .. }
+            | EffectAst::Sequence { effects }
+            | EffectAst::CommaThen { effects }
+            | EffectAst::Coordinated { effects, .. }
+            | EffectAst::May { effects }
+            | EffectAst::MayByPlayer { effects, .. } => {
+                matches!(effects.as_slice(), [effect] if is_one_retarget(effect))
+            }
+            _ => false,
+        }
+    }
+
+    matches!(effects, [effect] if is_one_retarget(effect))
+}
+
+fn effects_copy_a_stack_object(effects: &[EffectAst]) -> bool {
+    fn contains_copy(effect: &EffectAst) -> bool {
+        if matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CopySpell { .. }
+                    | SubjectVerbActionAst::CopySpellForEachTarget { .. },
+                ..
+            })
+        ) {
+            return true;
+        }
+        let mut found = false;
+        for_each_nested_effects(effect, true, |nested| {
+            found |= nested.iter().any(contains_copy);
+        });
+        found
+    }
+
+    effects.iter().any(contains_copy)
+}
+
 fn trailing_delayed_trigger_effects_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
     match effect {
         EffectAst::DelayedTriggerThisTurn { effects, .. } => Some(effects),
-        EffectAst::Conditional { if_true, .. } => if_true.iter_mut().rev().find_map(|effect| {
-            if let EffectAst::DelayedTriggerThisTurn { effects, .. } = effect {
-                Some(effects)
-            } else {
-                None
-            }
-        }),
+        EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Sequence { effects }
+        | EffectAst::Coordinated { effects, .. } => effects
+            .last_mut()
+            .and_then(trailing_delayed_trigger_effects_mut),
+        EffectAst::Conditional { if_true, .. } => if_true
+            .last_mut()
+            .and_then(trailing_delayed_trigger_effects_mut),
         _ => None,
+    }
+}
+
+fn append_copy_retarget_to_trailing_delayed_trigger(
+    previous: &mut EffectAst,
+    followups: &mut Vec<EffectAst>,
+) -> bool {
+    if !effects_are_copy_retarget_followup(followups) {
+        return false;
+    }
+    let Some(delayed_effects) = trailing_delayed_trigger_effects_mut(previous) else {
+        return false;
+    };
+    if !effects_copy_a_stack_object(delayed_effects) {
+        return false;
+    }
+    delayed_effects.append(followups);
+    true
+}
+
+fn trailing_optional_copy_effects_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
+    let is_optional_copy = match &*effect {
+        EffectAst::May { effects }
+        | EffectAst::MayByPlayer {
+            player: PlayerAst::You | PlayerAst::Implicit,
+            effects,
+        } => effects_copy_a_stack_object(effects),
+        _ => false,
+    };
+    if is_optional_copy {
+        return match effect {
+            EffectAst::May { effects }
+            | EffectAst::MayByPlayer {
+                player: PlayerAst::You | PlayerAst::Implicit,
+                effects,
+            } => Some(effects),
+            _ => None,
+        };
+    }
+    match effect {
+        EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Sequence { effects }
+        | EffectAst::Coordinated { effects, .. } => effects
+            .last_mut()
+            .and_then(trailing_optional_copy_effects_mut),
+        _ => None,
+    }
+}
+
+fn append_copy_retarget_to_trailing_optional_copy(
+    previous: &mut EffectAst,
+    followups: &mut Vec<EffectAst>,
+) -> bool {
+    if !effects_are_one_copy_retarget_followup(followups) {
+        return false;
+    }
+    let Some(optional_effects) = trailing_optional_copy_effects_mut(previous) else {
+        return false;
+    };
+    optional_effects.append(followups);
+    true
+}
+
+/// Sequence dispatch can claim a complete optional retarget sentence before
+/// the post-parse follow-up registry runs. Repair that exact adjacency at the
+/// public family root as well: a retarget of the copied-stack result belongs
+/// inside the immediately preceding delayed trigger that creates that result,
+/// never on the outer resolution program where the copy does not exist yet.
+pub(super) fn transport_copy_retarget_into_trailing_delayed_trigger(effects: &mut Vec<EffectAst>) {
+    let mut index = 1usize;
+    while index < effects.len() {
+        let mut followups = vec![effects[index].clone()];
+        if append_copy_retarget_to_trailing_delayed_trigger(&mut effects[index - 1], &mut followups)
+        {
+            effects.remove(index);
+        } else {
+            index += 1;
+        }
+    }
+}
+
+/// A fixed target assignment for "the copy" belongs to the same optional
+/// procedure that creates that copy. As an outer sibling it would execute
+/// even after the player declined to copy the spell or ability.
+pub(super) fn transport_copy_retarget_into_trailing_optional_copy(effects: &mut Vec<EffectAst>) {
+    let mut index = 1usize;
+    while index < effects.len() {
+        let mut followups = vec![effects[index].clone()];
+        if append_copy_retarget_to_trailing_optional_copy(&mut effects[index - 1], &mut followups) {
+            effects.remove(index);
+        } else {
+            index += 1;
+        }
     }
 }
 
@@ -2606,23 +4065,151 @@ fn post_rule_delayed_trigger_copy_retarget_followup(
     _sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    if !effects_are_copy_retarget_followup(sentence_effects) {
-        return Ok(None);
-    }
     let Some(previous) = state.effects.last_mut() else {
         return Ok(None);
     };
-    let Some(delayed_effects) = trailing_delayed_trigger_effects_mut(previous) else {
+    if !append_copy_retarget_to_trailing_delayed_trigger(previous, sentence_effects) {
         return Ok(None);
-    };
-
-    delayed_effects.extend(sentence_effects.drain(..));
+    }
     Ok(Some(PostParseFollowupResult::Handled {
         consumed_sentences: 1,
     }))
 }
 
+fn post_rule_optional_copy_retarget_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    _sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let Some(previous) = state.effects.last_mut() else {
+        return Ok(None);
+    };
+    if !append_copy_retarget_to_trailing_optional_copy(previous, sentence_effects) {
+        return Ok(None);
+    }
+    Ok(Some(PostParseFollowupResult::Handled {
+        consumed_sentences: 1,
+    }))
+}
+
+#[cfg(test)]
+mod delayed_copy_retarget_followup_tests {
+    use super::*;
+
+    fn contains_plural_retarget(effect: &EffectAst) -> bool {
+        if matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RetargetStackObject {
+                    copy_reference_plural: true,
+                    ..
+                },
+                ..
+            })
+        ) {
+            return true;
+        }
+        let mut found = false;
+        for_each_nested_effects(effect, true, |nested| {
+            found |= nested.iter().any(contains_plural_retarget);
+        });
+        found
+    }
+
+    #[test]
+    fn optional_copy_retarget_stays_inside_repeating_delayed_trigger() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Choose a planeswalker type. Until end of turn, whenever you activate an ability of a planeswalker of that type, copy that ability. You may choose new targets for the copies.",
+            0,
+        )
+        .expect("repeating delayed-copy procedure should lex");
+        let parsed = parse_effect_sentences_lexed(&tokens)
+            .expect("repeating delayed-copy procedure should parse");
+        let [EffectAst::SubjectVerb(_), delayed] = parsed.as_slice() else {
+            panic!("retarget must not remain on the outer program: {parsed:#?}");
+        };
+        let delayed_effects = match delayed {
+            EffectAst::DelayedTriggerThisTurn { effects, .. }
+            | EffectAst::DelayedTriggerForDuration { effects, .. } => effects,
+            _ => panic!("expected a repeating delayed trigger: {delayed:#?}"),
+        };
+        assert!(effects_copy_a_stack_object(delayed_effects));
+        assert!(delayed_effects.iter().any(contains_plural_retarget));
+    }
+
+    #[test]
+    fn retarget_does_not_attach_to_a_delayed_trigger_that_creates_no_copy() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Until end of turn, whenever you draw a card, draw a card. You may choose new targets for the copies.",
+            0,
+        )
+        .expect("noncopy delayed-trigger near miss should lex");
+        let parsed = parse_effect_sentences_lexed(&tokens)
+            .expect("noncopy delayed-trigger near miss should parse");
+        assert_eq!(parsed.len(), 2, "{parsed:#?}");
+        let delayed_effects = match &parsed[0] {
+            EffectAst::DelayedTriggerThisTurn { effects, .. }
+            | EffectAst::DelayedTriggerForDuration { effects, .. } => effects,
+            effect => panic!("expected delayed near miss: {effect:#?}"),
+        };
+        assert!(!delayed_effects.iter().any(contains_plural_retarget));
+        assert!(contains_plural_retarget(&parsed[1]));
+    }
+
+    #[test]
+    fn fixed_copy_target_stays_inside_the_optional_copy_branch() {
+        let tokens =
+            crate::runtime_backend::lex_line("You may copy that spell. The copy targets Ivy.", 0)
+                .expect("optional copy procedure should lex");
+        let parsed =
+            crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
+                "Ivy, Gleeful Spellthief",
+                &[crate::CardType::Creature],
+                &[crate::Subtype::Faerie, crate::Subtype::Rogue],
+                || parse_effect_sentences_lexed(&tokens),
+            )
+            .expect("optional copy procedure should parse");
+        let [optional] = parsed.as_slice() else {
+            panic!("the fixed retarget must not remain an outer sibling: {parsed:#?}");
+        };
+        let optional_effects = match optional {
+            EffectAst::May { effects }
+            | EffectAst::MayByPlayer {
+                player: PlayerAst::You | PlayerAst::Implicit,
+                effects,
+            } => effects,
+            _ => panic!("expected one optional copy owner: {optional:#?}"),
+        };
+        assert!(effects_copy_a_stack_object(optional_effects));
+        assert!(effects_are_one_copy_retarget_followup(
+            &optional_effects[optional_effects.len() - 1..]
+        ));
+    }
+
+    #[test]
+    fn unconditional_copy_does_not_acquire_an_optional_owner() {
+        let tokens =
+            crate::runtime_backend::lex_line("Copy that spell. The copy targets this creature.", 0)
+                .expect("unconditional copy procedure should lex");
+        let parsed = parse_effect_sentences_lexed(&tokens)
+            .expect("unconditional copy procedure should parse");
+        assert_eq!(parsed.len(), 2, "{parsed:#?}");
+        assert!(!matches!(
+            parsed[0],
+            EffectAst::May { .. } | EffectAst::MayByPlayer { .. }
+        ));
+    }
+}
+
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
+    SubjectVerbFollowupRuleDef {
+        id: "optional-source-exile-and-collect-evidence",
+        priority: 5,
+        heads: &["you"],
+        run: pre_rule_optional_source_exile_and_collect_evidence,
+    },
     SubjectVerbFollowupRuleDef {
         id: "library-shuffle",
         priority: 10,
@@ -2638,7 +4225,7 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     SubjectVerbFollowupRuleDef {
         id: "cant-be-regenerated",
         priority: 30,
-        heads: &["it", "they", "creature", "creatures", "a"],
+        heads: &["it", "they", "those", "creature", "creatures", "a"],
         run: pre_rule_cant_be_regenerated_followup,
     },
     SubjectVerbFollowupRuleDef {
@@ -2667,6 +4254,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         priority: 42,
         heads: &[],
         run: pre_rule_token_followups,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "moved-object-entry-followup",
+        priority: 43,
+        heads: &["it"],
+        run: pre_rule_moved_object_entry_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "exile-this-way",
@@ -2703,6 +4296,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         priority: 55,
         heads: &["if"],
         run: pre_rule_if_you_win_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "choose-for-each-player-instead",
+        priority: 55,
+        heads: &["if"],
+        run: pre_rule_choose_for_each_player_instead,
     },
     SubjectVerbFollowupRuleDef {
         id: "future-zone-replacement",
@@ -2744,6 +4343,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
 
 const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &[
     SubjectVerbPostParseRuleDef {
+        id: "numeric-result-branch-label",
+        priority: 5,
+        heads: &[],
+        run: post_rule_numeric_result_branch_label,
+    },
+    SubjectVerbPostParseRuleDef {
         id: "token-copy-and-extra-turn",
         priority: 10,
         heads: &[],
@@ -2756,10 +4361,22 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
         run: post_rule_future_zone_and_self_replacement,
     },
     SubjectVerbPostParseRuleDef {
+        id: "each-player-coin-face-followup",
+        priority: 22,
+        heads: &["each"],
+        run: post_rule_each_player_coin_face_followup,
+    },
+    SubjectVerbPostParseRuleDef {
         id: "typed-sacrificed-result-iterator",
         priority: 23,
         heads: &["for"],
         run: post_rule_typed_sacrificed_result_iterator,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "revealed-same-mana-value-as-another-iterator",
+        priority: 23,
+        heads: &["for"],
+        run: post_rule_revealed_same_mana_value_as_another_iterator,
     },
     SubjectVerbPostParseRuleDef {
         id: "correlated-plural-sacrifice-result",
@@ -2780,6 +4397,18 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
         run: post_rule_prior_exiled_card_reference,
     },
     SubjectVerbPostParseRuleDef {
+        id: "returned-permanent-enters",
+        priority: 26,
+        heads: &["when"],
+        run: post_rule_returned_permanent_enters,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "targeted-object-delayed-leave",
+        priority: 26,
+        heads: &["when", "whenever"],
+        run: post_rule_targeted_object_delayed_leave,
+    },
+    SubjectVerbPostParseRuleDef {
         id: "reflexive-object-followup",
         priority: 27,
         heads: &[],
@@ -2796,6 +4425,18 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
         priority: 31,
         heads: &["you"],
         run: post_rule_delayed_trigger_copy_retarget_followup,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "optional-copy-retarget-followup",
+        priority: 32,
+        heads: &["the"],
+        run: post_rule_optional_copy_retarget_followup,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "self-replacement-common-suffix",
+        priority: 100,
+        heads: &[],
+        run: post_rule_self_replacement_common_suffix,
     },
 ];
 
@@ -2932,6 +4573,38 @@ mod copy_cast_followup_tests {
                     )
             ),
             "expected immediate cast inside a may scope, got {parsed:#?}"
+        );
+    }
+
+    #[test]
+    fn cross_ability_exiled_card_copy_uses_source_link() {
+        let definition = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Imprint Copy")
+            .card_types(vec![crate::CardType::Artifact])
+            .subtypes(vec![crate::Subtype::Equipment])
+            .parse_text(
+                "Imprint — When this Equipment enters, you may exile an instant card from your hand.\n\
+                 Whenever equipped creature deals combat damage to a player, you may copy the exiled card. If you do, you may cast the copy without paying its mana cost.\n\
+                 Equip {4}",
+            )
+            .expect("a linked Imprint copy ability should compile");
+        let debug = format!("{definition:#?}");
+
+        assert!(debug.contains("ImprintFromHandEffect"), "{debug}");
+        assert!(debug.contains(crate::tag::SOURCE_EXILED_TAG), "{debug}");
+        assert!(
+            !debug.contains("CopySpellEffect"),
+            "an exiled card is not a stack spell and must be selected before the copy-cast: {debug}"
+        );
+        assert!(debug.contains("CastTaggedEffect"), "{debug}");
+        let cast_debug = debug
+            .split_once("CastTaggedEffect")
+            .map(|(_, tail)| tail)
+            .expect("combat-damage trigger should contain a tagged cast");
+        assert!(cast_debug.contains(IT_TAG), "{debug}");
+        assert!(cast_debug.contains("as_copy: true"), "{debug}");
+        assert!(
+            cast_debug.contains("without_paying_mana_cost: true"),
+            "{debug}"
         );
     }
 
@@ -3080,6 +4753,325 @@ mod damage_self_replacement_followup_tests {
 }
 
 #[cfg(test)]
+mod counter_self_replacement_followup_tests {
+    use super::*;
+
+    #[test]
+    fn double_counters_on_that_creature_reuses_the_default_target() {
+        let lexed = crate::runtime_backend::lex_line(
+            "Put a +1/+1 counter on target creature you control. If this is the second time this ability has resolved this turn, double the number of +1/+1 counters on that creature instead.",
+            0,
+        )
+        .expect("counter self-replacement should lex");
+        let parsed =
+            parse_effect_sentences_lexed(&lexed).expect("counter self-replacement should parse");
+        let [
+            EffectAst::SelfReplacement {
+                if_true, if_false, ..
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected one typed self-replacement: {parsed:#?}");
+        };
+
+        assert!(
+            matches!(
+                if_true.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::DoubleCountersOnTarget { .. },
+                    ..
+                })]
+            ),
+            "the replacement branch should keep the typed double-counter action: {if_true:#?}"
+        );
+        let default_target = primary_target_from_effect(&if_false[0])
+            .expect("the default counter effect should have a target");
+        let replacement_target = primary_target_from_effect(&if_true[0])
+            .expect("the replacement counter effect should reuse that target");
+        assert_eq!(replacement_target, default_target);
+        assert!(target_is_explicitly_chosen(&replacement_target));
+
+        let lowered =
+            crate::runtime_backend::compile_support::compile_statement_effects_with_imports(
+                &parsed,
+                &crate::runtime_backend::reference_model::ReferenceImports::default(),
+            )
+            .expect("counter self-replacement should lower");
+        let [segment] = lowered.effects.segments.as_slice() else {
+            panic!(
+                "expected one self-replacement segment: {:#?}",
+                lowered.effects
+            );
+        };
+        let [target_declaration, put_counters] = segment.default_effects.as_slice() else {
+            panic!("expected a target prelude and default counter action: {segment:#?}");
+        };
+        let target_declaration = target_declaration
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .expect("the shared target declaration should carry an alias tag");
+        let target_tag = target_declaration.tag.clone();
+        assert!(
+            target_declaration
+                .effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some(),
+            "the unconditional prelude should select the one authored target: {target_declaration:#?}"
+        );
+        let put_counters = put_counters
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .and_then(|tagged| {
+                tagged
+                    .effect
+                    .downcast_ref::<crate::effects::PutCountersEffect>()
+            })
+            .expect("the default branch should put the counter");
+        assert!(
+            matches!(&put_counters.target, ChooseSpec::Tagged(tag) if tag == &target_tag),
+            "the default counter action must consume the shared target alias: {put_counters:#?}"
+        );
+        let [replacement] = segment.self_replacements[0].replacement_effects.as_slice() else {
+            panic!("expected one replacement counter action: {segment:#?}");
+        };
+        let replacement = replacement
+            .downcast_ref::<crate::effects::DoubleCountersEffect>()
+            .expect("the replacement branch should double counters");
+        assert!(
+            matches!(&replacement.target, ChooseSpec::Tagged(tag) if tag == &target_tag),
+            "the replacement must reuse the one authored target alias: {replacement:#?}"
+        );
+        assert_eq!(
+            lowered.choices.len(),
+            1,
+            "the anaphoric replacement must not announce a second target"
+        );
+    }
+}
+
+#[cfg(test)]
+mod prior_token_copy_self_replacement_tests {
+    use super::*;
+
+    fn copy_count(effects: &[EffectAst]) -> Option<Value> {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CreateTokenCopy { count, .. }
+                    | SubjectVerbActionAst::CreateTokenCopyFromSource { count, .. },
+                ..
+            }) = effect
+            {
+                return Some(count.clone());
+            }
+            let mut nested_count = None;
+            for_each_nested_effects(effect, true, |nested| {
+                if nested_count.is_none() {
+                    nested_count = copy_count(nested);
+                }
+            });
+            if nested_count.is_some() {
+                return nested_count;
+            }
+        }
+        None
+    }
+
+    fn copy_source(effects: &[EffectAst]) -> Option<TargetAst> {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CreateTokenCopyFromSource { source, .. },
+                ..
+            }) = effect
+            {
+                return Some(source.clone());
+            }
+            let mut nested_source = None;
+            for_each_nested_effects(effect, true, |nested| {
+                if nested_source.is_none() {
+                    nested_source = copy_source(nested);
+                }
+            });
+            if nested_source.is_some() {
+                return nested_source;
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn conditional_of_those_tokens_replaces_copy_token_count() {
+        let lexed = crate::runtime_backend::lex_line(
+            "Create a tapped and attacking token that's a copy of another target attacking creature. If that creature is a Kraken, Leviathan, Octopus, or Serpent, create two of those tokens instead.",
+            0,
+        )
+        .expect("copy-token replacement should lex");
+        let parsed =
+            parse_effect_sentences_lexed(&lexed).expect("copy-token replacement should parse");
+        let [
+            EffectAst::SelfReplacement {
+                predicate,
+                if_true,
+                if_false,
+                attach_to_previous_ability: false,
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected one typed copy-token self-replacement: {parsed:#?}");
+        };
+
+        assert_eq!(
+            copy_count(if_false),
+            Some(Value::Fixed(1)),
+            "default copy branch: {if_false:#?}"
+        );
+        assert_eq!(
+            copy_count(if_true),
+            Some(Value::Fixed(2)),
+            "replacement copy branch: {if_true:#?}"
+        );
+        let PredicateAst::TargetMatches(filter) = predicate else {
+            panic!(
+                "the demonstrative subtype condition must test the copy source target: {predicate:#?}"
+            );
+        };
+        for subtype in ["Kraken", "Leviathan", "Octopus", "Serpent"] {
+            assert!(format!("{filter:#?}").contains(subtype), "{filter:#?}");
+        }
+        let default_source = copy_source(if_false).expect("default copy source target");
+        let replacement_source = copy_source(if_true).expect("replacement copy source target");
+        assert_eq!(replacement_source, default_source);
+        assert!(target_is_explicitly_chosen(&default_source));
+    }
+
+    #[test]
+    fn triggered_copy_replacement_lowers_subtype_check_to_declared_target() {
+        let definition = crate::CardDefinitionBuilder::new(
+            crate::CardId::new(),
+            "Triggered Copy Replacement",
+        )
+        .card_types(vec![crate::CardType::Creature])
+        .parse_text(
+            "Whenever this creature attacks, create a tapped and attacking token that's a copy of another target attacking creature. If that creature is a Kraken, Leviathan, Octopus, or Serpent, create two of those tokens instead.",
+        )
+        .expect("triggered copy replacement should lower");
+        let debug = format!("{:#?}", definition.abilities);
+        assert!(debug.contains("condition: TargetMatches"), "{debug}");
+        assert!(!debug.contains("condition: TaggedObjectMatches"), "{debug}");
+    }
+}
+
+#[cfg(test)]
+mod targeted_delayed_leave_followup_tests {
+    use super::*;
+
+    fn leaves_filter(trigger: &crate::cards::builders::TriggerSpec) -> Option<&ObjectFilter> {
+        match trigger {
+            crate::cards::builders::TriggerSpec::WithIntro { trigger, .. } => {
+                leaves_filter(trigger)
+            }
+            crate::cards::builders::TriggerSpec::LeavesBattlefield(filter) => Some(filter),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn targeted_creature_leave_watcher_reuses_delayed_target_choice() {
+        let lexed = crate::runtime_backend::lex_line(
+            "Whenever target creature deals combat damage to a non-Wall creature this turn, destroy that non-Wall creature. When the targeted creature leaves the battlefield this turn, sacrifice this artifact.",
+            0,
+        )
+        .expect("linked delayed triggers should lex");
+        let parsed =
+            parse_effect_sentences_lexed(&lexed).expect("linked delayed triggers should parse");
+        let chosen_tag = parsed
+            .iter()
+            .find_map(|effect| match effect {
+                EffectAst::ChooseObjects { tag, .. } => Some(tag),
+                _ => None,
+            })
+            .expect("the target creature should be selected at resolution");
+        let leave_filter = parsed
+            .iter()
+            .find_map(|effect| match effect {
+                EffectAst::DelayedTriggerThisTurn { trigger, .. } => leaves_filter(trigger),
+                _ => None,
+            })
+            .expect("the later sentence should register a leave watcher");
+
+        assert!(
+            leave_filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == *chosen_tag
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }),
+            "the leave watcher must be restricted to the chosen target: {parsed:#?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod returned_permanent_enters_followup_tests {
+    use super::*;
+
+    #[test]
+    fn singular_return_result_gets_a_one_shot_enter_watcher() {
+        let lexed = crate::runtime_backend::lex_line(
+            "Return target permanent card from an opponent's graveyard to the battlefield. When that permanent enters, return up to one target permanent card from your graveyard to the battlefield.",
+            0,
+        )
+        .expect("linked return should lex");
+        let parsed =
+            parse_effect_sentences_lexed(&lexed).expect("linked return should parse structurally");
+
+        let [
+            EffectAst::SubjectVerb(first),
+            EffectAst::DelayedTriggerForDuration {
+                trigger:
+                    crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface {
+                        surface: crate::target::SourceReferenceSurface::ThisPermanentType(surface),
+                        ..
+                    },
+                effects,
+                one_shot: true,
+                duration: Until::Forever,
+                ..
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected return followed by linked enter watcher: {parsed:#?}");
+        };
+        assert!(matches!(
+            first.action,
+            SubjectVerbActionAst::ReturnToBattlefield { .. }
+        ));
+        assert_eq!(surface, "that permanent");
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ReturnToBattlefield { .. },
+                ..
+            })]
+        ));
+    }
+
+    #[test]
+    fn anaphor_and_singular_return_guards_reject_near_misses() {
+        for text in [
+            "Return target permanent card from an opponent's graveyard to the battlefield. When that card enters, return target permanent card from your graveyard to the battlefield.",
+            "Return up to two target permanent cards from an opponent's graveyard to the battlefield. When that permanent enters, return target permanent card from your graveyard to the battlefield.",
+        ] {
+            let lexed = crate::runtime_backend::lex_line(text, 0).expect("near miss should lex");
+            let parsed =
+                parse_effect_sentences_lexed(&lexed).expect("near miss should still parse");
+            assert!(
+                !parsed
+                    .iter()
+                    .any(|effect| matches!(effect, EffectAst::DelayedTriggerForDuration { .. })),
+                "near miss must not acquire linked delayed semantics: {parsed:#?}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod conditional_target_self_replacement_followup_tests {
     use super::*;
     use crate::cards::builders::TurnHistoryPredicateAst;
@@ -3183,6 +5175,63 @@ mod conditional_target_self_replacement_followup_tests {
         );
         trailing_threshold(if_false, false);
         trailing_threshold(if_true, false);
+    }
+
+    #[test]
+    fn kicked_target_replacement_carries_the_common_exile_life_suffix_into_both_arms() {
+        let lexed = crate::runtime_backend::lex_line(
+            "Choose target creature with mana value 3 or less. If this spell was kicked, instead choose target creature. Exile the chosen creature, then its controller gains life equal to its mana value.",
+            0,
+        )
+        .expect("kicked target replacement should lex");
+        let parsed = parse_effect_sentences_lexed(&lexed)
+            .expect("kicked target replacement and common suffix should parse");
+
+        let [
+            EffectAst::SelfReplacement {
+                predicate,
+                if_true,
+                if_false,
+                attach_to_previous_ability: false,
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected one executable self-replacement: {parsed:#?}");
+        };
+        assert!(matches!(
+            predicate,
+            PredicateAst::ThisSpellWasKicked
+                | PredicateAst::TurnHistory(TurnHistoryPredicateAst::SourceWasKicked { .. })
+        ));
+        for branch in [if_false, if_true] {
+            let debug = format!("{branch:#?}");
+            assert!(debug.contains("Exile"), "missing common exile: {debug}");
+            assert!(
+                debug.contains("GainLife"),
+                "missing common life gain: {debug}"
+            );
+            assert!(
+                debug.contains("ManaValueOf"),
+                "life amount lost its chosen-object basis: {debug}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_instead_kicked_choice_is_not_rewritten_as_a_self_replacement() {
+        let lexed = crate::runtime_backend::lex_line(
+            "Choose target creature with mana value 3 or less. If this spell was kicked, choose target creature.",
+            0,
+        )
+        .expect("conditional choice near miss should lex");
+        let parsed = parse_effect_sentences_lexed(&lexed)
+            .expect("conditional choice near miss should remain parseable");
+        assert!(
+            !parsed
+                .iter()
+                .any(|effect| matches!(effect, EffectAst::SelfReplacement { .. })),
+            "only an authored instead clause can replace the default choice: {parsed:#?}"
+        );
     }
 }
 

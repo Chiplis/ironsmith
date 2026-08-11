@@ -124,6 +124,17 @@ pub(crate) struct TokenReminderFacts {
     pub(super) definition: TokenDefinitionReminderFacts,
 }
 
+impl TokenReminderFacts {
+    /// Expose only the intrinsic creature-combat slot needed to distinguish
+    /// two independently quoted token rules. The rest of the parsed reminder
+    /// definition remains owned by the token-definition merge layer.
+    pub(crate) fn creature_combat_restriction(
+        &self,
+    ) -> Option<&crate::runtime_backend::token_definition::TokenCombatRestrictionShape> {
+        self.definition.creature_rules.combat_restriction.as_ref()
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(super) struct TokenDefinitionReminderFacts {
     pub(super) keywords: Vec<TokenKeywordShape>,

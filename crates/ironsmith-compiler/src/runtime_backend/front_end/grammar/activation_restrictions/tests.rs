@@ -81,6 +81,19 @@ fn cast_qualifier_possessive_and_condition_envelopes_are_typed() {
             ..
         })
     ));
+
+    let extra_turn_suffix = lex_line("this can't attack during extra turns", 0).unwrap();
+    let Some(StaticRestrictionConditionShape::ExtraTurn {
+        remainder_first,
+        remainder_end,
+    }) = parse_static_restriction_condition_shape_tokens(&extra_turn_suffix)
+    else {
+        panic!("extra-turn suffix should be a typed static condition");
+    };
+    assert_eq!(
+        TokenWordView::new(&extra_turn_suffix[remainder_first..remainder_end]).word_refs(),
+        ["this", "cant", "attack"]
+    );
 }
 
 #[test]

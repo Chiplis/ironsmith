@@ -286,6 +286,37 @@ pub(crate) fn describe_attached_to_source_sacrifice_sequence(
     ))
 }
 
+/// Preserve the actor in an attached-object sacrifice. `SacrificeTargetEffect`
+/// correctly makes the chosen permanent's controller perform the sacrifice;
+/// rendering it as an imperative incorrectly attributes the action to the
+/// ability's controller.
+pub(crate) fn describe_attached_target_controller_sacrifice(effects: &[&Effect]) -> Option<String> {
+    let [tag_effect, sacrifice_effect] = effects else {
+        return None;
+    };
+    let attached = tag_effect.downcast_ref::<crate::effects::TagAttachedToSourceEffect>()?;
+    let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    let noun = match sacrifice.target.base() {
+        ChooseSpec::Tagged(tag) if tag == &attached.tag => match attached.tag.as_str() {
+            "enchanted" => "permanent".to_string(),
+            "equipped" => "creature".to_string(),
+            _ => return None,
+        },
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter)
+            if filter_references_exact_tag(filter, &attached.tag) =>
+        {
+            described_filter_without_tag(filter)
+        }
+        _ => return None,
+    };
+    let adjective = match attached.tag.as_str() {
+        "enchanted" => "enchanted",
+        "equipped" => "equipped",
+        _ => return None,
+    };
+    Some(format!("{adjective} {noun}'s controller sacrifices it"))
+}
+
 pub(crate) fn describe_tagged_token_copy_then_sacrifice(effects: &[&Effect]) -> Option<String> {
     let effects = if let [first, rest @ ..] = effects
         && first
@@ -347,11 +378,14 @@ pub(crate) fn for_each_moves_iterated_to_battlefield(
     else {
         return false;
     };
+    let mut normalized_move = move_to_zone.clone();
+    if normalized_move.verb_surface == ironsmith_core::MoveToZoneVerbSurface::Put {
+        normalized_move.verb_surface = ironsmith_core::MoveToZoneVerbSurface::Canonical;
+    }
     for_each.tag == *expected_tag
-        && move_to_zone.zone == Zone::Battlefield
-        && !move_to_zone.to_top
-        && !move_to_zone.enters_tapped
-        && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+        && for_each.controller_at_last_blocked_by.is_none()
+        && normalized_move
+            == crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Battlefield, false)
 }
 
 pub(crate) fn describe_consult_choose_any_number_to_battlefield_rest_bottom(
@@ -438,8 +472,11 @@ pub(crate) fn describe_shuffle_reveal_repeated_permanent_groups_rest_bottom(
     let [
         shuffle_effect,
         look_effect,
-        tag_effect,
-        move_effect,
+        union_tag_effect,
+        first_tag_effect,
+        first_move_effect,
+        second_tag_effect,
+        second_move_effect,
         bottom_effect,
     ] = effects
     else {
@@ -449,16 +486,35 @@ pub(crate) fn describe_shuffle_reveal_repeated_permanent_groups_rest_bottom(
     let shuffle = unwrap_wrapped_effect(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
     let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
-    let tag_matching = tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let tag_matching =
+        union_tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let first_matching =
+        first_tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let second_matching =
+        second_tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
     let bottom =
         bottom_effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
-    let ChooseSpec::Object(shuffled_filter) = shuffle.target.base() else {
-        return None;
+    let shuffled_filter = match &shuffle.target {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter,
+        _ => return None,
     };
-    if shuffle.player != PlayerFilter::You
-        || shuffled_filter.zone != Some(Zone::Battlefield)
-        || shuffled_filter.owner != Some(PlayerFilter::You)
-        || !is_all_permanent_card_types(shuffled_filter)
+    // `ChooseSpec::All` already carries the executable quantifier. The public
+    // parser additionally retains the authored `all` surface on the filter;
+    // normalize only that redundant presentation bit before comparing the
+    // exact permanent domain.
+    let mut normalized_shuffled_filter = shuffled_filter.clone();
+    normalized_shuffled_filter.set_set_quantifier_surface(None);
+    let shuffled_permanents = ObjectFilter::permanent()
+        .in_zone(Zone::Battlefield)
+        .owned_by(PlayerFilter::You);
+    let shuffled_explicit_permanent_types = ObjectFilter::permanent_card()
+        .in_zone(Zone::Battlefield)
+        .owned_by(PlayerFilter::You);
+    if (normalized_shuffled_filter != shuffled_permanents
+        && normalized_shuffled_filter != shuffled_explicit_permanent_types)
+        || shuffle.player != PlayerFilter::You
+        || shuffle.owner_library_destination
+        || shuffle.possessive_owner_subject
         || look.player != PlayerFilter::You
         || !look.reveal
         || !matches!(
@@ -472,7 +528,17 @@ pub(crate) fn describe_shuffle_reveal_repeated_permanent_groups_rest_bottom(
         || tag_matching.zone != Some(Zone::Library)
         || !tag_matching.additional_zones.is_empty()
         || tag_matching.filter.any_of.len() != 2
-        || !for_each_moves_iterated_to_battlefield(move_effect, &tag_matching.tag)
+        || first_matching.zone != Some(Zone::Library)
+        || !first_matching.additional_zones.is_empty()
+        || second_matching.zone != Some(Zone::Library)
+        || !second_matching.additional_zones.is_empty()
+        || first_matching.filter != tag_matching.filter.any_of[0]
+        || second_matching.filter != tag_matching.filter.any_of[1]
+        || first_matching.tag == second_matching.tag
+        || first_matching.tag == tag_matching.tag
+        || second_matching.tag == tag_matching.tag
+        || !for_each_moves_iterated_to_battlefield(first_move_effect, &first_matching.tag)
+        || !for_each_moves_iterated_to_battlefield(second_move_effect, &second_matching.tag)
         || bottom.tag != look.tag
         || bottom.keep_tagged.as_ref() != Some(&tag_matching.tag)
         || bottom.player != PlayerFilter::You
@@ -484,12 +550,36 @@ pub(crate) fn describe_shuffle_reveal_repeated_permanent_groups_rest_bottom(
     let [first, second] = tag_matching.filter.any_of.as_slice() else {
         return None;
     };
-    let first_is_non_aura_permanent = is_all_permanent_card_types(first)
-        && first.excluded_subtypes == vec![crate::types::Subtype::Aura];
-    let second_is_aura = second.card_types.is_empty()
-        && second.subtypes == vec![crate::types::Subtype::Aura]
-        && second.excluded_subtypes.is_empty();
-    if !first_is_non_aura_permanent || !second_is_aura {
+    let tagged_revealed = |mut filter: ObjectFilter| {
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: look.tag.clone(),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        filter
+    };
+    let expected_non_aura = |mut filter: ObjectFilter| {
+        filter = tagged_revealed(filter);
+        filter.set_explicit_card_noun(true);
+        filter.excluded_subtypes.push(crate::types::Subtype::Aura);
+        filter
+    };
+    let mut expected_aura =
+        tagged_revealed(ObjectFilter::default().with_subtype(crate::types::Subtype::Aura));
+    expected_aura.set_explicit_card_noun(true);
+    let expected_union = |non_aura| {
+        let mut union = ObjectFilter::default();
+        union.any_of = vec![non_aura, expected_aura.clone()];
+        union
+    };
+    let battlefield_shorthand_union = expected_union(expected_non_aura(ObjectFilter::permanent()));
+    let explicit_permanent_types_union =
+        expected_union(expected_non_aura(ObjectFilter::permanent_card()));
+    if (tag_matching.filter != battlefield_shorthand_union
+        && tag_matching.filter != explicit_permanent_types_union)
+        || first == second
+    {
         return None;
     }
 
@@ -618,11 +708,300 @@ pub(crate) fn describe_return_then_conditional_animation(effects: &[Effect]) -> 
 
     let return_text = describe_effect(return_effect);
     let animation_text = describe_effect(&conditional.if_true[0]);
+    if let crate::ConditionExpr::TaggedObjectMatches(condition_tag, condition_filter) =
+        &conditional.condition
+    {
+        let mut semantic_filter = condition_filter.clone();
+        semantic_filter.zone = None;
+        semantic_filter.source_surface = None;
+        semantic_filter.union_surface = Default::default();
+        if condition_tag == returned_tag
+            && semantic_filter
+                == ObjectFilter::default().with_subtype(crate::types::Subtype::Vehicle)
+            && apply.until == Until::Forever
+            && apply.condition.is_none()
+            && apply.runtime_modifications.is_empty()
+            && apply.additional_modifications.is_empty()
+            && matches!(
+                &apply.modification,
+                Some(crate::continuous::Modification::AddCardTypes(card_types))
+                    if card_types.as_slice() == [CardType::Artifact, CardType::Creature]
+            )
+        {
+            return Some(format!(
+                "{}. If it's a Vehicle, it becomes an artifact creature",
+                return_text.trim_end_matches('.')
+            ));
+        }
+    }
     Some(format!(
         "{}. If {}, {}",
         return_text.trim_end_matches('.'),
         describe_condition(&conditional.condition),
         lowercase_first(animation_text.trim_end_matches('.'))
+    ))
+}
+
+/// Fold a targeted same-name graveyard card into the optional normal-cost
+/// cast that consumes that exact target. The target tag is executable
+/// provenance; unrelated graveyard choices or free casts must not match.
+pub(crate) fn describe_target_same_name_graveyard_may_cast(effects: &[Effect]) -> Option<String> {
+    let [target_effect, may_effect] = effects else {
+        return None;
+    };
+    let target_tag = effect_tag(target_effect)?;
+    let target_only =
+        unwrap_wrapped_effect(target_effect).downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let ChooseSpec::Object(filter) = target_only.target.base() else {
+        return None;
+    };
+    let [same_name] = filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    let mut semantic_filter = filter.clone();
+    semantic_filter.zone = None;
+    semantic_filter.owner = None;
+    semantic_filter.tagged_constraints.clear();
+    semantic_filter.source_surface = None;
+    semantic_filter.union_surface = Default::default();
+    if !target_only.explicit_declaration
+        || target_only.chooser.is_some()
+        || filter.zone != Some(Zone::Graveyard)
+        || filter.owner != Some(PlayerFilter::You)
+        || same_name.tag.as_str() != "triggering"
+        || same_name.relation != crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+        || semantic_filter != ObjectFilter::default()
+    {
+        return None;
+    }
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [cast_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let cast =
+        unwrap_wrapped_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|decider| *decider != PlayerFilter::You)
+        || cast.tag != *target_tag
+        || cast.player != PlayerFilter::You
+        || cast.allow_land
+        || cast.as_copy
+        || cast.copy_cast_reminder_surface
+        || cast.without_paying_mana_cost
+        || cast.additional_mana_cost.is_some()
+        || cast.cost_reduction.is_some()
+        || cast.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+    {
+        return None;
+    }
+    Some(
+        "You may cast target card with the same name as that spell from your graveyard".to_string(),
+    )
+}
+
+#[cfg(test)]
+mod graveyard_target_and_animation_surface_tests {
+    use super::*;
+
+    #[test]
+    fn targeted_same_name_graveyard_card_and_optional_cast_share_the_target_tag() {
+        let tag = TagKey::from("targeted_same_name_spell");
+        let mut filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You);
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: TagKey::from("triggering"),
+                relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+            });
+        let target = Effect::new(crate::effects::TargetOnlyEffect::explicit(
+            ChooseSpec::target(ChooseSpec::Object(filter)),
+        ))
+        .tag(tag.clone());
+        let cast = Effect::may(vec![Effect::new(crate::effects::CastTaggedEffect::new(
+            tag.clone(),
+            PlayerFilter::You,
+        ))]);
+        assert_eq!(
+            describe_target_same_name_graveyard_may_cast(&[target.clone(), cast]).as_deref(),
+            Some("You may cast target card with the same name as that spell from your graveyard")
+        );
+
+        let wrong_target = Effect::may(vec![Effect::new(crate::effects::CastTaggedEffect::new(
+            "other_card",
+            PlayerFilter::You,
+        ))]);
+        assert!(
+            describe_target_same_name_graveyard_may_cast(&[target, wrong_target]).is_none(),
+            "an unrelated graveyard card must not inherit the targeted cast permission"
+        );
+    }
+
+    #[test]
+    fn returned_vehicle_condition_uses_the_same_returned_object_pronoun() {
+        let tag = TagKey::from("returned_0");
+        let returned = Effect::new(crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
+            ChooseSpec::target(ChooseSpec::Object(
+                ObjectFilter::default()
+                    .with_type(CardType::Artifact)
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You),
+            )),
+            false,
+        ))
+        .tag(tag.clone());
+        let animate = Effect::new(crate::effects::ConditionalEffect::new(
+            Condition::TaggedObjectMatches(
+                tag.clone(),
+                ObjectFilter::default().with_subtype(Subtype::Vehicle),
+            ),
+            vec![Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    ChooseSpec::Tagged(tag),
+                    crate::continuous::Modification::AddCardTypes(vec![
+                        CardType::Artifact,
+                        CardType::Creature,
+                    ]),
+                    Until::Forever,
+                ),
+            )],
+            vec![],
+        ));
+        assert_eq!(
+            describe_return_then_conditional_animation(&[returned.clone(), animate]).as_deref(),
+            Some(concat!(
+                "Return target artifact card from your graveyard to the battlefield. ",
+                "If it's a Vehicle, it becomes an artifact creature"
+            ))
+        );
+
+        let wrong_tag = Effect::new(crate::effects::ConditionalEffect::new(
+            Condition::TaggedObjectMatches(
+                TagKey::from("other_return"),
+                ObjectFilter::default().with_subtype(Subtype::Vehicle),
+            ),
+            vec![Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    ChooseSpec::Tagged(TagKey::from("other_return")),
+                    crate::continuous::Modification::AddCardTypes(vec![
+                        CardType::Artifact,
+                        CardType::Creature,
+                    ]),
+                    Until::Forever,
+                ),
+            )],
+            vec![],
+        ));
+        assert_ne!(
+            describe_return_then_conditional_animation(&[returned, wrong_tag]).as_deref(),
+            Some(concat!(
+                "Return target artifact card from your graveyard to the battlefield. ",
+                "If it's a Vehicle, it becomes an artifact creature"
+            ))
+        );
+    }
+}
+
+/// Render an authored `it` conditional against the exact object tagged by a
+/// preceding counter action. The tag is executable provenance; it should not
+/// expand into the verbose prior-effect set when the source used a singular
+/// pronoun.
+pub(crate) fn describe_put_counters_then_conditional_animation(
+    effects: &[Effect],
+) -> Option<String> {
+    let effects = match effects {
+        [sequence] => {
+            let sequence = sequence.downcast_ref::<crate::effects::SequenceEffect>()?;
+            if !matches!(
+                sequence.surface,
+                ironsmith_core::SequenceSurface::Sequential
+                    | ironsmith_core::SequenceSurface::Coordinated
+            ) {
+                return None;
+            }
+            sequence.effects.as_slice()
+        }
+        effects => effects,
+    };
+    let [counter_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let counter_tag = wrapped_effect_tag(counter_effect)?;
+    unwrap_wrapped_effect(counter_effect).downcast_ref::<crate::effects::PutCountersEffect>()?;
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+        return None;
+    }
+    let crate::ConditionExpr::Not(inner) = &conditional.condition else {
+        return None;
+    };
+    let crate::ConditionExpr::TaggedObjectMatches(condition_tag, condition_filter) = inner.as_ref()
+    else {
+        return None;
+    };
+    let mut semantic_filter = condition_filter.clone();
+    semantic_filter.source_surface = None;
+    semantic_filter.union_surface = Default::default();
+    semantic_filter.set_explicit_card_type_noun(None);
+    if condition_tag != counter_tag || semantic_filter != ObjectFilter::creature() {
+        return None;
+    }
+
+    let animation = tagged_apply_continuous(&conditional.if_true[0])?;
+    if !apply_targets_tag(animation, counter_tag)
+        || animation.until != Until::Forever
+        || !animation.runtime_modifications.is_empty()
+    {
+        return None;
+    }
+    let mut adds_creature_type = false;
+    let mut power_toughness = None;
+    let mut subtypes = Vec::new();
+    for modification in animation
+        .modification
+        .iter()
+        .chain(animation.additional_modifications.iter())
+    {
+        match modification {
+            crate::continuous::Modification::AddCardTypes(card_types)
+                if card_types.as_slice() == [CardType::Creature] =>
+            {
+                adds_creature_type = true;
+            }
+            crate::continuous::Modification::SetPowerToughness {
+                power, toughness, ..
+            } => power_toughness = Some((power, toughness)),
+            crate::continuous::Modification::AddSubtypes(found) => {
+                subtypes.extend(found.iter().copied());
+            }
+            crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                crate::types::SubtypeFamily::Creature,
+            ) => {}
+            _ => return None,
+        }
+    }
+    let (power, toughness) = power_toughness?;
+    if !adds_creature_type {
+        return None;
+    }
+    let subtype_prefix = subtypes
+        .iter()
+        .map(|subtype| subtype.display_name())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let creature_descriptor = if subtype_prefix.is_empty() {
+        "creature".to_string()
+    } else {
+        format!("{subtype_prefix} creature")
+    };
+    Some(format!(
+        "{}. If it isn't a creature, it becomes a {}/{} {creature_descriptor} in addition to its other types",
+        describe_effect(counter_effect).trim_end_matches('.'),
+        describe_value(power),
+        describe_value(toughness),
     ))
 }
 
@@ -1331,7 +1710,29 @@ pub(crate) fn describe_choose_then_mount_vehicle_become(effects: &[&Effect]) -> 
         return None;
     };
     let target_tag = effect_tag(target_effect)?;
-    unwrap_wrapped_effect(target_effect).downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let target_only =
+        unwrap_wrapped_effect(target_effect).downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let ChooseSpec::WithCount(target, count) = target_only.target.unhinted() else {
+        return None;
+    };
+    let ChooseSpec::Target(target) = target.as_ref() else {
+        return None;
+    };
+    let ChooseSpec::Object(target_filter) = target.as_ref() else {
+        return None;
+    };
+    let mut expected_target_filter = ObjectFilter::default();
+    expected_target_filter.zone = Some(Zone::Battlefield);
+    expected_target_filter.controller = Some(PlayerFilter::You);
+    expected_target_filter.subtypes = vec![Subtype::Mount, Subtype::Vehicle];
+    let mut semantic_target_filter = target_filter.clone();
+    semantic_target_filter.source_surface = None;
+    semantic_target_filter.union_surface = crate::filter::ObjectFilterUnionSurface::default();
+    if count != &crate::effect::ChoiceCount::up_to(1)
+        || semantic_target_filter != expected_target_filter
+    {
+        return None;
+    }
 
     let first = first_conditional.downcast_ref::<crate::effects::ConditionalEffect>()?;
     let second = second_conditional.downcast_ref::<crate::effects::ConditionalEffect>()?;
@@ -1350,7 +1751,7 @@ pub(crate) fn describe_choose_then_mount_vehicle_become(effects: &[&Effect]) -> 
 
     let saddled_source = unwrap_wrapped_effect(&first.if_true[0])
         .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
-    if !matches!(&saddled_source.source, ChooseSpec::Tagged(tag) if tag == target_tag)
+    if !matches!(saddled_source.source.base(), ChooseSpec::Tagged(tag) if tag == target_tag)
         || saddled_source
             .effect
             .downcast_ref::<crate::effects::BecomeSaddledUntilEotEffect>()
@@ -1364,14 +1765,16 @@ pub(crate) fn describe_choose_then_mount_vehicle_become(effects: &[&Effect]) -> 
         || vehicle_apply.condition.is_some()
         || !vehicle_apply.additional_modifications.is_empty()
         || !vehicle_apply.runtime_modifications.is_empty()
-        || !matches!(vehicle_apply.target_spec.as_ref(), Some(ChooseSpec::Tagged(tag)) if tag == target_tag)
+        || !matches!(vehicle_apply.target_spec.as_ref().map(ChooseSpec::base), Some(ChooseSpec::Tagged(tag)) if tag == target_tag)
     {
         return None;
     }
-    let Some(crate::continuous::Modification::AddCardTypes(card_types)) =
-        &vehicle_apply.modification
-    else {
-        return None;
+    let card_types = match &vehicle_apply.modification {
+        Some(
+            crate::continuous::Modification::AddCardTypes(card_types)
+            | crate::continuous::Modification::SetCardTypes(card_types),
+        ) => card_types,
+        _ => return None,
     };
     if first_subtype != Subtype::Mount
         || second_subtype != Subtype::Vehicle
@@ -1386,6 +1789,78 @@ pub(crate) fn describe_choose_then_mount_vehicle_become(effects: &[&Effect]) -> 
         "{}. Until end of turn, that permanent becomes saddled if it's a Mount and becomes an artifact creature if it's a Vehicle",
         describe_effect(target_effect).trim_end_matches('.')
     ))
+}
+
+#[cfg(test)]
+mod mount_vehicle_become_tests {
+    use super::*;
+
+    fn effects(vehicle_types: Vec<CardType>, vehicle_tag: &str) -> Vec<Effect> {
+        let target_tag = TagKey::from("targeted_0");
+        let mut target_filter = ObjectFilter::default();
+        target_filter.zone = Some(Zone::Battlefield);
+        target_filter.controller = Some(PlayerFilter::You);
+        target_filter.subtypes = vec![Subtype::Mount, Subtype::Vehicle];
+        let target = Effect::new(crate::effects::TargetOnlyEffect::new(
+            ChooseSpec::target(ChooseSpec::Object(target_filter))
+                .with_count(crate::effect::ChoiceCount::up_to(1)),
+        ))
+        .tag(target_tag.clone());
+
+        let mut mount_filter = ObjectFilter::default();
+        mount_filter.subtypes.push(Subtype::Mount);
+        let saddle = Effect::new(crate::effects::ConditionalEffect::new(
+            Condition::TaggedObjectMatches(target_tag.clone(), mount_filter),
+            vec![Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                ChooseSpec::Tagged(target_tag.clone()),
+                Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new()),
+            ))],
+            vec![],
+        ));
+
+        let vehicle_tag = TagKey::from(vehicle_tag);
+        let mut vehicle_filter = ObjectFilter::default();
+        vehicle_filter.subtypes.push(Subtype::Vehicle);
+        let animate = Effect::new(crate::effects::ConditionalEffect::new(
+            Condition::TaggedObjectMatches(vehicle_tag.clone(), vehicle_filter),
+            vec![Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    ChooseSpec::Tagged(vehicle_tag),
+                    crate::continuous::Modification::SetCardTypes(vehicle_types),
+                    Until::EndOfTurn,
+                ),
+            )],
+            vec![],
+        ));
+        vec![target, saddle, animate]
+    }
+
+    #[test]
+    fn set_card_types_mount_vehicle_pair_rejoins_the_shared_duration() {
+        let effects = effects(vec![CardType::Artifact, CardType::Creature], "targeted_0");
+        let refs = effects.iter().collect::<Vec<_>>();
+        assert_eq!(
+            describe_choose_then_mount_vehicle_become(&refs).as_deref(),
+            Some(concat!(
+                "Choose up to one target Mount or Vehicle you control. Until end of turn, ",
+                "that permanent becomes saddled if it's a Mount and becomes an artifact creature if it's a Vehicle"
+            ))
+        );
+    }
+
+    #[test]
+    fn mount_vehicle_pair_rejects_changed_target_or_card_types() {
+        for effects in [
+            effects(
+                vec![CardType::Artifact, CardType::Creature],
+                "different_target",
+            ),
+            effects(vec![CardType::Artifact], "targeted_0"),
+        ] {
+            let refs = effects.iter().collect::<Vec<_>>();
+            assert!(describe_choose_then_mount_vehicle_become(&refs).is_none());
+        }
+    }
 }
 
 pub(crate) fn describe_tagged_counter_then_color_subtype_keyword(
@@ -1403,7 +1878,7 @@ pub(crate) fn describe_tagged_counter_then_color_subtype_keyword(
     let [counter_effect, color_effect, subtype_effect, ability_effect] = effects else {
         return None;
     };
-    let counter_tag = effect_tag(counter_effect)?;
+    let counter_tag = wrapped_effect_tag(counter_effect)?;
     unwrap_wrapped_effect(counter_effect).downcast_ref::<crate::effects::PutCountersEffect>()?;
 
     let color_apply = tagged_apply_continuous(color_effect)?;
@@ -2230,7 +2705,10 @@ pub(crate) fn describe_copy_then_may_cast_copy(effects: &[&Effect]) -> Option<St
         return None;
     };
     let copy_spell = copy_spell_from_effect(copy_effect)?;
-    if copy_spell.count != Value::Fixed(1) || !copy_spell.removed_supertypes.is_empty() {
+    if copy_spell.count != Value::Fixed(1)
+        || !copy_spell.removed_supertypes.is_empty()
+        || copy_spell.has_characteristic_modifiers()
+    {
         return None;
     }
     let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
@@ -2717,7 +3195,9 @@ pub(crate) fn describe_sequence_copy_then_may_cast(effects: &[&Effect]) -> Optio
         eprintln!("seq-copy-may copy: {copy_spell:?}");
     }
     let copy_spell = copy_spell?;
-    if copy_spell.count.unhinted() != &Value::Fixed(1) || !copy_spell.removed_supertypes.is_empty()
+    if copy_spell.count.unhinted() != &Value::Fixed(1)
+        || !copy_spell.removed_supertypes.is_empty()
+        || copy_spell.has_characteristic_modifiers()
     {
         return None;
     }
@@ -3689,7 +4169,9 @@ pub(crate) fn choose_spec_references_tag_constraint(
                     && constraint.tag == *tag
             })
         }
-        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+        ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::SurfaceHinted { spec: inner, .. } => {
             choose_spec_references_tag_constraint(inner, tag)
         }
         _ => false,
@@ -4469,6 +4951,9 @@ pub(crate) fn describe_choose_card_name_filter(filter: Option<&ObjectFilter>) ->
     let Some(filter) = filter else {
         return "Choose a card name".to_string();
     };
+    if choose_card_name_excludes_only_basic_lands(filter) {
+        return "Choose a card name other than a basic land card name".to_string();
+    }
     let name_kind = if filter.excluded_card_types.contains(&CardType::Artifact)
         && filter.excluded_card_types.contains(&CardType::Land)
         && filter.card_types.is_empty()
@@ -4602,8 +5087,34 @@ pub(crate) fn render_reveal_hand_choose_exile_each_same_name_shuffle(
     let [inner_effect] = each.effects.as_slice() else {
         return None;
     };
-    let inner = structural_unwrap_render_wrappers(inner_effect)
-        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    let inner = if let Some(sequence) = structural_unwrap_render_wrappers(inner_effect)
+        .downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        sequence
+    } else {
+        let conditional = structural_unwrap_render_wrappers(inner_effect)
+            .downcast_ref::<crate::effects::ConditionalEffect>()?;
+        let Condition::TaggedObjectMatchedLastKnown(iterated_tag, card_filter) =
+            &conditional.condition
+        else {
+            return None;
+        };
+        let mut bare_card_filter = card_filter.clone();
+        bare_card_filter.set_explicit_card_noun(false);
+        if iterated_tag.as_str() != "__it__"
+            || !card_filter.has_explicit_card_noun()
+            || bare_card_filter != ObjectFilter::default()
+            || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+            || !conditional.if_false.is_empty()
+        {
+            return None;
+        }
+        let [guarded_effect] = conditional.if_true.as_slice() else {
+            return None;
+        };
+        structural_unwrap_render_wrappers(guarded_effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()?
+    };
     let [search_effect, exile_matches_effect] = inner.effects.as_slice() else {
         return None;
     };
@@ -4642,7 +5153,8 @@ pub(crate) fn render_reveal_hand_choose_exile_each_same_name_shuffle(
         "up to X {}",
         pluralize_relative_object_phrase(strip_indefinite_article(&choice))
     );
-    let search_origin = describe_search_origin_zones(search)?;
+    describe_search_origin_zones(search)?;
+    let search_origin = "that player's graveyard, hand, and library";
     let count_text = same_name_extraction_selection(search)?;
     Some(format!(
         "{reveal}. You choose {selection} from it and exile them. For each card exiled this way, search {search_origin} for {count_text} with the same name as that card and exile them. Then that player shuffles"
@@ -5343,38 +5855,73 @@ pub(in crate::compiled_text) fn describe_amass_then_amassed_army_power_damage(
 ) -> Option<String> {
     let producer_tag = wrapped_effect_tag(producer_effect)?;
     let producer = unwrap_tag_wrappers(producer_effect);
-    producer.downcast_ref::<crate::effects::AmassEffect>()?;
+    let amass = producer.downcast_ref::<crate::effects::AmassEffect>()?;
 
-    let for_each =
-        unwrap_tag_wrappers(for_each_effect).downcast_ref::<crate::effects::ForEachObject>()?;
-    let [inner] = for_each.effects.as_slice() else {
-        return None;
-    };
-    let Some((Some(source), damage)) = damage_with_source_view(inner) else {
-        return None;
-    };
+    let consumer = unwrap_tag_wrappers(for_each_effect);
+    let (recipient_filter, damage, source) =
+        if let Some(for_each) = consumer.downcast_ref::<crate::effects::ForEachObject>() {
+            let [inner] = for_each.effects.as_slice() else {
+                return None;
+            };
+            let (source, damage) = damage_with_source_view(inner)?;
+            if !matches!(damage.target.unhinted(), ChooseSpec::Iterated) {
+                return None;
+            }
+            (&for_each.filter, damage, source?)
+        } else {
+            let with_source = consumer.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+            if let Some(for_each) = unwrap_tag_wrappers(&with_source.effect)
+                .downcast_ref::<crate::effects::ForEachObject>()
+            {
+                let [inner] = for_each.effects.as_slice() else {
+                    return None;
+                };
+                let (inner_source, damage) = damage_with_source_view(inner)?;
+                let source = compatible_damage_sources(Some(&with_source.source), inner_source)??;
+                if !matches!(damage.target.unhinted(), ChooseSpec::Iterated) {
+                    return None;
+                }
+                (&for_each.filter, damage, source)
+            } else {
+                let (inner_source, damage) = damage_with_source_view(&with_source.effect)?;
+                let source = compatible_damage_sources(Some(&with_source.source), inner_source)??;
+                let recipient_filter = match damage.target.unhinted() {
+                    ChooseSpec::Object(filter) | ChooseSpec::All(filter)
+                        if filter.set_quantifier_surface()
+                            == Some(ironsmith_core::SetQuantifierSurface::Each) =>
+                    {
+                        filter
+                    }
+                    _ => return None,
+                };
+                (recipient_filter, damage, source)
+            }
+        };
     let Value::PowerOf(power_source) = damage.amount.unhinted() else {
         return None;
     };
     if !choose_spec_is_tagged_object(source, producer_tag)
         || !choose_spec_is_tagged_object(power_source.as_ref(), producer_tag)
-        || !matches!(damage.target.unhinted(), ChooseSpec::Iterated)
     {
         return None;
     }
 
-    let mut recipient = describe_damage_fanout_filter(&for_each.filter)?;
-    if for_each
-        .filter
+    let mut recipient = describe_damage_fanout_filter(recipient_filter)?;
+    if recipient_filter
         .excluded_subtypes
         .contains(&crate::types::Subtype::Army)
     {
         recipient = recipient.replace("non-army", "non-Army");
     }
-    let producer_text = describe_effect(producer_effect)
-        .trim()
-        .trim_end_matches('.')
-        .to_string();
+    let producer_text = if let Some(subtype) = amass.subtype {
+        let subtype = capitalize_first(&pluralize_word(&subtype.to_string().to_ascii_lowercase()));
+        format!("Amass {subtype} {}", describe_value(&amass.amount))
+    } else {
+        describe_effect(producer_effect)
+            .trim()
+            .trim_end_matches('.')
+            .to_string()
+    };
     (!producer_text.is_empty()).then(|| {
         format!(
             "{producer_text}, then the Army you amassed deals damage equal to its power to each {recipient}"
@@ -5711,7 +6258,7 @@ pub(in crate::compiled_text) fn describe_result_producer_then_for_each_tagged(
         return None;
     }
     let producer = unwrap_tag_wrappers(producer_effect);
-    let (filter, action) =
+    let (producer_filter, action) =
         if let Some(exile) = producer.downcast_ref::<crate::effects::ExileEffect>() {
             (object_filter(&exile.spec)?, "exiled")
         } else if let Some(destroy) = producer.downcast_ref::<crate::effects::DestroyEffect>() {
@@ -5722,18 +6269,38 @@ pub(in crate::compiled_text) fn describe_result_producer_then_for_each_tagged(
     let producer_text = describe_effect(producer_effect)
         .trim_end_matches('.')
         .to_string();
-    let force_card_noun = consumer_effects.iter().any(|effect| {
+
+    // A producer deliberately captures the complete result set, while a
+    // last-known-information gate inside its loop can select the qualified
+    // subset that receives the follow-up. Preserve that executable split, but
+    // render the sole current-iterand gate as part of the Oracle noun phrase:
+    // "each nontoken creature destroyed this way" rather than the mechanically
+    // expanded "each creature ..., if it was a nontoken creature".
+    let (noun_filter, followup_effects) = if let [gate_effect] = consumer_effects
+        && let Some(gate) =
+            unwrap_tag_wrappers(gate_effect).downcast_ref::<crate::effects::ConditionalEffect>()
+        && gate.surface == ironsmith_core::ConditionalSurface::LeadingIf
+        && gate.if_false.is_empty()
+        && let Condition::TaggedObjectMatchedLastKnown(iterated_tag, filter) = &gate.condition
+        && iterated_tag.as_str() == "__it__"
+        && !gate.if_true.is_empty()
+    {
+        (filter, gate.if_true.as_slice())
+    } else {
+        (producer_filter, consumer_effects)
+    };
+    let force_card_noun = followup_effects.iter().any(|effect| {
         unwrap_tag_wrappers(effect)
             .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
             .is_some()
     });
-    let followup = lowercase_first(&describe_effect_list(consumer_effects));
+    let followup = lowercase_first(&describe_effect_list(followup_effects));
     if producer_text.is_empty() || followup.is_empty() {
         return None;
     }
     Some(format!(
         "{producer_text}. For each {} {action} this way, {followup}",
-        result_noun(filter, action, force_card_noun)
+        result_noun(noun_filter, action, force_card_noun)
     ))
 }
 

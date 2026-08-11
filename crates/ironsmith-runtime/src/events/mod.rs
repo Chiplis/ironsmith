@@ -122,8 +122,8 @@ pub use phase::{
 };
 pub use raw_event::RawEvent;
 pub use spells::{
-    AbilityActivatedEvent, AbilityTriggeredEvent, BecomesTargetedEvent, SpellCastEvent,
-    SpellCopiedEvent,
+    AbilityActivatedEvent, AbilityTriggerZoneChangeCause, AbilityTriggeredEvent,
+    BecomesTargetedEvent, SpellCastEvent, SpellCopiedEvent,
 };
 
 // Re-export matchers
@@ -470,7 +470,7 @@ impl Event {
 
     /// Create a destroy event.
     pub fn destroy(permanent: ObjectId, source: Option<ObjectId>) -> Self {
-        Self::new_with_provenance(DestroyEvent { permanent, source }, ProvNodeId::default())
+        Self::new_with_provenance(DestroyEvent::new(permanent, source), ProvNodeId::default())
     }
 
     /// Create a sacrifice event.

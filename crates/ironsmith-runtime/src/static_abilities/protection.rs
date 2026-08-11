@@ -238,6 +238,9 @@ impl HexproofFrom {
 }
 
 fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
+    if hexproof_from_activated_and_triggered_abilities(filter) {
+        return "activated and triggered abilities".to_string();
+    }
     if !filter.any_of.is_empty() {
         return filter
             .any_of
@@ -266,6 +269,27 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
         return format!("{fragment}s");
     }
     fragment.to_string()
+}
+
+fn hexproof_from_activated_and_triggered_abilities(filter: &ObjectFilter) -> bool {
+    if filter.any_of.len() != 2 {
+        return false;
+    }
+
+    let mut activated = ObjectFilter::default();
+    activated.zone = Some(crate::zone::Zone::Stack);
+    activated.stack_kind = Some(crate::filter::StackObjectKind::ActivatedAbility);
+    let mut triggered = ObjectFilter::default();
+    triggered.zone = Some(crate::zone::Zone::Stack);
+    triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
+
+    filter.any_of.iter().any(|branch| branch == &activated)
+        && filter.any_of.iter().any(|branch| branch == &triggered)
+        && {
+            let mut outer = filter.clone();
+            outer.any_of.clear();
+            outer == ObjectFilter::default()
+        }
 }
 
 fn is_exactly_all_magic_colors_filter(filter: &ObjectFilter) -> bool {
@@ -324,12 +348,38 @@ impl Ward {
     }
 }
 
+fn ward_waterbend_generic(cost: &crate::cost::TotalCost) -> Option<u32> {
+    let ironsmith_core::TotalCostKind::OneOf(branches) = cost.kind() else {
+        return None;
+    };
+    branches.iter().find_map(|branch| {
+        let ironsmith_core::TotalCostKind::All(costs) = branch.kind() else {
+            return None;
+        };
+        costs.iter().find_map(|cost| {
+            let effect = &cost.downcast_ref::<crate::costs::CostEffect>()?.effect;
+            let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+            choose
+                .tag
+                .as_str()
+                .strip_prefix("waterbend_cost_")?
+                .parse::<u32>()
+                .ok()
+        })
+    })
+}
+
 impl StaticAbilityKind for Ward {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Ward
     }
 
     fn display(&self) -> String {
+        // Waterbend's expanded tap branches are the executable payment model;
+        // the authored keyword is the public cost surface.
+        if let Some(generic) = ward_waterbend_generic(&self.cost) {
+            return format!("Ward—Waterbend {{{generic}}}.");
+        }
         // Mana-only ward uses a space ("Ward {2}"); ward with any non-mana cost
         // uses an em dash ("Ward—Discard a card").
         if self.cost.has_non_mana_costs() {
@@ -428,5 +478,22 @@ mod tests {
         // But it should report the filter
         assert!(hexproof.hexproof_from_filter().is_some());
         assert_eq!(hexproof.hexproof_from_filter(), Some(&filter));
+    }
+
+    #[test]
+    fn hexproof_from_activated_and_triggered_abilities_compacts_typed_stack_union() {
+        let mut activated = ObjectFilter::default();
+        activated.zone = Some(crate::zone::Zone::Stack);
+        activated.stack_kind = Some(crate::filter::StackObjectKind::ActivatedAbility);
+        let mut triggered = ObjectFilter::default();
+        triggered.zone = Some(crate::zone::Zone::Stack);
+        triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
+        let mut filter = ObjectFilter::default();
+        filter.any_of = vec![activated, triggered];
+
+        assert_eq!(
+            HexproofFrom::new(filter).display(),
+            "Hexproof from activated and triggered abilities"
+        );
     }
 }

@@ -174,6 +174,10 @@ pub struct ObjectSnapshot {
     pub cast_order_this_turn: Option<u32>,
     /// Mana spent to cast this object when it was a spell on the stack.
     pub mana_spent_to_cast: ManaPool,
+    /// Last-known snapshots of the sources that produced mana spent to cast
+    /// this object. This remains available after the spell leaves the stack
+    /// so first-matching-spell predicates can inspect earlier casts.
+    pub mana_sources_spent_to_cast: Vec<ObjectSnapshot>,
 
     // === Non-copiable state ===
     /// Counters on the object.
@@ -210,6 +214,12 @@ impl ObjectSnapshot {
     /// Captures all relevant characteristics at the current moment.
     /// Game state is required to access battlefield state like tapped, flipped, etc.
     pub fn from_object(obj: &Object, game: &crate::game_state::GameState) -> Self {
+        let was_enchanted = obj.attachments.iter().any(|&attachment_id| {
+            game.object(attachment_id).is_some_and(|attachment| {
+                attachment.card_types.contains(&CardType::Enchantment)
+                    && attachment.subtypes.contains(&Subtype::Aura)
+            })
+        });
         Self {
             // Identity
             object_id: obj.id,
@@ -251,6 +261,11 @@ impl ObjectSnapshot {
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
             mana_spent_to_cast: obj.mana_spent_to_cast.clone(),
+            mana_sources_spent_to_cast: obj
+                .cast_tagged_objects
+                .get(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG)
+                .cloned()
+                .unwrap_or_default(),
 
             // Non-copiable state (from game state extension maps)
             counters: obj.counters.clone(),
@@ -265,7 +280,7 @@ impl ObjectSnapshot {
             transform_count: game.transform_count(obj.id),
             attached_to: obj.attached_to,
             attachments: obj.attachments.clone(),
-            was_enchanted: false, // Set later via with_enchantment_check if needed
+            was_enchanted,
             is_monstrous: game.is_monstrous(obj.id),
             is_commander: game.is_commander(obj.id),
             zone: obj.zone,
@@ -603,6 +618,7 @@ impl ObjectSnapshot {
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: ManaPool::default(),
+            mana_sources_spent_to_cast: Vec::new(),
             counters: HashMap::new(),
             is_token: false,
             tapped: false,

@@ -117,6 +117,58 @@ impl GameState {
             .source_dealt_damage_this_turn(source, stable_id)
     }
 
+    /// Whether this exact source object has dealt positive damage to `player`
+    /// at any earlier point in the game.
+    ///
+    /// The raw object ID comparison is intentional. A card that leaves a zone
+    /// and returns is a new object and must not inherit the earlier object's
+    /// damage history through its stable card identity.
+    pub fn source_dealt_damage_to_player_this_game(
+        &self,
+        source: ObjectId,
+        player: PlayerId,
+    ) -> bool {
+        self.players.iter().any(|involved| {
+            self.action_history_for_player(involved.id).any(|record| {
+                record
+                    .event
+                    .downcast::<crate::events::DamageEvent>()
+                    .is_some_and(|event| {
+                        event.source == source
+                            && event.amount > 0
+                            && matches!(
+                                event.target,
+                                crate::events::DamageTarget::Player(target) if target == player
+                            )
+                    })
+            })
+        })
+    }
+
+    /// Whether this exact source object has dealt positive damage to this
+    /// exact object at any earlier point in the game.
+    pub fn source_dealt_damage_to_object_this_game(
+        &self,
+        source: ObjectId,
+        object: ObjectId,
+    ) -> bool {
+        self.players.iter().any(|involved| {
+            self.action_history_for_player(involved.id).any(|record| {
+                record
+                    .event
+                    .downcast::<crate::events::DamageEvent>()
+                    .is_some_and(|event| {
+                        event.source == source
+                            && event.amount > 0
+                            && matches!(
+                                event.target,
+                                crate::events::DamageTarget::Object(target) if target == object
+                            )
+                    })
+            })
+        })
+    }
+
     /// Clear damage from an object.
     pub fn clear_damage(&mut self, id: ObjectId) {
         self.battlefield_flags_mut().damage_marked.remove(&id);
@@ -1171,8 +1223,10 @@ impl GameState {
             choices.chosen_basic_land_types.remove(&id);
             choices.chosen_land_types.remove(&id);
             choices.chosen_creature_types.remove(&id);
+            choices.chosen_creature_type_sets.remove(&id);
             choices.chosen_card_types.remove(&id);
             choices.chosen_players.remove(&id);
+            choices.chosen_objects.remove(&id);
             choices.chosen_named_options.remove(&id);
             choices
                 .chosen_modes_by_ability
@@ -1508,18 +1562,37 @@ impl GameState {
         permanent_id: ObjectId,
         subtype: crate::types::Subtype,
     ) {
+        self.set_chosen_subtype(permanent_id, subtype);
+    }
+
+    /// Record a chosen subtype of any family for a source object.
+    pub fn set_chosen_subtype(&mut self, permanent_id: ObjectId, subtype: crate::types::Subtype) {
         self.mark_continuous_state_dirty();
-        self.choice_store_mut()
-            .chosen_creature_types
-            .insert(permanent_id, subtype);
+        let choices = self.choice_store_mut();
+        choices.chosen_creature_types.insert(permanent_id, subtype);
+        choices
+            .chosen_creature_type_sets
+            .entry(permanent_id)
+            .or_default()
+            .insert(subtype);
     }
 
     /// Get a chosen creature type for a permanent, if any.
     pub fn chosen_creature_type(&self, permanent_id: ObjectId) -> Option<crate::types::Subtype> {
+        self.chosen_subtype(permanent_id)
+    }
+
+    /// Get the chosen subtype of any family for a source object, if any.
+    pub fn chosen_subtype(&self, permanent_id: ObjectId) -> Option<crate::types::Subtype> {
         self.choice_store
             .chosen_creature_types
             .get(&permanent_id)
             .copied()
+    }
+
+    /// Every subtype selected for this source, including multi-player choices.
+    pub fn chosen_subtypes(&self, source_id: ObjectId) -> Option<&HashSet<crate::types::Subtype>> {
+        self.choice_store.chosen_creature_type_sets.get(&source_id)
     }
 
     // === Chosen card type helpers ===
@@ -1550,6 +1623,25 @@ impl GameState {
     /// Get a chosen player for a permanent, if any.
     pub fn chosen_player(&self, permanent_id: ObjectId) -> Option<PlayerId> {
         self.choice_store.chosen_players.get(&permanent_id).copied()
+    }
+
+    // === Chosen object helpers ===
+
+    /// Record the singular object chosen for a source.
+    pub fn set_chosen_object(
+        &mut self,
+        source_id: ObjectId,
+        object: crate::snapshot::ObjectSnapshot,
+    ) {
+        self.mark_continuous_state_dirty();
+        self.choice_store_mut()
+            .chosen_objects
+            .insert(source_id, object);
+    }
+
+    /// Get the object chosen for a source, if any.
+    pub fn chosen_object(&self, source_id: ObjectId) -> Option<&crate::snapshot::ObjectSnapshot> {
+        self.choice_store.chosen_objects.get(&source_id)
     }
 
     // === Chosen named option helpers ===
@@ -1735,6 +1827,57 @@ impl GameState {
                     .copied()
                     .unwrap_or(Zone::Battlefield);
                 self.move_object_by_effect(object_id, return_zone);
+            }
+        }
+    }
+
+    /// Track a one-shot exile duration that ends the next time one of the
+    /// effect controller's opponents becomes the monarch.
+    pub fn track_exiled_until_opponent_becomes_monarch(
+        &mut self,
+        controller: PlayerId,
+        stable_ids: Vec<StableId>,
+        return_zone: Zone,
+    ) {
+        if stable_ids.is_empty() {
+            return;
+        }
+        let group_id = self.create_linked_exile_group(stable_ids, return_zone, true);
+        self.exile_tracking_mut()
+            .return_exiled_when_opponent_becomes_monarch
+            .insert(group_id, controller);
+    }
+
+    /// End all qualifying monarch-event exile durations. This is a one-shot
+    /// duration ending, not a triggered ability, so the cards return directly
+    /// as the designation changes.
+    pub fn return_exiled_for_opponent_becoming_monarch(&mut self, monarch: PlayerId) {
+        let qualifying_groups = self
+            .exile_tracking
+            .return_exiled_when_opponent_becomes_monarch
+            .iter()
+            .filter_map(|(&group_id, &controller)| {
+                self.are_opponents(controller, monarch).then_some(group_id)
+            })
+            .collect::<Vec<_>>();
+
+        for group_id in qualifying_groups {
+            self.exile_tracking_mut()
+                .return_exiled_when_opponent_becomes_monarch
+                .remove(&group_id);
+            let Some(group) = self.take_linked_exile_group(group_id) else {
+                continue;
+            };
+            for stable_id in group.stable_ids {
+                let Some(object_id) = self.find_object_by_stable_id(stable_id) else {
+                    continue;
+                };
+                if self
+                    .object(object_id)
+                    .is_some_and(|object| object.zone == Zone::Exile)
+                {
+                    self.move_object_by_effect(object_id, group.return_zone);
+                }
             }
         }
     }
@@ -2265,6 +2408,37 @@ impl GameState {
             && let Some(player) = self.player_mut(spell_cast.caster)
         {
             player.spells_cast_this_game = player.spells_cast_this_game.saturating_add(1);
+        }
+        if let Some(attacked) = event.downcast::<crate::events::combat::CreatureAttackedEvent>()
+            && let Some(stable_id) = self
+                .object(attacked.attacker)
+                .map(|object| object.stable_id)
+        {
+            self.turn_store
+                .creature_last_attacked_turn
+                .insert(stable_id, self.turn.turn_number);
+        }
+        if let Some(blocked) = event.downcast::<crate::events::combat::CreatureBlockedEvent>()
+            && let Some(stable_id) = self.object(blocked.blocker).map(|object| object.stable_id)
+        {
+            self.turn_store
+                .creature_last_blocked_turn
+                .insert(stable_id, self.turn.turn_number);
+        }
+        let became_blocked = event
+            .downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
+            .map(|blocked| blocked.attacker)
+            .or_else(|| {
+                event
+                    .downcast::<crate::events::combat::CreatureBlockedEvent>()
+                    .map(|blocked| blocked.attacker)
+            });
+        if let Some(attacker) = became_blocked
+            && let Some(stable_id) = self.object(attacker).map(|object| object.stable_id)
+        {
+            self.turn_store
+                .creature_last_became_blocked_turn
+                .insert(stable_id, self.turn.turn_number);
         }
         let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(event);
         self.turn_store

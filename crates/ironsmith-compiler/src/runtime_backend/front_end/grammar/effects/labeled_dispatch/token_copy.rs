@@ -95,6 +95,11 @@ fn non_article_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
         .collect()
 }
 
+fn has_terminal_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    common::word_offset(words, phrase)
+        .is_some_and(|start| start.saturating_add(phrase.len()) == words.len())
+}
+
 pub(crate) fn parse_token_copy_modifier_kind(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyModifierKind> {
@@ -164,6 +169,13 @@ pub(crate) fn parse_token_copy_modifier_kind(
     ) {
         return Some(TokenCopyModifierKind::EnterTappedAndAttacking);
     }
+    // A named token's follow-up uses its name as the subject: "Ragavan
+    // enters tapped and attacking." The applier only binds this to an
+    // immediately preceding token creation, so a bare single-word subject is
+    // unambiguous here.
+    if words.len() == 5 && words[1..] == ["enters", "tapped", "and", "attacking"] {
+        return Some(TokenCopyModifierKind::EnterTappedAndAttacking);
+    }
     if common::exact_any(
         &words,
         &[
@@ -200,17 +212,17 @@ pub(crate) fn parse_token_copy_modifier_kind(
     }
 
     if common::prefix_any(&words, TOKEN_SACRIFICE_PREFIXES)
-        && common::present(&words, &["at", "beginning", "of", "next", "end", "step"])
+        && has_terminal_phrase(&words, &["at", "beginning", "of", "next", "end", "step"])
     {
         return Some(TokenCopyModifierKind::SacrificeAtNextEndStep);
     }
     if common::prefix_any(&words, TOKEN_SACRIFICE_PREFIXES)
-        && common::present(&words, &["next", "upkeep"])
+        && has_terminal_phrase(&words, &["next", "upkeep"])
     {
         return Some(TokenCopyModifierKind::SacrificeAtNextUpkeep);
     }
     if common::prefix_any(&words, TOKEN_EXILE_PREFIXES)
-        && common::present(&words, &["at", "beginning", "of", "next", "end", "step"])
+        && has_terminal_phrase(&words, &["at", "beginning", "of", "next", "end", "step"])
     {
         return Some(TokenCopyModifierKind::ExileAtNextEndStep);
     }
@@ -254,6 +266,17 @@ mod tests {
         assert_eq!(
             parse_token_copy_modifier_kind(&sacrifice),
             Some(TokenCopyModifierKind::SacrificeAtNextEndStep)
+        );
+
+        let conditional = lex_line(
+            "Sacrifice it at the beginning of the next end step if it has mana value 3 or less.",
+            0,
+        )
+        .expect("conditional delayed sacrifice fixture");
+        assert_eq!(
+            parse_token_copy_modifier_kind(&conditional),
+            None,
+            "a behavior-bearing suffix must be parsed by the delayed-action grammar"
         );
 
         let attacking =

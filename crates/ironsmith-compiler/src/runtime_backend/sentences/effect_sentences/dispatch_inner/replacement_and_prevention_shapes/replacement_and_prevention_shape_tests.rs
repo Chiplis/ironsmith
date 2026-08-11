@@ -319,6 +319,49 @@ fn destroy_all_split_uses_captured_verb_and_object_tail() {
 }
 
 #[test]
+fn public_split_exile_scopes_types_away_from_requantified_bare_card_domains() {
+    let tokens = crate::runtime_backend::lex_line(
+        "Exile all artifacts, creatures, and lands from the battlefield, all cards from all graveyards, and all cards from all hands.",
+        0,
+    )
+    .expect("multi-domain exile text should lex");
+
+    let effects = parse_destroy_or_exile_all_split_sentence(&tokens)
+        .expect("multi-domain exile parser should not error")
+        .expect("public split route should match");
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ExileAll { filter, .. },
+            ..
+        }),
+    ] = effects.as_slice()
+    else {
+        panic!("expected one typed exhaustive exile union, got {effects:#?}");
+    };
+
+    assert!(filter.card_types.is_empty(), "{filter:#?}");
+    assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+    assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+    let battlefield = filter
+        .any_of
+        .iter()
+        .find(|branch| branch.zone == Some(Zone::Battlefield))
+        .expect("battlefield arm");
+    assert_eq!(
+        battlefield.card_types,
+        [CardType::Artifact, CardType::Creature, CardType::Land]
+    );
+    for zone in [Zone::Graveyard, Zone::Hand] {
+        let branch = filter
+            .any_of
+            .iter()
+            .find(|branch| branch.zone == Some(zone))
+            .expect("bare card-domain arm");
+        assert!(branch.card_types.is_empty(), "{branch:#?}");
+    }
+}
+
+#[test]
 fn repeated_all_or_branches_remain_a_resolution_choice() {
     let tokens = crate::runtime_backend::lex_line("Destroy all lands or all creatures.", 0)
         .expect("destroy-all alternative text should lex");

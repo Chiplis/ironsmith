@@ -700,6 +700,9 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     if let Some(subject) = describe_commander_zone_union_subject(filter) {
         return subject;
     }
+    if let Some(subject) = describe_shared_tagged_attachment_union_count_subject(filter) {
+        return subject;
+    }
     if let Some(subject) = describe_domain_union_count_filter_subject(filter) {
         return subject;
     }
@@ -925,6 +928,50 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     }
 
     subject
+}
+
+/// Describe a coordinated object union whose every arm is attached to the
+/// same previously tagged object. The attachment relation is semantic, while
+/// the union's ordinary description still owns the authored object nouns and
+/// any shared restrictions.
+pub(crate) fn describe_shared_tagged_attachment_union_count_subject(
+    filter: &ObjectFilter,
+) -> Option<String> {
+    if filter.any_of.len() < 2
+        || !filter.tagged_constraints.is_empty()
+        || filter.attached_to_object.is_some()
+        || filter.attached_to_player.is_some()
+    {
+        return None;
+    }
+
+    let [first_constraint] = filter.any_of.first()?.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if first_constraint.relation != TaggedOpbjectRelation::AttachedToTaggedObject
+        || first_constraint.tag.as_str() != "__it__"
+        || filter.any_of.iter().any(|branch| {
+            !matches!(
+                branch.tagged_constraints.as_slice(),
+                [constraint]
+                    if constraint.relation
+                        == TaggedOpbjectRelation::AttachedToTaggedObject
+                        && constraint.tag == first_constraint.tag
+            )
+        })
+    {
+        return None;
+    }
+
+    let mut unlinked = filter.clone();
+    for branch in &mut unlinked.any_of {
+        branch.tagged_constraints.clear();
+    }
+    let subject = describe_count_filter_value_subject(&unlinked);
+    let subject = subject
+        .strip_suffix(" on the battlefield")
+        .unwrap_or(&subject);
+    Some(format!("{subject} attached to it"))
 }
 
 /// Describe the object set used by an aggregate characteristic value.
@@ -1299,41 +1346,68 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         }
     }
 
-    let controller_suffix = match controller {
-        Some(PlayerFilter::You) => Some("you control"),
-        Some(PlayerFilter::NotYou) => Some("you don't control"),
-        Some(PlayerFilter::Opponent) => Some("an opponent controls"),
-        Some(PlayerFilter::Any) => Some("a player controls"),
-        Some(PlayerFilter::Active) => Some("they control"),
-        Some(PlayerFilter::Defending) => Some("defending player controls"),
-        Some(PlayerFilter::Attacking) => Some("attacking player controls"),
-        Some(PlayerFilter::DamagedPlayer) => Some("that player controls"),
-        Some(PlayerFilter::Teammate) => Some("a teammate controls"),
-        Some(PlayerFilter::Specific(_)) => Some("that player controls"),
-        Some(PlayerFilter::Target(_))
-        | Some(PlayerFilter::AliasedTarget(_))
-        | Some(PlayerFilter::IteratedPlayer) => Some("that player controls"),
-        Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
-            Some("they control")
+    let target_controller_suffix = match controller {
+        Some(PlayerFilter::Target(ref inner)) => {
+            let described = describe_player_filter(inner.as_ref());
+            Some(format!(
+                "target {} controls",
+                strip_leading_article(&described)
+            ))
         }
-        Some(player) if player.is_your_team() => Some("your team controls"),
-        Some(PlayerFilter::Excluding { base, excluded })
-            if matches!(base.as_ref(), PlayerFilter::Any)
-                && matches!(
-                    excluded.as_ref(),
-                    PlayerFilter::ControllerOf(
-                        crate::target::ObjectRef::Tagged(_) | crate::target::ObjectRef::Target
-                    )
-                ) =>
-        {
-            Some("another player controls")
+        _ => None,
+    };
+    let historical_controller_suffix = match controller {
+        Some(ref player @ PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }) => {
+            Some(format!("controlled by {}", player.description()))
+        }
+        _ => None,
+    };
+    let controller_suffix = target_controller_suffix
+        .as_deref()
+        .or(historical_controller_suffix.as_deref())
+        .or_else(|| match controller {
+            Some(PlayerFilter::You) => Some("you control"),
+            Some(PlayerFilter::NotYou) => Some("you don't control"),
+            Some(PlayerFilter::Opponent) => Some("an opponent controls"),
+            Some(PlayerFilter::Any) => Some("a player controls"),
+            Some(PlayerFilter::Active) => Some("they control"),
+            Some(PlayerFilter::Defending) => Some("defending player controls"),
+            Some(PlayerFilter::Attacking) => Some("attacking player controls"),
+            Some(PlayerFilter::DamagedPlayer) => Some("that player controls"),
+            Some(PlayerFilter::Teammate) => Some("a teammate controls"),
+            Some(PlayerFilter::Specific(_)) => Some("that player controls"),
+            Some(PlayerFilter::Target(_)) => None,
+            Some(PlayerFilter::AliasedTarget(_)) | Some(PlayerFilter::IteratedPlayer) => {
+                Some("that player controls")
+            }
+            Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
+                Some("they control")
+            }
+            Some(player) if player.is_your_team() => Some("your team controls"),
+            Some(PlayerFilter::Excluding { base, excluded })
+                if matches!(base.as_ref(), PlayerFilter::Any)
+                    && matches!(
+                        excluded.as_ref(),
+                        PlayerFilter::ControllerOf(
+                            crate::target::ObjectRef::Tagged(_) | crate::target::ObjectRef::Target
+                        )
+                    ) =>
+            {
+                Some("another player controls")
+            }
+            _ => None,
+        });
+    let target_owner_suffix = match owner {
+        Some(PlayerFilter::Target(ref inner)) => {
+            let described = describe_player_filter(inner.as_ref());
+            Some(format!("target {} owns", strip_leading_article(&described)))
         }
         _ => None,
     };
     let owner_suffix = if keep_owner_in_subject {
         None
     } else {
-        match owner {
+        target_owner_suffix.as_deref().or_else(|| match owner {
             Some(PlayerFilter::You) => Some("you own"),
             Some(PlayerFilter::NotYou) => Some("you don't own"),
             Some(PlayerFilter::Opponent) => Some("your opponents own"),
@@ -1344,14 +1418,15 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             Some(PlayerFilter::DamagedPlayer) => Some("that player owns"),
             Some(PlayerFilter::Teammate) => Some("a teammate owns"),
             Some(PlayerFilter::Specific(_)) => Some("that player owns"),
-            Some(PlayerFilter::Target(_))
-            | Some(PlayerFilter::AliasedTarget(_))
-            | Some(PlayerFilter::IteratedPlayer) => Some("that player owns"),
+            Some(PlayerFilter::Target(_)) => None,
+            Some(PlayerFilter::AliasedTarget(_)) | Some(PlayerFilter::IteratedPlayer) => {
+                Some("that player owns")
+            }
             Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
                 Some("they own")
             }
             _ => None,
-        }
+        })
     };
     let scope_suffix = match (controller_suffix, owner_suffix) {
         (Some("you control"), Some("you own")) => Some("you both own and control".to_string()),
@@ -1759,7 +1834,55 @@ pub(crate) fn describe_demonstrative_tagged_object_spec(spec: &ChooseSpec) -> Op
 fn describe_shared_creature_battlefield_or_graveyard_filter(
     filter: &ObjectFilter,
 ) -> Option<String> {
-    if filter.card_types.as_slice() != [CardType::Creature] || filter.any_of.len() != 2 {
+    if filter.any_of.len() != 2 {
+        return None;
+    }
+
+    // The union parser may retain the shared Creature type on each branch so
+    // the Battlefield arm can carry `other` while the Graveyard arm carries
+    // the authored `card` noun.  This is semantically different from applying
+    // `other` to the whole union, so prove both branch-local surfaces before
+    // factoring the sentence.
+    if filter.card_types.is_empty() {
+        let mut outer = filter.clone();
+        let branches = std::mem::take(&mut outer.any_of);
+        outer.union_surface = Default::default();
+        if outer != ObjectFilter::default() {
+            return None;
+        }
+
+        let mut battlefield = false;
+        let mut graveyard = false;
+        for branch in branches {
+            let zone = branch.zone?;
+            let explicit_card_noun = branch.has_explicit_card_noun();
+            let explicit_type_noun = branch.explicit_card_type_noun();
+            let other = branch.other;
+            let mut semantic = branch;
+            semantic.zone = None;
+            semantic.card_types.clear();
+            semantic.other = false;
+            semantic.union_surface = Default::default();
+            if semantic != ObjectFilter::default() || explicit_type_noun != Some(CardType::Creature)
+            {
+                return None;
+            }
+            match zone {
+                Zone::Battlefield if other && !explicit_card_noun && !battlefield => {
+                    battlefield = true;
+                }
+                Zone::Graveyard if !other && explicit_card_noun && !graveyard => {
+                    graveyard = true;
+                }
+                _ => return None,
+            }
+        }
+        return (battlefield && graveyard).then_some(
+            "other creature from the battlefield or creature card from a graveyard".to_string(),
+        );
+    }
+
+    if filter.card_types.as_slice() != [CardType::Creature] {
         return None;
     }
 
@@ -1797,7 +1920,7 @@ fn describe_shared_creature_battlefield_or_graveyard_filter(
     ))
 }
 
-fn describe_object_filter_with_fixed_pt_shorthand(filter: &ObjectFilter) -> String {
+pub(crate) fn describe_object_filter_with_fixed_pt_shorthand(filter: &ObjectFilter) -> String {
     if let Some(prior_result) = describe_prior_effect_tagged_filter_surface(filter) {
         return prior_result;
     }
@@ -1848,6 +1971,49 @@ fn describe_object_filter_with_fixed_pt_shorthand(filter: &ObjectFilter) -> Stri
     format!("{shorthand} {description}")
 }
 
+fn describe_object_or_player_union(
+    object_filter: &ObjectFilter,
+    object_text: String,
+    player_filter: &PlayerFilter,
+) -> String {
+    let player_text = describe_player_filter(player_filter);
+    let player_text = strip_leading_article(&player_text);
+    if object_filter.card_types.len() > 1
+        && let Some((leading_types, final_type)) = object_text.rsplit_once(", or ")
+    {
+        return format!("{leading_types}, {final_type}, or {player_text}");
+    }
+    if object_filter.card_types.len() == 2
+        && let Some((first_type, second_type)) = object_text.rsplit_once(" or ")
+    {
+        return format!("{first_type}, {second_type}, or {player_text}");
+    }
+    format!("{object_text} or {player_text}")
+}
+
+fn describe_any_target_excluding_subtypes(
+    object_filter: &ObjectFilter,
+    player_filter: &PlayerFilter,
+) -> Option<String> {
+    if player_filter != &PlayerFilter::Any || object_filter.excluded_subtypes.is_empty() {
+        return None;
+    }
+    let mut base = object_filter.clone();
+    base.excluded_subtypes.clear();
+    if base != ObjectFilter::default() {
+        return None;
+    }
+    let excluded = object_filter
+        .excluded_subtypes
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    Some(format!(
+        "any target that isn't {}",
+        with_indefinite_article(&join_with_or(&excluded))
+    ))
+}
+
 pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
     match spec {
         ChooseSpec::SurfaceHinted { spec, hints } => {
@@ -1866,6 +2032,31 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
         }
         ChooseSpec::Target(inner) => {
+            if let ChooseSpec::Object(filter) = inner.as_ref()
+                && filter.power_toughness_relation
+                    == Some(ironsmith_core::PowerToughnessRelation::NotEqual)
+            {
+                let mut base = filter.clone();
+                base.power_toughness_relation = None;
+                let mut description = describe_object_filter_with_fixed_pt_shorthand(&base);
+                for subtype in &base.excluded_subtypes {
+                    let canonical = subtype.to_string();
+                    description = description.replace(
+                        &format!("non-{}", canonical.to_ascii_lowercase()),
+                        &format!("non-{canonical}"),
+                    );
+                }
+                return format!(
+                    "target {} whose power and toughness aren't equal",
+                    strip_indefinite_article(&description)
+                );
+            }
+            if let ChooseSpec::ObjectOrPlayer(object_filter, player_filter) = inner.as_ref()
+                && let Some(qualified) =
+                    describe_any_target_excluding_subtypes(object_filter, player_filter)
+            {
+                return qualified;
+            }
             if let ChooseSpec::Player(PlayerFilter::Excluding { base, excluded }) = inner.as_ref()
                 && matches!(base.as_ref(), PlayerFilter::Any)
                 && !matches!(excluded.as_ref(), PlayerFilter::OwnerOf(_))
@@ -1952,11 +2143,13 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             PlayerFilter::Any => "target player or planeswalker".to_string(),
             other => format!("target {} or planeswalker", describe_player_filter(other)),
         },
-        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => format!(
-            "{} or {}",
-            describe_choose_spec(&ChooseSpec::Object(object_filter.clone())),
-            strip_leading_article(&describe_player_filter(player_filter))
-        ),
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => {
+            describe_object_or_player_union(
+                object_filter,
+                describe_choose_spec(&ChooseSpec::Object(object_filter.clone())),
+                player_filter,
+            )
+        }
         ChooseSpec::Object(filter) => {
             if let Some(zone_union) =
                 describe_shared_creature_battlefield_or_graveyard_filter(filter)
@@ -2419,6 +2612,25 @@ pub(crate) fn describe_goad_target(spec: &ChooseSpec) -> String {
             describe_choose_spec(spec)
         }
         ChooseSpec::All(filter) => {
+            if filter.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::All)
+                && let Some(source_surface) = filter.chosen_name_source_surface()
+                && matches!(
+                    filter.tagged_constraints.as_slice(),
+                    [constraint]
+                        if constraint.tag.as_str() == "__chosen_name__"
+                            && constraint.relation
+                                == TaggedOpbjectRelation::SameNameAsTagged
+                )
+            {
+                let mut base = filter.clone();
+                base.tagged_constraints.clear();
+                if base == ObjectFilter::creature() {
+                    return format!(
+                        "all creatures with a name chosen for {}",
+                        source_surface.phrase()
+                    );
+                }
+            }
             if filter.has_relative_attachment_state_surface()
                 && let Some(attachment) = filter.with_attached_object.as_deref()
             {
@@ -2444,6 +2656,7 @@ pub(crate) fn describe_goad_target(spec: &ChooseSpec) -> String {
                 && filter.subtypes.is_empty()
                 && filter.excluded_subtypes.is_empty()
                 && filter.with_attached_object.is_none()
+                && filter.without_attached_object.is_none()
                 && !filter.source;
             if looks_like_plain_creature_filter {
                 if let Some(controller) = filter.controller.as_ref() {
@@ -2453,7 +2666,8 @@ pub(crate) fn describe_goad_target(spec: &ChooseSpec) -> String {
                         }
                         PlayerFilter::NotYou => "all creatures you don't control".to_string(),
                         PlayerFilter::Target(inner) => {
-                            let who = describe_player_filter(inner);
+                            let described = describe_player_filter(inner);
+                            let who = strip_leading_article(&described);
                             if who == "player" {
                                 "each creature target player controls".to_string()
                             } else {
@@ -2530,7 +2744,9 @@ pub(crate) fn graveyard_entry_history_clause_for_spec(spec: &ChooseSpec) -> Stri
         }
         _ => return String::new(),
     };
-    let phrase = if filter.entered_graveyard_from_battlefield_this_turn {
+    let phrase = if filter.entered_graveyard_from_library_this_turn {
+        "put there from their library this turn"
+    } else if filter.entered_graveyard_from_battlefield_this_turn {
         "put there from the battlefield this turn"
     } else if filter.entered_graveyard_this_turn {
         match filter.graveyard_entry_history_surface() {
@@ -2647,6 +2863,7 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                 // once here and once again beside the origin.
                 object.entered_graveyard_this_turn = false;
                 object.entered_graveyard_from_battlefield_this_turn = false;
+                object.entered_graveyard_from_library_this_turn = false;
                 object.set_graveyard_entry_history_surface(None);
                 let text =
                     describe_nonbattlefield_card_filter_without_zone(&object, Zone::Graveyard);
@@ -2664,13 +2881,15 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
             PlayerFilter::Any => "target player or planeswalker".to_string(),
             other => format!("target {} or planeswalker", describe_player_filter(other)),
         },
-        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => format!(
-            "{} or {}",
-            describe_choose_spec_without_graveyard_zone(
-                &ChooseSpec::Object(object_filter.clone(),)
-            ),
-            strip_leading_article(&describe_player_filter(player_filter))
-        ),
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => {
+            describe_object_or_player_union(
+                object_filter,
+                describe_choose_spec_without_graveyard_zone(&ChooseSpec::Object(
+                    object_filter.clone(),
+                )),
+                player_filter,
+            )
+        }
         ChooseSpec::AttackedPlayerOrPlaneswalker => {
             "the player or planeswalker it's attacking".to_string()
         }
@@ -2681,6 +2900,7 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                 objects.single_graveyard = false;
                 objects.entered_graveyard_this_turn = false;
                 objects.entered_graveyard_from_battlefield_this_turn = false;
+                objects.entered_graveyard_from_library_this_turn = false;
                 objects.set_graveyard_entry_history_surface(None);
                 let text =
                     describe_nonbattlefield_card_filter_without_zone(&objects, Zone::Graveyard);
@@ -3904,6 +4124,27 @@ mod structured_zone_count_surface_tests {
 }
 
 #[cfg(test)]
+mod whichever_is_greater_surface_tests {
+    use super::*;
+
+    #[test]
+    fn arithmetic_maximum_keeps_the_authored_extremum_phrase() {
+        let left = Value::Fixed(3);
+        let right = Value::Fixed(5);
+        let value = Value::Add(
+            Box::new(Value::Add(Box::new(left.clone()), Box::new(right.clone()))),
+            Box::new(Value::Scaled(
+                Box::new(Value::Min(Box::new(left), Box::new(right))),
+                -1,
+            )),
+        )
+        .with_surface_hint(ValueSurfaceHint::WhicheverIsGreater);
+
+        assert_eq!(describe_value(&value), "3 or 5, whichever is greater");
+    }
+}
+
+#[cfg(test)]
 mod death_history_controller_surface_tests {
     use super::*;
 
@@ -4320,7 +4561,14 @@ pub(crate) fn describe_prior_effect_metric_value(
             format!("the number of colors among {plural_basis}")
         }
         crate::effect::EffectMetric::CardTypesAmong => {
-            format!("the number of card types among {plural_basis}")
+            if query.action == Some(crate::effect::PriorEffectAction::Discarded)
+                && query.filter.is_none()
+                && query.player.is_none()
+            {
+                "the number of card types the discarded card has".to_string()
+            } else {
+                format!("the number of card types among {plural_basis}")
+            }
         }
         metric => describe_effect_metric_value(metric, None),
     }
@@ -4550,6 +4798,18 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
         {
             Some(describe_prior_effect_metric_basis(query, false))
         }
+        Value::AttractionsVisitedThisTurn(player) => Some(match player {
+            PlayerFilter::You => "Attraction you've visited this turn".to_string(),
+            PlayerFilter::Opponent => "Attraction an opponent has visited this turn".to_string(),
+            PlayerFilter::Any => "Attraction a player has visited this turn".to_string(),
+            other => {
+                let subject = describe_player_filter(other);
+                format!(
+                    "Attraction {subject} {} visited this turn",
+                    player_verb(&subject, "have", "has")
+                )
+            }
+        }),
         _ => None,
     }
 }
@@ -4698,6 +4958,20 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             "the number of {} who lost life this turn",
             pluralize_noun_phrase(&describe_player_filter(player))
         ),
+        TurnHistoryCount::UntappedLandsAtTurnStart(player) => match player {
+            PlayerFilter::You => {
+                "the number of untapped lands you controlled at the beginning of this turn"
+                    .to_string()
+            }
+            PlayerFilter::IteratedPlayer => {
+                "the number of untapped lands they controlled at the beginning of this turn"
+                    .to_string()
+            }
+            other => format!(
+                "the number of untapped lands {} controlled at the beginning of this turn",
+                describe_player_filter(other)
+            ),
+        },
         TurnHistoryCount::Descended(player) => match player {
             PlayerFilter::You => "the number of times you descended this turn".to_string(),
             _ => format!(
@@ -4840,6 +5114,20 @@ pub(crate) fn describe_value(value: &Value) -> String {
             describe_absolute_difference(value).unwrap_or_else(|| "the difference".to_string())
         }
         Value::SurfaceHinted { value, hints } => {
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::WhicheverIsGreater)
+                && let Value::Add(total, negative_minimum) = value.unhinted()
+                && let Value::Add(left, right) = total.as_ref()
+                && let Value::Scaled(minimum, -1) = negative_minimum.as_ref()
+                && let Value::Min(minimum_left, minimum_right) = minimum.as_ref()
+                && left.as_ref() == minimum_left.as_ref()
+                && right.as_ref() == minimum_right.as_ref()
+            {
+                return format!(
+                    "{} or {}, whichever is greater",
+                    describe_value(left),
+                    describe_value(right)
+                );
+            }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::InExcessOf)
                 && let Value::Add(left, right) = value.unhinted()
             {
@@ -4907,6 +5195,15 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 && matches!(value.unhinted(), Value::ManaValueOf(_))
             {
                 return "the revealed card's mana value".to_string();
+            }
+            if hints.contains(
+                &ironsmith_core::ValueSurfaceHint::TriggeringObjectCountersItHad,
+            ) && matches!(
+                value.unhinted(),
+                Value::CountersOn(spec, None)
+                    if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+            ) {
+                return "the number of counters it had on it".to_string();
             }
             if let Some((card_type, action)) = hints.iter().find_map(|hint| match hint {
                 ironsmith_core::ValueSurfaceHint::CharacteristicOfObjectThisWay {
@@ -5096,12 +5393,29 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_count_filter_value_subject(filter)
             )
         }
+        Value::GreatestSharedCreatureTypeCount(filter) => {
+            format!(
+                "the greatest number of {} that have a creature type in common",
+                describe_count_filter_value_subject(filter)
+            )
+        }
         Value::TotalPower(filter) => {
             if filter.tagged_constraints.iter().any(|constraint| {
                 constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                     && constraint.tag.as_str() == ironsmith_core::ATTACKING_GROUP_TAG
             }) {
                 return "their total power".to_string();
+            }
+            let zone_change_group = ObjectFilter {
+                card_types: vec![CardType::Creature],
+                ..Default::default()
+            }
+            .match_tagged(
+                ironsmith_core::ZONE_CHANGE_GROUP_TAG,
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
+            if filter == &zone_change_group {
+                return "the total power of those creatures".to_string();
             }
             format!(
                 "the total power of {}",
@@ -5408,7 +5722,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             ),
         },
         Value::LifeLostThisTurn(filter) => match filter {
-            PlayerFilter::You => "the total life you lost this turn".to_string(),
+            PlayerFilter::You => "the amount of life you lost this turn".to_string(),
             PlayerFilter::Opponent => {
                 "the total life your opponents lost this turn".to_string()
             }
@@ -5426,6 +5740,21 @@ pub(crate) fn describe_value(value: &Value) -> String {
             PlayerFilter::Any => "the number of cards discarded this turn".to_string(),
             _ => format!(
                 "the number of cards {} discarded this turn",
+                describe_player_filter(filter)
+            ),
+        },
+        Value::AttractionsVisitedThisTurn(filter) => match filter {
+            PlayerFilter::You => {
+                "the number of Attractions you've visited this turn".to_string()
+            }
+            PlayerFilter::Opponent => {
+                "the number of Attractions your opponents have visited this turn".to_string()
+            }
+            PlayerFilter::Any => {
+                "the number of Attractions players have visited this turn".to_string()
+            }
+            _ => format!(
+                "the number of Attractions {} visited this turn",
                 describe_player_filter(filter)
             ),
         },
@@ -5584,6 +5913,29 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
             out
         }
+        Value::TotalManaValueOfSpellsCastThisTurnMatching {
+            player,
+            filter,
+            exclude_source,
+        } => {
+            let base = pluralize_noun_phrase(&describe_for_each_filter(filter));
+            let subject = if *exclude_source {
+                format!("other {base}")
+            } else {
+                base
+            };
+            let cast_surface = match player {
+                PlayerFilter::You => "you've cast this turn".to_string(),
+                PlayerFilter::Opponent => "your opponents have cast this turn".to_string(),
+                PlayerFilter::IteratedPlayer => "they've cast this turn".to_string(),
+                PlayerFilter::Specific(_) | PlayerFilter::AliasedTarget(_) => {
+                    "that player has cast this turn".to_string()
+                }
+                PlayerFilter::Any => "cast this turn".to_string(),
+                other => format!("cast this turn by {}", describe_player_filter(other)),
+            };
+            format!("the total mana value of {subject} {cast_surface}")
+        }
         Value::DamageDealtThisTurnByTaggedSpellCast(_) => {
             "the damage dealt this turn by the chosen spell".to_string()
         }
@@ -5608,12 +5960,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
             include_source_noun,
+            reference,
         } => {
             let mut source = source_filter.description();
             if *include_source_noun {
                 source.push_str(" source");
             }
-            format!("the amount of mana from {source} spent to cast this spell")
+            format!(
+                "the amount of mana from {} spent to cast {}",
+                with_indefinite_article(&source),
+                reference.text()
+            )
         }
         Value::ManaSpentToCastTriggeringObject => {
             "the amount of mana spent to cast that spell".to_string()

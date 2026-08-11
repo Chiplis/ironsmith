@@ -12,6 +12,10 @@ fn parses_player_and_delayed_sentence_shapes() {
         Some((PlayerAst::TargetOpponent, 2))
     );
     assert_eq!(
+        parse_delayed_player_prefix_words(&["any", "opponent", "pays"], false),
+        Some((PlayerAst::Opponent, 2))
+    );
+    assert_eq!(
         parse_lose_draw_clash_shape(&tokens(
             "You lose 2 life and draw 2 cards, then clash with an opponent. If you win, repeat this process."
         )),

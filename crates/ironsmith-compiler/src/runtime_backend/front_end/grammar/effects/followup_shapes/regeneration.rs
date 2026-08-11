@@ -28,6 +28,7 @@ fn regeneration_subject<'a>(input: &mut LexStream<'a>) -> WResult<CantBeRegenera
     alt((
         primitives::kw("it").value(CantBeRegeneratedSubject::It),
         primitives::kw("they").value(CantBeRegeneratedSubject::They),
+        primitives::phrase(&["those", "creatures"]).value(CantBeRegeneratedSubject::They),
         alt((
             primitives::phrase(&["creature", "destroyed", "this", "way"]),
             primitives::phrase(&["creatures", "destroyed", "this", "way"]),
@@ -141,6 +142,15 @@ mod tests {
         let they = lex_line("They can't be regenerated.", 0).unwrap();
         assert_eq!(
             parse_cant_be_regenerated_followup(&they),
+            Some(CantBeRegeneratedFollowupShape {
+                subject: CantBeRegeneratedSubject::They,
+                this_turn: false,
+            })
+        );
+
+        let those_creatures = lex_line("Those creatures can't be regenerated.", 0).unwrap();
+        assert_eq!(
+            parse_cant_be_regenerated_followup(&those_creatures),
             Some(CantBeRegeneratedFollowupShape {
                 subject: CantBeRegeneratedSubject::They,
                 this_turn: false,

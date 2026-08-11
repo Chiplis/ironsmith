@@ -2485,6 +2485,8 @@ At the beginning of your end step, if a player controls no creatures, sacrifice 
             && ability_debug.contains("counter_type: PlusOnePlusOne")
             && ability_debug.contains("amount: SurfaceHinted")
             && compact_debug.contains("Fixed(2)")
+            && compact_debug.contains("target: Tagged(TagKey(\"__it__\"))")
+            && !compact_debug.contains("target: Iterated")
             && ability_debug.contains("\"moved_0\"")
             && !ability_debug.contains("\"moved_1\""),
         "expected sacrifice, source-linked battlefield move, and two counters, got {ability_debug}"
@@ -2751,31 +2753,54 @@ pub(super) fn parse_oracle_see_the_truth_cast_non_hand_self_replacement() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_aangs_journey_kicked_search_slots_as_self_replacement() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Aang's Journey Variant")
-        .card_types(vec![CardType::Sorcery])
-        .parse_text(
-            "Kicker {2} (You may pay an additional {2} as you cast this spell.)\nSearch your library for a basic land card. If this spell was kicked, instead search your library for a basic land card and a Shrine card. Reveal those cards, put them into your hand, then shuffle.\nYou gain 2 life.",
-        )
-        .expect("kicked search-slot replacement should parse");
-
-    let debug = format!("{:#?}", def.spell_effect);
-    assert!(
-        debug.contains("SelfReplacementBranch")
-            && debug.contains("ThisSpellWasKicked")
-            && debug.contains("SearchLibrarySlotsEffect"),
-        "expected kicked search-slot override to lower as self-replacement, got {debug}"
+    let def = parse_oracle_card_definition("Aang's Journey");
+    assert_eq!(
+        canonical_compiled_lines(&def),
+        [
+            "Kicker {2}",
+            "Search your library for a basic land card. If this spell was kicked, instead search your library for a basic land card and a Shrine card. Reveal those cards, put them into your hand, then shuffle.",
+            "You gain 2 life."
+        ]
     );
-    let rendered = unprocessed_compiled_lines(&def).join(" ");
-    assert!(
-        rendered.contains(
-            "If this spell was kicked, instead search your library for a basic land card and a Shrine card"
-        ),
-        "shared terminal shuffle should put 'instead' before the replacement search: {rendered}"
-    );
-    assert!(
-        !rendered.contains("shuffle instead"),
-        "shared terminal shuffle must not absorb the replacement marker: {rendered}"
-    );
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Aang's Journey spell effect");
+    let [search_segment, life_segment] = program.segments.as_slice() else {
+        panic!("expected search replacement plus life gain: {program:#?}");
+    };
+    let [default_effect] = search_segment.default_effects.as_slice() else {
+        panic!("expected one default search: {search_segment:#?}");
+    };
+    let default = default_effect
+        .downcast_ref::<crate::effects::SearchLibrarySlotsEffect>()
+        .expect("default typed slot search");
+    let [branch] = search_segment.self_replacements.as_slice() else {
+        panic!("expected one kicked self-replacement: {search_segment:#?}");
+    };
+    assert_eq!(branch.condition, Condition::ThisSpellWasKicked);
+    assert!(branch.leading_instead_surface);
+    let [replacement_effect] = branch.replacement_effects.as_slice() else {
+        panic!("expected one replacement search: {branch:#?}");
+    };
+    let replacement = replacement_effect
+        .downcast_ref::<crate::effects::SearchLibrarySlotsEffect>()
+        .expect("replacement typed slot search");
+    assert_eq!(default.slots.len(), 1);
+    assert_eq!(replacement.slots.len(), 2);
+    assert!(replacement.slots.starts_with(&default.slots));
+    assert_eq!(replacement.destination, default.destination);
+    assert_eq!(replacement.chooser, default.chooser);
+    assert_eq!(replacement.player, default.player);
+    assert_eq!(replacement.reveal, default.reveal);
+    assert_eq!(replacement.progress_tag, default.progress_tag);
+    let [life_effect] = life_segment.default_effects.as_slice() else {
+        panic!("expected one independent life gain: {life_segment:#?}");
+    };
+    let life = life_effect
+        .downcast_ref::<crate::effects::GainLifeEffect>()
+        .expect("typed life gain");
+    assert_eq!(life.amount.unhinted(), &Value::Fixed(2));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

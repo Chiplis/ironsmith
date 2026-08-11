@@ -107,6 +107,7 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         let mut moved_ids = Vec::new();
         for card_id in top_cards {
             if let Some(exiled_id) = game.move_object_by_effect(card_id, Zone::Exile) {
+                game.add_exiled_with_source_link(ctx.source, exiled_id);
                 if self.face_down {
                     game.set_face_down(exiled_id);
                 }
@@ -229,6 +230,12 @@ mod tests {
             "zone move should reseat the hidden object id"
         );
         assert!(game.hidden_card_info(exiled).is_some());
+        assert_eq!(
+            game.get_exiled_with_source_links(source),
+            &[exiled],
+            "exile-top must retain the source link used by source-relative permissions"
+        );
+        assert_eq!(game.exiled_with_source_revision(source), 1);
         assert!(
             dm.views.iter().any(|(viewer, cards, view_ctx)| {
                 *viewer == alice
@@ -294,5 +301,46 @@ mod tests {
             "append_tagged must retain the existing collection and append both moved cards"
         );
         assert!(exiled.iter().all(|id| *id != first && *id != second));
+    }
+
+    #[test]
+    fn dynamic_opponent_count_exiles_exactly_that_many_cards_from_the_top_face_down() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bottom = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            0,
+            "alice-bottom".to_string(),
+        );
+        game.create_hidden_card_placeholder(alice, Zone::Library, 1, "alice-middle".to_string());
+        game.create_hidden_card_placeholder(alice, Zone::Library, 2, "alice-top".to_string());
+        let source = ObjectId::from_raw(9003);
+        let mut dm = CaptureViewsDecisionMaker::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+
+        let outcome = ExileTopOfLibraryEffect::new(
+            Value::CountPlayers(PlayerFilter::Opponent),
+            PlayerFilter::You,
+        )
+        .face_down()
+        .execute(&mut game, &mut ctx)
+        .expect("opponent-count exile-top should resolve");
+        let exiled = outcome
+            .affected_objects()
+            .expect("two top cards should be exiled");
+
+        assert_eq!(exiled.len(), 2);
+        assert!(exiled.iter().all(|id| game.is_face_down(*id)));
+        assert_eq!(
+            game.player(alice).expect("alice").library,
+            vec![bottom],
+            "the bottom card must remain when the two top cards are exiled"
+        );
+        drop(ctx);
+        assert!(dm.views.is_empty(), "face-down cards must not be revealed");
     }
 }

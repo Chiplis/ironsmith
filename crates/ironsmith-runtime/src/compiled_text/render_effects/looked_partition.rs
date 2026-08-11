@@ -2071,7 +2071,30 @@ struct LookedCountReplacementBranch<'a> {
     look: &'a crate::effects::LookAtTopCardsEffect,
     explicitly_revealed: bool,
     choose: &'a crate::effects::ChooseObjectsEffect,
+    optional_selection: bool,
+    reveals_selected: bool,
     remainder: LookedCountReplacementRemainder,
+}
+
+fn exact_selected_group_reveal(effect: &Effect, selected_tag: &crate::TagKey) -> bool {
+    if let Some(reveal) =
+        unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::RevealTaggedEffect>()
+    {
+        return reveal.tag == *selected_tag;
+    }
+    let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() else {
+        return false;
+    };
+    let [inner] = for_each.effects.as_slice() else {
+        return false;
+    };
+    let Some(reveal) =
+        unwrap_basic_tag_wrappers(inner).downcast_ref::<crate::effects::RevealTaggedEffect>()
+    else {
+        return false;
+    };
+    for_each.tag == *selected_tag
+        && (reveal.tag.as_str() == "__it__" || reveal.tag == *selected_tag)
 }
 
 fn exact_looked_count_replacement_branch(
@@ -2092,9 +2115,32 @@ fn exact_looked_count_replacement_branch(
     if explicitly_revealed {
         cursor += 1;
     }
-    let [choose_effect, move_effect, remainder_effect] = effects.get(cursor..)? else {
-        return None;
-    };
+    let tail = effects.get(cursor..)?;
+    let (choose_effect, move_effect, remainder_effect, optional_selection, reveals_selected) =
+        if let [may_effect, remainder_effect] = tail {
+            let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+            if may.decider.is_some() || may.fallback != crate::decision::FallbackStrategy::Decline {
+                return None;
+            }
+            let [choose_effect, reveal_effect, move_effect] = may.effects.as_slice() else {
+                return None;
+            };
+            let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+            if !exact_selected_group_reveal(reveal_effect, &choose.tag) {
+                return None;
+            }
+            (choose_effect, move_effect, remainder_effect, true, true)
+        } else if let [choose_effect, reveal_effect, move_effect, remainder_effect] = tail {
+            let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+            if !exact_selected_group_reveal(reveal_effect, &choose.tag) {
+                return None;
+            }
+            (choose_effect, move_effect, remainder_effect, false, true)
+        } else if let [choose_effect, move_effect, remainder_effect] = tail {
+            (choose_effect, move_effect, remainder_effect, false, false)
+        } else {
+            return None;
+        };
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     if !exact_looked_library_choice(choose, &look.tag)
         || choose.count.dynamic_x
@@ -2130,6 +2176,8 @@ fn exact_looked_count_replacement_branch(
         look,
         explicitly_revealed,
         choose,
+        optional_selection,
+        reveals_selected,
         remainder,
     })
 }
@@ -2168,24 +2216,41 @@ fn looked_count_replacement_selection(
     if choose.count.min == 0 && maximum == 1 {
         surface_choice.count = ChoiceCount::exactly(1);
     }
-    Some(format!(
+    let mut selection = format!(
         "{} from among them",
         describe_looked_battlefield_selection(&surface_choice)?
-    ))
+    );
+    if maximum > 1 {
+        selection = selection.replace(" or ", " and/or ");
+    }
+    Some(selection)
 }
 
 fn looked_count_replacement_hand_clause(
-    choose: &crate::effects::ChooseObjectsEffect,
+    branch: &LookedCountReplacementBranch<'_>,
 ) -> Option<String> {
-    let prefix = if choose.count.min == 0 && choose.count.max == Some(1) {
+    let choose = branch.choose;
+    let optional = branch.optional_selection || choose.count.min == 0;
+    let prefix = if branch.reveals_selected {
+        if optional { "You may reveal" } else { "Reveal" }
+    } else if optional {
         "You may put"
     } else {
         "Put"
     };
-    Some(format!(
-        "{prefix} {} into your hand",
-        looked_count_replacement_selection(choose)?
-    ))
+    let selection = looked_count_replacement_selection(choose)?;
+    if branch.reveals_selected {
+        let reference = if choose.count.max == Some(1) {
+            "it"
+        } else {
+            "them"
+        };
+        Some(format!(
+            "{prefix} {selection} and put {reference} into your hand"
+        ))
+    } else {
+        Some(format!("{prefix} {selection} into your hand"))
+    }
 }
 
 fn looked_count_replacement_remainder_clause(
@@ -2205,7 +2270,7 @@ fn looked_count_replacement_remainder_clause(
 fn looked_count_replacement_branch_body(
     branch: &LookedCountReplacementBranch<'_>,
 ) -> Option<String> {
-    let selection = looked_count_replacement_hand_clause(branch.choose)?;
+    let selection = looked_count_replacement_hand_clause(branch)?;
     let remainder = looked_count_replacement_remainder_clause(branch.remainder);
     Some(match branch.remainder {
         LookedCountReplacementRemainder::LibraryBottom(_) => {
@@ -2229,13 +2294,15 @@ pub(in crate::compiled_text) fn describe_looked_count_self_replacement(
     let [replacement] = segment.self_replacements.as_slice() else {
         return None;
     };
-    if replacement.condition_after_replacement {
+    if replacement.condition_after_replacement && !replacement.leading_instead_surface {
         return None;
     }
     let default = exact_looked_count_replacement_branch(&segment.default_effects)?;
     let alternate = exact_looked_count_replacement_branch(&replacement.replacement_effects)?;
     if default.look != alternate.look
         || default.explicitly_revealed != alternate.explicitly_revealed
+        || default.optional_selection != alternate.optional_selection
+        || default.reveals_selected != alternate.reveals_selected
         || default.remainder != alternate.remainder
         || !same_looked_choice_except_count_and_result_tag(default.choose, alternate.choose)
     {
@@ -2268,10 +2335,42 @@ pub(in crate::compiled_text) fn describe_looked_count_self_replacement(
             !label.is_empty() && !label.starts_with("__ironsmith_")
         });
 
+    if visible_label
+        && replacement.leading_instead_surface
+        && default.reveals_selected
+        && matches!(
+            default.remainder,
+            LookedCountReplacementRemainder::LibraryBottom(_)
+        )
+    {
+        let label = replacement.presentation_label.as_ref()?.display_prefix()?;
+        let label = label.trim();
+        let default_selection = looked_count_replacement_hand_clause(&default)?;
+        let alternate_selection = looked_count_replacement_hand_clause(&alternate)?;
+        let alternate_selection = if let Some(action) = alternate_selection.strip_prefix("You may ")
+        {
+            format!("you may instead {action}")
+        } else {
+            format!("instead {}", lowercase_first(&alternate_selection))
+        };
+        let remainder = looked_count_replacement_remainder_clause(default.remainder);
+        return Some(format!(
+            "{label} — {opener}. {default_selection}. If {condition}, {alternate_selection}. Put {remainder}"
+        ));
+    }
+
+    // A visible label on a multi-sentence line can conservatively mark the
+    // condition as trailing even when the retained `, instead` surface proves
+    // that the conditional sentence led its replacement action. Only the
+    // fully validated common-remainder shape above may override that fact.
+    if replacement.condition_after_replacement {
+        return None;
+    }
+
     if visible_label {
         let default_count =
             small_number_word(default_max as u32).unwrap_or_else(|| default_max.to_string());
-        let alternate_selection = looked_count_replacement_hand_clause(alternate.choose)?;
+        let alternate_selection = looked_count_replacement_hand_clause(&alternate)?;
         return Some(format!(
             "{default_text}. If {condition}, {} instead of {default_count}",
             lowercase_first(&alternate_selection)
@@ -2612,6 +2711,59 @@ mod tests {
         effects
     }
 
+    fn optional_revealed_count_replacement_partition(
+        looked: crate::TagKey,
+        selected: crate::TagKey,
+        count: usize,
+    ) -> Vec<Effect> {
+        let mut filter = ObjectFilter::tagged(looked.clone()).in_zone(Zone::Library);
+        filter.card_types = vec![CardType::Creature, CardType::Land];
+        filter.type_or_subtype_union = true;
+        let choose = Effect::new(
+            crate::effects::ChooseObjectsEffect::new(
+                filter,
+                ChoiceCount::exactly(count),
+                PlayerFilter::You,
+                selected.clone(),
+            )
+            .in_zone(Zone::Library),
+        );
+        let reveal = Effect::for_each_tagged(
+            selected.clone(),
+            vec![Effect::new(crate::effects::RevealTaggedEffect::new(
+                crate::TagKey::from("__it__"),
+            ))],
+        );
+        let move_selected = Effect::for_each_tagged(
+            selected.clone(),
+            vec![Effect::move_to_zone(
+                ChooseSpec::Iterated,
+                Zone::Hand,
+                false,
+            )],
+        );
+        vec![
+            Effect::new(crate::effects::LookAtTopCardsEffect::new(
+                PlayerFilter::You,
+                4,
+                looked.clone(),
+            )),
+            Effect::new(crate::effects::MayEffect::new(vec![
+                choose,
+                reveal,
+                move_selected,
+            ])),
+            Effect::new(
+                crate::effects::PutTaggedRemainderOnLibraryBottomEffect::new(
+                    looked,
+                    Some(selected),
+                    crate::effects::consult_helpers::LibraryBottomOrder::Random,
+                    PlayerFilter::You,
+                ),
+            ),
+        ]
+    }
+
     fn count_replacement_test_condition() -> Condition {
         Condition::PlayerControls {
             player: PlayerFilter::You,
@@ -2692,6 +2844,42 @@ mod tests {
         assert_eq!(
             super::super::super::ast_render::describe_resolution_program(&program),
             "Reveal the top five cards of your library. You may put a creature card from among them into your hand. Put the rest into your graveyard. Spell mastery — If you control a creature, put up to two creature cards from among them into your hand instead of one"
+        );
+    }
+
+    #[test]
+    fn renders_labeled_leading_instead_reveal_count_before_shared_remainder() {
+        let looked = crate::TagKey::from("infusion_looked");
+        let default_effects = optional_revealed_count_replacement_partition(
+            looked.clone(),
+            crate::TagKey::from("infusion_one"),
+            1,
+        );
+        let replacement_effects = optional_revealed_count_replacement_partition(
+            looked,
+            crate::TagKey::from("infusion_two"),
+            2,
+        );
+        let mut branch = crate::resolution::SelfReplacementBranch::new(
+            Condition::PlayerGainedLifeThisTurnOrMore {
+                player: PlayerFilter::You,
+                count: 1,
+            },
+            replacement_effects,
+        )
+        .with_presentation_label(Some(PresentationLabel::from_ability_word("Infusion")));
+        branch.leading_instead_surface = true;
+        branch.condition_after_replacement = true;
+        let program =
+            crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                default_effects,
+                self_replacements: vec![branch],
+                starts_new_source_line: false,
+            }]);
+
+        assert_eq!(
+            super::super::super::ast_render::describe_resolution_program(&program),
+            "Infusion — Look at the top four cards of your library. You may reveal a creature or land card from among them and put it into your hand. If you gained life this turn, you may instead reveal two creature and/or land cards from among them and put them into your hand. Put the rest on the bottom of your library in a random order"
         );
     }
 
@@ -3246,6 +3434,57 @@ mod tests {
                 "{name} should render the structurally linked selected/remainder partition:\n{compiled}"
             );
         }
+    }
+
+    #[test]
+    fn exact_keyword_slots_rejoin_their_three_way_typed_partition_through_effect_ids() {
+        let oracle = "Reveal the top seven cards of your library. Choose from among them a card with flying, a card with first strike, and so on for double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance. Put one of the chosen cards onto the battlefield, the other chosen cards into your hand, and the rest into your graveyard.";
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::CardId::new(),
+            "Keyword Partition Probe",
+        )
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("the generic repeated-keyword partition should compile");
+        let effects = definition
+            .spell_effect
+            .as_ref()
+            .expect("the probe should have a spell effect")
+            .flattened_default_effects();
+
+        assert!(
+            effects[0]
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .is_some(),
+            "lowering should retain the effect-id wrapper exercised by this regression"
+        );
+        let choices = effects
+            .iter()
+            .filter_map(|effect| {
+                super::super::effect_lists::structural_unwrap_render_wrappers(effect)
+                    .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(choices.len(), 13);
+        assert!(
+            choices
+                .iter()
+                .all(|choice| choice.count == ChoiceCount::exactly(1)),
+            "each keyword slot and the chosen-card battlefield slot must remain exact-one"
+        );
+
+        let effect_refs = effects.iter().collect::<Vec<_>>();
+        let (rendered, consumed) =
+            super::super::effect_lists::helpers_02::render_look_reveal_repeated_choices(
+                &effect_refs,
+            )
+            .expect("the complete typed chosen/remainder partition should rejoin");
+        assert_eq!(consumed, effects.len());
+        assert_eq!(rendered, oracle.trim_end_matches('.'));
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            vec![oracle.to_string()]
+        );
     }
 
     #[test]

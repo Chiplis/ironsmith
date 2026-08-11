@@ -125,6 +125,11 @@ impl CardDefinitionBuilder {
         self
     }
 
+    pub fn attraction_lights(mut self, lights: Vec<u8>) -> Self {
+        self.card_builder = self.card_builder.attraction_lights(lights);
+        self
+    }
+
     pub fn color_indicator(mut self, colors: ColorSet) -> Self {
         self.card_builder = self.card_builder.color_indicator(colors);
         self
@@ -484,6 +489,27 @@ impl CardDefinitionBuilder {
                         .card_builder
                         .first_printed_set_name(set_name.to_string());
                 }
+            }
+            crate::front_end::MetadataLine::AttractionLights(raw) => {
+                let mut lights = raw
+                    .split(|character: char| character == ',' || character.is_whitespace())
+                    .filter(|part| !part.is_empty())
+                    .map(|part| {
+                        part.parse::<u8>().map_err(|_| {
+                            CardTextError::ParseError(format!(
+                                "invalid Attraction light number: {part}"
+                            ))
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                lights.sort_unstable();
+                lights.dedup();
+                if lights.iter().any(|light| !(1..=6).contains(light)) {
+                    return Err(CardTextError::ParseError(
+                        "Attraction light numbers must be between 1 and 6".to_string(),
+                    ));
+                }
+                self.card_builder = self.card_builder.attraction_lights(lights);
             }
             crate::front_end::MetadataLine::PowerToughness(raw) => {
                 if let Some(pt) = crate::runtime_backend::parse_power_toughness(&raw) {

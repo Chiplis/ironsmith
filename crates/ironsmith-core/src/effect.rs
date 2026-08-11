@@ -85,6 +85,10 @@ pub enum ChoiceAggregateMetric {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChoiceAggregateConstraint {
     pub metric: ChoiceAggregateMetric,
+    /// Optional lower bound on the aggregate selection. This is used by
+    /// costs such as "collect evidence N", where any number of cards may be
+    /// selected but their total mana value must reach a threshold.
+    pub minimum: Option<Value>,
     pub maximum: Value,
 }
 
@@ -92,7 +96,16 @@ impl ChoiceAggregateConstraint {
     pub fn at_most(metric: ChoiceAggregateMetric, maximum: impl Into<Value>) -> Self {
         Self {
             metric,
+            minimum: None,
             maximum: maximum.into(),
+        }
+    }
+
+    pub fn at_least(metric: ChoiceAggregateMetric, minimum: impl Into<Value>) -> Self {
+        Self {
+            metric,
+            minimum: Some(minimum.into()),
+            maximum: Value::Fixed(i32::MAX),
         }
     }
 
@@ -102,6 +115,10 @@ impl ChoiceAggregateConstraint {
 
     pub fn total_mana_value_at_most(maximum: impl Into<Value>) -> Self {
         Self::at_most(ChoiceAggregateMetric::ManaValue, maximum)
+    }
+
+    pub fn total_mana_value_at_least(minimum: impl Into<Value>) -> Self {
+        Self::at_least(ChoiceAggregateMetric::ManaValue, minimum)
     }
 }
 
@@ -213,6 +230,16 @@ pub enum EffectPredicate {
         card_type: CardType,
         negated: bool,
     },
+    /// At least one object affected for a matching player has the greatest
+    /// mana value among every object affected by the producer. Equal maxima
+    /// intentionally satisfy the predicate.
+    ///
+    /// The producer must retain per-player affected-object partitions. This
+    /// is the generic result shape used by simultaneous participant actions
+    /// such as comparing what each player discarded.
+    PlayerAffectedObjectHasGreatestManaValue {
+        player: PlayerFilter,
+    },
     /// A result predicate over the captured objects produced by one prior
     /// action, preserving the authored `... this way` relationship.
     ///
@@ -315,7 +342,10 @@ pub enum GrantPlayTaggedDuration {
 pub enum GrantPlayTaggedObjectSurface {
     It,
     ThatCard,
+    /// Authored definite reference that repeats the card's current zone.
+    ThatCardFromExile,
     ThatSpell,
+    Them,
     ThoseCards,
     SpellsFromAmongThoseCards,
     SpellsFromAmongThoseExiledCards,
@@ -461,6 +491,11 @@ pub enum DelayedTriggerSpec {
     ThisDies,
     ThisLeavesBattlefield,
     ThisAttacksAndIsntBlocked,
+    ThisBlocksObject {
+        filter: ObjectFilter,
+        min_blocked_objects: Option<u32>,
+    },
+    ThisBecomesBlockedByObject(ObjectFilter),
     Attacks(ObjectFilter),
     AttacksAndIsntBlocked(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
@@ -527,6 +562,28 @@ pub enum DelayedTriggerDuration {
     UntilControllerNextTurn,
 }
 
+/// A cost that may be paid while a delayed trigger is pending to cancel that
+/// registration before it fires.
+///
+/// This models clauses such as "unless they pay {1} before that draw step".
+/// The runtime resolves `player` when the delayed trigger is registered so the
+/// payment window remains valid even after the originating source changes
+/// zones.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DelayedTriggerPrepayment<E> {
+    pub player: PlayerFilter,
+    pub cost: crate::cost_model::TotalCost<crate::cost_model::Cost<E>>,
+}
+
+impl<E> DelayedTriggerPrepayment<E> {
+    pub fn new(
+        player: PlayerFilter,
+        cost: crate::cost_model::TotalCost<crate::cost_model::Cost<E>>,
+    ) -> Self {
+        Self { player, cost }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScheduleDelayedTriggerEffect<E> {
     pub trigger: DelayedTriggerSpec,
@@ -553,6 +610,15 @@ pub struct ScheduleDelayedTriggerEffect<E> {
     pub target_tag: Option<crate::tag::TagKey>,
     pub target_filter: Option<ObjectFilter>,
     pub controller: PlayerFilter,
+    /// Optional payment window that cancels this delayed registration.
+    pub prepayment: Option<DelayedTriggerPrepayment<E>>,
+    /// Resolve numeric `... damage prevented this way` values from the
+    /// prevention shield created immediately before this registration.
+    ///
+    /// The runtime captures the shield identity when this effect resolves;
+    /// the delayed ability therefore observes the amount actually prevented,
+    /// even after the shield itself is exhausted and removed.
+    pub event_value_from_prior_prevention: bool,
 }
 
 impl<E> ScheduleDelayedTriggerEffect<E> {
@@ -580,6 +646,8 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
             target_tag: None,
             target_filter: None,
             controller,
+            prepayment: None,
+            event_value_from_prior_prevention: false,
         }
     }
 
@@ -604,6 +672,20 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
 
     pub fn starting_next_turn(mut self) -> Self {
         self.start_next_turn = true;
+        self
+    }
+
+    pub fn unless_paid_before_trigger(
+        mut self,
+        player: PlayerFilter,
+        cost: crate::cost_model::TotalCost<crate::cost_model::Cost<E>>,
+    ) -> Self {
+        self.prepayment = Some(DelayedTriggerPrepayment::new(player, cost));
+        self
+    }
+
+    pub fn with_prior_prevention_event_value(mut self) -> Self {
+        self.event_value_from_prior_prevention = true;
         self
     }
 
@@ -1398,6 +1480,15 @@ pub struct IfEffect<E> {
     pub predicate: EffectPredicate,
     pub then: Vec<E>,
     pub else_: Vec<E>,
+    /// Evaluate this result predicate independently for every participant in
+    /// the antecedent's `PlayerCounts` fact, binding that participant as the
+    /// iterated player while executing the selected branch.
+    pub per_player_result: bool,
+    /// This prior-result branch was authored as a self-replacement of the
+    /// default arm ("draw one; if ..., draw two instead"), rather than as an
+    /// ordinary if/otherwise choice. Resolution semantics live in `then` and
+    /// `else_`; this flag preserves the authored surface for rendering.
+    pub prior_result_replacement_surface: bool,
 }
 
 impl<E> IfEffect<E> {
@@ -1412,7 +1503,19 @@ impl<E> IfEffect<E> {
             predicate,
             then,
             else_,
+            per_player_result: false,
+            prior_result_replacement_surface: false,
         }
+    }
+
+    pub fn with_per_player_result(mut self, enabled: bool) -> Self {
+        self.per_player_result = enabled;
+        self
+    }
+
+    pub fn with_prior_result_replacement_surface(mut self, enabled: bool) -> Self {
+        self.prior_result_replacement_surface = enabled;
+        self
     }
 
     pub fn if_then(condition: EffectId, predicate: EffectPredicate, then: Vec<E>) -> Self {
@@ -1494,6 +1597,10 @@ impl<E> EffectMode<E> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseModeEffect<E> {
     pub modes: Vec<EffectMode<E>>,
+    /// Typed effects authored once in the modal header after the choice
+    /// instruction. They resolve exactly once after modes are chosen and
+    /// before any selected mode resolves.
+    pub common_prefix_effects: Vec<E>,
     /// When present, this player makes the mode choice during resolution.
     /// Ordinary modal spells leave this unset and use their controller's
     /// casting-time mode selection.
@@ -1506,12 +1613,19 @@ pub struct ChooseModeEffect<E> {
     pub min_choose_count: Value,
     pub allow_repeated_modes: bool,
     pub mode_point_costs: Vec<u32>,
-    /// Whether these are Spree modes whose selected labels are mandatory
-    /// additional costs paid during the spell-casting transaction.
+    /// Whether the selected mode labels are mandatory additional costs paid
+    /// during the spell-casting transaction (for example, Spree or Tiered).
     pub spree: bool,
-    /// Additional mana cost associated with each mode. Non-Spree modal
-    /// effects leave this empty.
+    /// Whether this costed modal uses the Tiered “choose exactly one” surface.
+    pub tiered: bool,
+    /// Additional mana cost associated with each mode. Ordinary modal effects
+    /// leave this empty.
     pub mode_additional_mana_costs: Vec<ManaCost>,
+    /// Number of trailing effects in every mode that were authored once as a
+    /// shared sentence in the modal header. The effects remain inside each
+    /// mode for target-scoped execution; this records only their common
+    /// presentation boundary.
+    pub common_suffix_effect_count: usize,
     pub disallow_previously_chosen_modes: bool,
     pub disallow_previously_chosen_modes_this_turn: bool,
     /// Each chosen mode must declare a player target different from every other chosen mode.
@@ -1527,6 +1641,7 @@ impl<E> ChooseModeEffect<E> {
         let mode_point_costs = vec![1; modes.len()];
         Self {
             modes,
+            common_prefix_effects: Vec::new(),
             chooser: None,
             min,
             max,
@@ -1537,7 +1652,9 @@ impl<E> ChooseModeEffect<E> {
             allow_repeated_modes: allow_repeat,
             mode_point_costs,
             spree: false,
+            tiered: false,
             mode_additional_mana_costs: Vec::new(),
+            common_suffix_effect_count: 0,
             disallow_previously_chosen_modes: false,
             disallow_previously_chosen_modes_this_turn: false,
             distinct_player_targets_per_mode: false,
@@ -1586,6 +1703,29 @@ impl<E> ChooseModeEffect<E> {
     pub fn with_spree_mana_costs(mut self, costs: Vec<ManaCost>) -> Self {
         self.spree = true;
         self.mode_additional_mana_costs = costs;
+        self
+    }
+
+    pub fn with_tiered_mana_costs(mut self, costs: Vec<ManaCost>) -> Self {
+        self.spree = true;
+        self.tiered = true;
+        self.min = Value::Fixed(1);
+        self.max = Value::Fixed(1);
+        self.min_choose_count = Value::Fixed(1);
+        self.choose_count = Value::Fixed(1);
+        self.allow_repeat = false;
+        self.allow_repeated_modes = false;
+        self.mode_additional_mana_costs = costs;
+        self
+    }
+
+    pub fn with_common_suffix_effect_count(mut self, effect_count: usize) -> Self {
+        self.common_suffix_effect_count = effect_count;
+        self
+    }
+
+    pub fn with_common_prefix_effects(mut self, effects: Vec<E>) -> Self {
+        self.common_prefix_effects = effects;
         self
     }
 
@@ -1654,15 +1794,17 @@ pub struct SearchLibrarySlot {
     pub optional: bool,
 }
 
-/// Oracle-facing wording used to refer back to the single card found by a
-/// library search. This is presentation-only metadata; the searched object is
-/// still identified by the effect itself.
+/// Oracle-facing wording used to refer back to cards found by a library
+/// search. This is presentation-only metadata; the searched objects are still
+/// identified by the effect's typed tag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SearchResultReferenceSurface {
     #[default]
     ThatCard,
     TheCard,
     It,
+    ThoseCards,
+    Them,
 }
 
 impl SearchResultReferenceSurface {
@@ -1671,6 +1813,8 @@ impl SearchResultReferenceSurface {
             Self::ThatCard => "that card",
             Self::TheCard => "the card",
             Self::It => "it",
+            Self::ThoseCards => "those cards",
+            Self::Them => "them",
         }
     }
 }
@@ -2918,13 +3062,23 @@ pub struct ChooseObjectsEffect {
     pub is_search: bool,
     pub reveal: bool,
     pub search_mode: SearchSelectionMode,
-    /// Authored singular reference used by the action that consumes a search
-    /// result. `None` preserves the generic "it" surface for hand-built
+    /// Authored reference used by the reveal clause for the searched set.
+    /// This is separate from `search_result_reference_surface` because Oracle
+    /// may reveal "them" and later move "those cards", or vice versa.
+    pub search_reveal_reference_surface: Option<SearchResultReferenceSurface>,
+    /// Authored reference used by the action that consumes a search result.
+    /// `None` preserves the generic number-aware pronoun for hand-built
     /// choose/move sequences.
     pub search_result_reference_surface: Option<SearchResultReferenceSurface>,
+    /// Whether a plural move to the top of the searched library explicitly
+    /// included the presentation-only tail "in any order".
+    pub search_top_in_any_order_surface: Option<bool>,
     pub top_only: bool,
     pub bottom_only: bool,
     pub replace_tagged_objects: bool,
+    /// Persist an exact singular choice on the source for authored references
+    /// from a later ability ("the chosen creature", for example).
+    pub remember_as_chosen_object: bool,
 }
 
 impl ChooseObjectsEffect {
@@ -2947,11 +3101,19 @@ impl ChooseObjectsEffect {
             is_search: false,
             reveal: false,
             search_mode: SearchSelectionMode::Exact,
+            search_reveal_reference_surface: None,
             search_result_reference_surface: None,
+            search_top_in_any_order_surface: None,
             top_only: false,
             bottom_only: false,
             replace_tagged_objects: false,
+            remember_as_chosen_object: false,
         }
+    }
+
+    pub fn remember_as_chosen_object(mut self) -> Self {
+        self.remember_as_chosen_object = true;
+        self
     }
 
     pub fn in_zone(mut self, zone: crate::zone::Zone) -> Self {
@@ -3015,6 +3177,19 @@ impl ChooseObjectsEffect {
         surface: SearchResultReferenceSurface,
     ) -> Self {
         self.search_result_reference_surface = Some(surface);
+        self
+    }
+
+    pub fn with_search_reveal_reference_surface(
+        mut self,
+        surface: Option<SearchResultReferenceSurface>,
+    ) -> Self {
+        self.search_reveal_reference_surface = surface;
+        self
+    }
+
+    pub fn with_search_top_in_any_order_surface(mut self, explicit: bool) -> Self {
+        self.search_top_in_any_order_surface = Some(explicit);
         self
     }
 
@@ -3289,6 +3464,21 @@ impl GrantNextSpellCostReductionEffect {
             reduction: crate::mana::ManaCost::new(),
             generic_reduction: Some(generic_reduction.into()),
             applies_to_all_matching_this_turn: true,
+            duration: Until::EndOfTurn,
+        }
+    }
+
+    pub fn next_matching_this_turn(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        generic_reduction: impl Into<Value>,
+    ) -> Self {
+        Self {
+            player,
+            filter,
+            reduction: crate::mana::ManaCost::new(),
+            generic_reduction: Some(generic_reduction.into()),
+            applies_to_all_matching_this_turn: false,
             duration: Until::EndOfTurn,
         }
     }
@@ -3586,11 +3776,18 @@ impl ClearSuspectedEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct OpenAttractionEffect;
+pub struct OpenAttractionEffect {
+    pub reminder: bool,
+}
 
 impl OpenAttractionEffect {
     pub fn new() -> Self {
-        Self
+        Self { reminder: false }
+    }
+
+    pub fn with_reminder(mut self, reminder: bool) -> Self {
+        self.reminder = reminder;
+        self
     }
 }
 
@@ -3855,6 +4052,10 @@ pub struct CreateTokenEffect<D> {
     pub ability_presentation: Option<TokenAbilityPresentation>,
     pub enters_tapped: bool,
     pub enters_attacking: bool,
+    /// When present, each created token enters attacking this player (or a
+    /// legal planeswalker they control, depending on the mode) instead of
+    /// copying the originating attacker's target.
+    pub attack_target_mode: Option<CopyAttackTargetMode>,
     pub exile_at_end_of_combat: bool,
     pub sacrifice_at_end_of_combat: bool,
     pub sacrifice_at_next_end_step: bool,
@@ -3883,6 +4084,7 @@ impl<D> CreateTokenEffect<D> {
             ability_presentation: None,
             enters_tapped: false,
             enters_attacking: false,
+            attack_target_mode: None,
             exile_at_end_of_combat: false,
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,
@@ -3921,6 +4123,26 @@ impl<D> CreateTokenEffect<D> {
 
     pub fn attacking(mut self) -> Self {
         self.enters_attacking = true;
+        self
+    }
+
+    pub fn attack_target_mode(mut self, mode: CopyAttackTargetMode) -> Self {
+        self.enters_attacking = true;
+        self.attack_target_mode = Some(mode);
+        self
+    }
+
+    pub fn attacking_player(mut self, player: PlayerFilter) -> Self {
+        self.enters_attacking = true;
+        self.attack_target_mode = Some(CopyAttackTargetMode::Player(player));
+        self
+    }
+
+    pub fn attacking_player_or_planeswalker_controlled_by(mut self, player: PlayerFilter) -> Self {
+        self.enters_attacking = true;
+        self.attack_target_mode = Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
+            player,
+        ));
         self
     }
 
@@ -4061,6 +4283,14 @@ pub struct CreateTokenCopyEffect<A> {
     pub added_subtypes: Vec<Subtype>,
     pub removed_supertypes: Vec<Supertype>,
     pub set_base_power_toughness: Option<(i32, i32)>,
+    /// Dynamic copiable base power/toughness values evaluated as the token is
+    /// created. This is distinct from a later continuous-effect modification:
+    /// the resolved values are part of the token's copy exception.
+    pub set_base_power_toughness_value: Option<(Value, Value)>,
+    /// Explicit starting loyalty authored as part of the copy exception.
+    /// This replaces both the copied base loyalty and the initial loyalty
+    /// counters on the created token.
+    pub starting_loyalty: Option<u32>,
     pub set_colors: Option<ColorSet>,
     pub set_card_types: Option<Vec<CardType>>,
     pub set_subtypes: Option<Vec<Subtype>>,
@@ -4093,6 +4323,8 @@ impl<A> CreateTokenCopyEffect<A> {
             added_subtypes: Vec::new(),
             removed_supertypes: Vec::new(),
             set_base_power_toughness: None,
+            set_base_power_toughness_value: None,
+            starting_loyalty: None,
             set_colors: None,
             set_card_types: None,
             set_subtypes: None,
@@ -4256,6 +4488,22 @@ impl<A> CreateTokenCopyEffect<A> {
 
     pub fn set_base_power_toughness(mut self, power: i32, toughness: i32) -> Self {
         self.set_base_power_toughness = Some((power, toughness));
+        self.set_base_power_toughness_value = None;
+        self
+    }
+
+    pub fn set_base_power_toughness_value(
+        mut self,
+        power: impl Into<Value>,
+        toughness: impl Into<Value>,
+    ) -> Self {
+        self.set_base_power_toughness = None;
+        self.set_base_power_toughness_value = Some((power.into(), toughness.into()));
+        self
+    }
+
+    pub fn starting_loyalty(mut self, loyalty: u32) -> Self {
+        self.starting_loyalty = Some(loyalty);
         self
     }
 
@@ -4304,6 +4552,13 @@ pub struct RetargetStackObjectEffect {
     pub chooser: PlayerFilter,
     pub require_change: bool,
     pub new_target_restriction: Option<NewTargetRestriction>,
+    /// The authored back-reference named a plural set of spell or ability
+    /// copies ("the copies") rather than one copy.
+    ///
+    /// The target tag preserves identity but cannot preserve this surface:
+    /// one delayed copy instruction may produce copies over several trigger
+    /// events even when its per-event copy count is one.
+    pub copy_reference_plural: bool,
 }
 
 impl RetargetStackObjectEffect {
@@ -4314,6 +4569,7 @@ impl RetargetStackObjectEffect {
             chooser: PlayerFilter::You,
             require_change: false,
             new_target_restriction: None,
+            copy_reference_plural: false,
         }
     }
 
@@ -4336,12 +4592,21 @@ impl RetargetStackObjectEffect {
         self.new_target_restriction = Some(restriction);
         self
     }
+
+    pub fn with_plural_copy_reference(mut self) -> Self {
+        self.copy_reference_plural = true;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileEffect {
     pub spec: ChooseSpec,
     pub face_down: bool,
+    /// Preserve an authored instruction to turn an already face-down object
+    /// face up as it is exiled. Exile's rules semantics already expose the
+    /// card; this flag retains only the explicit action surface.
+    pub turn_face_up: bool,
 }
 
 impl ExileEffect {
@@ -4349,11 +4614,17 @@ impl ExileEffect {
         Self {
             spec,
             face_down: false,
+            turn_face_up: false,
         }
     }
 
     pub fn with_face_down(mut self, face_down: bool) -> Self {
         self.face_down = face_down;
+        self
+    }
+
+    pub fn turn_face_up(mut self) -> Self {
+        self.turn_face_up = true;
         self
     }
 
@@ -4496,6 +4767,9 @@ impl ExileTaggedWhenSourceLeavesEffect {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExileUntilDuration {
     SourceLeavesBattlefield,
+    /// Return the exiled object the next time a player who is an opponent of
+    /// the effect's controller becomes the monarch.
+    OpponentBecomesMonarch,
     NextEndStep,
     EndOfCombat,
 }
@@ -4546,6 +4820,13 @@ impl ExileUntilEffect {
     }
 }
 
+/// Authored presentation of a spell-copy amount whose executable value is
+/// stored independently in [`CopySpellEffect::count`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyCountSurface {
+    OncePlusAdditionalPerOpponentWhoCopiedThisWay,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopySpellEffect {
     pub target: ChooseSpec,
@@ -4562,8 +4843,17 @@ pub struct CopySpellEffect {
     /// the authored wording without weakening that semantic identity.
     pub target_reference_pronoun: bool,
     pub count: Value,
+    pub count_surface: Option<CopyCountSurface>,
     pub copier: PlayerFilter,
     pub removed_supertypes: Vec<Supertype>,
+    /// Colors set as part of the copy effect's copiable values.
+    pub set_colors: Option<ColorSet>,
+    /// Card types added as part of the copy effect's copiable values.
+    pub added_card_types: Vec<CardType>,
+    /// Subtypes added as part of the copy effect's copiable values.
+    pub added_subtypes: Vec<Subtype>,
+    /// Base power/toughness set as part of the copy effect's copiable values.
+    pub set_base_power_toughness: Option<(i32, i32)>,
 }
 
 impl CopySpellEffect {
@@ -4603,8 +4893,13 @@ impl CopySpellEffect {
             target_reference_kind,
             target_reference_pronoun: false,
             count: count.into(),
+            count_surface: None,
             copier,
             removed_supertypes: Vec::new(),
+            set_colors: None,
+            added_card_types: Vec::new(),
+            added_subtypes: Vec::new(),
+            set_base_power_toughness: None,
         }
     }
 
@@ -4623,6 +4918,46 @@ impl CopySpellEffect {
         for supertype in supertypes {
             self = self.removed_supertype(supertype);
         }
+        self
+    }
+
+    pub fn with_set_colors(mut self, colors: Option<ColorSet>) -> Self {
+        self.set_colors = colors;
+        self
+    }
+
+    pub fn with_added_card_types(mut self, card_types: Vec<CardType>) -> Self {
+        for card_type in card_types {
+            if !self.added_card_types.contains(&card_type) {
+                self.added_card_types.push(card_type);
+            }
+        }
+        self
+    }
+
+    pub fn with_added_subtypes(mut self, subtypes: Vec<Subtype>) -> Self {
+        for subtype in subtypes {
+            if !self.added_subtypes.contains(&subtype) {
+                self.added_subtypes.push(subtype);
+            }
+        }
+        self
+    }
+
+    pub fn with_set_base_power_toughness(mut self, value: Option<(i32, i32)>) -> Self {
+        self.set_base_power_toughness = value;
+        self
+    }
+
+    pub fn has_characteristic_modifiers(&self) -> bool {
+        self.set_colors.is_some()
+            || !self.added_card_types.is_empty()
+            || !self.added_subtypes.is_empty()
+            || self.set_base_power_toughness.is_some()
+    }
+
+    pub fn with_count_surface(mut self, surface: CopyCountSurface) -> Self {
+        self.count_surface = Some(surface);
         self
     }
 

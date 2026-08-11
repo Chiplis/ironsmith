@@ -17,13 +17,16 @@ pub(crate) fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalRes
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::Clash { .. } => Some(TerminalResultProducer::Clash),
-            SubjectVerbActionAst::FlipCoin => Some(TerminalResultProducer::FlipCoin),
+            SubjectVerbActionAst::FlipCoin | SubjectVerbActionAst::FlipCoinFaceOnly => {
+                Some(TerminalResultProducer::FlipCoin)
+            }
             _ => None,
         },
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
-        | EffectAst::Coordinated { effects, .. } => {
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ResultBranchLabel { effects, .. } => {
             effects.last().and_then(terminal_result_producer)
         }
         _ => None,
@@ -44,6 +47,10 @@ macro_rules! nested_effects_variants {
                 ..
             }
             | EffectAst::Coordinated {
+                effects: $effects,
+                ..
+            }
+            | EffectAst::ResultBranchLabel {
                 effects: $effects,
                 ..
             }
@@ -99,6 +106,10 @@ macro_rules! nested_effects_variants {
                 ..
             }
             | EffectAst::ForEachTagged {
+                effects: $effects,
+                ..
+            }
+            | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
                 effects: $effects,
                 ..
             }
@@ -158,6 +169,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::DelayedUntilNextFirstMainPhase {
+                effects: $effects,
+                ..
+            }
             | EffectAst::DelayedUntilEndStepOfExtraTurn {
                 effects: $effects,
                 ..
@@ -200,6 +215,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::CommaThen { .. } => {}
         EffectAst::SourceSentence { .. } => {}
         EffectAst::Coordinated { .. } => {}
+        EffectAst::ResultBranchLabel { .. } => {}
         EffectAst::UnlessPays { .. } => {}
         EffectAst::UnlessAction { .. } => {}
         EffectAst::DelayedUntilNextEndStep { .. } => {}
@@ -208,6 +224,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::DelayedUntilNextUpkeep { .. } => {}
         EffectAst::DelayedUntilNextDrawStep { .. } => {}
         EffectAst::DelayedUntilNextMainPhase { .. } => {}
+        EffectAst::DelayedUntilNextFirstMainPhase { .. } => {}
         EffectAst::DelayedUntilEndStepOfExtraTurn { .. } => {}
         EffectAst::DelayedUntilEndOfCombat { .. } => {}
         EffectAst::DelayedTriggerThisTurn { .. } => {}
@@ -228,6 +245,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ChooseOneOf { .. } => {}
         EffectAst::VillainousChoice { .. } => {}
         EffectAst::IfEffectDidNotHappen { .. } => {}
+        EffectAst::IfEffectResult { .. } => {}
         EffectAst::TagAffected { .. } => {}
         EffectAst::DirectionalAdjacentPlayerControl { .. } => {}
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
@@ -248,6 +266,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEachTargetPlayers { .. } => {}
         EffectAst::ForEachObject { .. } => {}
         EffectAst::ForEachTagged { .. } => {}
+        EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. } => {}
         EffectAst::MoveTaggedGroupToZone { .. } => {}
         EffectAst::SnapshotLastObjectTag { .. } => {}
         EffectAst::ForEachOpponentDoesNot { .. } => {}
@@ -291,6 +310,12 @@ pub(crate) fn for_each_nested_effects(
         EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
             visit(std::slice::from_ref(effect.as_ref()));
             visit(otherwise);
+        }
+        EffectAst::IfEffectResult {
+            effect, if_true, ..
+        } => {
+            visit(std::slice::from_ref(effect.as_ref()));
+            visit(if_true);
         }
         EffectAst::TagAffected { effect, .. } => {
             visit(std::slice::from_ref(effect.as_ref()));
@@ -336,6 +361,12 @@ pub(crate) fn for_each_nested_effects_mut(
         EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
             visit(std::slice::from_mut(effect.as_mut()));
             visit(otherwise);
+        }
+        EffectAst::IfEffectResult {
+            effect, if_true, ..
+        } => {
+            visit(std::slice::from_mut(effect.as_mut()));
+            visit(if_true);
         }
         EffectAst::TagAffected { effect, .. } => {
             visit(std::slice::from_mut(effect.as_mut()));
@@ -393,6 +424,12 @@ pub(crate) fn for_each_nested_effect_vec_mut(
                 walk(effect.as_mut(), include_unless_action_alternative, visit);
                 visit(otherwise);
             }
+            EffectAst::IfEffectResult {
+                effect, if_true, ..
+            } => {
+                walk(effect.as_mut(), include_unless_action_alternative, visit);
+                visit(if_true);
+            }
             EffectAst::TagAffected { effect, .. } => {
                 walk(effect.as_mut(), include_unless_action_alternative, visit);
             }
@@ -440,6 +477,12 @@ pub(crate) fn try_for_each_nested_effects_mut<E>(
         EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
             visit(std::slice::from_mut(effect.as_mut()))?;
             visit(otherwise)?;
+        }
+        EffectAst::IfEffectResult {
+            effect, if_true, ..
+        } => {
+            visit(std::slice::from_mut(effect.as_mut()))?;
+            visit(if_true)?;
         }
         EffectAst::TagAffected { effect, .. } => {
             visit(std::slice::from_mut(effect.as_mut()))?;

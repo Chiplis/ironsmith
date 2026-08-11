@@ -29,7 +29,7 @@ pub(crate) fn compile_delayed_trigger_spec(
         TriggerSpec::BeginningOfPrecombatMain(player) => {
             Ok(ironsmith_core::DelayedTriggerSpec::BeginningOfPrecombatMainPhase(player.clone()))
         }
-        TriggerSpec::BeginningOfPostcombatMain(player) => {
+        TriggerSpec::BeginningOfPostcombatMain { player, .. } => {
             Ok(ironsmith_core::DelayedTriggerSpec::BeginningOfPostcombatMainPhase(player.clone()))
         }
         TriggerSpec::ThisEntersBattlefield { .. } => {
@@ -111,6 +111,16 @@ pub(crate) fn compile_delayed_trigger_spec(
         }
         TriggerSpec::ThisAttacksAndIsntBlocked => {
             Ok(ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked)
+        }
+        TriggerSpec::ThisBlocksObject {
+            filter,
+            min_blocked_objects,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::ThisBlocksObject {
+            filter: filter.clone(),
+            min_blocked_objects: *min_blocked_objects,
+        }),
+        TriggerSpec::ThisBecomesBlockedByObject(filter) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::ThisBecomesBlockedByObject(filter.clone()))
         }
         TriggerSpec::Attacks(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Attacks(filter.clone()))
@@ -230,6 +240,48 @@ fn compile_delayed_effects_preserving_outer_context(
     ctx.apply_id_gen_context(id_gen);
     ctx.apply_lowering_frame(frame_out);
     Ok((compiled, choices))
+}
+
+/// A next-end-step payload can consume the amount actually prevented by the
+/// shield registered immediately before it. Reference resolution first pins
+/// the authored "prevented this way" metric to that producer so unrelated
+/// results cannot capture it. The delayed trigger then supplies the shield's
+/// accumulated amount as its event value when it resolves.
+fn replace_delayed_prior_prevention_amounts(effect: &mut EffectAst) {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::PutCounters { count, .. } = &mut subject_verb.action
+        && matches!(
+            count.unhinted(),
+            Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. }
+                if query.action == Some(ironsmith_core::PriorEffectAction::Prevented)
+        )
+    {
+        let hints = count.surface_hints().to_vec();
+        *count = Value::EventValue(EventValueSpec::Amount).with_surface_hints(hints);
+    }
+    for_each_nested_effects_mut(effect, false, |nested| {
+        for nested_effect in nested {
+            replace_delayed_prior_prevention_amounts(nested_effect);
+        }
+    });
+}
+
+fn split_delayed_prepayment(
+    effects: Vec<Effect>,
+) -> (Vec<Effect>, Option<(PlayerFilter, crate::cost::TotalCost)>) {
+    let [effect] = effects.as_slice() else {
+        return (effects, None);
+    };
+    let Some(unless) = effect.downcast_ref::<crate::effects::UnlessPaysEffect<Effect>>() else {
+        return (effects, None);
+    };
+    if unless.leading_surface || !unless.before_delayed_step {
+        return (effects, None);
+    }
+    (
+        unless.effects.clone(),
+        Some((unless.player.clone(), unless.cost.clone())),
+    )
 }
 
 fn rewrite_filter_tag_relation(
@@ -354,6 +406,23 @@ fn compile_duration_scoped_delayed_trigger(
     let mut watch_all_object_targets = false;
 
     let delayed_trigger = match trigger_without_intro(trigger) {
+        TriggerSpec::ThisEntersBattlefieldWithSurface {
+            surface: crate::target::SourceReferenceSurface::ThisPermanentType(surface),
+            subject_number,
+            origin_condition: None,
+        } if surface == "that permanent" => {
+            let prior_result_tag = ctx.last_object_tag.clone().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "cannot schedule 'that permanent enters' without a prior object result"
+                        .to_string(),
+                )
+            })?;
+            watched_tag = Some(TagKey::from(prior_result_tag));
+            ironsmith_core::DelayedTriggerSpec::ThisEntersBattlefieldWithSurface {
+                surface: crate::target::SourceReferenceSurface::ThisPermanentType(surface.clone()),
+                subject_number: *subject_number,
+            }
+        }
         TriggerSpec::PermanentBecomesTapped(filter) => {
             let resolved = resolve_it_tag(filter, &refs)?;
             if let Some(tag) = watch_tag_from_filter(&resolved) {
@@ -443,15 +512,28 @@ pub(super) fn try_compile_timing_and_control_effect(
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::DelayedUntilNextEndStep { player, effects } => {
+            let uses_prior_prevention_amount = effects
+                .iter()
+                .any(effect_references_prior_prevention_amount);
+            let mut effects = effects.clone();
+            if uses_prior_prevention_amount {
+                for effect in &mut effects {
+                    replace_delayed_prior_prevention_amounts(effect);
+                }
+            }
             let (delayed_effects, choices) =
-                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
-            let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
+                compile_delayed_effects_preserving_outer_context(&effects, ctx)?;
+            let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
                 ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player.clone()),
                 delayed_effects,
                 true,
                 Vec::new(),
                 PlayerFilter::You,
-            ));
+            );
+            if uses_prior_prevention_amount {
+                delayed = delayed.with_prior_prevention_event_value();
+            }
+            let effect = Effect::new(delayed);
             (vec![effect], choices)
         }
         EffectAst::DelayedUntilNextCleanupStep { player, effects } => {
@@ -495,16 +577,19 @@ pub(super) fn try_compile_timing_and_control_effect(
             let (delayed_effects, nested_choices) =
                 compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             choices.extend(nested_choices);
-            let effect = Effect::new(
-                crate::effects::ScheduleDelayedTriggerEffect::new(
-                    ironsmith_core::DelayedTriggerSpec::BeginningOfUpkeep(player_filter),
-                    delayed_effects,
-                    true,
-                    Vec::new(),
-                    PlayerFilter::You,
-                )
-                .starting_next_turn(),
-            );
+            let (delayed_effects, prepayment) = split_delayed_prepayment(delayed_effects);
+            let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
+                ironsmith_core::DelayedTriggerSpec::BeginningOfUpkeep(player_filter),
+                delayed_effects,
+                true,
+                Vec::new(),
+                PlayerFilter::You,
+            )
+            .starting_next_turn();
+            if let Some((payer, cost)) = prepayment {
+                delayed = delayed.unless_paid_before_trigger(payer, cost);
+            }
+            let effect = Effect::new(delayed);
             (vec![effect], choices)
         }
         EffectAst::DelayedUntilNextDrawStep { player, effects } => {
@@ -514,16 +599,19 @@ pub(super) fn try_compile_timing_and_control_effect(
             let (delayed_effects, nested_choices) =
                 compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             choices.extend(nested_choices);
-            let effect = Effect::new(
-                crate::effects::ScheduleDelayedTriggerEffect::new(
-                    ironsmith_core::DelayedTriggerSpec::BeginningOfDrawStep(player_filter),
-                    delayed_effects,
-                    true,
-                    Vec::new(),
-                    PlayerFilter::You,
-                )
-                .starting_next_turn(),
-            );
+            let (delayed_effects, prepayment) = split_delayed_prepayment(delayed_effects);
+            let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
+                ironsmith_core::DelayedTriggerSpec::BeginningOfDrawStep(player_filter),
+                delayed_effects,
+                true,
+                Vec::new(),
+                PlayerFilter::You,
+            )
+            .starting_next_turn();
+            if let Some((payer, cost)) = prepayment {
+                delayed = delayed.unless_paid_before_trigger(payer, cost);
+            }
+            let effect = Effect::new(delayed);
             (vec![effect], choices)
         }
         EffectAst::DelayedUntilNextMainPhase { player, effects } => {
@@ -531,6 +619,18 @@ pub(super) fn try_compile_timing_and_control_effect(
                 compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
                 ironsmith_core::DelayedTriggerSpec::BeginningOfMainPhase(player.clone()),
+                delayed_effects,
+                true,
+                Vec::new(),
+                PlayerFilter::You,
+            ));
+            (vec![effect], choices)
+        }
+        EffectAst::DelayedUntilNextFirstMainPhase { player, effects } => {
+            let (delayed_effects, choices) =
+                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
+            let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
+                ironsmith_core::DelayedTriggerSpec::BeginningOfPrecombatMainPhase(player.clone()),
                 delayed_effects,
                 true,
                 Vec::new(),
@@ -593,12 +693,35 @@ pub(super) fn try_compile_timing_and_control_effect(
             effects,
             one_shot,
             until_end_of_combat,
-            attach_to_previous_ability: _,
+            attach_to_previous_ability,
         } => {
             let (delayed_effects, _delayed_choices) =
                 compile_trigger_effects(Some(trigger), effects)?;
             let choices = Vec::new();
             match trigger {
+                TriggerSpec::Dies(filter)
+                    if *attach_to_previous_ability
+                        && filter.dealt_damage_by_source_this_turn
+                            == Some(ironsmith_core::DamagedBySource::ThisCreature) =>
+                {
+                    let watched_tag = ctx.last_object_tag.clone().ok_or_else(|| {
+                        CardTextError::ParseError(
+                            "cannot schedule a damage-history death trigger without the prior creature target"
+                                .to_string(),
+                        )
+                    })?;
+                    let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+                    let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                        watched_tag.into(),
+                        ironsmith_core::DelayedTriggerSpec::Dies(resolved_filter),
+                        delayed_effects,
+                        *one_shot,
+                        Vec::new(),
+                        PlayerFilter::You,
+                    )
+                    .until_end_of_turn();
+                    (vec![Effect::new(delayed)], choices)
+                }
                 TriggerSpec::IsDealtDamage(filter) | TriggerSpec::IsDealtCombatDamage(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {

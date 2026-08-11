@@ -54,6 +54,84 @@ pub fn treasure_token_definition() -> CardDefinition {
         .with_ability(mana_ability)
         .build()
 }
+
+pub fn food_token_definition() -> CardDefinition {
+    let ability = crate::ability::Ability::activated_with_timing(
+        TotalCost::from_costs(vec![
+            Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)])),
+            Cost::tap(),
+            Cost::sacrifice_self(),
+        ]),
+        vec![Effect::gain_life(3)],
+        crate::ability::ActivationTiming::AnyTime,
+    );
+
+    CardDefinitionBuilder::new(CardId::new(), "Food")
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Food])
+        .with_ability(ability)
+        .build()
+}
+
+pub fn blood_token_definition() -> CardDefinition {
+    let ability = crate::ability::Ability::activated_with_timing(
+        TotalCost::from_costs(vec![
+            Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
+            Cost::tap(),
+            Cost::discard(1, None),
+            Cost::sacrifice_self(),
+        ]),
+        vec![Effect::draw(1)],
+        crate::ability::ActivationTiming::AnyTime,
+    );
+
+    CardDefinitionBuilder::new(CardId::new(), "Blood")
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Blood])
+        .with_ability(ability)
+        .build()
+}
+
+pub fn powerstone_token_definition() -> CardDefinition {
+    let restriction = crate::ability::ManaUsageRestriction::PaymentTransaction {
+        restriction: Some(crate::ability::ManaPaymentPredicate::Not(Box::new(
+            crate::ability::ManaPaymentPredicate::All(vec![
+                crate::ability::ManaPaymentPredicate::Purpose(
+                    crate::ability::ManaPaymentPurpose::CastSpell,
+                ),
+                crate::ability::ManaPaymentPredicate::SourceMatches(
+                    ObjectFilter::default().without_type(CardType::Artifact),
+                ),
+            ]),
+        ))),
+        on_spend: Vec::new(),
+    };
+    let ability = crate::ability::Ability {
+        kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            mana_cost: TotalCost::from_costs(vec![Cost::tap()]),
+            effects: vec![Effect::add_mana(vec![ManaSymbol::Colorless])].into(),
+            choices: vec![],
+            timing: crate::ability::ActivationTiming::AnyTime,
+            additional_restrictions: vec![],
+            activation_restrictions: vec![],
+            mana_output: Some(vec![ManaSymbol::Colorless]),
+            activation_condition: None,
+            mana_usage_restrictions: vec![restriction],
+            is_loyalty_ability: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+    };
+
+    CardDefinitionBuilder::new(CardId::new(), "Powerstone")
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Powerstone])
+        .with_ability(ability)
+        .build()
+}
+
 pub fn clue_token_definition() -> CardDefinition {
     let draw_ability = crate::ability::Ability::activated_with_timing(
         TotalCost::from_costs(vec![
@@ -239,7 +317,28 @@ pub fn monster_role_token_definition() -> CardDefinition {
         .build()
 }
 pub fn sorcerer_role_token_definition() -> CardDefinition {
-    role_token("Sorcerer Role")
+    let granted_trigger = crate::ability::Ability::triggered(
+        crate::triggers::Trigger::this_attacks(),
+        vec![Effect::scry(1)],
+    );
+    CardDefinitionBuilder::new(CardId::new(), "Sorcerer Role")
+        .token()
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Role])
+        .oracle_text(
+            "Enchant creature\nEnchanted creature gets +1/+1 and has \"Whenever this creature attacks, scry 1.\"",
+        )
+        .enchants(ObjectFilter::creature().into())
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+            Anthem::new(enchanted_creature_filter(), 1, 1),
+        )))
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+            crate::static_abilities::AttachedAbilityGrant::new(
+                granted_trigger,
+                "enchanted creature has whenever this creature attacks scry 1",
+            ),
+        )))
+        .build()
 }
 pub fn royal_role_token_definition() -> CardDefinition {
     role_token("Royal Role")

@@ -120,6 +120,29 @@ pub(super) fn is_target_permanent_or_suspended_card(spec: &ChooseSpec) -> bool {
         && filter.any_of.iter().any(|arm| arm == &suspended)
 }
 
+pub(super) fn is_target_nonland_permanent_or_suspended_card(spec: &ChooseSpec) -> bool {
+    let ChooseSpec::Target(inner) = spec else {
+        return false;
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        return false;
+    };
+    let mut permanent = crate::target::ObjectFilter::permanent();
+    permanent
+        .excluded_card_types
+        .push(crate::types::CardType::Land);
+    let suspended = crate::target::ObjectFilter::default()
+        .in_zone(crate::zone::Zone::Exile)
+        .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
+        .with_counter_type(crate::object::CounterType::Time);
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    filter.any_of.len() == 2
+        && outer == crate::target::ObjectFilter::default()
+        && filter.any_of.iter().any(|arm| arm == &permanent)
+        && filter.any_of.iter().any(|arm| arm == &suspended)
+}
+
 pub(super) fn is_source_damaged_death_graveyard_card_spec(spec: &ChooseSpec) -> bool {
     if !spec.count().is_single() {
         return false;
@@ -358,6 +381,20 @@ pub(super) fn discard_sequence_count(discard: &crate::effects::DiscardEffect) ->
             "their"
         };
         return format!("all the cards in {possessive} hand");
+    }
+    if discard
+        .count
+        .has_surface_hint(ironsmith_core::ValueSurfaceHint::OneOrMoreChoice)
+    {
+        return discard.card_filter.as_ref().map_or_else(
+            || "one or more cards".to_string(),
+            |filter| {
+                format!(
+                    "one or more {}",
+                    pluralize_discard_card_phrase(&describe_discard_card_phrase(filter))
+                )
+            },
+        );
     }
     let count = describe_discard_count(&discard.count, discard.card_filter.as_ref());
     if !discard.any_number {
@@ -1476,6 +1513,7 @@ fn describe_for_players_may_copy_spell_and_choose_new_targets(
         choose_targets_effect.downcast_ref::<crate::effects::ChooseNewTargetsEffect>()?;
     if copy.count != Value::Fixed(1)
         || !copy.removed_supertypes.is_empty()
+        || copy.has_characteristic_modifiers()
         || copy.copier != PlayerFilter::IteratedPlayer
         || choose_targets.from_effect != with_id.id
         || !choose_targets.may
@@ -1490,6 +1528,44 @@ fn describe_for_players_may_copy_spell_and_choose_new_targets(
     Some(format!(
         "{subject} may copy {copied_spell} and may choose new targets for the copy they control"
     ))
+}
+
+#[cfg(test)]
+mod per_player_stack_copy_tests {
+    use super::*;
+
+    #[test]
+    fn triggering_spell_controller_exclusion_keeps_each_other_player_surface() {
+        let copy_id = crate::effect::EffectId(9);
+        let copy = Effect::with_id(
+            copy_id.0,
+            Effect::new(crate::effects::CopySpellEffect::new_for_player(
+                ChooseSpec::Tagged(TagKey::from("triggering")),
+                Value::Fixed(1),
+                PlayerFilter::IteratedPlayer,
+            )),
+        )
+        .tag(TagKey::from("__copied_stack_object__"));
+        let retarget = Effect::new(crate::effects::ChooseNewTargetsEffect::may_for_player(
+            copy_id,
+            PlayerFilter::IteratedPlayer,
+        ));
+        let may = Effect::may_player(PlayerFilter::IteratedPlayer, vec![copy, retarget]);
+        let for_players = crate::effects::ForPlayersEffect::new(
+            PlayerFilter::excluding(
+                PlayerFilter::Any,
+                PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::tagged("triggering")),
+            ),
+            vec![may],
+        );
+
+        assert_eq!(
+            describe_for_players_may_copy_spell_and_choose_new_targets(&for_players).as_deref(),
+            Some(
+                "Each other player may copy that spell and may choose new targets for the copy they control"
+            )
+        );
+    }
 }
 
 pub(crate) fn describe_with_id_then_for_players_if_happened(
@@ -2039,10 +2115,10 @@ pub(super) fn describe_destroyed_land_controller_basic_search_then_player_shuffl
     let destroyed_loop = search_with_id
         .effect
         .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
-    let [may_effect] = destroyed_loop.effects.as_slice() else {
-        return None;
-    };
+    let (may_effect, lki_iterated_tag) =
+        destroyed_land_controller_search_may_effect(destroyed_loop.effects.as_slice())?;
     let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let actor = may.decider.as_ref()?;
     let [search_sequence_effect] = may.effects.as_slice() else {
         return None;
     };
@@ -2063,19 +2139,19 @@ pub(super) fn describe_destroyed_land_controller_basic_search_then_player_shuffl
     };
     let shuffle_library = shuffle_then.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
 
-    if may.decider != Some(PlayerFilter::IteratedPlayer)
+    if !destroyed_land_controller_search_actor(actor, lki_iterated_tag)
         || !choose.is_search
-        || choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.chooser != *actor
         || choose.zone != Some(Zone::Library)
         || choose.filter.zone != Some(Zone::Library)
-        || choose.filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || choose.filter.owner.as_ref() != Some(actor)
         || choose.filter.card_types.as_slice() != [CardType::Land]
         || !choose.filter.supertypes.contains(&Supertype::Basic)
         || !choose.count.is_single()
         || put_each.tag != choose.tag
         || !matches!(put.target, ChooseSpec::Iterated)
         || put.tapped
-        || put.controller != PlayerFilter::IteratedPlayer
+        || put.controller != *actor
         || shuffle.condition != search_with_id.id
         || shuffle.predicate != EffectPredicate::Happened
         || !shuffle.else_.is_empty()
@@ -2085,6 +2161,125 @@ pub(super) fn describe_destroyed_land_controller_basic_search_then_player_shuffl
     }
 
     Some("Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string())
+}
+
+fn destroyed_land_controller_search_may_effect<'a>(
+    effects: &'a [Effect],
+) -> Option<(&'a Effect, Option<&'a TagKey>)> {
+    if let [may_effect] = effects
+        && may_effect
+            .downcast_ref::<crate::effects::MayEffect>()
+            .is_some()
+    {
+        return Some((may_effect, None));
+    }
+
+    let [conditional_effect] = effects else {
+        return None;
+    };
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let Condition::TaggedObjectMatchedLastKnown(iterated_tag, filter) = &conditional.condition
+    else {
+        return None;
+    };
+    let mut plain_land_lki = ObjectFilter::land();
+    plain_land_lki.zone = None;
+    if iterated_tag.as_str() != "__it__"
+        || filter != &plain_land_lki
+        || !conditional.if_false.is_empty()
+        || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+    {
+        return None;
+    }
+    let [may_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    may_effect
+        .downcast_ref::<crate::effects::MayEffect>()
+        .map(|_| (may_effect, Some(iterated_tag)))
+}
+
+fn destroyed_land_controller_search_actor(
+    actor: &PlayerFilter,
+    lki_iterated_tag: Option<&TagKey>,
+) -> bool {
+    if actor == &PlayerFilter::IteratedPlayer {
+        return true;
+    }
+    let Some(expected_tag) = lki_iterated_tag else {
+        return false;
+    };
+    matches!(
+        actor,
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(actor_tag))
+            if actor_tag == expected_tag
+    )
+}
+
+#[cfg(test)]
+mod destroyed_land_controller_search_lki_tests {
+    use super::*;
+
+    fn may_search_effect(actor: PlayerFilter) -> Effect {
+        Effect::may_player(actor, vec![Effect::draw(1)])
+    }
+
+    #[test]
+    fn exact_land_lki_guard_exposes_its_controller_may_effect() {
+        let iterated_tag = TagKey::from("__it__");
+        let actor =
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(iterated_tag.clone()));
+        let mut land_lki = ObjectFilter::land();
+        land_lki.zone = None;
+        let guarded = Effect::conditional_only(
+            Condition::TaggedObjectMatchedLastKnown(iterated_tag.clone(), land_lki),
+            vec![may_search_effect(actor.clone())],
+        );
+
+        let (may_effect, lki_tag) =
+            destroyed_land_controller_search_may_effect(std::slice::from_ref(&guarded))
+                .expect("exact destroyed-land LKI guard should unwrap");
+        assert!(
+            may_effect
+                .downcast_ref::<crate::effects::MayEffect>()
+                .is_some()
+        );
+        assert_eq!(lki_tag, Some(&iterated_tag));
+        assert!(destroyed_land_controller_search_actor(&actor, lki_tag));
+    }
+
+    #[test]
+    fn near_miss_lki_guard_does_not_claim_the_destroyed_land_surface() {
+        let iterated_tag = TagKey::from("__it__");
+        let actor =
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(iterated_tag.clone()));
+        let wrong_filter = Effect::conditional_only(
+            Condition::TaggedObjectMatchedLastKnown(iterated_tag.clone(), ObjectFilter::creature()),
+            vec![may_search_effect(actor.clone())],
+        );
+        assert!(
+            destroyed_land_controller_search_may_effect(std::slice::from_ref(&wrong_filter))
+                .is_none()
+        );
+
+        let mismatched_actor = PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(
+            TagKey::from("other_object"),
+        ));
+        assert!(!destroyed_land_controller_search_actor(
+            &mismatched_actor,
+            Some(&iterated_tag),
+        ));
+
+        let zoned_land = Effect::conditional_only(
+            Condition::TaggedObjectMatchedLastKnown(iterated_tag, ObjectFilter::land()),
+            vec![may_search_effect(actor)],
+        );
+        assert!(
+            destroyed_land_controller_search_may_effect(std::slice::from_ref(&zoned_land))
+                .is_none(),
+            "the LKI terminal filter must not carry a live battlefield-zone constraint"
+        );
+    }
 }
 
 pub(super) fn describe_destroyed_land_basic_search_then_player_shuffle(
@@ -2144,6 +2339,7 @@ pub(super) fn search_target_opponent_library_to_graveyard_sequence(
     let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
 
     if !choose.is_search
+        || choose.chooser != PlayerFilter::You
         || choose.zone != Some(Zone::Library)
         || choose.filter.zone != Some(Zone::Library)
         || choose
@@ -2169,9 +2365,16 @@ pub(super) fn describe_destroy_then_search_target_opponent_to_graveyard_then_shu
     search_effect: &Effect,
     shuffle_effect: &Effect,
 ) -> Option<String> {
-    let sequence = search_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let destroy = structural_unwrap_render_wrappers(destroy_effect)
+        .downcast_ref::<crate::effects::DestroyEffect>()?;
+    if !matches!(destroy.spec.base(), ChooseSpec::All(_)) {
+        return None;
+    }
+    let sequence = structural_unwrap_render_wrappers(search_effect)
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
     search_target_opponent_library_to_graveyard_sequence(sequence)?;
-    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
+        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
     if !player_filter_is_target_opponentish(&shuffle.player) {
         return None;
     }
@@ -2192,6 +2395,27 @@ pub(super) fn describe_destroy_then_search_target_opponent_to_graveyard_then_shu
     Some(format!(
         "{destroy_text}, then {search_text}. Then that player shuffles"
     ))
+}
+
+pub(super) fn describe_destroy_then_target_opponent_search_to_graveyard_then_shuffle(
+    destroy_effect: &Effect,
+    target_effect: &Effect,
+    search_effect: &Effect,
+    shuffle_effect: &Effect,
+) -> Option<String> {
+    let target = structural_unwrap_render_wrappers(target_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if target.explicit_declaration
+        || target.chooser.is_some()
+        || target.target != ChooseSpec::target_opponent()
+    {
+        return None;
+    }
+    describe_destroy_then_search_target_opponent_to_graveyard_then_shuffle(
+        destroy_effect,
+        search_effect,
+        shuffle_effect,
+    )
 }
 
 pub(super) fn describe_for_each_tagged_optional_basic_land_search(
@@ -2646,7 +2870,15 @@ pub(super) fn describe_named_vote_per_vote_effects(
             && control
                 .target_spec
                 .as_ref()
-                .is_some_and(|target| matches!(target.base(), ChooseSpec::Iterated))
+                .is_some_and(|target| match target.base() {
+                    // Lowering may retain the explicit tag produced by the
+                    // voter-relative choice, while normalized fixtures can
+                    // use the current iterated result directly. Both are the
+                    // same executable dependency only when the tag agrees.
+                    ChooseSpec::Tagged(tag) => tag == &choose.tag,
+                    ChooseSpec::Iterated => true,
+                    _ => false,
+                })
         {
             clauses.push(format!(
                 "For each {} vote, choose a permanent owned by the voter and gain control of it",
@@ -3296,8 +3528,7 @@ pub(in crate::compiled_text) fn describe_secret_choice_match_sequence(
             // conditional result carrying an ID followed by a DidNotHappen
             // fallback. Preserve the sentence only when that result link is
             // exact; an unrelated fallback must remain a separate effect.
-            let success_with_id =
-                success_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+            let success_with_id = success_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
             let conditional = structural_unwrap_render_wrappers(&success_with_id.effect)
                 .downcast_ref::<crate::effects::ConditionalEffect>()?;
             let fallback = structural_unwrap_render_wrappers(fallback_effect)
@@ -3408,7 +3639,14 @@ pub(super) fn library_position_from_top_text(position: &Value, one_as_on_top: bo
 
 /// Compile a list of effects to human-readable text (for stack ability display).
 pub fn compile_effect_list(effects: &[Effect]) -> String {
-    normalize_compile_effect_list_surface(&describe_effect_list(effects))
+    // Runtime prompts render nested effect programs on ordinary worker
+    // threads, whose stacks are often much smaller than the main thread's.
+    // Some legitimate delayed-effect programs are structurally deep enough
+    // to exhaust that stack even though the renderer is not recursing
+    // infinitely. Match the full-card rendering entry point's guarded stack.
+    stacker::maybe_grow(4 * 1024 * 1024, 16 * 1024 * 1024, || {
+        normalize_compile_effect_list_surface(&describe_effect_list(effects))
+    })
 }
 
 pub(crate) fn describe_spell_mastery_reanimation_program(
@@ -3614,7 +3852,10 @@ pub(super) fn describe_copy_tagged_then_may_cast_copy(effects: &[Effect]) -> Opt
 
     let copy_spell =
         unwrap_basic_tag_wrappers(copy_effect).downcast_ref::<crate::effects::CopySpellEffect>()?;
-    if copy_spell.count != Value::Fixed(1) || !copy_spell.removed_supertypes.is_empty() {
+    if copy_spell.count != Value::Fixed(1)
+        || !copy_spell.removed_supertypes.is_empty()
+        || copy_spell.has_characteristic_modifiers()
+    {
         return None;
     }
     let ChooseSpec::Tagged(copy_tag) = &copy_spell.target else {
@@ -4059,8 +4300,8 @@ pub(super) fn may_causative_clause(inner: &str) -> Option<String> {
     let trimmed = inner.trim();
     let lower = trimmed.to_ascii_lowercase();
     if ![
-        "a ", "an ", "all ", "another ", "each ", "it ", "other ", "that ", "the ", "those ",
-        "target ", "two ",
+        "a ", "an ", "all ", "another ", "each ", "it ", "other ", "that ", "the ", "this ",
+        "those ", "target ", "two ",
     ]
     .iter()
     .any(|prefix| lower.starts_with(prefix))
@@ -4337,6 +4578,21 @@ fn describe_may_causative_become_color_choice(may: &crate::effects::MayEffect) -
     ))
 }
 
+fn describe_may_causative_continuous_change(may: &crate::effects::MayEffect) -> Option<String> {
+    let [effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let apply = unwrap_basic_tag_wrappers(effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let rendered = describe_apply_continuous_effect(apply)?;
+    let causative = may_causative_clause(&rendered)?;
+    let decider = may.decider.as_ref().unwrap_or(&PlayerFilter::You);
+    Some(format!(
+        "{} may {causative}",
+        capitalize_first(&describe_player_filter(decider))
+    ))
+}
+
 /// Render optional causatives from the typed chooser/actor relationship. A
 /// `MayEffect` answers who decides; its child effect still identifies who or
 /// what performs the action.
@@ -4348,6 +4604,7 @@ pub(super) fn describe_typed_may_causative(may: &crate::effects::MayEffect) -> O
         .or_else(|| describe_may_causative_source_damage(may))
         .or_else(|| describe_may_causative_grant_all(may))
         .or_else(|| describe_may_causative_become_color_choice(may))
+        .or_else(|| describe_may_causative_continuous_change(may))
 }
 
 #[cfg(test)]
@@ -4411,6 +4668,60 @@ mod may_grant_all_causative_tests {
         assert_eq!(
             describe_typed_may_causative(&may).as_deref(),
             Some("You may have this creature become the color or colors of your choice")
+        );
+    }
+}
+
+#[cfg(test)]
+mod may_continuous_change_causative_tests {
+    use super::*;
+
+    fn source_animation() -> crate::effects::ApplyContinuousEffect {
+        let spec = ChooseSpec::SurfaceHinted {
+            spec: Box::new(ChooseSpec::Source),
+            hints: vec![crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this Equipment".to_string(),
+                ),
+            )],
+        };
+        let mut animation = crate::effects::ApplyContinuousEffect::with_spec(
+            spec,
+            crate::continuous::Modification::AddCardTypes(vec![
+                CardType::Creature,
+                CardType::Artifact,
+            ]),
+            Until::Forever,
+        )
+        .with_animation_pt_surface(Some(
+            ironsmith_core::AnimationPtSurface::LeadingPowerToughness,
+        ));
+        animation.additional_modifications.extend([
+            crate::continuous::Modification::SetPowerToughness {
+                power: Value::Fixed(2),
+                toughness: Value::Fixed(1),
+                sublayer: crate::continuous::PtSublayer::Setting,
+            },
+            crate::continuous::Modification::AddSubtypes(vec![Subtype::Construct]),
+        ]);
+        animation
+    }
+
+    #[test]
+    fn optional_source_animation_uses_have_causative() {
+        let may = crate::effects::MayEffect::new(vec![Effect::new(source_animation())]);
+
+        assert_eq!(
+            describe_typed_may_causative(&may).as_deref(),
+            Some("You may have this Equipment become a 2/1 Construct artifact creature")
+        );
+    }
+
+    #[test]
+    fn ordinary_nonoptional_animation_does_not_inherit_may_causative() {
+        assert_eq!(
+            describe_effect(&Effect::new(source_animation())),
+            "This Equipment becomes a 2/1 Construct artifact creature"
         );
     }
 }
@@ -4610,20 +4921,27 @@ pub(super) fn describe_source_exile_with_counters_pair(
     first: &Effect,
     second: &Effect,
 ) -> Option<String> {
-    let exile =
-        unwrap_basic_tag_wrappers(first).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    if exile.zone != Zone::Exile {
-        return None;
-    }
+    let exile_effect = unwrap_basic_tag_wrappers(first);
+    let exile_target =
+        if let Some(exile) = exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+            (exile.zone == Zone::Exile).then_some(&exile.target)?
+        } else if let Some(exile) = exile_effect.downcast_ref::<crate::effects::ExileEffect>() {
+            // Face-down exile has additional visible semantics and must retain its
+            // ordinary renderer. The compact form is only for the exact typed
+            // "exile ... with counters on it" pair.
+            (!exile.face_down).then_some(&exile.spec)?
+        } else {
+            return None;
+        };
     let put_counters = put_counters_effect_for_source(second)?;
     if put_counters.distributed || put_counters.target_count.is_some() {
         return None;
     }
 
-    let counters_follow_exiled_object = matches!(exile.target.base(), ChooseSpec::Source)
+    let counters_follow_exiled_object = matches!(exile_target.base(), ChooseSpec::Source)
         && matches!(put_counters.target.base(), ChooseSpec::Source)
         || matches!(
-            (exile.target.base(), put_counters.target.base()),
+            (exile_target.base(), put_counters.target.base()),
             (ChooseSpec::Tagged(exile_tag), ChooseSpec::Tagged(counter_tag))
                 if exile_tag == counter_tag
         )
@@ -4641,7 +4959,7 @@ pub(super) fn describe_source_exile_with_counters_pair(
     let subject = exile_text
         .strip_prefix("Exile ")
         .map(|text| text.trim_end_matches('.').to_string())
-        .unwrap_or_else(|| describe_choose_spec(&exile.target));
+        .unwrap_or_else(|| describe_choose_spec(exile_target));
     Some(format!(
         "Exile {subject} with {} on it",
         describe_put_counter_phrase(&put_counters.amount, put_counters.counter_type),
@@ -5151,7 +5469,9 @@ pub(super) fn render_iterative_library_repeat_process(
     )
 }
 
-pub(super) fn choose_primary_zone(choose: &crate::effects::ChooseObjectsEffect) -> Option<Zone> {
+pub(in crate::compiled_text) fn choose_primary_zone(
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> Option<Zone> {
     choose.filter.zone.or(choose.zone)
 }
 
@@ -5858,6 +6178,9 @@ pub(super) fn describe_target_player_reveal_top(
         if !player_filters_refer_to_same_player(&selected_player, &reveal.player) {
             return None;
         }
+        if selected_player == PlayerFilter::Target(Box::new(PlayerFilter::Any)) {
+            return Some("Target player reveals the top card of their library".to_string());
+        }
         return Some(format!(
             "Reveal the top card of {} library",
             describe_possessive_player_filter(&selected_player)
@@ -5879,6 +6202,33 @@ pub(super) fn describe_target_player_reveal_top(
         capitalize_first(&player),
         player_verb(&player, "reveal", "reveals")
     ))
+}
+
+#[cfg(test)]
+mod target_player_reveal_top_tests {
+    use super::*;
+
+    #[test]
+    fn exact_target_player_reveal_uses_the_target_as_grammatical_subject() {
+        let target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::target(
+            ChooseSpec::Player(PlayerFilter::Any),
+        )));
+        let reveal = Effect::new(crate::effects::RevealTopEffect::new(
+            PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+            None,
+        ));
+
+        assert_eq!(
+            describe_target_player_reveal_top(&target, &reveal).as_deref(),
+            Some("Target player reveals the top card of their library")
+        );
+
+        let mismatched = Effect::new(crate::effects::RevealTopEffect::new(
+            PlayerFilter::Opponent,
+            None,
+        ));
+        assert!(describe_target_player_reveal_top(&target, &mismatched).is_none());
+    }
 }
 
 pub(super) fn describe_reveal_hand_then_gain_for_that_players_hand(
@@ -6099,7 +6449,7 @@ pub(super) fn describe_reveal_hand_choose_from_it_or_graveyard(
         || choose.chooser != PlayerFilter::You
         || choose_exact_count(choose) != Some(1)
         || choose.zone != Some(Zone::Hand)
-        || !choose.additional_zones.contains(&Zone::Graveyard)
+        || choose.filter.any_of.len() != 2
     {
         return None;
     }
@@ -6107,7 +6457,7 @@ pub(super) fn describe_reveal_hand_choose_from_it_or_graveyard(
     let hand_arm = choose.filter.any_of.iter().find(|option| {
         option.zone == Some(Zone::Hand)
             && option.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == "__it__"
+                constraint.tag.as_str() == crate::effects::REVEALED_THIS_WAY_TAG
                     && matches!(
                         constraint.relation,
                         crate::filter::TaggedOpbjectRelation::IsTaggedObject

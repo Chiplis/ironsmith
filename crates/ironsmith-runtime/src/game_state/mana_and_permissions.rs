@@ -11,8 +11,14 @@ struct PayableManaUnit {
 
 #[derive(Debug, Clone)]
 struct ManaPaymentPlan {
-    unit_indices: Vec<usize>,
+    pip_payments: Vec<ManaPipCommit>,
     life_to_pay: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ManaPipCommit {
+    ManaUnit(usize),
+    Life(u32),
 }
 
 #[derive(Debug, Clone)]
@@ -686,6 +692,20 @@ impl GameState {
             && self.player(player).is_some()
     }
 
+    /// Whether an active battlefield static ability replaces this player's
+    /// next extra turn with skipping that turn. The query is evaluated when
+    /// the queued turn would begin, so removing the source restores later
+    /// extra turns immediately.
+    pub fn player_skips_extra_turn(&self, player: PlayerId) -> bool {
+        self.with_active_battlefield_static_abilities(|source, controller, ability| {
+            ability
+                .skips_extra_turn_for_player(self, source, controller, player)
+                .then_some(true)
+        })
+        .unwrap_or(false)
+            && self.player(player).is_some()
+    }
+
     fn may_have_player_skips_upkeep_static_ability(&self) -> bool {
         use crate::ability::AbilityKind;
         use crate::static_abilities::StaticAbilityId;
@@ -1307,7 +1327,7 @@ impl GameState {
         units
     }
 
-    fn expanded_payment_pips(
+    pub(crate) fn expanded_payment_pips(
         cost: &crate::mana::ManaCost,
         x_value: u32,
         allow_black_life: bool,
@@ -1407,9 +1427,11 @@ impl GameState {
         pip_index: usize,
         units: &[PayableManaUnit],
         used: &mut [bool],
-        selected: &mut Vec<usize>,
+        selected: &mut Vec<ManaPipCommit>,
         life_to_pay: u32,
         base_policy: &crate::player::ManaSpendPolicy,
+        allow_life_payment: bool,
+        prefer_life_payment: bool,
     ) -> Option<ManaPaymentPlan> {
         use crate::mana::ManaSymbol;
 
@@ -1417,13 +1439,22 @@ impl GameState {
             return self
                 .can_pay_life_with_reason(payer, life_to_pay, reason)
                 .then(|| ManaPaymentPlan {
-                    unit_indices: selected.clone(),
+                    pip_payments: selected.clone(),
                     life_to_pay,
                 });
         }
 
-        for &alternative in &pips[pip_index] {
+        let mut alternatives = pips[pip_index].clone();
+        alternatives.sort_by_key(|alternative| match alternative {
+            ManaSymbol::Life(_) => u8::from(!prefer_life_payment),
+            _ => u8::from(prefer_life_payment),
+        });
+        for alternative in alternatives {
             if let ManaSymbol::Life(amount) = alternative {
+                if !allow_life_payment {
+                    continue;
+                }
+                selected.push(ManaPipCommit::Life(amount as u32));
                 if let Some(plan) = self.search_mana_payment_plan(
                     payer,
                     payment_source,
@@ -1435,9 +1466,12 @@ impl GameState {
                     selected,
                     life_to_pay.saturating_add(amount as u32),
                     base_policy,
+                    allow_life_payment,
+                    prefer_life_payment,
                 ) {
                     return Some(plan);
                 }
+                selected.pop();
                 continue;
             }
 
@@ -1470,7 +1504,7 @@ impl GameState {
                     continue;
                 }
                 used[unit_index] = true;
-                selected.push(unit_index);
+                selected.push(ManaPipCommit::ManaUnit(unit_index));
                 if let Some(plan) = self.search_mana_payment_plan(
                     payer,
                     payment_source,
@@ -1482,6 +1516,8 @@ impl GameState {
                     selected,
                     life_to_pay,
                     base_policy,
+                    allow_life_payment,
+                    prefer_life_payment,
                 ) {
                     return Some(plan);
                 }
@@ -1499,10 +1535,16 @@ impl GameState {
         cost: &crate::mana::ManaCost,
         x_value: u32,
         reason: crate::costs::PaymentReason,
+        policy_override: Option<&crate::player::ManaSpendPolicy>,
+        life_options: Option<(bool, bool, bool)>,
     ) -> Option<(Vec<PayableManaUnit>, ManaPaymentPlan)> {
-        let policy = self.mana_spend_policy(payer, source);
-        let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
+        let default_policy = self.mana_spend_policy(payer, source);
+        let policy = policy_override.unwrap_or(&default_policy);
+        let engine_allows_black_life = crate::decision::mana_cost_has_black_symbol(cost)
             && self.player_can_pay_black_with_life_for_reason(payer, source, reason);
+        let (allow_life_payment, prefer_life_payment, requested_black_life) =
+            life_options.unwrap_or((true, false, engine_allows_black_life));
+        let allow_black_life = requested_black_life && engine_allows_black_life;
         let required_symbol = source
             .and_then(|source| self.chosen_color_activation_mana_restriction(source, cost, reason));
         let units = self.payable_mana_units(payer, source, reason, cost, required_symbol);
@@ -1529,7 +1571,9 @@ impl GameState {
             &mut used,
             &mut selected,
             0,
-            &policy,
+            policy,
+            allow_life_payment,
+            prefer_life_payment,
         )?;
         Some((units, plan))
     }
@@ -1543,8 +1587,102 @@ impl GameState {
         x_value: u32,
         reason: crate::costs::PaymentReason,
     ) -> bool {
-        self.mana_payment_plan(payer, source, cost, x_value, reason)
+        self.mana_payment_plan(payer, source, cost, x_value, reason, None, None)
             .is_some()
+    }
+
+    /// Check a payment using a transaction-local spend policy.
+    pub fn can_pay_mana_cost_with_policy(
+        &self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        reason: crate::costs::PaymentReason,
+        policy: &crate::player::ManaSpendPolicy,
+    ) -> bool {
+        self.mana_payment_plan(payer, source, cost, x_value, reason, Some(policy), None)
+            .is_some()
+    }
+
+    /// Check a transaction-local plan with explicit life-payment choices.
+    #[allow(clippy::too_many_arguments)]
+    pub fn can_pay_mana_cost_with_payment_options(
+        &self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        reason: crate::costs::PaymentReason,
+        policy: &crate::player::ManaSpendPolicy,
+        allow_life_payment: bool,
+        allow_black_life: bool,
+        prefer_life_payment: bool,
+    ) -> bool {
+        self.mana_payment_plan(
+            payer,
+            source,
+            cost,
+            x_value,
+            reason,
+            Some(policy),
+            Some((allow_life_payment, prefer_life_payment, allow_black_life)),
+        )
+        .is_some()
+    }
+
+    /// Preview the exact expanded-pip choices selected by the bulk payer.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn preview_mana_cost_payment_with_options(
+        &self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        reason: crate::costs::PaymentReason,
+        policy: &crate::player::ManaSpendPolicy,
+        allow_life_payment: bool,
+        allow_black_life: bool,
+        prefer_life_payment: bool,
+    ) -> Option<(
+        Vec<(
+            Vec<crate::mana::ManaSymbol>,
+            crate::mana_payment::PlannedPipPayment,
+        )>,
+        u32,
+    )> {
+        let actual_black_life = allow_black_life
+            && crate::decision::mana_cost_has_black_symbol(cost)
+            && self.player_can_pay_black_with_life_for_reason(payer, source, reason);
+        let pips = Self::expanded_payment_pips(cost, x_value, actual_black_life);
+        let (units, plan) = self.mana_payment_plan(
+            payer,
+            source,
+            cost,
+            x_value,
+            reason,
+            Some(policy),
+            Some((allow_life_payment, prefer_life_payment, allow_black_life)),
+        )?;
+        if pips.len() != plan.pip_payments.len() {
+            return None;
+        }
+        let allocations = pips
+            .into_iter()
+            .zip(plan.pip_payments.iter())
+            .map(|(alternatives, payment)| {
+                let payment = match payment {
+                    ManaPipCommit::ManaUnit(index) => {
+                        crate::mana_payment::PlannedPipPayment::Mana(units.get(*index)?.symbol)
+                    }
+                    ManaPipCommit::Life(amount) => {
+                        crate::mana_payment::PlannedPipPayment::Life(*amount)
+                    }
+                };
+                Some((alternatives, payment))
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some((allocations, plan.life_to_pay))
     }
 
     /// Attempt to pay a mana cost, accounting for "spend as though any color".
@@ -1573,8 +1711,48 @@ impl GameState {
         x_value: u32,
         reason: crate::costs::PaymentReason,
     ) -> bool {
-        let Some((units, plan)) = self.mana_payment_plan(payer, source, cost, x_value, reason)
-        else {
+        let policy = self.mana_spend_policy(payer, source);
+        self.try_pay_mana_cost_with_policy(payer, source, cost, x_value, reason, &policy)
+    }
+
+    /// Commit a payment using a transaction-local spend policy.
+    pub fn try_pay_mana_cost_with_policy(
+        &mut self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        reason: crate::costs::PaymentReason,
+        policy: &crate::player::ManaSpendPolicy,
+    ) -> bool {
+        self.try_pay_mana_cost_with_payment_options(
+            payer, source, cost, x_value, reason, policy, true, true, false,
+        )
+    }
+
+    /// Commit a transaction-local payment with explicit life-payment choices.
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_pay_mana_cost_with_payment_options(
+        &mut self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        reason: crate::costs::PaymentReason,
+        policy: &crate::player::ManaSpendPolicy,
+        allow_life_payment: bool,
+        allow_black_life: bool,
+        prefer_life_payment: bool,
+    ) -> bool {
+        let Some((units, plan)) = self.mana_payment_plan(
+            payer,
+            source,
+            cost,
+            x_value,
+            reason,
+            Some(policy),
+            Some((allow_life_payment, prefer_life_payment, allow_black_life)),
+        ) else {
             return false;
         };
         let Some(player) = self.player(payer) else {
@@ -1585,12 +1763,20 @@ impl GameState {
         let original_provenance = player.mana_source_provenance.clone();
 
         let selected = plan
-            .unit_indices
+            .pip_payments
             .iter()
-            .filter_map(|&index| units.get(index))
+            .filter_map(|payment| match payment {
+                ManaPipCommit::ManaUnit(index) => units.get(*index),
+                ManaPipCommit::Life(_) => None,
+            })
             .cloned()
             .collect::<Vec<_>>();
-        if selected.len() != plan.unit_indices.len() {
+        let selected_count = plan
+            .pip_payments
+            .iter()
+            .filter(|payment| matches!(payment, ManaPipCommit::ManaUnit(_)))
+            .count();
+        if selected.len() != selected_count {
             return false;
         }
         let spent_units = selected
@@ -2182,13 +2368,17 @@ impl GameState {
     ///
     /// Use `None` to clear the designation.
     pub fn set_monarch(&mut self, monarch: Option<PlayerId>) {
-        if monarch != self.monarch {
+        let changed = monarch != self.monarch;
+        if changed {
             self.mark_continuous_state_dirty();
         }
-        if monarch.is_some() && monarch != self.monarch {
+        if monarch.is_some() && changed {
             self.record_ui_effect_event("monarch", monarch, None, Vec::new(), None, None);
         }
         self.monarch = monarch;
+        if changed && let Some(monarch) = monarch {
+            self.return_exiled_for_opponent_becoming_monarch(monarch);
+        }
     }
 
     /// Set the current initiative designation holder.

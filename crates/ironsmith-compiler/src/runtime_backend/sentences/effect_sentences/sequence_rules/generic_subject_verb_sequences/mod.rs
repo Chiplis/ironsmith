@@ -2,6 +2,8 @@ use super::SentenceInput;
 
 pub(crate) mod exile_permission_followups;
 pub(crate) mod exiled_collections;
+pub(crate) mod graveyard_copy_cast;
+pub(crate) mod optional_sacrifice_discard;
 pub(crate) mod pairs;
 pub(crate) mod quads;
 pub(crate) mod triples;
@@ -275,6 +277,7 @@ pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
                     attached_to: None,
                     tapped: false,
                     attacking: false,
+                    attack_target_player: None,
                     exile_at_end_of_combat: false,
                     sacrifice_at_end_of_combat: false,
                     sacrifice_at_next_end_step: false,
@@ -454,6 +457,216 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
             CounterType::PlusOnePlusOne,
         ),
     ]))
+}
+
+/// Preserve a prevention shield's exact target and actual prevented amount
+/// through a creature-only counter instruction scheduled for the next end
+/// step. The delayed scheduler already captures the immediately preceding
+/// prevention shield when its payload uses `EventValue::Amount`.
+pub(crate) fn parse_damage_prevention_delayed_counter_sequence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Ok(first_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let [
+        first_effect @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PreventDamage { target, .. },
+            ..
+        }),
+    ] = first_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+    if !matches!(target, TargetAst::AnyTarget(Some(_))) {
+        return Ok(None);
+    }
+
+    let words = crate::runtime_backend::token_word_refs(sentences[sentence_idx + 1].lowered());
+    let expected_suffix = [
+        "put",
+        "a",
+        "+0/+1",
+        "counter",
+        "on",
+        "it",
+        "for",
+        "each",
+        "1",
+        "damage",
+        "prevented",
+        "this",
+        "way",
+        "at",
+        "the",
+        "beginning",
+        "of",
+        "the",
+        "next",
+        "end",
+        "step",
+    ];
+    let prefix_len = if words.starts_with(&["if", "its", "a", "creature"])
+        || words.starts_with(&["if", "it's", "a", "creature"])
+    {
+        4
+    } else if words.starts_with(&["if", "it", "is", "a", "creature"]) {
+        5
+    } else {
+        return Ok(None);
+    };
+    if words[prefix_len..] != expected_suffix {
+        return Ok(None);
+    }
+
+    let put = EffectAst::subject_verb_put_counters(
+        CounterType::PlusZeroPlusOne,
+        Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::Outcome,
+                ironsmith_core::EffectMetric::DamagePrevented,
+            )
+            .with_action(ironsmith_core::PriorEffectAction::Prevented),
+        ),
+        TargetAst::Tagged(TagKey::from("targeted_0"), None),
+        None,
+        false,
+    );
+    let conditional = EffectAst::Conditional {
+        predicate: PredicateAst::TargetMatches(ObjectFilter::creature()),
+        if_true: vec![EffectAst::DelayedUntilNextEndStep {
+            player: PlayerFilter::Any,
+            effects: vec![put],
+        }],
+        if_false: Vec::new(),
+    };
+    Ok(Some(vec![first_effect.clone(), conditional]))
+}
+
+/// Keep a destroy set and its authored no-regeneration rider as one action.
+/// Re-parsing `They` independently loses relative selectors such as
+/// `that aren't enchanted` from the destroyed set.
+pub(crate) fn parse_destroy_then_no_regeneration_sequence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(sentences[sentence_idx + 1].lowered());
+    if !words.last().is_some_and(|word| *word == "regenerated")
+        || !matches!(words.first().copied(), Some("it" | "they" | "those"))
+        || !words.iter().any(|word| matches!(*word, "cant" | "can't"))
+    {
+        return Ok(None);
+    }
+    let Some(first_tail) = sentences[sentence_idx]
+        .lowered()
+        .first()
+        .is_some_and(|token| token.is_word("destroy"))
+        .then_some(&sentences[sentence_idx].lowered()[1..])
+    else {
+        return Ok(None);
+    };
+    let mut first = super::super::zone_handlers::parse_destroy(first_tail)?;
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = &mut first else {
+        return Ok(None);
+    };
+    let authored_unenchanted = {
+        // Parser-token normalization may simplify a relative attachment-state
+        // clause before this two-sentence rule runs. Keep the normalized tail
+        // for ordinary destroy parsing, but prove the negative Aura predicate
+        // from the retained authored sentence.
+        let authored_tail = sentences[sentence_idx]
+            .lexed()
+            .first()
+            .is_some_and(|token| token.is_word("destroy"))
+            .then_some(&sentences[sentence_idx].lexed()[1..])
+            .unwrap_or(first_tail);
+        let words = crate::runtime_backend::token_word_refs(authored_tail);
+        words
+            .windows(3)
+            .any(|window| window == ["that", "aren't", "enchanted"])
+            || words
+                .windows(3)
+                .any(|window| window == ["that", "arent", "enchanted"])
+            || words
+                .windows(4)
+                .any(|window| window == ["that", "are", "not", "enchanted"])
+    };
+    let singular_followup = words.first() == Some(&"it");
+    match action {
+        SubjectVerbActionAst::Destroy {
+            no_regeneration, ..
+        } => *no_regeneration = true,
+        SubjectVerbActionAst::DestroyAll {
+            no_regeneration, ..
+        }
+        | SubjectVerbActionAst::DestroyAllOfChosenColor {
+            no_regeneration, ..
+        } if !singular_followup => *no_regeneration = true,
+        _ => return Ok(None),
+    }
+    if authored_unenchanted {
+        let mut aura = ObjectFilter::enchantment();
+        aura.subtypes.push(crate::types::Subtype::Aura);
+        match action {
+            SubjectVerbActionAst::Destroy { target, .. } => {
+                if let Some(filter) =
+                    super::super::zone_counter_helpers::target_object_filter_mut(target)
+                    && filter.without_attached_object.is_none()
+                {
+                    filter.without_attached_object = Some(Box::new(aura));
+                }
+            }
+            SubjectVerbActionAst::DestroyAll { filter, .. }
+                if filter.without_attached_object.is_none() =>
+            {
+                filter.without_attached_object = Some(Box::new(aura));
+            }
+            _ => {}
+        }
+    }
+    Ok(Some(vec![first]))
+}
+
+/// Preserve an exhaustive, shared owner-relative union across hand and
+/// graveyard. The ordinary sentence route otherwise lowers the two zones as
+/// unrelated generic exile clauses.
+pub(crate) fn parse_reveal_then_exile_noncreature_nonland_hand_graveyard_sequence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let second_words =
+        crate::runtime_backend::token_word_refs(sentences[sentence_idx + 1].lowered());
+    if !second_words.starts_with(&["exile", "all", "noncreature", "nonland", "cards", "from"])
+        || !second_words.contains(&"that")
+        || !second_words.contains(&"hand")
+        || !second_words.contains(&"graveyard")
+        || !second_words
+            .iter()
+            .any(|word| matches!(*word, "player" | "players" | "player's"))
+    {
+        return Ok(None);
+    }
+    let mut effects =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())?;
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    let mut hand = ObjectFilter::default();
+    hand.zone = Some(Zone::Hand);
+    let mut graveyard = ObjectFilter::default();
+    graveyard.zone = Some(Zone::Graveyard);
+    let mut union = ObjectFilter::default();
+    union.owner = Some(PlayerFilter::target_opponent());
+    union.excluded_card_types = vec![
+        crate::types::CardType::Creature,
+        crate::types::CardType::Land,
+    ];
+    union.any_of = vec![hand, graveyard];
+    effects.push(EffectAst::subject_verb_exile_all(union, false));
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_damage_prevention_reflect_to_any_target_sequence(
@@ -669,6 +882,7 @@ pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
             effects: vec![EffectAst::subject_verb_lose_game(PlayerAst::You)],
             player: PlayerAst::You,
             cost: crate::cost::TotalCost::mana(shape.mana),
+            before_delayed_step: false,
         }],
     });
     Ok(Some(effects))
@@ -694,6 +908,7 @@ pub(crate) fn parse_delayed_upkeep_unless_pays_sequence(
             effects: vec![EffectAst::subject_verb_lose_game(PlayerAst::You)],
             player: PlayerAst::You,
             cost: crate::cost::TotalCost::mana(shape.mana),
+            before_delayed_step: false,
         }],
     }]))
 }

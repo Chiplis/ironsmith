@@ -44,13 +44,14 @@ fn named_color_creature_type_option(
 
 fn as_enters_effect_program_from_ability(
     ability: &crate::ability::Ability,
-) -> Option<(crate::resolution::ResolutionProgram, bool)> {
+) -> Option<(crate::resolution::ResolutionProgram, bool, bool)> {
     let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
         return None;
     };
     let ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
         program,
         also_turns_face_up,
+        turns_face_up_only,
         transforms_into,
         ..
     } = &static_ability.compiled_model()?.payload
@@ -60,7 +61,7 @@ fn as_enters_effect_program_from_ability(
     if transforms_into.is_some() {
         return None;
     }
-    Some((program.clone(), *also_turns_face_up))
+    Some((program.clone(), *also_turns_face_up, *turns_face_up_only))
 }
 
 fn as_transforms_effect_program_from_ability(
@@ -78,6 +79,25 @@ fn as_transforms_effect_program_from_ability(
         return None;
     };
     Some(program.clone())
+}
+
+fn ability_retains_counters_moving_to(
+    ability: &crate::ability::Ability,
+    destination: Zone,
+) -> bool {
+    let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+        return false;
+    };
+    let Some(model) = static_ability.compiled_model() else {
+        return false;
+    };
+    matches!(
+        &model.payload,
+        ironsmith_core::StaticAbilityPayload::CountersRemainAcrossZoneChanges {
+            excluded_destinations,
+            ..
+        } if !excluded_destinations.contains(&destination)
+    )
 }
 
 #[derive(Debug, Clone, Default)]
@@ -175,15 +195,22 @@ impl GameState {
         source: ObjectId,
         controller: PlayerId,
         abilities: &[crate::ability::Ability],
-        turns_face_up_only: bool,
+        for_turn_face_up: bool,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<AsEntersProgramExecution, crate::game_loop::GameLoopError> {
         let programs = abilities
             .iter()
             .filter_map(as_enters_effect_program_from_ability)
-            .filter_map(|(program, also_turns_face_up)| {
-                (!turns_face_up_only || also_turns_face_up).then_some(program)
-            })
+            .filter_map(
+                |(program, also_turns_face_up, program_turns_face_up_only)| {
+                    let applies = if for_turn_face_up {
+                        also_turns_face_up
+                    } else {
+                        !program_turns_face_up_only
+                    };
+                    applies.then_some(program)
+                },
+            )
             .collect::<Vec<_>>();
         self.execute_immediate_effect_programs(source, controller, programs, decision_maker)
     }
@@ -301,6 +328,14 @@ impl GameState {
         if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
             return None;
         }
+        // Use the object's current typed abilities while it is still in the
+        // origin zone. This honors ability-loss effects on the battlefield and
+        // still lets an all-zone retention ability operate from other zones.
+        let retain_counters = self.current_abilities(old_id).is_some_and(|abilities| {
+            abilities
+                .iter()
+                .any(|ability| ability_retains_counters_moving_to(ability, new_zone))
+        });
         let was_face_down = self.is_face_down(old_id);
         let preserved_exile_viewers = if self
             .objects
@@ -326,6 +361,7 @@ impl GameState {
             && new_zone != Zone::Battlefield
         {
             self.release_phase_out_holds_for_source(old_id);
+            self.note_attraction_left_battlefield(old_id);
         }
         if let Some(snapshot) = pre_move_snapshot.as_ref() {
             for entry in &mut self.stack {
@@ -554,7 +590,9 @@ impl GameState {
         }
         // Counters are tied to the object instance, not to the physical card.
         // `move_object` always creates the new object for the destination.
-        new_object.counters.clear();
+        if !retain_counters {
+            new_object.counters.clear();
+        }
 
         // Reset zone-specific state on the object
         new_object.attached_to = None;
@@ -638,6 +676,9 @@ impl GameState {
         }
 
         self.add_object(new_object);
+        if new_zone == Zone::Battlefield {
+            self.note_attraction_entered_battlefield(new_id);
+        }
         if let Some(mut info) = hidden_card_info {
             let audit_info = info.clone();
             info.zone = new_zone;
@@ -1244,11 +1285,14 @@ impl GameState {
                     .filter(|idx| *idx < options.len())
                     .map(|idx| options[idx]);
             }
-            if static_ability.player_choice_as_enters().is_some() {
+            if let Some(spec) = static_ability.player_choice_as_enters() {
+                let filter_ctx = self.filter_context_for(prospective_controller, Some(old_id));
                 let options = self
                     .players
                     .iter()
-                    .filter(|player| player.is_in_game())
+                    .filter(|player| {
+                        player.is_in_game() && spec.filter.matches_player(player.id, &filter_ctx)
+                    })
                     .map(|player| player.id)
                     .collect::<Vec<_>>();
                 if !options.is_empty() {
@@ -1715,11 +1759,19 @@ impl GameState {
                     .chosen_creature_types
                     .insert(new_id, creature_type);
             }
+            if let Some(creature_types) = choice_store.chosen_creature_type_sets.remove(&old_id) {
+                choice_store
+                    .chosen_creature_type_sets
+                    .insert(new_id, creature_types);
+            }
             if let Some(card_type) = choice_store.chosen_card_types.remove(&old_id) {
                 choice_store.chosen_card_types.insert(new_id, card_type);
             }
             if let Some(player) = choice_store.chosen_players.remove(&old_id) {
                 choice_store.chosen_players.insert(new_id, player);
+            }
+            if let Some(object) = choice_store.chosen_objects.remove(&old_id) {
+                choice_store.chosen_objects.insert(new_id, object);
             }
             if let Some(names) = choice_store.chosen_named_options.remove(&old_id) {
                 choice_store.chosen_named_options.insert(new_id, names);
@@ -2743,7 +2795,6 @@ impl GameState {
             self.player_mut(player_id)?
                 .add_counters(counter_type, amount);
         }
-
         let event_provenance = self
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::MarkersChanged);
@@ -4041,5 +4092,129 @@ mod chosen_option_tests {
 
         assert!(result.enters_tapped);
         assert!(game.is_tapped(result.new_id));
+    }
+
+    fn counter_count(game: &GameState, object: ObjectId) -> u32 {
+        game.object(object)
+            .and_then(|object| {
+                object
+                    .counters
+                    .get(&crate::object::CounterType::PlusOnePlusOne)
+                    .copied()
+            })
+            .unwrap_or(0)
+    }
+
+    fn counter_retaining_definition() -> crate::cards::CardDefinition {
+        let ability = crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::from_model(
+                ironsmith_core::StaticAbility::counters_remain_across_zone_changes(
+                    vec![Zone::Hand, Zone::Library],
+                    "Counters remain on this creature as it moves to any zone other than a player's hand or library.",
+                ),
+            ),
+        )
+        .in_zones(vec![
+            Zone::Battlefield,
+            Zone::Hand,
+            Zone::Library,
+            Zone::Graveyard,
+            Zone::Stack,
+            Zone::Exile,
+            Zone::Command,
+            Zone::Ante,
+            Zone::OutsideGame,
+        ]);
+        crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Counter Traveler",
+        )
+        .card_types(vec![crate::types::CardType::Creature])
+        .with_ability(ability)
+        .build()
+    }
+
+    #[test]
+    fn typed_counter_retention_survives_nonexcluded_zone_changes() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = crate::ids::PlayerId::from_index(0);
+        let object = game.create_object_from_definition(
+            &counter_retaining_definition(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.object_mut(object)
+            .expect("counter traveler should exist")
+            .counters
+            .insert(crate::object::CounterType::PlusOnePlusOne, 3);
+
+        let graveyard = game
+            .move_object(
+                object,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_game_rule(),
+            )
+            .expect("counter traveler should move to the graveyard");
+        assert_eq!(counter_count(&game, graveyard), 3);
+        let exiled = game
+            .move_object(
+                graveyard,
+                Zone::Exile,
+                crate::events::cause::EventCause::from_game_rule(),
+            )
+            .expect("counter traveler should move to exile");
+        assert_eq!(counter_count(&game, exiled), 3);
+    }
+
+    #[test]
+    fn typed_counter_retention_clears_for_excluded_destinations() {
+        for destination in [Zone::Hand, Zone::Library] {
+            let mut game = GameState::new(vec!["Alice".to_string()], 20);
+            let alice = crate::ids::PlayerId::from_index(0);
+            let object = game.create_object_from_definition(
+                &counter_retaining_definition(),
+                alice,
+                Zone::Battlefield,
+            );
+            game.object_mut(object)
+                .expect("counter traveler should exist")
+                .counters
+                .insert(crate::object::CounterType::PlusOnePlusOne, 2);
+
+            let moved = game
+                .move_object(
+                    object,
+                    destination,
+                    crate::events::cause::EventCause::from_game_rule(),
+                )
+                .expect("counter traveler should move");
+            assert_eq!(counter_count(&game, moved), 0, "{destination:?}");
+        }
+    }
+
+    #[test]
+    fn ordinary_objects_still_lose_counters_when_they_change_zones() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = crate::ids::PlayerId::from_index(0);
+        let ordinary = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Ordinary Creature",
+        )
+        .card_types(vec![crate::types::CardType::Creature])
+        .build();
+        let object = game.create_object_from_definition(&ordinary, alice, Zone::Battlefield);
+        game.object_mut(object)
+            .expect("ordinary creature should exist")
+            .counters
+            .insert(crate::object::CounterType::PlusOnePlusOne, 2);
+
+        let moved = game
+            .move_object(
+                object,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_game_rule(),
+            )
+            .expect("ordinary creature should move");
+        assert_eq!(counter_count(&game, moved), 0);
     }
 }

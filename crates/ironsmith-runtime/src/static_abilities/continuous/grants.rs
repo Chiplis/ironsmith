@@ -375,6 +375,32 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             }
             _ => ability_text,
         };
+        if self.condition.is_none()
+            && self.filter.has_mana_source_spent_trailing_if_surface()
+            && let Some(source_filter) = &self.filter.mana_from_source_spent_to_cast
+        {
+            let mut affected_filter = self.filter.clone();
+            affected_filter.mana_from_source_spent_to_cast = None;
+            affected_filter.set_mana_source_spent_trailing_if_surface(false);
+            let (affected, singular) =
+                grant_subject_with_set_quantifier(&affected_filter, self.set_quantifier_surface);
+            let verb = if singular { "has" } else { "have" };
+            let mana_source = with_indefinite_article_unless_present(source_filter.description());
+            let mut rendered = format!(
+                "{affected} {verb} {rendered_ability} if mana from {mana_source} was spent to cast it"
+            );
+            if matches!(
+                &self.ability.kind,
+                AbilityKind::Static(ability)
+                    if ability.id() == StaticAbilityId::SplitSecond
+            ) && !rendered.to_ascii_lowercase().contains("as long as")
+            {
+                rendered.push_str(
+                    ". (As long as it's on the stack, players can't cast spells or activate abilities that aren't mana abilities.)",
+                );
+            }
+            return rendered;
+        }
         let (mut subject, explicitly_singular_subject) = if let Some(subject) =
             exact_one_condition_antecedent_subject(&self.filter, self.condition.as_ref())
         {
@@ -407,6 +433,17 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             format!("{subject} {verb} {rendered_ability}")
         };
         if let Some(condition) = &self.condition {
+            if (subject.starts_with("equipped ") || subject.starts_with("enchanted "))
+                && let Some(condition_text) =
+                    describe_attached_subject_static_condition(condition, &subject)
+            {
+                let predicate = if renders_unblockable_restriction {
+                    "it can't be blocked".to_string()
+                } else {
+                    format!("it has {rendered_ability}")
+                };
+                return format!("{condition_text}, {predicate}");
+            }
             if renders_unblockable_restriction
                 && self.filter.source
                 && (matches!(

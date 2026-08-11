@@ -7,7 +7,8 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{
-    TraitEventResult, process_trait_event_with_dm_and_applied_effects,
+    TraitEventResult, process_put_counters_with_event,
+    process_trait_event_with_dm_and_applied_effects,
 };
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
@@ -213,19 +214,28 @@ impl EffectExecutor for ProliferateEffect {
                     continue;
                 };
 
+                let mut received_counter = false;
                 for ct in counter_types {
+                    let final_count =
+                        process_put_counters_with_event(game, perm_id, ct, 1, ctx.cause.clone());
+                    if final_count == 0 {
+                        continue;
+                    }
                     if let Some(event) = game.add_counters_with_source(
                         perm_id,
                         ct,
-                        1,
+                        final_count,
                         Some(ctx.source),
                         Some(ctx.controller),
                     ) {
+                        received_counter = true;
                         outcome = outcome.with_event(event);
                     }
                 }
-                proliferated_permanents.push(perm_id);
-                proliferated_count += 1;
+                if received_counter {
+                    proliferated_permanents.push(perm_id);
+                    proliferated_count += 1;
+                }
             }
 
             for player_id in chosen_players {
@@ -239,7 +249,12 @@ impl EffectExecutor for ProliferateEffect {
                     continue;
                 }
 
+                let mut received_counter = false;
                 for counter_type in counters {
+                    // Player-counter placement already runs through the
+                    // replacement/prevention pipeline inside this centralized
+                    // helper. Do not pre-process it here or replacements such
+                    // as counter doubling would be applied twice.
                     if let Some(event) = game.add_player_counters_with_source(
                         player_id,
                         counter_type,
@@ -247,10 +262,13 @@ impl EffectExecutor for ProliferateEffect {
                         Some(ctx.source),
                         Some(ctx.controller),
                     ) {
+                        received_counter = true;
                         outcome = outcome.with_event(event);
                     }
                 }
-                proliferated_count += 1;
+                if received_counter {
+                    proliferated_count += 1;
+                }
             }
 
             proliferated_total += proliferated_count;
@@ -369,6 +387,39 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.affected_objects(), Some([creature_id].as_slice()));
+    }
+
+    #[test]
+    fn test_proliferate_excludes_permanents_when_counter_placement_is_prevented() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature_with_counters(
+            &mut game,
+            "Counter-Prohibited Creature",
+            alice,
+            CounterType::PlusOnePlusOne,
+            1,
+        );
+        game.effect_store
+            .cant_effects
+            .cant_have_counters_placed
+            .insert(creature_id);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let result = ProliferateEffect::new(1)
+            .execute(&mut game, &mut ctx)
+            .expect("proliferate should resolve through counter prevention");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(
+            game.counter_count(creature_id, CounterType::PlusOnePlusOne),
+            1
+        );
+        assert!(
+            result.affected_objects().is_none_or(<[ObjectId]>::is_empty),
+            "a permanent that had no counter put on it must not be exported as affected"
+        );
     }
 
     #[test]

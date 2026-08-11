@@ -183,7 +183,11 @@ pub(crate) fn uses_referenced_ability_functional_zones(
 }
 
 pub(crate) fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
-    static_ability.id() == crate::static_abilities::StaticAbilityId::ShuffleIntoLibraryFromGraveyard
+    matches!(
+        static_ability.id(),
+        crate::static_abilities::StaticAbilityId::ShuffleIntoLibraryFromGraveyard
+            | crate::static_abilities::StaticAbilityId::CountersRemainAcrossZoneChanges
+    )
 }
 
 pub(crate) fn effect_target_uses_it_reference(spec: &ChooseSpec) -> bool {
@@ -304,10 +308,9 @@ pub(crate) fn rewrite_replacement_effect_target(
     if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>()
         && effect_target_uses_it_reference(&damage.target)
     {
-        return Some(crate::effect::Effect::deal_damage(
-            damage.amount.clone(),
-            previous_target.clone(),
-        ));
+        let mut damage = damage.clone();
+        damage.target = previous_target.clone();
+        return Some(crate::effect::Effect::new(damage));
     }
     if let Some(counter) = effect.downcast_ref::<crate::effects::CounterEffect>()
         && effect_target_uses_it_reference(&counter.target)

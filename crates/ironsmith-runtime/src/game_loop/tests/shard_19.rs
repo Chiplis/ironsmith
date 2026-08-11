@@ -63,6 +63,7 @@ pub(super) fn modal_distinct_player_rule_requires_a_distinct_legal_assignment() 
                 description: requirement.description.clone(),
                 legal_targets: requirement.legal_targets.clone(),
                 legal_target_sets: requirement.legal_target_sets.clone(),
+                aggregate_constraint: requirement.aggregate_constraint.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
                 distinct_player_group: requirement.distinct_player_group,
@@ -165,6 +166,21 @@ pub(super) fn alternative_activation_cost_locks_and_pays_the_selected_complete_b
     for _ in 0..8 {
         progress = match progress {
             crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::ManaPayment(context),
+            ) => apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::ManaPaymentPlan(
+                    crate::mana_payment::ManaPaymentResponse::Confirm {
+                        plan_id: context.plan.id,
+                        request_hash: context.plan.request_hash,
+                    },
+                ),
+                &mut decision_maker,
+            )
+            .expect("the locked white branch mana plan should remain payable"),
+            crate::decision::GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectOptions(context),
             ) => {
                 let option = context
@@ -172,22 +188,14 @@ pub(super) fn alternative_activation_cost_locks_and_pays_the_selected_complete_b
                     .iter()
                     .find(|option| option.legal)
                     .expect("the locked white branch should have a legal payment option");
-                let response = match state
-                    .pending_activation
-                    .as_ref()
-                    .map(|pending| &pending.stage)
-                {
-                    Some(ActivationStage::ActivatingManaAbilities) => {
-                        PriorityResponse::ManaPayment(context.options.len() - 1)
-                    }
-                    Some(ActivationStage::ChoosingNextCost) => {
-                        PriorityResponse::NextCostChoice(option.index)
-                    }
-                    Some(ActivationStage::PayingMana) => {
-                        PriorityResponse::ManaPipPayment(option.index)
-                    }
-                    stage => panic!("unexpected payment stage {stage:?}"),
-                };
+                assert!(matches!(
+                    state
+                        .pending_activation
+                        .as_ref()
+                        .map(|pending| &pending.stage),
+                    Some(ActivationStage::ChoosingNextCost)
+                ));
+                let response = PriorityResponse::NextCostChoice(option.index);
                 apply_priority_response_with_dm(
                     &mut game,
                     &mut trigger_queue,

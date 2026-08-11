@@ -50,15 +50,13 @@ impl StaticAbilityKind for PlayersCantSearch {
         "Players can't search libraries".to_string()
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, _controller: PlayerId) {
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, _controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
-        Restriction::search_libraries(PlayerFilter::Any).apply(
-            game,
-            &mut tracker,
-            _controller,
-            None,
-            None,
-        );
+        for player in game.players.iter().filter(|player| player.is_in_game()) {
+            if !game.player_ignores_source_static_effect_this_turn(source, player.id) {
+                tracker.cant_search.insert(player.id);
+            }
+        }
         game.effect_store.cant_effects.merge(tracker);
     }
 }
@@ -638,6 +636,36 @@ fn is_you_have_max_speed_condition(condition: &crate::ConditionExpr) -> bool {
     )
 }
 
+fn is_equipment_attached_to_creature_during_your_turn(condition: &crate::ConditionExpr) -> bool {
+    let crate::ConditionExpr::And(left, right) = condition else {
+        return false;
+    };
+    let attached = |condition: &crate::ConditionExpr| {
+        matches!(
+            condition,
+            crate::ConditionExpr::AttachedToSourceMatches(filter)
+                if *filter == ObjectFilter::creature()
+        )
+    };
+    let during_your_turn = |condition: &crate::ConditionExpr| {
+        matches!(
+            condition,
+            crate::ConditionExpr::ActivationTiming(
+                crate::ability::ActivationTiming::DuringYourTurn
+            )
+        )
+    };
+    (attached(left) && during_your_turn(right)) || (during_your_turn(left) && attached(right))
+}
+
+fn lowercase_first_ascii(text: &str) -> String {
+    let mut bytes = text.as_bytes().to_vec();
+    if let Some(first) = bytes.first_mut() {
+        first.make_ascii_lowercase();
+    }
+    String::from_utf8(bytes).unwrap_or_else(|_| text.to_string())
+}
+
 impl StaticAbilityKind for RuleRestriction {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::RuleRestriction
@@ -647,6 +675,12 @@ impl StaticAbilityKind for RuleRestriction {
         let Some(condition) = &self.condition else {
             return self.display.clone();
         };
+        if is_equipment_attached_to_creature_during_your_turn(condition) {
+            return format!(
+                "As long as this Equipment is attached to a creature, {} during your turn",
+                lowercase_first_ascii(self.display.trim())
+            );
+        }
         let Some(condition_text) = display_rule_restriction_condition(condition) else {
             return self.display.clone();
         };

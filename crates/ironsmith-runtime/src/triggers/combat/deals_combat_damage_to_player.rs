@@ -97,6 +97,13 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
     }
 
     fn display(&self) -> String {
+        if !self.one_or_more && self.filter == ObjectFilter::default() {
+            let player = self.player.description();
+            if player == "you" {
+                return "Whenever you're dealt combat damage".to_string();
+            }
+            return format!("Whenever {player} is dealt combat damage");
+        }
         // Combat damage already implies a creature; oracle says "a Vehicle
         // you control deals combat damage", not "a Vehicle creature ...".
         let surface_filter = if self.filter.card_types == [crate::types::CardType::Creature]
@@ -112,19 +119,8 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         if self.one_or_more {
             // The plural form keeps the authored noun: "one or more Ninja or
             // Rogue creatures you control".
-            let mut subject = self.filter.description();
-            if let Some(stripped) = subject.strip_prefix("a ") {
-                subject = stripped.to_string();
-            } else if let Some(stripped) = subject.strip_prefix("an ") {
-                subject = stripped.to_string();
-            }
-            if subject == "creature" {
-                subject = "creatures".to_string();
-            } else if let Some(rest) = subject.strip_prefix("creature ") {
-                subject = format!("creatures {rest}");
-            } else if subject.contains(" creature ") {
-                subject = subject.replacen(" creature ", " creatures ", 1);
-            }
+            let subject =
+                crate::compiled_text::pluralize_noun_phrase_for_trigger(&self.filter.description());
             let player = if matches!(self.player, PlayerFilter::Opponent) {
                 "one or more of your opponents".to_string()
             } else {
@@ -176,6 +172,8 @@ fn with_indefinite_article(subject: String) -> String {
         || lower.starts_with("this ")
         || lower.starts_with("that ")
         || lower.starts_with("target ")
+        || lower.starts_with("your ")
+        || lower.starts_with("their ")
     {
         return trimmed.to_string();
     }
@@ -238,6 +236,41 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever one or more creatures deal combat damage to one or more of your opponents"
+        );
+    }
+
+    #[test]
+    fn possessive_subject_does_not_gain_an_indefinite_article() {
+        assert_eq!(
+            with_indefinite_article("your commander".to_string()),
+            "your commander"
+        );
+    }
+
+    #[test]
+    fn one_or_more_subtype_subject_uses_the_plural_subtype_noun() {
+        let trigger = DealsCombatDamageToPlayerTrigger::one_or_more(
+            ObjectFilter::default()
+                .with_subtype(crate::types::Subtype::Assassin)
+                .you_control(),
+            PlayerFilter::Any,
+        );
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more Assassins you control deal combat damage to a player"
+        );
+    }
+
+    #[test]
+    fn unrestricted_source_display_uses_passive_recipient_surface() {
+        let you = DealsCombatDamageToPlayerTrigger::new(ObjectFilter::default(), PlayerFilter::You);
+        assert_eq!(you.display(), "Whenever you're dealt combat damage");
+
+        let opponent =
+            DealsCombatDamageToPlayerTrigger::new(ObjectFilter::default(), PlayerFilter::Opponent);
+        assert_eq!(
+            opponent.display(),
+            "Whenever an opponent is dealt combat damage"
         );
     }
 

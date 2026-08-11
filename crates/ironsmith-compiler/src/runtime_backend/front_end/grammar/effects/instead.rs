@@ -44,9 +44,10 @@ pub(crate) fn classify_instead_followup_semantics_tokens(
 pub(crate) fn parse_instead_followup_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> InsteadFollowupShape {
-    let leading_instead_surface = tokens
-        .windows(2)
-        .any(|pair| pair[0].is_comma() && pair[1].is_word("instead"));
+    let leading_instead_surface = tokens.windows(2).any(|pair| {
+        (pair[0].is_comma() && pair[1].is_word("instead"))
+            || (pair[0].is_word("may") && pair[1].is_word("instead"))
+    });
     InsteadFollowupShape {
         semantics: classify_instead_followup_semantics_tokens(tokens),
         conditional_intro: primitives::parse_prefix(tokens, primitives::kw("if")).is_some(),
@@ -167,6 +168,18 @@ mod tests {
     fn followup_shape_preserves_leading_instead_surface() {
         let tokens = lex_line(
             "Draw a card. If you control an artifact, instead draw two cards.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_instead_followup_shape_tokens(&tokens);
+        assert!(shape.leading_instead_surface);
+        assert_eq!(shape.semantics, InsteadSemantics::SelfReplacement);
+    }
+
+    #[test]
+    fn followup_shape_preserves_may_instead_before_the_replacement_action() {
+        let tokens = lex_line(
+            "Look at the top four cards of your library. If you gained life this turn, you may instead reveal two cards.",
             0,
         )
         .unwrap();

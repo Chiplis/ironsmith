@@ -177,6 +177,49 @@ fn normalize_debug_safe_mana_symbol_case(line: &str) -> String {
     normalized
 }
 
+fn draw_clause_keeps_coordinated_controller_subject(tail: &str) -> bool {
+    tail.split(['.', '\n', ';', '—'])
+        .next()
+        .is_some_and(|clause| clause.contains(" and you lose "))
+}
+
+fn revealed_hand_union_keeps_explicit_draw_subject(
+    prefix: &str,
+    explicit: &str,
+    tail: &str,
+) -> bool {
+    matches!(explicit, ". You draw " | ". you draw ")
+        && prefix
+            .trim_end()
+            .to_ascii_lowercase()
+            .ends_with("reveals their hand")
+        && tail
+            .split(['.', '\n', ';', '—'])
+            .next()
+            .is_some_and(|clause| {
+                clause.starts_with("a card for each ") && clause.ends_with(" card in it")
+            })
+}
+
+fn replace_imperative_draw_subject(segment: &str, explicit: &str, imperative: &str) -> String {
+    let mut output = String::with_capacity(segment.len());
+    let mut remainder = segment;
+    while let Some(index) = remainder.find(explicit) {
+        output.push_str(&remainder[..index]);
+        let tail = &remainder[index + explicit.len()..];
+        if draw_clause_keeps_coordinated_controller_subject(tail)
+            || revealed_hand_union_keeps_explicit_draw_subject(&output, explicit, tail)
+        {
+            output.push_str(explicit);
+        } else {
+            output.push_str(imperative);
+        }
+        remainder = tail;
+    }
+    output.push_str(remainder);
+    output
+}
+
 fn normalize_imperative_draw_subject_outside_quotes(line: &str) -> String {
     let mut normalized = String::with_capacity(line.len());
     for (index, segment) in line.split('"').enumerate() {
@@ -189,8 +232,12 @@ fn normalize_imperative_draw_subject_outside_quotes(line: &str) -> String {
         }
         let mut segment = segment.to_string();
         if let Some(rest) = segment.strip_prefix("You draw ") {
-            segment = format!("Draw {rest}");
-        } else if let Some(rest) = segment.strip_prefix("you draw ") {
+            if !draw_clause_keeps_coordinated_controller_subject(rest) {
+                segment = format!("Draw {rest}");
+            }
+        } else if let Some(rest) = segment.strip_prefix("you draw ")
+            && !draw_clause_keeps_coordinated_controller_subject(rest)
+        {
             segment = format!("draw {rest}");
         }
         for (subject, imperative) in [
@@ -209,7 +256,7 @@ fn normalize_imperative_draw_subject_outside_quotes(line: &str) -> String {
             ("then You draw ", "then draw "),
             ("then you draw ", "then draw "),
         ] {
-            segment = segment.replace(subject, imperative);
+            segment = replace_imperative_draw_subject(&segment, subject, imperative);
         }
         normalized.push_str(&segment);
     }
@@ -271,6 +318,10 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace(
             "had another land enter under",
             "had another land enter the battlefield under",
+        )
+        .replace(
+            "had a land enter under",
+            "had a land enter the battlefield under",
         )
         .replace(" in the battlefield", " on the battlefield")
         .replace(" In the battlefield", " On the battlefield")
@@ -531,12 +582,44 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_preserves_battlefield_in_landfall_condition() {
+        let text = "If you had a land enter the battlefield under your control this turn, this spell deals 3 damage instead.";
+        assert_eq!(normalize_debug_safe_spelling_surface(text), text);
+    }
+
+    #[test]
     fn cleanup_preserves_explicit_draw_subject_inside_rules_quotes() {
         let emblem = "−6: You get an emblem with \"Whenever you cast an Elf spell, it gains haste until end of turn and you draw two cards.\"";
         assert_eq!(normalize_debug_safe_spelling_surface(emblem), emblem);
         assert_eq!(
             normalize_debug_safe_spelling_surface("You draw two cards."),
             "Draw two cards."
+        );
+    }
+
+    #[test]
+    fn cleanup_preserves_both_subjects_for_coordinated_draw_and_life_loss() {
+        assert_eq!(
+            normalize_debug_safe_spelling_surface("You draw two cards and you lose 2 life."),
+            "You draw two cards and you lose 2 life."
+        );
+        assert_eq!(
+            normalize_debug_safe_spelling_surface("You draw two cards."),
+            "Draw two cards.",
+            "an ordinary draw instruction remains imperative"
+        );
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(
+                "When this artifact enters, you draw a card and you lose 1 life."
+            ),
+            "When this artifact enters, you draw a card and you lose 1 life."
+        );
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(
+                "When this artifact enters, you draw a card. You lose 1 life."
+            ),
+            "When this artifact enters, draw a card. You lose 1 life.",
+            "separate instructions must not be mistaken for one coordinator"
         );
     }
 
@@ -565,6 +648,20 @@ mod tests {
         assert_eq!(
             normalize_debug_safe_spelling_surface(text),
             "Choose exactly two creatures you control. You draw X cards and the chosen creatures get +X/+X and gain trample until end of turn."
+        );
+    }
+
+    #[test]
+    fn cleanup_preserves_explicit_draw_for_a_shared_revealed_hand_union() {
+        let text = "Target opponent reveals their hand. You draw a card for each Forest and green card in it.";
+        assert_eq!(normalize_debug_safe_spelling_surface(text), text);
+
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(
+                "Target opponent reveals their hand. You draw two cards."
+            ),
+            "Target opponent reveals their hand. Draw two cards.",
+            "an ordinary follow-up draw remains imperative"
         );
     }
 

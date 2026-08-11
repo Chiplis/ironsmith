@@ -72,6 +72,13 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
 ) -> R {
     let ctx = super::context::enrich_display_hints(game, ctx);
     match ctx {
+        DecisionContext::ManaPayment(ctx) => {
+            let result = dm.decide_mana_payment(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
+            R::from_mana_payment(result, fallback)
+        }
         DecisionContext::Boolean(ctx) => {
             publish_hidden_card_views_for_decision(
                 game,
@@ -540,6 +547,17 @@ pub trait FromPrimitiveResponse: Sized {
     fn from_targets(result: Vec<Target>, fallback: Self) -> Self {
         let _ = result;
         fallback
+    }
+
+    fn from_mana_payment(result: crate::mana_payment::ManaPaymentResponse, fallback: Self) -> Self {
+        let _ = result;
+        fallback
+    }
+}
+
+impl FromPrimitiveResponse for crate::mana_payment::ManaPaymentResponse {
+    fn from_mana_payment(result: Self, _fallback: Self) -> Self {
+        result
     }
 }
 

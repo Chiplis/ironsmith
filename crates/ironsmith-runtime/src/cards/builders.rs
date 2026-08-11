@@ -1342,7 +1342,20 @@ fn parse_type_line(
             }
         }
 
-        for word in subtype_part.split_whitespace() {
+        let subtype_words = subtype_part.split_whitespace().collect::<Vec<_>>();
+        let mut subtype_index = 0;
+        while subtype_index < subtype_words.len() {
+            if subtype_words
+                .get(subtype_index..subtype_index + 2)
+                .is_some_and(|words| {
+                    words[0].eq_ignore_ascii_case("time") && words[1].eq_ignore_ascii_case("lord")
+                })
+            {
+                push_unique(&mut subtypes, Subtype::TimeLord);
+                subtype_index += 2;
+                continue;
+            }
+            let word = subtype_words[subtype_index];
             if let Some(subtype) = parse_subtype_word(word) {
                 push_unique(&mut subtypes, subtype);
             } else {
@@ -1350,6 +1363,7 @@ fn parse_type_line(
                     "unknown subtype word `{word}` in `{raw}`"
                 )));
             }
+            subtype_index += 1;
         }
     }
 
@@ -1666,6 +1680,12 @@ impl CardDefinitionBuilder {
     /// Set the subtypes.
     pub fn subtypes(mut self, subtypes: Vec<Subtype>) -> Self {
         self.card_builder = self.card_builder.subtypes(subtypes);
+        self
+    }
+
+    /// Set the printed lit numbers for an Attraction card.
+    pub fn attraction_lights(mut self, lights: Vec<u8>) -> Self {
+        self.card_builder = self.card_builder.attraction_lights(lights);
         self
     }
 

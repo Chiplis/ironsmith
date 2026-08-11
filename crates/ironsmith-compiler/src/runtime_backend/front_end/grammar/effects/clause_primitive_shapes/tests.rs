@@ -48,6 +48,56 @@ fn possessive_power_binds_to_the_same_clause_damage_source() {
 }
 
 #[test]
+fn possessive_power_offset_keeps_the_full_amount_and_target_tail() {
+    let damage = lex_line(
+        "It deals damage equal to its power plus 2 to another target creature.",
+        0,
+    )
+    .unwrap();
+    let shape = parse_power_damage_shape(&damage).unwrap().unwrap();
+
+    assert!(matches!(
+        shape.amount,
+        Value::Add(left, right)
+            if matches!(
+                left.as_ref(),
+                Value::PowerOf(spec)
+                    if matches!(spec.base(), crate::target::ChooseSpec::Source)
+                        && spec.source_reference_surface().is_some()
+            ) && matches!(right.as_ref(), Value::Fixed(2))
+    ));
+    assert!(matches!(
+        shape.target,
+        PowerDamageTargetShape::Tokens(tokens)
+            if TokenWordView::new(tokens).to_word_refs()
+                == ["another", "target", "creature"]
+    ));
+}
+
+#[test]
+fn possessive_toughness_binds_to_each_member_of_a_referenced_pair() {
+    let damage = lex_line(
+        "Each of those creatures deals damage equal to its toughness to the other.",
+        0,
+    )
+    .unwrap();
+    let shape = parse_power_damage_shape(&damage).unwrap().unwrap();
+
+    assert!(shape.source_is_tagged);
+    assert!(matches!(
+        shape.amount,
+        Value::ToughnessOf(spec)
+            if matches!(spec.base(), crate::target::ChooseSpec::Source)
+                && spec.source_reference_surface().is_some()
+    ));
+    assert!(matches!(
+        shape.target,
+        PowerDamageTargetShape::Tokens(tokens)
+            if TokenWordView::new(tokens).to_word_refs() == ["the", "other"]
+    ));
+}
+
+#[test]
 fn parses_retarget_repeat_and_combat_requirement_shapes() {
     let retarget = lex_line(
         "Choose new targets for the copy of that spell with a single target.",
@@ -73,7 +123,17 @@ fn parses_retarget_repeat_and_combat_requirement_shapes() {
     let attack = lex_line("Target creature attacks this turn if able.", 0).unwrap();
     let shape = parse_combat_requirement_shape(&attack).unwrap();
     assert_eq!(shape.kind, CombatRequirementKind::Attack);
+    assert_eq!(shape.duration, CombatRequirementDuration::Turn);
     assert!(!shape.subject_tokens.is_empty());
+
+    let combat = lex_line(
+        "Up to one target creature attacks or blocks this combat if able.",
+        0,
+    )
+    .unwrap();
+    let shape = parse_combat_requirement_shape(&combat).unwrap();
+    assert_eq!(shape.kind, CombatRequirementKind::AttackOrBlock);
+    assert_eq!(shape.duration, CombatRequirementDuration::Combat);
 
     let separate_followup = lex_line(
         "Until end of turn, target land becomes a 4/4 creature. It must be blocked this turn if able.",

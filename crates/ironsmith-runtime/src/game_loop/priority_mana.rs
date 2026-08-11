@@ -5,7 +5,7 @@ use crate::grant::DerivedAlternativeCastRuntimeExt as _;
 use crate::perf::PerfTimer;
 
 // ============================================================================
-// Pip-by-Pip Mana Payment Helpers
+// Mana Payment Flow
 // ============================================================================
 
 pub(super) fn decision_context_name(
@@ -31,6 +31,7 @@ pub(super) fn decision_context_name(
         DecisionContext::Counters(_) => "counters",
         DecisionContext::Partition(_) => "partition",
         DecisionContext::Proliferate(_) => "proliferate",
+        DecisionContext::ManaPayment(_) => "mana payment",
     }
 }
 
@@ -215,1437 +216,6 @@ pub fn expand_mana_cost_to_display_pips(
     colored_pips
 }
 
-pub(super) fn current_display_pip<'a>(
-    display_pips: &'a [Vec<crate::mana::ManaSymbol>],
-    remaining_pips: &[Vec<crate::mana::ManaSymbol>],
-) -> Option<&'a [crate::mana::ManaSymbol]> {
-    let current_index = display_pips.len().checked_sub(remaining_pips.len())?;
-    display_pips.get(current_index).map(Vec::as_slice)
-}
-
-pub(super) fn display_pip_can_use_black_life(
-    display_pip: Option<&[crate::mana::ManaSymbol]>,
-) -> bool {
-    display_pip.is_some_and(|pip| pip.len() == 1 && pip[0] == crate::mana::ManaSymbol::Black)
-}
-
-pub(super) fn preferred_auto_pip_choice(
-    state: &PriorityLoopState,
-    options: &[ManaPipPaymentOption],
-) -> Option<usize> {
-    if options.is_empty() {
-        return None;
-    }
-
-    if state.auto_choose_single_pip_payment && options.len() == 1 {
-        return Some(0);
-    }
-
-    if options
-        .iter()
-        .all(|opt| matches!(opt.action, ManaPipPaymentAction::PayViaAlternative { .. }))
-    {
-        return Some(0);
-    }
-
-    None
-}
-
-pub(super) fn selectable_mana_pip_option(
-    option: &ManaPipPaymentOption,
-) -> crate::decisions::context::SelectableOption {
-    let selectable =
-        crate::decisions::context::SelectableOption::new(option.index, &option.description);
-    match option.action {
-        ManaPipPaymentAction::ActivateManaAbility { source_id, .. } => {
-            selectable.with_object(source_id)
-        }
-        ManaPipPaymentAction::PayViaAlternative { permanent_id, .. } => {
-            selectable.with_object(permanent_id)
-        }
-        ManaPipPaymentAction::UseFromPool(_) | ManaPipPaymentAction::PayLife(_) => selectable,
-    }
-}
-
-/// Build payment options for a single mana pip.
-pub(super) fn build_pip_payment_options(
-    game: &GameState,
-    player: PlayerId,
-    pip: &[crate::mana::ManaSymbol],
-    display_pip: Option<&[crate::mana::ManaSymbol]>,
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-    allow_black_life: bool,
-    source_for_pip_alternatives: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-    allow_mana_abilities: bool,
-    decision_maker: &mut impl DecisionMaker,
-) -> Vec<ManaPipPaymentOption> {
-    use crate::mana::ManaSymbol;
-
-    let mut options = Vec::new();
-    let mut index = 0;
-    let mut added_pool_symbols = Vec::new();
-
-    // For each alternative in the pip, check what can pay it
-    for symbol in pip {
-        match symbol {
-            ManaSymbol::White => {
-                add_policy_pool_options_for_required(
-                    game,
-                    player,
-                    ManaSymbol::White,
-                    source_for_pip_alternatives,
-                    payment_reason,
-                    mana_spend_policy,
-                    &mut options,
-                    &mut index,
-                    &mut added_pool_symbols,
-                );
-            }
-            ManaSymbol::Blue => {
-                add_policy_pool_options_for_required(
-                    game,
-                    player,
-                    ManaSymbol::Blue,
-                    source_for_pip_alternatives,
-                    payment_reason,
-                    mana_spend_policy,
-                    &mut options,
-                    &mut index,
-                    &mut added_pool_symbols,
-                );
-            }
-            ManaSymbol::Black => {
-                add_policy_pool_options_for_required(
-                    game,
-                    player,
-                    ManaSymbol::Black,
-                    source_for_pip_alternatives,
-                    payment_reason,
-                    mana_spend_policy,
-                    &mut options,
-                    &mut index,
-                    &mut added_pool_symbols,
-                );
-            }
-            ManaSymbol::Red => {
-                add_policy_pool_options_for_required(
-                    game,
-                    player,
-                    ManaSymbol::Red,
-                    source_for_pip_alternatives,
-                    payment_reason,
-                    mana_spend_policy,
-                    &mut options,
-                    &mut index,
-                    &mut added_pool_symbols,
-                );
-            }
-            ManaSymbol::Green => {
-                add_policy_pool_options_for_required(
-                    game,
-                    player,
-                    ManaSymbol::Green,
-                    source_for_pip_alternatives,
-                    payment_reason,
-                    mana_spend_policy,
-                    &mut options,
-                    &mut index,
-                    &mut added_pool_symbols,
-                );
-            }
-            ManaSymbol::Colorless => {
-                add_policy_pool_options_for_required(
-                    game,
-                    player,
-                    ManaSymbol::Colorless,
-                    source_for_pip_alternatives,
-                    payment_reason,
-                    mana_spend_policy,
-                    &mut options,
-                    &mut index,
-                    &mut added_pool_symbols,
-                );
-            }
-            ManaSymbol::Generic(_) => {
-                // Generic can be paid with any mana in the pool
-                add_any_color_pool_options(
-                    game,
-                    player,
-                    source_for_pip_alternatives,
-                    payment_reason,
-                    &mut options,
-                    &mut index,
-                );
-            }
-            ManaSymbol::Life(amount) => {
-                // Can always pay life (if player has enough)
-                let has_life = game
-                    .player(player)
-                    .map(|p| p.life >= *amount as i32)
-                    .unwrap_or(false);
-                if has_life {
-                    options.push(ManaPipPaymentOption {
-                        index,
-                        description: format!("Pay {} life", amount),
-                        action: ManaPipPaymentAction::PayLife(*amount as u32),
-                    });
-                    index += 1;
-                }
-            }
-            ManaSymbol::Snow => {
-                for symbol in [
-                    ManaSymbol::White,
-                    ManaSymbol::Blue,
-                    ManaSymbol::Black,
-                    ManaSymbol::Red,
-                    ManaSymbol::Green,
-                    ManaSymbol::Colorless,
-                ] {
-                    if !added_pool_symbols.contains(&symbol)
-                        && pool_symbol_count_from_snow_source_with_reason(
-                            game,
-                            player,
-                            symbol,
-                            source_for_pip_alternatives,
-                            payment_reason,
-                        ) > 0
-                    {
-                        options.push(ManaPipPaymentOption {
-                            index,
-                            description: format!(
-                                "Use {} from a snow source",
-                                crate::mana::ManaCost::from_symbols(vec![symbol]).to_oracle()
-                            ),
-                            action: ManaPipPaymentAction::UseFromPool(symbol),
-                        });
-                        index += 1;
-                        added_pool_symbols.push(symbol);
-                    }
-                }
-            }
-            ManaSymbol::X => {
-                // X should have been expanded already
-            }
-        }
-    }
-
-    let krrik_can_pay_this_pip = allow_black_life
-        && display_pip.is_some_and(|display| display.len() == 1 && display[0] == ManaSymbol::Black)
-        && game.can_pay_life(player, 2);
-    if krrik_can_pay_this_pip {
-        options.push(ManaPipPaymentOption {
-            index,
-            description: "Pay 2 life".to_string(),
-            action: ManaPipPaymentAction::PayLife(2),
-        });
-        index += 1;
-    }
-
-    add_pip_alternative_payment_options(
-        game,
-        player,
-        pip,
-        source_for_pip_alternatives,
-        &mut options,
-        &mut index,
-    );
-
-    // Check if this is a Phyrexian pip (has a Life alternative)
-    let is_phyrexian = pip.iter().any(|s| matches!(s, ManaSymbol::Life(_)));
-
-    // Check if we have any "use from pool" options (not just Life options)
-    let has_pool_options = options
-        .iter()
-        .any(|opt| matches!(opt.action, ManaPipPaymentAction::UseFromPool(_)));
-
-    // Add mana abilities if:
-    // - We don't have pool options, OR
-    // - This is a Phyrexian pip (always give choice between mana and life)
-    if allow_mana_abilities && (!has_pool_options || is_phyrexian) {
-        let mana_abilities = get_available_mana_abilities_for_pip(
-            game,
-            player,
-            source_for_pip_alternatives,
-            payment_reason,
-            pip,
-            mana_spend_policy,
-            decision_maker,
-        );
-        for (perm_id, ability_index, description) in mana_abilities {
-            options.push(ManaPipPaymentOption {
-                index,
-                description: format!("Tap {}: {}", describe_permanent(game, perm_id), description),
-                action: ManaPipPaymentAction::ActivateManaAbility {
-                    source_id: perm_id,
-                    ability_index,
-                },
-            });
-            index += 1;
-        }
-    }
-
-    options
-}
-
-pub(super) fn add_pip_alternative_payment_options(
-    game: &GameState,
-    player: PlayerId,
-    pip: &[crate::mana::ManaSymbol],
-    source_for_pip_alternatives: Option<ObjectId>,
-    options: &mut Vec<ManaPipPaymentOption>,
-    index: &mut usize,
-) {
-    let Some(source) = source_for_pip_alternatives else {
-        return;
-    };
-    let Some(spell) = game.object(source) else {
-        return;
-    };
-
-    if crate::decision::has_convoke(spell) {
-        for (creature_id, colors) in crate::decision::get_convoke_creatures(game, player) {
-            if convoke_can_pay_pip(colors, pip) {
-                options.push(ManaPipPaymentOption {
-                    index: *index,
-                    description: format!(
-                        "Tap {} to pay this pip (Convoke)",
-                        describe_permanent(game, creature_id)
-                    ),
-                    action: ManaPipPaymentAction::PayViaAlternative {
-                        permanent_id: creature_id,
-                        effect: AlternativePaymentEffect::Convoke,
-                    },
-                });
-                *index += 1;
-            }
-        }
-    }
-
-    if crate::decision::has_improvise(spell) && improvise_can_pay_pip(pip) {
-        for artifact_id in crate::decision::get_improvise_artifacts(game, player) {
-            options.push(ManaPipPaymentOption {
-                index: *index,
-                description: format!(
-                    "Tap {} to pay this pip (Improvise)",
-                    describe_permanent(game, artifact_id)
-                ),
-                action: ManaPipPaymentAction::PayViaAlternative {
-                    permanent_id: artifact_id,
-                    effect: AlternativePaymentEffect::Improvise,
-                },
-            });
-            *index += 1;
-        }
-    }
-}
-
-pub(super) fn convoke_can_pay_pip(
-    colors: crate::color::ColorSet,
-    pip: &[crate::mana::ManaSymbol],
-) -> bool {
-    pip.iter().any(|symbol| match symbol {
-        crate::mana::ManaSymbol::Generic(_) => true,
-        crate::mana::ManaSymbol::White => colors.contains(crate::color::Color::White),
-        crate::mana::ManaSymbol::Blue => colors.contains(crate::color::Color::Blue),
-        crate::mana::ManaSymbol::Black => colors.contains(crate::color::Color::Black),
-        crate::mana::ManaSymbol::Red => colors.contains(crate::color::Color::Red),
-        crate::mana::ManaSymbol::Green => colors.contains(crate::color::Color::Green),
-        crate::mana::ManaSymbol::Colorless
-        | crate::mana::ManaSymbol::Life(_)
-        | crate::mana::ManaSymbol::Snow
-        | crate::mana::ManaSymbol::X => false,
-    })
-}
-
-pub(super) fn improvise_can_pay_pip(pip: &[crate::mana::ManaSymbol]) -> bool {
-    pip.iter()
-        .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::Generic(_)))
-}
-
-pub(super) fn add_any_color_pool_options(
-    game: &GameState,
-    player: PlayerId,
-    payment_source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-    options: &mut Vec<ManaPipPaymentOption>,
-    index: &mut usize,
-) {
-    use crate::mana::ManaSymbol;
-
-    if pool_symbol_count_with_reason(
-        game,
-        player,
-        ManaSymbol::White,
-        payment_source,
-        payment_reason,
-    ) > 0
-    {
-        options.push(ManaPipPaymentOption {
-            index: *index,
-            description: "Use {W} from mana pool".to_string(),
-            action: ManaPipPaymentAction::UseFromPool(ManaSymbol::White),
-        });
-        *index += 1;
-    }
-    if pool_symbol_count_with_reason(
-        game,
-        player,
-        ManaSymbol::Blue,
-        payment_source,
-        payment_reason,
-    ) > 0
-    {
-        options.push(ManaPipPaymentOption {
-            index: *index,
-            description: "Use {U} from mana pool".to_string(),
-            action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Blue),
-        });
-        *index += 1;
-    }
-    if pool_symbol_count_with_reason(
-        game,
-        player,
-        ManaSymbol::Black,
-        payment_source,
-        payment_reason,
-    ) > 0
-    {
-        options.push(ManaPipPaymentOption {
-            index: *index,
-            description: "Use {B} from mana pool".to_string(),
-            action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Black),
-        });
-        *index += 1;
-    }
-    if pool_symbol_count_with_reason(
-        game,
-        player,
-        ManaSymbol::Red,
-        payment_source,
-        payment_reason,
-    ) > 0
-    {
-        options.push(ManaPipPaymentOption {
-            index: *index,
-            description: "Use {R} from mana pool".to_string(),
-            action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Red),
-        });
-        *index += 1;
-    }
-    if pool_symbol_count_with_reason(
-        game,
-        player,
-        ManaSymbol::Green,
-        payment_source,
-        payment_reason,
-    ) > 0
-    {
-        options.push(ManaPipPaymentOption {
-            index: *index,
-            description: "Use {G} from mana pool".to_string(),
-            action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Green),
-        });
-        *index += 1;
-    }
-    if pool_symbol_count_with_reason(
-        game,
-        player,
-        ManaSymbol::Colorless,
-        payment_source,
-        payment_reason,
-    ) > 0
-    {
-        options.push(ManaPipPaymentOption {
-            index: *index,
-            description: "Use {C} from mana pool".to_string(),
-            action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Colorless),
-        });
-        *index += 1;
-    }
-}
-
-fn add_policy_pool_options_for_required(
-    game: &GameState,
-    player: PlayerId,
-    required: crate::mana::ManaSymbol,
-    payment_source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-    options: &mut Vec<ManaPipPaymentOption>,
-    index: &mut usize,
-    added_symbols: &mut Vec<crate::mana::ManaSymbol>,
-) {
-    use crate::mana::ManaSymbol;
-
-    for symbol in [
-        ManaSymbol::White,
-        ManaSymbol::Blue,
-        ManaSymbol::Black,
-        ManaSymbol::Red,
-        ManaSymbol::Green,
-        ManaSymbol::Colorless,
-    ] {
-        if added_symbols.contains(&symbol)
-            || !mana_spend_policy.can_pay_symbol(symbol, required)
-            || pool_symbol_count_with_reason(game, player, symbol, payment_source, payment_reason)
-                == 0
-        {
-            continue;
-        }
-
-        options.push(ManaPipPaymentOption {
-            index: *index,
-            description: format!(
-                "Use {} from mana pool",
-                crate::mana::ManaCost::from_symbols(vec![symbol]).to_oracle()
-            ),
-            action: ManaPipPaymentAction::UseFromPool(symbol),
-        });
-        *index += 1;
-        added_symbols.push(symbol);
-    }
-}
-
-#[derive(Clone)]
-pub(super) struct SpentManaInfo {
-    symbol: crate::mana::ManaSymbol,
-    source: ObjectId,
-    source_snapshot: Option<ObjectSnapshot>,
-    source_chosen_creature_type: Option<crate::types::Subtype>,
-    restrictions: Vec<crate::ability::ManaUsageRestriction>,
-}
-
-fn cast_spell_mana_rule_matches_payment_source(
-    game: &GameState,
-    unit: &crate::ability::RestrictedManaUnit,
-    card_types: &[crate::types::CardType],
-    subtype_requirement: &Option<crate::ability::ManaUsageSubtypeRequirement>,
-    payment_source: Option<ObjectId>,
-) -> bool {
-    let Some(source_id) = payment_source else {
-        return false;
-    };
-    let Some(source_obj) = game.object(source_id) else {
-        return false;
-    };
-
-    if source_obj.zone != Zone::Stack {
-        return false;
-    }
-    if !card_types
-        .iter()
-        .all(|card_type| game.current_has_card_type(source_obj.id, *card_type))
-    {
-        return false;
-    }
-
-    let required_subtype = match subtype_requirement {
-        Some(crate::ability::ManaUsageSubtypeRequirement::Exact(subtype)) => Some(*subtype),
-        Some(crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource) => {
-            unit.source_chosen_creature_type
-        }
-        None => None,
-    };
-    required_subtype.is_none_or(|subtype| game.current_has_subtype(source_obj.id, subtype))
-}
-
-fn cast_spell_filter_matches_payment_source(
-    game: &GameState,
-    unit: &crate::ability::RestrictedManaUnit,
-    filter: &crate::target::ObjectFilter,
-    payment_source: Option<ObjectId>,
-) -> bool {
-    let Some(source_id) = payment_source else {
-        return false;
-    };
-    let Some(source_obj) = game.object(source_id) else {
-        return false;
-    };
-    if source_obj.zone != Zone::Stack {
-        return false;
-    }
-
-    let Some(mana_source) = game.object(unit.source) else {
-        return false;
-    };
-    let filter_ctx = game.filter_context_for(game.controller_of(mana_source), Some(unit.source));
-    filter.matches(source_obj, &filter_ctx, game)
-}
-
-fn activate_ability_source_filter_matches_payment_source(
-    game: &GameState,
-    unit: &crate::ability::RestrictedManaUnit,
-    filter: &crate::target::ObjectFilter,
-    payment_source: Option<ObjectId>,
-) -> bool {
-    let Some(source_id) = payment_source else {
-        return false;
-    };
-    let Some(source_obj) = game.object(source_id) else {
-        return false;
-    };
-    if source_obj.zone == Zone::Stack {
-        return false;
-    }
-
-    let Some(mana_source) = game.object(unit.source) else {
-        return false;
-    };
-    let filter_ctx = game.filter_context_for(game.controller_of(mana_source), Some(unit.source));
-    filter.matches(source_obj, &filter_ctx, game)
-}
-
-fn restriction_requires_matching_spell(restriction: &crate::ability::ManaUsageRestriction) -> bool {
-    match restriction {
-        crate::ability::ManaUsageRestriction::CastSpell {
-            restrict_to_matching_spell,
-            ..
-        }
-        | crate::ability::ManaUsageRestriction::CastSpellMatching {
-            restrict_to_matching_spell,
-            ..
-        } => *restrict_to_matching_spell,
-        crate::ability::ManaUsageRestriction::CastSpellWithManaBonus { .. } => false,
-        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
-            ..
-        } => true,
-        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { .. } => true,
-        crate::ability::ManaUsageRestriction::ActivateAbility => true,
-        crate::ability::ManaUsageRestriction::PaymentTransaction { restriction, .. } => {
-            restriction.is_some()
-        }
-    }
-}
-
-fn restriction_bonus_applies_to_payment_source(
-    game: &GameState,
-    unit: &crate::ability::RestrictedManaUnit,
-    restriction: &crate::ability::ManaUsageRestriction,
-    payment_source: Option<ObjectId>,
-) -> bool {
-    match restriction {
-        crate::ability::ManaUsageRestriction::CastSpell {
-            card_types,
-            subtype_requirement,
-            grant_uncounterable,
-            enters_with_counters,
-            granted_abilities,
-            ..
-        } => {
-            if !*grant_uncounterable
-                && enters_with_counters.is_empty()
-                && granted_abilities.is_empty()
-            {
-                return false;
-            }
-            cast_spell_mana_rule_matches_payment_source(
-                game,
-                unit,
-                card_types,
-                subtype_requirement,
-                payment_source,
-            )
-        }
-        crate::ability::ManaUsageRestriction::CastSpellMatching {
-            filter,
-            grant_uncounterable,
-            enters_with_counters,
-            granted_abilities,
-            ..
-        } => {
-            if !*grant_uncounterable
-                && enters_with_counters.is_empty()
-                && granted_abilities.is_empty()
-            {
-                return false;
-            }
-            cast_spell_filter_matches_payment_source(game, unit, filter, payment_source)
-        }
-        crate::ability::ManaUsageRestriction::CastSpellWithManaBonus {
-            filter,
-            grant_uncounterable,
-            enters_with_counters,
-            granted_abilities,
-            granted_keywords,
-            ..
-        } => {
-            if !*grant_uncounterable
-                && enters_with_counters.is_empty()
-                && granted_abilities.is_empty()
-                && granted_keywords.is_empty()
-            {
-                return false;
-            }
-            cast_spell_filter_matches_payment_source(game, unit, filter, payment_source)
-        }
-        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
-            ..
-        } => false,
-        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { .. } => false,
-        crate::ability::ManaUsageRestriction::ActivateAbility => false,
-        crate::ability::ManaUsageRestriction::PaymentTransaction { on_spend, .. } => {
-            !on_spend.is_empty()
-        }
-    }
-}
-
-fn restricted_unit_priority(
-    game: &GameState,
-    unit: &crate::ability::RestrictedManaUnit,
-    payment_source: Option<ObjectId>,
-) -> u8 {
-    if unit
-        .restrictions
-        .iter()
-        .any(restriction_requires_matching_spell)
-    {
-        return 0;
-    }
-    if unit.restrictions.iter().any(|restriction| {
-        restriction_bonus_applies_to_payment_source(game, unit, restriction, payment_source)
-    }) {
-        return 1;
-    }
-    2
-}
-
-pub(super) fn payment_source_matches_restriction(
-    game: &GameState,
-    unit: &crate::ability::RestrictedManaUnit,
-    restriction: &crate::ability::ManaUsageRestriction,
-    payment_source: Option<ObjectId>,
-) -> bool {
-    let Some(source_id) = payment_source else {
-        return false;
-    };
-    let Some(source_obj) = game.object(source_id) else {
-        return false;
-    };
-
-    match restriction {
-        crate::ability::ManaUsageRestriction::CastSpell {
-            card_types,
-            subtype_requirement,
-            restrict_to_matching_spell,
-            ..
-        } => {
-            if !*restrict_to_matching_spell {
-                return true;
-            }
-            cast_spell_mana_rule_matches_payment_source(
-                game,
-                unit,
-                card_types,
-                subtype_requirement,
-                Some(source_obj.id),
-            )
-        }
-        crate::ability::ManaUsageRestriction::CastSpellMatching {
-            filter,
-            restrict_to_matching_spell,
-            ..
-        } => {
-            if !*restrict_to_matching_spell {
-                return true;
-            }
-            cast_spell_filter_matches_payment_source(game, unit, filter, Some(source_obj.id))
-        }
-        crate::ability::ManaUsageRestriction::CastSpellWithManaBonus { .. } => true,
-        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
-            spell_filter,
-            ability_source_filter,
-        } => {
-            cast_spell_filter_matches_payment_source(game, unit, spell_filter, Some(source_obj.id))
-                || activate_ability_source_filter_matches_payment_source(
-                    game,
-                    unit,
-                    ability_source_filter,
-                    Some(source_obj.id),
-                )
-        }
-        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
-            spell_filter,
-        } => {
-            cast_spell_filter_matches_payment_source(game, unit, spell_filter, Some(source_obj.id))
-                || matches_allowed_turn_face_up_payment_source(game, source_obj.id)
-                || matches_allowed_unlock_door_payment_source(game, source_obj.id)
-        }
-        crate::ability::ManaUsageRestriction::ActivateAbility => source_obj.zone != Zone::Stack,
-        crate::ability::ManaUsageRestriction::PaymentTransaction { .. } => {
-            let reason = if source_obj.zone == Zone::Stack {
-                crate::costs::PaymentReason::CastSpell
-            } else {
-                crate::costs::PaymentReason::ActivateAbility
-            };
-            game.restricted_mana_unit_is_payable_for_reason(unit, payment_source, reason)
-        }
-    }
-}
-
-fn matches_allowed_turn_face_up_payment_source(game: &GameState, source_id: ObjectId) -> bool {
-    let Some(source_obj) = game.object(source_id) else {
-        return false;
-    };
-    source_obj.zone == Zone::Battlefield && game.is_face_down(source_id)
-}
-
-fn matches_allowed_unlock_door_payment_source(game: &GameState, source_id: ObjectId) -> bool {
-    game.object_is_room_unlock_payment_source(source_id)
-}
-
-pub(super) fn restricted_unit_is_payable(
-    game: &GameState,
-    unit: &crate::ability::RestrictedManaUnit,
-    payment_source: Option<ObjectId>,
-) -> bool {
-    unit.restrictions.iter().all(|restriction| {
-        payment_source_matches_restriction(game, unit, restriction, payment_source)
-    })
-}
-
-#[cfg(test)]
-pub(super) fn pool_symbol_count(
-    game: &GameState,
-    player: PlayerId,
-    symbol: crate::mana::ManaSymbol,
-    payment_source: Option<ObjectId>,
-) -> u32 {
-    pool_symbol_count_source_only(game, player, symbol, payment_source)
-}
-
-#[cfg(test)]
-fn pool_symbol_count_source_only(
-    game: &GameState,
-    player: PlayerId,
-    symbol: crate::mana::ManaSymbol,
-    payment_source: Option<ObjectId>,
-) -> u32 {
-    pool_symbol_count_filtered(game, player, symbol, |unit| {
-        restricted_unit_is_payable(game, unit, payment_source)
-    })
-}
-
-fn pool_symbol_count_with_reason(
-    game: &GameState,
-    player: PlayerId,
-    symbol: crate::mana::ManaSymbol,
-    payment_source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-) -> u32 {
-    pool_symbol_count_filtered(game, player, symbol, |unit| {
-        game.restricted_mana_unit_is_payable_for_reason(unit, payment_source, payment_reason)
-    })
-}
-
-fn mana_provenance_is_from_snow_source(
-    game: &GameState,
-    unit: &crate::player::ManaSourceProvenance,
-) -> bool {
-    unit.snapshot
-        .as_ref()
-        .is_some_and(|snapshot| snapshot.supertypes.contains(&crate::types::Supertype::Snow))
-        || (unit.snapshot.is_none()
-            && game.current_has_supertype(unit.source, crate::types::Supertype::Snow))
-}
-
-fn pool_symbol_count_from_snow_source_with_reason(
-    game: &GameState,
-    player: PlayerId,
-    symbol: crate::mana::ManaSymbol,
-    payment_source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-) -> u32 {
-    let Some(player_obj) = game.player(player) else {
-        return 0;
-    };
-    let pool_count = player_obj.mana_pool.amount(symbol) as usize;
-    player_obj
-        .mana_source_provenance
-        .iter()
-        .filter(|unit| unit.symbol == symbol && mana_provenance_is_from_snow_source(game, unit))
-        .filter(|unit| {
-            !unit.restricted
-                || player_obj.restricted_mana.iter().any(|restricted| {
-                    restricted.symbol == symbol
-                        && restricted.source == unit.source
-                        && game.restricted_mana_unit_is_payable_for_reason(
-                            restricted,
-                            payment_source,
-                            payment_reason,
-                        )
-                })
-        })
-        .take(pool_count)
-        .count() as u32
-}
-
-fn pool_symbol_count_filtered(
-    game: &GameState,
-    player: PlayerId,
-    symbol: crate::mana::ManaSymbol,
-    mut restricted_is_payable: impl FnMut(&crate::ability::RestrictedManaUnit) -> bool,
-) -> u32 {
-    let Some(player_obj) = game.player(player) else {
-        return 0;
-    };
-
-    let total = player_obj.mana_pool.amount(symbol);
-    if total == 0 {
-        return 0;
-    }
-
-    let restricted_total = player_obj
-        .restricted_mana
-        .iter()
-        .filter(|unit| unit.symbol == symbol)
-        .count() as u32;
-    let restricted_payable = player_obj
-        .restricted_mana
-        .iter()
-        .filter(|unit| unit.symbol == symbol)
-        .filter(|unit| restricted_is_payable(unit))
-        .count() as u32;
-
-    total
-        .saturating_sub(restricted_total)
-        .saturating_add(restricted_payable)
-}
-
-#[cfg(test)]
-pub(super) fn spend_pool_symbol(
-    game: &mut GameState,
-    player: PlayerId,
-    symbol: crate::mana::ManaSymbol,
-    payment_source: Option<ObjectId>,
-) -> Option<SpentManaInfo> {
-    spend_pool_symbol_source_only(game, player, symbol, payment_source)
-}
-
-#[cfg(test)]
-fn spend_pool_symbol_source_only(
-    game: &mut GameState,
-    player: PlayerId,
-    symbol: crate::mana::ManaSymbol,
-    payment_source: Option<ObjectId>,
-) -> Option<SpentManaInfo> {
-    spend_pool_symbol_common(game, player, symbol, payment_source, None)
-}
-
-fn spend_pool_symbol_with_reason(
-    game: &mut GameState,
-    player: PlayerId,
-    symbol: crate::mana::ManaSymbol,
-    payment_source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-) -> Option<SpentManaInfo> {
-    spend_pool_symbol_common(game, player, symbol, payment_source, Some(payment_reason))
-}
-
-fn spend_pool_symbol_from_snow_source_with_reason(
-    game: &mut GameState,
-    player: PlayerId,
-    symbol: crate::mana::ManaSymbol,
-    payment_source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-) -> Option<SpentManaInfo> {
-    let (provenance_index, restricted_index) = {
-        let player_obj = game.player(player)?;
-        player_obj
-            .mana_source_provenance
-            .iter()
-            .enumerate()
-            .filter(|(_, unit)| {
-                unit.symbol == symbol && mana_provenance_is_from_snow_source(game, unit)
-            })
-            .find_map(|(provenance_index, unit)| {
-                if !unit.restricted {
-                    return Some((provenance_index, None));
-                }
-                player_obj
-                    .restricted_mana
-                    .iter()
-                    .enumerate()
-                    .find(|(_, restricted)| {
-                        restricted.symbol == symbol
-                            && restricted.source == unit.source
-                            && game.restricted_mana_unit_is_payable_for_reason(
-                                restricted,
-                                payment_source,
-                                payment_reason,
-                            )
-                    })
-                    .map(|(restricted_index, _)| (provenance_index, Some(restricted_index)))
-            })?
-    };
-
-    let (tracked, restricted) = {
-        let player_obj = game.player_mut(player)?;
-        if !player_obj.mana_pool.remove(symbol, 1) {
-            return None;
-        }
-        let tracked = player_obj.mana_source_provenance.remove(provenance_index);
-        let restricted = restricted_index.map(|index| player_obj.restricted_mana.remove(index));
-        (tracked, restricted)
-    };
-    let source = tracked.source;
-    let source_snapshot = tracked.snapshot.or_else(|| {
-        game.object(source)
-            .map(|object| ObjectSnapshot::from_object(object, game))
-    });
-    Some(SpentManaInfo {
-        symbol,
-        source,
-        source_snapshot,
-        source_chosen_creature_type: restricted
-            .as_ref()
-            .and_then(|unit| unit.source_chosen_creature_type.clone()),
-        restrictions: restricted.map(|unit| unit.restrictions).unwrap_or_default(),
-    })
-}
-
-fn spend_pool_symbol_common(
-    game: &mut GameState,
-    player: PlayerId,
-    symbol: crate::mana::ManaSymbol,
-    payment_source: Option<ObjectId>,
-    payment_reason: Option<crate::costs::PaymentReason>,
-) -> Option<SpentManaInfo> {
-    let unrestricted_available = game.player(player).is_some_and(|player_obj| {
-        let total = player_obj.mana_pool.amount(symbol);
-        let restricted_total = player_obj
-            .restricted_mana
-            .iter()
-            .filter(|unit| unit.symbol == symbol)
-            .count() as u32;
-        total > restricted_total
-    });
-
-    let payable_restricted = game.player(player).and_then(|player_obj| {
-        player_obj
-            .restricted_mana
-            .iter()
-            .enumerate()
-            .filter(|(_, unit)| {
-                unit.symbol == symbol
-                    && if let Some(reason) = payment_reason {
-                        game.restricted_mana_unit_is_payable_for_reason(
-                            unit,
-                            payment_source,
-                            reason,
-                        )
-                    } else {
-                        restricted_unit_is_payable(game, unit, payment_source)
-                    }
-            })
-            .min_by_key(|(_, unit)| restricted_unit_priority(game, unit, payment_source))
-            .map(|(idx, unit)| (idx, restricted_unit_priority(game, unit, payment_source)))
-    });
-
-    let (source, tracked_snapshot, source_chosen_creature_type, restrictions) = {
-        let player_obj = game.player_mut(player)?;
-        if let Some((idx, priority)) = payable_restricted
-            && !(unrestricted_available && priority >= 2)
-        {
-            if !player_obj.mana_pool.remove(symbol, 1) {
-                return None;
-            }
-            let unit = player_obj.restricted_mana.remove(idx);
-            let tracked = player_obj.take_mana_source_provenance(symbol, true, Some(unit.source));
-            (
-                unit.source,
-                tracked.and_then(|tracked| tracked.snapshot),
-                unit.source_chosen_creature_type,
-                unit.restrictions,
-            )
-        } else if unrestricted_available && player_obj.mana_pool.remove(symbol, 1) {
-            let tracked = player_obj.take_mana_source_provenance(symbol, false, None);
-            (
-                tracked
-                    .as_ref()
-                    .map(|tracked| tracked.source)
-                    .unwrap_or_else(|| ObjectId::from_raw(0)),
-                tracked.and_then(|tracked| tracked.snapshot),
-                None,
-                Vec::new(),
-            )
-        } else {
-            return None;
-        }
-    };
-
-    let source_snapshot = tracked_snapshot.or_else(|| {
-        (source != ObjectId::from_raw(0))
-            .then(|| game.object(source))
-            .flatten()
-            .map(|source_obj| ObjectSnapshot::from_object(source_obj, game))
-    });
-    Some(SpentManaInfo {
-        symbol,
-        source,
-        source_snapshot,
-        source_chosen_creature_type,
-        restrictions,
-    })
-}
-
-#[cfg(test)]
-pub(super) fn apply_spent_mana_bonuses(
-    game: &mut GameState,
-    payment_source: Option<ObjectId>,
-    spent: &SpentManaInfo,
-) {
-    let reason = payment_source
-        .and_then(|source| game.object(source))
-        .map(|source| {
-            if source.zone == Zone::Stack {
-                crate::costs::PaymentReason::CastSpell
-            } else {
-                crate::costs::PaymentReason::ActivateAbility
-            }
-        })
-        .unwrap_or(crate::costs::PaymentReason::Other);
-    apply_spent_mana_bonuses_for_transaction(
-        game,
-        game.turn.active_player,
-        payment_source,
-        reason,
-        spent,
-    );
-}
-
-fn apply_spent_mana_bonuses_for_transaction(
-    game: &mut GameState,
-    payer: PlayerId,
-    payment_source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-    spent: &SpentManaInfo,
-) {
-    let unit = crate::ability::RestrictedManaUnit {
-        symbol: spent.symbol,
-        source: spent.source,
-        source_chosen_creature_type: spent.source_chosen_creature_type,
-        restrictions: spent.restrictions.clone(),
-    };
-    game.publish_spent_mana_unit(
-        payer,
-        payment_source,
-        payment_reason,
-        spent.symbol,
-        spent.source,
-        spent.source_snapshot.clone(),
-        (!spent.restrictions.is_empty()).then_some(unit.clone()),
-    );
-    let Some(source_id) = payment_source else {
-        return;
-    };
-    if let Some(source_snapshot) = &spent.source_snapshot
-        && let Some(source_obj) = game.object_mut(source_id)
-        && source_obj.zone == Zone::Stack
-    {
-        source_obj
-            .cast_tagged_objects
-            .entry(crate::tag::TagKey::from(
-                ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG,
-            ))
-            .or_default()
-            .push(source_snapshot.clone());
-    }
-    for restriction in &spent.restrictions {
-        if !restriction_bonus_applies_to_payment_source(game, &unit, restriction, payment_source) {
-            continue;
-        }
-
-        let (grant_uncounterable, enters_with_counters) = match restriction {
-            crate::ability::ManaUsageRestriction::CastSpell {
-                grant_uncounterable,
-                enters_with_counters,
-                ..
-            }
-            | crate::ability::ManaUsageRestriction::CastSpellMatching {
-                grant_uncounterable,
-                enters_with_counters,
-                ..
-            }
-            | crate::ability::ManaUsageRestriction::CastSpellWithManaBonus {
-                grant_uncounterable,
-                enters_with_counters,
-                ..
-            } => (*grant_uncounterable, enters_with_counters),
-            crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
-                ..
-            } => continue,
-            crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { .. } => {
-                continue;
-            }
-            crate::ability::ManaUsageRestriction::ActivateAbility => continue,
-            crate::ability::ManaUsageRestriction::PaymentTransaction { .. } => continue,
-        };
-
-        if grant_uncounterable || !enters_with_counters.is_empty() {
-            let Some(source_obj) = game.object_mut(source_id) else {
-                return;
-            };
-            if grant_uncounterable {
-                let already_uncounterable = source_obj.abilities.iter().any(|ability| {
-                    matches!(
-                        &ability.kind,
-                        crate::ability::AbilityKind::Static(static_ability)
-                            if static_ability.cant_be_countered()
-                    )
-                });
-                if !already_uncounterable {
-                    source_obj
-                        .abilities_mut()
-                        .push(crate::ability::Ability::static_ability(
-                            crate::static_abilities::StaticAbility::uncounterable(),
-                        ));
-                }
-            }
-            for (counter_type, count) in enters_with_counters {
-                source_obj
-                    .abilities_mut()
-                    .push(crate::ability::Ability::static_ability(
-                        crate::static_abilities::StaticAbility::enters_with_counters(
-                            *counter_type,
-                            *count,
-                        ),
-                    ));
-            }
-        }
-
-        match restriction {
-            crate::ability::ManaUsageRestriction::CastSpell {
-                granted_abilities, ..
-            }
-            | crate::ability::ManaUsageRestriction::CastSpellMatching {
-                granted_abilities, ..
-            } => {
-                for ability in granted_abilities {
-                    game.grant_temporary_static_ability_to_object_until_end_of_turn(
-                        source_id, *ability,
-                    );
-                }
-            }
-            crate::ability::ManaUsageRestriction::CastSpellWithManaBonus {
-                granted_abilities,
-                granted_keywords,
-                ..
-            } => {
-                for (ability, duration) in granted_abilities {
-                    match duration {
-                        crate::ability::ManaSpendAbilityGrantDuration::UntilEndOfTurn => {
-                            game.grant_temporary_static_ability_to_object_until_end_of_turn(
-                                source_id, *ability,
-                            );
-                        }
-                        crate::ability::ManaSpendAbilityGrantDuration::UntilYourNextTurn => {
-                            let controller = game
-                                .current_controller(source_id)
-                                .or_else(|| {
-                                    game.object(source_id)
-                                        .map(|object| game.controller_of(object))
-                                })
-                                .unwrap_or(game.turn.active_player);
-                            let expires_end_of_turn =
-                                crate::effects::player::next_turn_number_for_player(
-                                    game, controller,
-                                )
-                                .saturating_sub(1);
-                            game.grant_temporary_static_ability_to_object_through_turn(
-                                source_id,
-                                *ability,
-                                expires_end_of_turn,
-                            );
-                        }
-                    }
-                }
-                for keyword in granted_keywords {
-                    match keyword {
-                        crate::ability::ManaSpendGrantedKeyword::Riot => {
-                            let riot = crate::cards::builders::riot_triggered_ability();
-                            let Some(source_obj) = game.object_mut(source_id) else {
-                                return;
-                            };
-                            if !source_obj.abilities.iter().any(|ability| ability == &riot) {
-                                source_obj.abilities_mut().push(riot);
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Check if a mana ability can produce mana that pays the given pip.
-#[cfg(test)]
-pub(super) fn mana_ability_can_pay_pip(
-    game: &GameState,
-    perm_id: ObjectId,
-    ability_index: usize,
-    payment_source: Option<ObjectId>,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-) -> bool {
-    mana_ability_can_pay_pip_source_only(
-        game,
-        perm_id,
-        ability_index,
-        payment_source,
-        pip,
-        mana_spend_policy,
-    )
-}
-
-#[cfg(test)]
-fn mana_ability_can_pay_pip_source_only(
-    game: &GameState,
-    perm_id: ObjectId,
-    ability_index: usize,
-    payment_source: Option<ObjectId>,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-) -> bool {
-    mana_ability_can_pay_pip_filtered(
-        game,
-        perm_id,
-        ability_index,
-        payment_source,
-        pip,
-        mana_spend_policy,
-        |game, unit, payment_source| restricted_unit_is_payable(game, unit, payment_source),
-    )
-}
-
-#[cfg(test)]
-fn mana_ability_can_pay_pip_filtered(
-    game: &GameState,
-    perm_id: ObjectId,
-    ability_index: usize,
-    payment_source: Option<ObjectId>,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-    restricted_is_payable: impl Fn(
-        &GameState,
-        &crate::ability::RestrictedManaUnit,
-        Option<ObjectId>,
-    ) -> bool,
-) -> bool {
-    let Some(ability) = game.current_ability(perm_id, ability_index) else {
-        return false;
-    };
-
-    mana_ability_definition_can_pay_pip_filtered(
-        game,
-        perm_id,
-        &ability,
-        payment_source,
-        pip,
-        mana_spend_policy,
-        restricted_is_payable,
-    )
-}
-
-pub(super) fn mana_ability_definition_can_pay_pip_with_reason(
-    game: &GameState,
-    perm_id: ObjectId,
-    ability: &crate::ability::Ability,
-    payment_source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-) -> bool {
-    mana_ability_definition_can_pay_pip_filtered(
-        game,
-        perm_id,
-        ability,
-        payment_source,
-        pip,
-        mana_spend_policy,
-        |game, unit, payment_source| {
-            game.restricted_mana_unit_is_payable_for_reason(unit, payment_source, payment_reason)
-        },
-    )
-}
-
-fn mana_ability_definition_can_pay_pip_filtered(
-    game: &GameState,
-    perm_id: ObjectId,
-    ability: &crate::ability::Ability,
-    payment_source: Option<ObjectId>,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-    restricted_is_payable: impl Fn(
-        &GameState,
-        &crate::ability::RestrictedManaUnit,
-        Option<ObjectId>,
-    ) -> bool,
-) -> bool {
-    use crate::ability::AbilityKind;
-    use crate::mana::ManaSymbol;
-
-    let Some(obj) = game.object(perm_id) else {
-        return false;
-    };
-
-    let AbilityKind::Activated(mana_ability) = &ability.kind else {
-        return false;
-    };
-    if !mana_ability.is_runtime_mana_ability(game, perm_id, game.controller_of(obj)) {
-        return false;
-    }
-    if !mana_ability.mana_usage_restrictions.is_empty() {
-        let unit = crate::ability::RestrictedManaUnit {
-            symbol: ManaSymbol::Colorless,
-            source: perm_id,
-            source_chosen_creature_type: game.chosen_creature_type(perm_id),
-            restrictions: mana_ability.mana_usage_restrictions.clone(),
-        };
-        if !restricted_is_payable(game, &unit, payment_source) {
-            return false;
-        }
-    }
-
-    // Check what mana this ability can produce.
-    let produced_symbols =
-        mana_ability.inferred_mana_symbols(game, perm_id, game.controller_of(obj));
-    let source_is_snow = game.current_has_supertype(perm_id, crate::types::Supertype::Snow);
-
-    for produced in &produced_symbols {
-        for pip_symbol in pip {
-            match (produced, pip_symbol) {
-                // Any mana can pay generic
-                (_, ManaSymbol::Generic(_)) => return true,
-                (_, ManaSymbol::Snow) if source_is_snow => return true,
-                (_, ManaSymbol::White)
-                | (_, ManaSymbol::Blue)
-                | (_, ManaSymbol::Black)
-                | (_, ManaSymbol::Red)
-                | (_, ManaSymbol::Green)
-                | (_, ManaSymbol::Colorless) => {
-                    if mana_spend_policy.can_pay_symbol(*produced, *pip_symbol) {
-                        return true;
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    false
-}
-
-/// Returns true when a mana ability activation is safe to expose as "undo".
-///
-/// Undo-safe mana abilities are intentionally narrow:
-/// - activated mana ability
-/// - all activation cost components are tap costs
-/// - every runtime effect is mana-production-only
-///
-/// Anything else (counters, sacrifice, life, non-mana side effects, etc.)
-/// is treated as irreversible for UI undo purposes.
 pub fn mana_ability_is_undo_safe(game: &GameState, source: ObjectId, ability_index: usize) -> bool {
     use crate::ability::AbilityKind;
 
@@ -1674,68 +244,6 @@ pub fn mana_ability_is_undo_safe(game: &GameState, source: ObjectId, ability_ind
     })
 }
 
-pub(super) fn pip_mana_color_restriction(
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-) -> Option<Vec<crate::color::Color>> {
-    use crate::color::Color;
-    use crate::mana::ManaSymbol;
-
-    let mut colors = Vec::new();
-    let mut has_non_colored_mana_alternative = false;
-
-    for symbol in pip {
-        match symbol {
-            ManaSymbol::White
-            | ManaSymbol::Blue
-            | ManaSymbol::Black
-            | ManaSymbol::Red
-            | ManaSymbol::Green
-            | ManaSymbol::Colorless => {
-                for (produced, color) in [
-                    (ManaSymbol::White, Color::White),
-                    (ManaSymbol::Blue, Color::Blue),
-                    (ManaSymbol::Black, Color::Black),
-                    (ManaSymbol::Red, Color::Red),
-                    (ManaSymbol::Green, Color::Green),
-                ] {
-                    if mana_spend_policy.can_pay_symbol(produced, *symbol) {
-                        colors.push(color);
-                    }
-                }
-            }
-            ManaSymbol::Generic(_) | ManaSymbol::Snow => {
-                has_non_colored_mana_alternative = true;
-            }
-            ManaSymbol::Life(_) | ManaSymbol::X => {}
-        }
-    }
-
-    if has_non_colored_mana_alternative {
-        return None;
-    }
-
-    colors.sort_unstable_by_key(|color| match color {
-        Color::White => 0u8,
-        Color::Blue => 1u8,
-        Color::Black => 2u8,
-        Color::Red => 3u8,
-        Color::Green => 4u8,
-    });
-    colors.dedup();
-
-    if colors.is_empty() {
-        None
-    } else {
-        Some(colors)
-    }
-}
-
-pub(super) fn record_pip_payment_action(trace: &mut Vec<CostStep>, action: &ManaPipPaymentAction) {
-    let _ = trace;
-    let _ = action;
-}
-
 pub(super) fn record_immediate_cost_payment(
     trace: &mut Vec<CostStep>,
     cost: &crate::costs::Cost,
@@ -1746,395 +254,712 @@ pub(super) fn record_immediate_cost_payment(
     let _ = source;
 }
 
-pub(super) fn record_cast_mana_ability_payment(
-    pending: &mut PendingCast,
-    source: ObjectId,
-    ability_index: usize,
-) {
-    let _ = pending;
-    let _ = source;
-    let _ = ability_index;
+fn add_spent_pool_delta(spent: &mut ManaPool, before: &ManaPool, after: &ManaPool) {
+    spent.white += before.white.saturating_sub(after.white);
+    spent.blue += before.blue.saturating_sub(after.blue);
+    spent.black += before.black.saturating_sub(after.black);
+    spent.red += before.red.saturating_sub(after.red);
+    spent.green += before.green.saturating_sub(after.green);
+    spent.colorless += before.colorless.saturating_sub(after.colorless);
 }
 
-pub(super) fn record_activation_mana_ability_payment(
-    pending: &mut PendingActivation,
-    source: ObjectId,
-    ability_index: usize,
-) {
-    let _ = pending;
-    let _ = source;
-    let _ = ability_index;
-}
-
-/// Execute a pip payment action.
-/// Execute a pip payment action.
-/// Returns true if the pip was actually paid (mana consumed or life paid),
-/// false if we only generated mana (need to continue processing this pip).
-pub(super) fn execute_pip_payment_action(
+fn execute_planned_mana_activations(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
-    player: PlayerId,
-    source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-    action: &ManaPipPaymentAction,
+    payer: PlayerId,
+    payment: &mut crate::mana_payment::PendingManaPayment,
+    undo_locked_by_mana: &mut bool,
     decision_maker: &mut impl DecisionMaker,
-    payment_trace: &mut Vec<CostStep>,
-    mut mana_spent_to_cast: Option<&mut ManaPool>,
-    mut spent_mana_sources: Option<&mut Vec<ObjectSnapshot>>,
 ) -> Result<bool, GameLoopError> {
-    match action {
-        ManaPipPaymentAction::UseFromPool(symbol) => {
-            let requires_snow_source = symbol_requires_snow_source(*symbol, pip, mana_spend_policy);
-            let spent_info = if requires_snow_source {
-                spend_pool_symbol_from_snow_source_with_reason(
-                    game,
-                    player,
-                    *symbol,
-                    source,
-                    payment_reason,
-                )
-            } else {
-                spend_pool_symbol_with_reason(game, player, *symbol, source, payment_reason)
-            }
-            .ok_or_else(|| {
+    while let Some(step) = payment
+        .plan
+        .mana_ability_steps
+        .get(payment.next_activation)
+        .cloned()
+    {
+        let activation_cost_has_tap =
+            activated_ability_has_tap_cost(game, step.source, step.ability_index);
+        let events =
+            crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
+                game,
+                payer,
+                step.source,
+                step.ability_index,
+                step.color_restriction.clone(),
+                decision_maker,
+            )
+            .map_err(|error| {
                 GameLoopError::InvalidState(format!(
-                    "Not enough {} mana in the pool",
-                    crate::mana::ManaCost::from_symbols(vec![*symbol]).to_oracle()
+                    "planned mana ability is no longer legal: {error}"
                 ))
             })?;
-            if let Some(spent) = mana_spent_to_cast.as_deref_mut() {
-                track_spent_mana_symbol(spent, spent_info.symbol);
-            }
-            if let Some(snapshot) = spent_info.source_snapshot.as_ref()
-                && let Some(sources) = spent_mana_sources.as_deref_mut()
-            {
-                sources.push(snapshot.clone());
-            }
-            apply_spent_mana_bonuses_for_transaction(
-                game,
-                player,
-                source,
-                payment_reason,
-                &spent_info,
-            );
-            record_pip_payment_action(payment_trace, action);
-            Ok(true) // Pip was paid
+        if decision_maker.awaiting_choice() {
+            // Replay-based decision makers will rerun this same activation
+            // from the enclosing action checkpoint with the captured answer.
+            // Do not advance the plan cursor until that replay completes.
+            return Ok(true);
         }
-        ManaPipPaymentAction::ActivateManaAbility {
-            source_id,
-            ability_index,
-        } => {
-            let before_pool = game
-                .player(player)
-                .map(|player_obj| player_obj.mana_pool.clone());
-            let mut source_policy = mana_spend_policy.clone();
-            if game.can_spend_mana_as_any_color_from_mana_source(player, source, *source_id) {
-                source_policy.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyColor);
-            }
-            let mana_color_restriction = pip_mana_color_restriction(pip, &source_policy);
-            let emitted_events =
-                crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
-                game,
-                player,
-                *source_id,
-                *ability_index,
-                mana_color_restriction,
-                decision_maker,
-            )?;
-            for event in emitted_events {
-                let include_delayed = event
-                    .downcast::<crate::events::AbilityActivatedEvent>()
-                    .is_some();
-                queue_triggers_from_event(game, trigger_queue, event, include_delayed);
-            }
-            record_pip_payment_action(payment_trace, action);
-
-            let produced_symbols = before_pool
-                .as_ref()
-                .and_then(|before| {
-                    game.player(player)
-                        .map(|player_obj| mana_pool_delta_symbols(before, &player_obj.mana_pool))
-                })
-                .unwrap_or_default();
-
-            if let Some(spent_info) = spend_pool_mana_for_pip_with_reason(
-                game,
-                player,
-                source,
-                payment_reason,
-                pip,
-                &source_policy,
-                &produced_symbols,
-            ) {
-                if let Some(spent) = mana_spent_to_cast.as_deref_mut() {
-                    track_spent_mana_symbol(spent, spent_info.symbol);
-                }
-                if let Some(snapshot) = spent_info.source_snapshot.as_ref()
-                    && let Some(sources) = spent_mana_sources.as_deref_mut()
-                {
-                    sources.push(snapshot.clone());
-                }
-                apply_spent_mana_bonuses_for_transaction(
-                    game,
-                    player,
-                    source,
-                    payment_reason,
-                    &spent_info,
-                );
-                record_pip_payment_action(
-                    payment_trace,
-                    &ManaPipPaymentAction::UseFromPool(spent_info.symbol),
-                );
-                return Ok(true);
-            }
-
-            Ok(false)
+        for event in events {
+            queue_triggers_from_event(game, trigger_queue, event, false);
         }
-        ManaPipPaymentAction::PayLife(amount) => {
-            game.lose_life(player, *amount);
-            record_pip_payment_action(payment_trace, action);
-            Ok(true) // Pip was paid
+        queue_ability_activated_event(
+            game,
+            trigger_queue,
+            decision_maker,
+            step.source,
+            payer,
+            true,
+            None,
+            activation_cost_has_tap,
+        );
+        *undo_locked_by_mana |= !step.undo_safe;
+        payment.next_activation += 1;
+        drain_pending_trigger_events(game, trigger_queue);
+    }
+    Ok(false)
+}
+
+fn execute_planned_keyword_payments(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    pending: &mut PendingCast,
+    payment: &crate::mana_payment::PendingManaPayment,
+    _decision_maker: &mut impl DecisionMaker,
+) -> Result<(), GameLoopError> {
+    for allocation in &payment.plan.allocations {
+        let (permanent_id, effect) = match allocation.payment {
+            crate::mana_payment::PlannedPipPayment::Convoke(permanent_id) => {
+                (permanent_id, AlternativePaymentEffect::Convoke)
+            }
+            crate::mana_payment::PlannedPipPayment::Improvise(permanent_id) => {
+                (permanent_id, AlternativePaymentEffect::Improvise)
+            }
+            _ => continue,
+        };
+        if game.object(permanent_id).is_none() || game.is_tapped(permanent_id) {
+            return Err(GameLoopError::InvalidState(format!(
+                "planned {effect:?} permanent {permanent_id:?} is no longer available"
+            )));
         }
-        ManaPipPaymentAction::PayViaAlternative {
+        tap_permanent_with_trigger(game, trigger_queue, permanent_id);
+        let event_provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::KeywordAction);
+        queue_triggers_from_event(
+            game,
+            trigger_queue,
+            TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(
+                    keyword_action_from_alternative_effect(effect),
+                    pending.caster,
+                    pending.spell_id,
+                    1,
+                ),
+                event_provenance,
+            ),
+            true,
+        );
+        record_keyword_payment_contribution(
+            &mut pending.keyword_payment_contributions,
             permanent_id,
             effect,
-        } => {
-            tap_permanent_with_trigger(game, trigger_queue, *permanent_id);
-            if let Some(source_id) = source {
-                let event_provenance = game
-                    .provenance_graph_mut()
-                    .alloc_root_event(crate::events::EventKind::KeywordAction);
-                let event = TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(
-                        keyword_action_from_alternative_effect(*effect),
-                        player,
-                        source_id,
-                        1,
-                    ),
-                    event_provenance,
-                );
-                queue_triggers_from_event(game, trigger_queue, event, true);
-            }
-            record_pip_payment_action(payment_trace, action);
-            Ok(true) // Pip was paid
-        }
+        );
     }
+    drain_pending_trigger_events(game, trigger_queue);
+    Ok(())
 }
 
-pub(super) fn mana_pool_delta_symbols(
-    before: &ManaPool,
-    after: &ManaPool,
-) -> Vec<crate::mana::ManaSymbol> {
-    use crate::mana::ManaSymbol;
-
-    let mut produced = Vec::new();
-    for (symbol, delta) in [
-        (ManaSymbol::White, after.white.saturating_sub(before.white)),
-        (ManaSymbol::Blue, after.blue.saturating_sub(before.blue)),
-        (ManaSymbol::Black, after.black.saturating_sub(before.black)),
-        (ManaSymbol::Red, after.red.saturating_sub(before.red)),
-        (ManaSymbol::Green, after.green.saturating_sub(before.green)),
-        (
-            ManaSymbol::Colorless,
-            after.colorless.saturating_sub(before.colorless),
-        ),
-    ] {
-        for _ in 0..delta {
-            produced.push(symbol);
-        }
-    }
-    produced
-}
-
-fn spend_pool_mana_for_pip_with_reason(
+pub(super) fn prompt_pending_mana_ability_payment(
     game: &mut GameState,
-    player: PlayerId,
-    payment_source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-    preferred_symbols: &[crate::mana::ManaSymbol],
-) -> Option<SpentManaInfo> {
-    spend_pool_mana_for_pip_filtered(
-        game,
-        player,
-        payment_source,
-        pip,
-        mana_spend_policy,
-        preferred_symbols,
-        |game, player, symbol, payment_source| {
-            if symbol_requires_snow_source(symbol, pip, mana_spend_policy) {
-                spend_pool_symbol_from_snow_source_with_reason(
-                    game,
-                    player,
-                    symbol,
-                    payment_source,
-                    payment_reason,
-                )
-            } else {
-                spend_pool_symbol_with_reason(game, player, symbol, payment_source, payment_reason)
-            }
-        },
+    state: &mut PriorityLoopState,
+    mut pending: PendingManaAbility,
+    subject: String,
+) -> Result<GameProgress, GameLoopError> {
+    let spend_policy = game.mana_spend_policy(pending.activator, Some(pending.source));
+    let mut request = crate::mana_payment::ManaPaymentRequest::new(
+        pending.activator,
+        pending.source,
+        crate::costs::PaymentReason::ActivateManaAbility,
+        pending.mana_cost.clone(),
     )
+    .with_spend_policy(spend_policy);
+    request.preferences.excluded_sources.push(pending.source);
+    if let Some(existing) = pending.pending_mana_payment.as_ref() {
+        request.preferences = existing.request.preferences.clone();
+        if !request
+            .preferences
+            .excluded_sources
+            .contains(&pending.source)
+        {
+            request.preferences.excluded_sources.push(pending.source);
+        }
+    }
+    request.preferences.normalize();
+    request.allow_black_life = crate::decision::mana_cost_has_black_symbol(&request.cost)
+        && game.player_can_pay_black_with_life_for_reason(
+            pending.activator,
+            Some(pending.source),
+            crate::costs::PaymentReason::ActivateManaAbility,
+        );
+    let plan = crate::mana_payment::plan_mana_payment(game, &request)
+        .map_err(|failure| {
+            state.rollback_action(game);
+            GameLoopError::ActionCancelled(format!(
+                "the mana ability's activation cost has no legal payment plan: {failure:?}"
+            ))
+        })?
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            GameLoopError::InvalidState("planner returned no mana-ability payment plan".to_string())
+        })?;
+    pending.pending_mana_payment = Some(crate::mana_payment::PendingManaPayment::new(
+        request.clone(),
+        plan.clone(),
+    ));
+    state.pending_mana_ability = Some(pending);
+    Ok(GameProgress::NeedsDecisionCtx(
+        crate::decisions::context::DecisionContext::ManaPayment(
+            crate::decisions::context::ManaPaymentContext::new(
+                request.payer,
+                request.source,
+                subject,
+                request,
+                plan,
+            ),
+        ),
+    ))
 }
 
-fn symbol_requires_snow_source(
-    symbol: crate::mana::ManaSymbol,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-) -> bool {
-    pip.iter()
-        .any(|candidate| matches!(candidate, crate::mana::ManaSymbol::Snow))
-        && !pip.iter().any(|candidate| match candidate {
-            crate::mana::ManaSymbol::Snow
-            | crate::mana::ManaSymbol::Life(_)
-            | crate::mana::ManaSymbol::X => false,
-            crate::mana::ManaSymbol::Generic(_) => true,
-            required => mana_spend_policy.can_pay_symbol(symbol, *required),
+fn refresh_prepared_spell_payment(
+    game: &GameState,
+    pending: &PendingCast,
+    payment: &mut crate::mana_payment::PendingManaPayment,
+) -> Result<(), GameLoopError> {
+    let mut request = spell_mana_payment_request(game, pending)?;
+    request.allow_mana_abilities = false;
+    request.preferences = payment.request.preferences.clone();
+    for activated in &payment.plan.mana_ability_steps {
+        request
+            .preferences
+            .required_sources
+            .retain(|source| *source != activated.source);
+    }
+    request.preferences.normalize();
+    let plan = crate::mana_payment::plan_mana_payment(game, &request)
+        .map_err(|failure| {
+            GameLoopError::ActionCancelled(format!(
+                "the prepared spell payment can no longer pay the selected costs: {failure:?}"
+            ))
+        })?
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            GameLoopError::InvalidState("planner returned no prepared spell plan".to_string())
+        })?;
+    payment.request = request;
+    payment.plan = plan;
+    payment.next_activation = payment.plan.mana_ability_steps.len();
+    Ok(())
+}
+
+pub(super) fn commit_prepared_spell_mana_payment(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    mut pending: PendingCast,
+    mut payment: crate::mana_payment::PendingManaPayment,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    if let Err(error) = refresh_prepared_spell_payment(game, &pending, &mut payment) {
+        state.rollback_action(game);
+        return Err(error);
+    }
+    if let Err(error) = execute_planned_keyword_payments(
+        game,
+        trigger_queue,
+        &mut pending,
+        &payment,
+        decision_maker,
+    ) {
+        state.rollback_action(game);
+        return Err(error);
+    }
+    let Some(pool_before) = game
+        .player(pending.caster)
+        .map(|player| player.mana_pool.clone())
+    else {
+        state.rollback_action(game);
+        return Err(GameLoopError::InvalidState(
+            "spell payer is missing".to_string(),
+        ));
+    };
+    if !game.try_pay_mana_cost_with_payment_options(
+        payment.request.payer,
+        Some(payment.request.source),
+        &payment.plan.mana_cost_after_alternatives,
+        payment.request.x_value,
+        payment.request.reason,
+        &payment.request.spend_policy,
+        payment.request.allow_life_payment,
+        payment.request.allow_black_life,
+        payment.request.preferences.prefer_life,
+    ) {
+        state.rollback_action(game);
+        return Err(GameLoopError::ActionCancelled(
+            "spell payment failed validation and was rolled back".to_string(),
+        ));
+    }
+    let pool_after = game
+        .player(pending.caster)
+        .map(|player| player.mana_pool.clone())
+        .unwrap_or_default();
+    add_spent_pool_delta(&mut pending.mana_spent_to_cast, &pool_before, &pool_after);
+    pending.mana_cost_to_pay = None;
+    pending.pending_mana_payment = None;
+    pending.stage = spell_stage_after_targets(&pending);
+    continue_spell_next_cost_or_finalize(game, trigger_queue, state, pending, decision_maker)
+}
+
+pub(super) fn commit_prepared_activation_mana_payment(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    mut pending: PendingActivation,
+    mut payment: crate::mana_payment::PendingManaPayment,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    let mut request = match activation_mana_payment_request(game, &pending) {
+        Ok(request) => request,
+        Err(error) => {
+            state.rollback_action(game);
+            return Err(error);
+        }
+    };
+    request.allow_mana_abilities = false;
+    request.preferences = payment.request.preferences.clone();
+    for activated in &payment.plan.mana_ability_steps {
+        request
+            .preferences
+            .required_sources
+            .retain(|source| *source != activated.source);
+    }
+    request.preferences.normalize();
+    let plan = match crate::mana_payment::plan_mana_payment(game, &request) {
+        Ok(plans) => plans.into_iter().next().ok_or_else(|| {
+            GameLoopError::InvalidState("planner returned no prepared activation plan".to_string())
+        })?,
+        Err(failure) => {
+            state.rollback_action(game);
+            return Err(GameLoopError::ActionCancelled(format!(
+                "the prepared activation payment can no longer pay the selected costs: {failure:?}"
+            )));
+        }
+    };
+    payment.request = request;
+    payment.plan = plan;
+    let Some(pool_before) = game
+        .player(pending.activator)
+        .map(|player| player.mana_pool.clone())
+    else {
+        state.rollback_action(game);
+        return Err(GameLoopError::InvalidState(
+            "activation payer is missing".to_string(),
+        ));
+    };
+    if !game.try_pay_mana_cost_with_payment_options(
+        payment.request.payer,
+        Some(payment.request.source),
+        &payment.plan.mana_cost_after_alternatives,
+        payment.request.x_value,
+        payment.request.reason,
+        &payment.request.spend_policy,
+        payment.request.allow_life_payment,
+        payment.request.allow_black_life,
+        payment.request.preferences.prefer_life,
+    ) {
+        state.rollback_action(game);
+        return Err(GameLoopError::ActionCancelled(
+            "activation payment failed validation and was rolled back".to_string(),
+        ));
+    }
+    let pool_after = game
+        .player(pending.activator)
+        .map(|player| player.mana_pool.clone())
+        .unwrap_or_default();
+    add_spent_pool_delta(
+        &mut pending.mana_spent_on_activation,
+        &pool_before,
+        &pool_after,
+    );
+    pending.mana_cost_to_pay = None;
+    pending.pending_mana_payment = None;
+    pending.stage = activation_stage_after_targets(&pending);
+    continue_activation(game, trigger_queue, state, pending, decision_maker)
+}
+
+fn revalidate_authoritative_payment_plan(
+    game: &GameState,
+    payment: &crate::mana_payment::PendingManaPayment,
+    label: &str,
+) -> Result<crate::mana_payment::ManaPaymentPlan, GameLoopError> {
+    crate::mana_payment::plan_mana_payment(game, &payment.request)
+        .map_err(|failure| {
+            GameLoopError::ActionCancelled(format!(
+                "{label} payment became illegal before confirmation: {failure:?}"
+            ))
+        })?
+        .into_iter()
+        .find(|plan| plan.id == payment.plan.id && plan.request_hash == payment.plan.request_hash)
+        .ok_or_else(|| {
+            GameLoopError::ActionCancelled(format!(
+                "{label} payment state changed; request a new plan"
+            ))
         })
 }
 
-fn spend_pool_mana_for_pip_filtered(
+/// Apply a whole-cost payment response. Plan identity and legality are checked
+/// again immediately before any irreversible step is executed.
+pub(super) fn apply_mana_payment_plan_response(
     game: &mut GameState,
-    player: PlayerId,
-    payment_source: Option<ObjectId>,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-    preferred_symbols: &[crate::mana::ManaSymbol],
-    mut spend_symbol: impl FnMut(
-        &mut GameState,
-        PlayerId,
-        crate::mana::ManaSymbol,
-        Option<ObjectId>,
-    ) -> Option<SpentManaInfo>,
-) -> Option<SpentManaInfo> {
-    use crate::mana::ManaSymbol;
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    response: &crate::mana_payment::ManaPaymentResponse,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    use crate::mana_payment::ManaPaymentResponse;
 
-    let mut candidates = Vec::new();
+    if matches!(response, ManaPaymentResponse::Cancel) {
+        state.rollback_action(game);
+        return advance_priority_with_dm(game, trigger_queue, decision_maker);
+    }
 
-    for &symbol in preferred_symbols {
-        if !matches!(
-            symbol,
-            ManaSymbol::White
-                | ManaSymbol::Blue
-                | ManaSymbol::Black
-                | ManaSymbol::Red
-                | ManaSymbol::Green
-                | ManaSymbol::Colorless
+    if let Some(mut pending) = state.pending_mana_ability.take() {
+        let mut payment = pending.pending_mana_payment.take().ok_or_else(|| {
+            GameLoopError::InvalidState(
+                "mana ability has no authoritative payment proposal".to_string(),
+            )
+        })?;
+        match response {
+            ManaPaymentResponse::Replan { preferences } => {
+                let mut preferences = preferences.clone();
+                if !preferences.excluded_sources.contains(&pending.source) {
+                    preferences.excluded_sources.push(pending.source);
+                }
+                preferences.normalize();
+                payment.request.preferences = preferences;
+                pending.pending_mana_payment = Some(payment);
+                let subject = game
+                    .object(pending.source)
+                    .map(|object| format!("{}'s mana ability", object.name))
+                    .unwrap_or_else(|| "mana ability".to_string());
+                return prompt_pending_mana_ability_payment(game, state, pending, subject);
+            }
+            ManaPaymentResponse::Confirm {
+                plan_id,
+                request_hash,
+            } if *plan_id == payment.plan.id && *request_hash == payment.plan.request_hash => {}
+            ManaPaymentResponse::Confirm { .. } => {
+                pending.pending_mana_payment = Some(payment);
+                state.pending_mana_ability = Some(pending);
+                return Err(GameLoopError::InvalidState(
+                    "stale or client-authored mana-ability payment plan".to_string(),
+                ));
+            }
+            ManaPaymentResponse::Cancel => unreachable!(),
+        }
+        payment.plan = match revalidate_authoritative_payment_plan(game, &payment, "mana-ability") {
+            Ok(plan) => plan,
+            Err(error) => {
+                state.rollback_action(game);
+                return Err(error);
+            }
+        };
+        match execute_planned_mana_activations(
+            game,
+            trigger_queue,
+            pending.activator,
+            &mut payment,
+            &mut pending.undo_locked_by_mana,
+            decision_maker,
         ) {
-            continue;
+            Ok(true) => {
+                pending.pending_mana_payment = Some(payment);
+                state.pending_mana_ability = Some(pending);
+                return Ok(GameProgress::Continue);
+            }
+            Ok(false) => {}
+            Err(error) => {
+                state.rollback_action(game);
+                return Err(error);
+            }
         }
-        if symbol_can_pay_pip(symbol, pip, mana_spend_policy) && !candidates.contains(&symbol) {
-            candidates.push(symbol);
+        if !game.try_pay_mana_cost_with_payment_options(
+            payment.request.payer,
+            Some(payment.request.source),
+            &payment.plan.mana_cost_after_alternatives,
+            payment.request.x_value,
+            payment.request.reason,
+            &payment.request.spend_policy,
+            payment.request.allow_life_payment,
+            payment.request.allow_black_life,
+            payment.request.preferences.prefer_life,
+        ) {
+            state.rollback_action(game);
+            return Err(GameLoopError::ActionCancelled(
+                "mana-ability payment failed validation and was rolled back".to_string(),
+            ));
         }
+        pending.mana_cost = crate::mana::ManaCost::new();
+        pending.pending_mana_payment = None;
+        if let Err(error) =
+            execute_pending_mana_ability(game, trigger_queue, &pending, decision_maker)
+        {
+            state.rollback_action(game);
+            return Err(error);
+        }
+        return advance_priority_with_dm(game, trigger_queue, decision_maker);
     }
 
-    for symbol in [
-        ManaSymbol::White,
-        ManaSymbol::Blue,
-        ManaSymbol::Black,
-        ManaSymbol::Red,
-        ManaSymbol::Green,
-        ManaSymbol::Colorless,
-    ] {
-        if symbol_can_pay_pip(symbol, pip, mana_spend_policy) && !candidates.contains(&symbol) {
-            candidates.push(symbol);
+    if let Some(mut pending) = state.pending_activation.take() {
+        let mut payment = pending.pending_mana_payment.take().ok_or_else(|| {
+            GameLoopError::InvalidState(
+                "activation has no authoritative mana payment proposal".to_string(),
+            )
+        })?;
+        match response {
+            ManaPaymentResponse::Replan { preferences } => {
+                let mut preferences = preferences.clone();
+                preferences.normalize();
+                payment.request.preferences = preferences;
+                pending.pending_mana_payment = Some(payment);
+                return prompt_activation_mana_ability_window(
+                    game,
+                    trigger_queue,
+                    state,
+                    pending,
+                    decision_maker,
+                );
+            }
+            ManaPaymentResponse::Confirm {
+                plan_id,
+                request_hash,
+            } if *plan_id == payment.plan.id && *request_hash == payment.plan.request_hash => {}
+            ManaPaymentResponse::Confirm { .. } => {
+                pending.pending_mana_payment = Some(payment);
+                state.pending_activation = Some(pending);
+                return Err(GameLoopError::InvalidState(
+                    "stale or client-authored activation payment plan".to_string(),
+                ));
+            }
+            ManaPaymentResponse::Cancel => unreachable!(),
         }
+
+        payment.plan = match revalidate_authoritative_payment_plan(game, &payment, "activation") {
+            Ok(plan) => plan,
+            Err(error) => {
+                state.rollback_action(game);
+                return Err(error);
+            }
+        };
+        match execute_planned_mana_activations(
+            game,
+            trigger_queue,
+            pending.activator,
+            &mut payment,
+            &mut pending.undo_locked_by_mana,
+            decision_maker,
+        ) {
+            Ok(true) => {
+                pending.pending_mana_payment = Some(payment);
+                state.pending_activation = Some(pending);
+                return Ok(GameProgress::Continue);
+            }
+            Ok(false) => {}
+            Err(error) => {
+                state.rollback_action(game);
+                return Err(error);
+            }
+        }
+        if !pending.remaining_cost_steps.is_empty() {
+            pending.pending_mana_payment = Some(payment);
+            pending.stage = ActivationStage::ChoosingNextCost;
+            return continue_activation(game, trigger_queue, state, pending, decision_maker);
+        }
+        return commit_prepared_activation_mana_payment(
+            game,
+            trigger_queue,
+            state,
+            pending,
+            payment,
+            decision_maker,
+        );
     }
 
-    for symbol in candidates {
-        if let Some(spent_info) = spend_symbol(game, player, symbol, payment_source) {
-            return Some(spent_info);
+    let mut pending = state.pending_cast.take().ok_or_else(|| {
+        GameLoopError::InvalidState("no cast or activation is awaiting mana payment".to_string())
+    })?;
+    let mut payment = pending.pending_mana_payment.take().ok_or_else(|| {
+        GameLoopError::InvalidState("spell has no authoritative mana payment proposal".to_string())
+    })?;
+    let is_assist_payment =
+        pending.stage == CastStage::PayingAssistMana && payment.request.payer != pending.caster;
+    if is_assist_payment {
+        match response {
+            ManaPaymentResponse::Replan { preferences } => {
+                let mut preferences = preferences.clone();
+                preferences.normalize();
+                payment.request.preferences = preferences;
+                pending.pending_mana_payment = Some(payment);
+                return prompt_spell_assist_payment_plan(game, state, pending);
+            }
+            ManaPaymentResponse::Confirm {
+                plan_id,
+                request_hash,
+            } if *plan_id == payment.plan.id && *request_hash == payment.plan.request_hash => {}
+            ManaPaymentResponse::Confirm { .. } => {
+                pending.pending_mana_payment = Some(payment);
+                state.pending_cast = Some(pending);
+                return Err(GameLoopError::InvalidState(
+                    "stale or client-authored Assist payment plan".to_string(),
+                ));
+            }
+            ManaPaymentResponse::Cancel => unreachable!(),
         }
+        payment.plan = match revalidate_authoritative_payment_plan(game, &payment, "Assist") {
+            Ok(plan) => plan,
+            Err(error) => {
+                state.rollback_action(game);
+                return Err(error);
+            }
+        };
+        match execute_planned_mana_activations(
+            game,
+            trigger_queue,
+            payment.request.payer,
+            &mut payment,
+            &mut pending.undo_locked_by_mana,
+            decision_maker,
+        ) {
+            Ok(true) => {
+                pending.pending_mana_payment = Some(payment);
+                state.pending_cast = Some(pending);
+                return Ok(GameProgress::Continue);
+            }
+            Ok(false) => {}
+            Err(error) => {
+                state.rollback_action(game);
+                return Err(error);
+            }
+        }
+        let Some(pool_before) = game
+            .player(payment.request.payer)
+            .map(|player| player.mana_pool.clone())
+        else {
+            state.rollback_action(game);
+            return Err(GameLoopError::InvalidState(
+                "Assist payer is missing".to_string(),
+            ));
+        };
+        if !game.try_pay_mana_cost_with_payment_options(
+            payment.request.payer,
+            Some(payment.request.source),
+            &payment.plan.mana_cost_after_alternatives,
+            payment.request.x_value,
+            payment.request.reason,
+            &payment.request.spend_policy,
+            payment.request.allow_life_payment,
+            payment.request.allow_black_life,
+            payment.request.preferences.prefer_life,
+        ) {
+            state.rollback_action(game);
+            return Err(GameLoopError::ActionCancelled(
+                "Assist payment failed validation and was rolled back".to_string(),
+            ));
+        }
+        let pool_after = game
+            .player(payment.request.payer)
+            .map(|player| player.mana_pool.clone())
+            .unwrap_or_default();
+        add_spent_pool_delta(
+            &mut pending.assist_mana_spent_to_cast,
+            &pool_before,
+            &pool_after,
+        );
+        add_spent_pool_delta(&mut pending.mana_spent_to_cast, &pool_before, &pool_after);
+        pending.pending_mana_payment = None;
+        pending.assist_payment_complete = true;
+        pending.display_mana_pips.clear();
+        return begin_spell_mana_payment(game, trigger_queue, state, pending, decision_maker);
+    }
+    match response {
+        ManaPaymentResponse::Replan { preferences } => {
+            let mut preferences = preferences.clone();
+            preferences.normalize();
+            payment.request.preferences = preferences;
+            pending.pending_mana_payment = Some(payment);
+            return prompt_spell_mana_ability_window(
+                game,
+                trigger_queue,
+                state,
+                pending,
+                decision_maker,
+            );
+        }
+        ManaPaymentResponse::Confirm {
+            plan_id,
+            request_hash,
+        } if *plan_id == payment.plan.id && *request_hash == payment.plan.request_hash => {}
+        ManaPaymentResponse::Confirm { .. } => {
+            pending.pending_mana_payment = Some(payment);
+            state.pending_cast = Some(pending);
+            return Err(GameLoopError::InvalidState(
+                "stale or client-authored spell payment plan".to_string(),
+            ));
+        }
+        ManaPaymentResponse::Cancel => unreachable!(),
     }
 
-    None
+    payment.plan = match revalidate_authoritative_payment_plan(game, &payment, "spell") {
+        Ok(plan) => plan,
+        Err(error) => {
+            state.rollback_action(game);
+            return Err(error);
+        }
+    };
+    match execute_planned_mana_activations(
+        game,
+        trigger_queue,
+        pending.caster,
+        &mut payment,
+        &mut pending.undo_locked_by_mana,
+        decision_maker,
+    ) {
+        Ok(true) => {
+            pending.pending_mana_payment = Some(payment);
+            state.pending_cast = Some(pending);
+            return Ok(GameProgress::Continue);
+        }
+        Ok(false) => {}
+        Err(error) => {
+            state.rollback_action(game);
+            return Err(error);
+        }
+    }
+    if !pending.remaining_cost_steps.is_empty() {
+        pending.pending_mana_payment = Some(payment);
+        pending.stage = CastStage::ChoosingNextCost;
+        return continue_spell_next_cost_or_finalize(
+            game,
+            trigger_queue,
+            state,
+            pending,
+            decision_maker,
+        );
+    }
+    commit_prepared_spell_mana_payment(game, trigger_queue, state, pending, payment, decision_maker)
 }
 
-pub(super) fn symbol_can_pay_pip(
-    symbol: crate::mana::ManaSymbol,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-) -> bool {
-    use crate::mana::ManaSymbol;
-
-    pip.iter().any(|candidate| match candidate {
-        ManaSymbol::Generic(_) | ManaSymbol::Snow => matches!(
-            symbol,
-            ManaSymbol::White
-                | ManaSymbol::Blue
-                | ManaSymbol::Black
-                | ManaSymbol::Red
-                | ManaSymbol::Green
-                | ManaSymbol::Colorless
-        ),
-        ManaSymbol::White
-        | ManaSymbol::Blue
-        | ManaSymbol::Black
-        | ManaSymbol::Red
-        | ManaSymbol::Green
-        | ManaSymbol::Colorless => mana_spend_policy.can_pay_symbol(symbol, *candidate),
-        ManaSymbol::Life(_) | ManaSymbol::X => false,
-    })
-}
-
-pub(super) fn track_spent_mana_symbol(pool: &mut ManaPool, symbol: crate::mana::ManaSymbol) {
-    use crate::mana::ManaSymbol;
-    match symbol {
-        ManaSymbol::White
-        | ManaSymbol::Blue
-        | ManaSymbol::Black
-        | ManaSymbol::Red
-        | ManaSymbol::Green
-        | ManaSymbol::Colorless => pool.add(symbol, 1),
-        ManaSymbol::Generic(_) | ManaSymbol::Snow | ManaSymbol::Life(_) | ManaSymbol::X => {}
-    }
-}
-
-/// Format a pip for display.
-pub(super) fn format_pip(pip: &[crate::mana::ManaSymbol]) -> String {
-    use crate::mana::ManaSymbol;
-
-    if pip.len() == 1 {
-        // Single symbol
-        match &pip[0] {
-            ManaSymbol::White => "{W}".to_string(),
-            ManaSymbol::Blue => "{U}".to_string(),
-            ManaSymbol::Black => "{B}".to_string(),
-            ManaSymbol::Red => "{R}".to_string(),
-            ManaSymbol::Green => "{G}".to_string(),
-            ManaSymbol::Colorless => "{C}".to_string(),
-            ManaSymbol::Generic(n) => format!("{{{}}}", n),
-            ManaSymbol::Snow => "{S}".to_string(),
-            ManaSymbol::Life(n) => format!("{{Pay {} life}}", n),
-            ManaSymbol::X => "{X}".to_string(),
-        }
-    } else {
-        // Hybrid/Phyrexian - show alternatives
-        let parts: Vec<String> = pip
-            .iter()
-            .map(|s| match s {
-                ManaSymbol::White => "W".to_string(),
-                ManaSymbol::Blue => "U".to_string(),
-                ManaSymbol::Black => "B".to_string(),
-                ManaSymbol::Red => "R".to_string(),
-                ManaSymbol::Green => "G".to_string(),
-                ManaSymbol::Colorless => "C".to_string(),
-                ManaSymbol::Generic(n) => format!("{}", n),
-                ManaSymbol::Snow => "S".to_string(),
-                ManaSymbol::Life(n) => format!("{} life", n),
-                ManaSymbol::X => "X".to_string(),
-            })
-            .collect();
-        format!("{{{}}}", parts.join("/"))
-    }
-}
-
-/// Apply a modes response to the pending cast or activation.
-///
-/// This handles mode selection for modal spells and activated abilities.
 pub(super) fn apply_modes_response(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -2481,241 +1306,8 @@ pub(super) fn apply_hybrid_choice_response(
     ))
 }
 
-/// Apply a mana payment response to the pending cast.
-///
-/// The choice index corresponds to either:
-/// - A mana ability to activate (index < num_mana_abilities)
-/// - The "pay mana cost" option (last option)
-pub(super) fn apply_mana_payment_response(
-    game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
-    state: &mut PriorityLoopState,
-    choice: usize,
-    decision_maker: &mut impl DecisionMaker,
-) -> Result<GameProgress, GameLoopError> {
-    use crate::special_actions::{SpecialAction, perform};
-
-    let mut pending = state.pending_cast.take().ok_or_else(|| {
-        GameLoopError::InvalidState("No pending cast for mana payment response".to_string())
-    })?;
-
-    if pending.stage == CastStage::ChoosingAssistPlayer {
-        let eligible = eligible_assist_players(game, pending.caster);
-        if choice > eligible.len() {
-            state.pending_cast = Some(pending);
-            return Err(GameLoopError::InvalidState(format!(
-                "Invalid Assist player choice: {choice} > {}",
-                eligible.len()
-            )));
-        }
-        pending.assist_player_choice_made = true;
-        if choice == 0 {
-            pending.assist_player = None;
-            pending.assist_payment_complete = true;
-            pending.stage = spell_stage_after_targets(&pending);
-            return continue_spell_next_cost_or_finalize(
-                game,
-                trigger_queue,
-                state,
-                pending,
-                decision_maker,
-            );
-        }
-        pending.assist_player = Some(eligible[choice - 1]);
-        return prompt_spell_assist_mana_ability_window(
-            game,
-            trigger_queue,
-            state,
-            pending,
-            decision_maker,
-        );
-    }
-
-    if pending.stage == CastStage::ChoosingAssistContribution {
-        let maximum = max_assist_generic_contribution(game, &pending);
-        let contribution = u32::try_from(choice).map_err(|_| {
-            GameLoopError::InvalidState("Assist contribution does not fit in u32".to_string())
-        })?;
-        if contribution > maximum {
-            state.pending_cast = Some(pending);
-            return Err(GameLoopError::InvalidState(format!(
-                "Invalid Assist contribution: {contribution} > {maximum}"
-            )));
-        }
-        pending.assist_generic_contribution = contribution;
-        if contribution == 0 {
-            pending.assist_payment_complete = true;
-            pending.stage = spell_stage_after_targets(&pending);
-            return continue_spell_next_cost_or_finalize(
-                game,
-                trigger_queue,
-                state,
-                pending,
-                decision_maker,
-            );
-        }
-        pending.remaining_assist_mana_pips =
-            vec![vec![crate::mana::ManaSymbol::Generic(1)]; contribution as usize];
-        pending.stage = CastStage::PayingAssistMana;
-        return continue_spell_assist_mana_payment(
-            game,
-            trigger_queue,
-            state,
-            pending,
-            decision_maker,
-        );
-    }
-
-    // Get the available mana abilities to determine what the choice means
-    let mana_player = if pending.stage == CastStage::ActivatingAssistManaAbilities {
-        pending.assist_player.ok_or_else(|| {
-            GameLoopError::InvalidState("Assist mana window has no chosen player".to_string())
-        })?
-    } else {
-        pending.caster
-    };
-    let mana_abilities = get_available_mana_abilities(game, mana_player, decision_maker);
-
-    if pending.stage == CastStage::ActivatingAssistManaAbilities {
-        if choice > mana_abilities.len() {
-            state.pending_cast = Some(pending);
-            return Err(GameLoopError::InvalidState(format!(
-                "Invalid Assist mana-ability window choice: {choice} > {}",
-                mana_abilities.len()
-            )));
-        }
-        if choice == mana_abilities.len() {
-            pending.assist_mana_ability_window_closed = true;
-            return prompt_spell_assist_contribution(game, state, pending);
-        }
-
-        let (perm_id, ability_index, _) = mana_abilities[choice];
-        let activation_cost_has_tap = activated_ability_has_tap_cost(game, perm_id, ability_index);
-        let action = SpecialAction::ActivateManaAbility {
-            permanent_id: perm_id,
-            ability_index,
-        };
-        perform(action, game, mana_player, &mut *decision_maker).map_err(|error| {
-            GameLoopError::InvalidState(format!(
-                "Failed to activate assisting player's mana ability: {error}"
-            ))
-        })?;
-        drain_pending_trigger_events(game, trigger_queue);
-        queue_ability_activated_event(
-            game,
-            trigger_queue,
-            &mut *decision_maker,
-            perm_id,
-            mana_player,
-            true,
-            None,
-            activation_cost_has_tap,
-        );
-        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
-        record_cast_mana_ability_payment(&mut pending, perm_id, ability_index);
-        return prompt_spell_assist_mana_ability_window(
-            game,
-            trigger_queue,
-            state,
-            pending,
-            decision_maker,
-        );
-    }
-
-    if pending.stage == CastStage::ActivatingManaAbilities {
-        if choice > mana_abilities.len() {
-            state.pending_cast = Some(pending);
-            return Err(GameLoopError::InvalidState(format!(
-                "Invalid mana-ability window choice: {choice} > {}",
-                mana_abilities.len()
-            )));
-        }
-        if choice == mana_abilities.len() {
-            pending.mana_ability_window_closed = true;
-            pending.stage = spell_stage_after_targets(&pending);
-            return continue_spell_next_cost_or_finalize(
-                game,
-                trigger_queue,
-                state,
-                pending,
-                decision_maker,
-            );
-        }
-
-        let (perm_id, ability_index, _) = mana_abilities[choice];
-        let activation_cost_has_tap = activated_ability_has_tap_cost(game, perm_id, ability_index);
-        let action = SpecialAction::ActivateManaAbility {
-            permanent_id: perm_id,
-            ability_index,
-        };
-        perform(action, game, pending.caster, &mut *decision_maker).map_err(|e| {
-            GameLoopError::InvalidState(format!("Failed to activate mana ability: {e}"))
-        })?;
-        drain_pending_trigger_events(game, trigger_queue);
-        queue_ability_activated_event(
-            game,
-            trigger_queue,
-            &mut *decision_maker,
-            perm_id,
-            pending.caster,
-            true,
-            None,
-            activation_cost_has_tap,
-        );
-        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
-        record_cast_mana_ability_payment(&mut pending, perm_id, ability_index);
-        return prompt_spell_mana_ability_window(
-            game,
-            trigger_queue,
-            state,
-            pending,
-            decision_maker,
-        );
-    }
-
-    if choice < mana_abilities.len() {
-        // Player chose to activate a mana ability
-        let (perm_id, ability_index, _) = mana_abilities[choice];
-        let activation_cost_has_tap = activated_ability_has_tap_cost(game, perm_id, ability_index);
-
-        let action = SpecialAction::ActivateManaAbility {
-            permanent_id: perm_id,
-            ability_index,
-        };
-
-        // Perform the mana ability
-        if let Err(e) = perform(action, game, pending.caster, &mut *decision_maker) {
-            return Err(GameLoopError::InvalidState(format!(
-                "Failed to activate mana ability: {e}"
-            )));
-        }
-        drain_pending_trigger_events(game, trigger_queue);
-
-        queue_ability_activated_event(
-            game,
-            trigger_queue,
-            &mut *decision_maker,
-            perm_id,
-            pending.caster,
-            true,
-            None,
-            activation_cost_has_tap,
-        );
-
-        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
-
-        // Record the mana ability activation in the payment trace.
-        record_cast_mana_ability_payment(&mut pending, perm_id, ability_index);
-
-        continue_spell_cast_mana_payment(game, trigger_queue, state, pending, decision_maker)
-    } else {
-        // Player chose to pay mana cost.
-        // Route to pip-by-pip payment for deterministic trace.
-        continue_spell_cast_mana_payment(game, trigger_queue, state, pending, decision_maker)
-    }
-}
-
-pub(super) fn apply_assist_pip_payment_response(
+/// Apply a non-mana Assist setup choice for a pending spell cast.
+pub(super) fn apply_assist_choice_response(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     state: &mut PriorityLoopState,
@@ -2723,256 +1315,76 @@ pub(super) fn apply_assist_pip_payment_response(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     let mut pending = state.pending_cast.take().ok_or_else(|| {
-        GameLoopError::InvalidState("No pending cast for Assist pip payment".to_string())
-    })?;
-    if pending.stage != CastStage::PayingAssistMana {
-        state.pending_cast = Some(pending);
-        return Err(GameLoopError::InvalidState(
-            "Assist pip payment response outside Assist payment".to_string(),
-        ));
-    }
-    let assistant = pending.assist_player.ok_or_else(|| {
-        GameLoopError::InvalidState("Assist payment has no chosen player".to_string())
-    })?;
-    let pip = pending
-        .remaining_assist_mana_pips
-        .first()
-        .cloned()
-        .ok_or_else(|| GameLoopError::InvalidState("No Assist pip remains".to_string()))?;
-    let mana_spend_policy = game.mana_spend_policy(assistant, Some(pending.spell_id));
-    let cached = std::mem::take(&mut pending.current_pip_payment_options);
-    let options = if cached.is_empty() {
-        build_pip_payment_options(
-            game,
-            assistant,
-            &pip,
-            Some(&pip),
-            &mana_spend_policy,
-            false,
-            Some(pending.spell_id),
-            crate::costs::PaymentReason::CastSpell,
-            false,
-            &mut *decision_maker,
-        )
-    } else {
-        cached
-    };
-    let action = options
-        .get(choice)
-        .map(|option| option.action.clone())
-        .ok_or_else(|| {
-            GameLoopError::InvalidState(format!(
-                "Invalid Assist pip payment choice: {choice} >= {}",
-                options.len()
-            ))
-        })?;
-    let assist_spent_before = pending.assist_mana_spent_to_cast.clone();
-    let paid = execute_pip_payment_action(
-        game,
-        trigger_queue,
-        assistant,
-        Some(pending.spell_id),
-        crate::costs::PaymentReason::CastSpell,
-        &pip,
-        &mana_spend_policy,
-        &action,
-        &mut *decision_maker,
-        &mut pending.payment_trace,
-        Some(&mut pending.assist_mana_spent_to_cast),
-        None,
-    )?;
-    queue_mana_ability_event_for_action(
-        game,
-        trigger_queue,
-        &mut *decision_maker,
-        &action,
-        assistant,
-    );
-    drain_pending_trigger_events(game, trigger_queue);
-    if paid {
-        pending.mana_spent_to_cast.white += pending
-            .assist_mana_spent_to_cast
-            .white
-            .saturating_sub(assist_spent_before.white);
-        pending.mana_spent_to_cast.blue += pending
-            .assist_mana_spent_to_cast
-            .blue
-            .saturating_sub(assist_spent_before.blue);
-        pending.mana_spent_to_cast.black += pending
-            .assist_mana_spent_to_cast
-            .black
-            .saturating_sub(assist_spent_before.black);
-        pending.mana_spent_to_cast.red += pending
-            .assist_mana_spent_to_cast
-            .red
-            .saturating_sub(assist_spent_before.red);
-        pending.mana_spent_to_cast.green += pending
-            .assist_mana_spent_to_cast
-            .green
-            .saturating_sub(assist_spent_before.green);
-        pending.mana_spent_to_cast.colorless += pending
-            .assist_mana_spent_to_cast
-            .colorless
-            .saturating_sub(assist_spent_before.colorless);
-        pending.remaining_assist_mana_pips.remove(0);
-    }
-    continue_spell_assist_mana_payment(game, trigger_queue, state, pending, decision_maker)
-}
-
-/// Apply a mana payment response for a pending mana ability activation.
-///
-/// Mana abilities don't use the stack, so when the player can pay,
-/// we immediately execute the ability.
-pub(super) fn apply_mana_payment_response_mana_ability(
-    game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
-    state: &mut PriorityLoopState,
-    choice: usize,
-    decision_maker: &mut impl DecisionMaker,
-) -> Result<GameProgress, GameLoopError> {
-    use crate::ability::AbilityKind;
-    use crate::special_actions::{SpecialAction, perform};
-
-    let mut pending = state.pending_mana_ability.take().ok_or_else(|| {
-        GameLoopError::InvalidState("No pending mana ability for payment response".to_string())
+        GameLoopError::InvalidState("No pending cast for Assist choice".to_string())
     })?;
 
-    // Get available mana abilities, excluding the one we're paying for
-    // and filtered to only those that can help pay the cost
-    let mana_spend_policy = game.mana_spend_policy(pending.activator, Some(pending.source));
-    let mana_abilities: Vec<_> =
-        get_available_mana_abilities(game, pending.activator, decision_maker)
-            .into_iter()
-            .filter(|(perm_id, ability_index, _)| {
-                // Exclude mana abilities on the same source while paying this
-                // source's own activation cost to prevent recursive payment loops.
-                if *perm_id == pending.source {
-                    return false;
+    match pending.stage.clone() {
+        CastStage::ChoosingAssistPlayer => {
+            let eligible = eligible_assist_players(game, pending.caster);
+            if choice > eligible.len() {
+                state.pending_cast = Some(pending);
+                return Err(GameLoopError::InvalidState(format!(
+                    "Invalid Assist player choice: {choice} > {}",
+                    eligible.len()
+                )));
+            }
+            pending.assist_player_choice_made = true;
+            if choice == 0 {
+                if !spell_mana_payment_is_legal(game, &pending) {
+                    state.pending_cast = Some(pending);
+                    return Err(GameLoopError::ActionCancelled(
+                        "the caster cannot complete this payment without Assist".to_string(),
+                    ));
                 }
-
-                // Check if this ability can help pay the cost
-                if game.object(*perm_id).is_some()
-                    && let Some(ability) = game.current_ability(*perm_id, *ability_index)
-                    && let AbilityKind::Activated(mana_ability) = &ability.kind
-                    && mana_ability.is_runtime_mana_ability(game, *perm_id, pending.activator)
-                {
-                    let produced =
-                        mana_ability.inferred_mana_symbols(game, *perm_id, pending.activator);
-                    mana_can_help_pay_cost(
-                        &produced,
-                        &pending.mana_cost,
-                        game,
-                        pending.activator,
-                        &mana_spend_policy,
-                    )
-                } else {
-                    true // If we can't determine, include it
-                }
-            })
-            .collect();
-
-    if choice < mana_abilities.len() {
-        // Player chose to activate a mana ability to generate mana
-        let (perm_id, ability_index, _) = mana_abilities[choice].clone();
-        let activation_cost_has_tap = activated_ability_has_tap_cost(game, perm_id, ability_index);
-
-        let action = SpecialAction::ActivateManaAbility {
-            permanent_id: perm_id,
-            ability_index,
-        };
-
-        // Perform the mana ability
-        if let Err(e) = perform(action, game, pending.activator, decision_maker) {
-            return Err(GameLoopError::InvalidState(format!(
-                "Failed to activate mana ability: {e}"
-            )));
+                pending.assist_player = None;
+                pending.assist_payment_complete = true;
+                return begin_spell_mana_payment(
+                    game,
+                    trigger_queue,
+                    state,
+                    pending,
+                    decision_maker,
+                );
+            }
+            pending.assist_player = Some(eligible[choice - 1]);
+            if max_assist_generic_contribution(game, &pending) == 0 {
+                state.pending_cast = Some(pending);
+                return Err(GameLoopError::ActionCancelled(
+                    "the selected player cannot complete an Assist payment".to_string(),
+                ));
+            }
+            prompt_spell_assist_contribution(game, state, pending)
         }
-        drain_pending_trigger_events(game, trigger_queue);
-
-        queue_ability_activated_event(
-            game,
-            trigger_queue,
-            &mut *decision_maker,
-            perm_id,
-            pending.activator,
-            true,
-            None,
-            activation_cost_has_tap,
-        );
-
-        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
-
-        // Check if player can now pay
-        let can_pay_now = game.can_pay_mana_cost_with_reason(
-            pending.activator,
-            Some(pending.source),
-            &pending.mana_cost,
-            0,
-            crate::costs::PaymentReason::ActivateManaAbility,
-        );
-
-        if can_pay_now {
-            // Execute the pending mana ability
-            execute_pending_mana_ability(game, trigger_queue, &pending, decision_maker)?;
-            // Player retains priority after activating mana ability
-            advance_priority_with_dm(game, trigger_queue, decision_maker)
-        } else {
-            // Still need more mana, show options again
-            let options = compute_mana_ability_payment_options(
-                game,
-                pending.activator,
-                &pending,
-                &mut *decision_maker,
-            );
-            let source = pending.source;
-            let player = pending.activator;
-            let ability_name = game
-                .object(source)
-                .map(|o| format!("{}'s ability", o.name))
-                .unwrap_or_else(|| "ability".to_string());
-            state.pending_mana_ability = Some(pending);
-
-            // Convert ManaPaymentOption to SelectableOption
-            let selectable_options: Vec<crate::decisions::context::SelectableOption> = options
-                .iter()
-                .map(|opt| {
-                    crate::decisions::context::SelectableOption::new(opt.index, &opt.description)
-                })
-                .collect();
-
-            let ctx = crate::decisions::context::SelectOptionsContext::mana_payment(
-                player,
-                source,
-                ability_name,
-                selectable_options,
-            );
-            Ok(GameProgress::NeedsDecisionCtx(
-                crate::decisions::context::DecisionContext::SelectOptions(ctx),
-            ))
+        CastStage::ChoosingAssistContribution => {
+            let contribution = u32::try_from(choice).map_err(|_| {
+                GameLoopError::InvalidState("Assist contribution does not fit in u32".to_string())
+            })?;
+            let assistant = pending.assist_player.ok_or_else(|| {
+                GameLoopError::InvalidState("Assist contribution has no chosen player".to_string())
+            })?;
+            if !assist_generic_contribution_is_legal(game, &pending, assistant, contribution) {
+                state.pending_cast = Some(pending);
+                return Err(GameLoopError::ActionCancelled(format!(
+                    "Assist contribution {contribution} cannot complete the spell's mana payment"
+                )));
+            }
+            pending.assist_generic_contribution = contribution;
+            if contribution == 0 {
+                pending.assist_payment_complete = true;
+                begin_spell_mana_payment(game, trigger_queue, state, pending, decision_maker)
+            } else {
+                prompt_spell_assist_payment_plan(game, state, pending)
+            }
         }
-    } else {
-        // Player chose to pay mana cost
-        // Verify they can actually pay
-        if !game.can_pay_mana_cost_with_reason(
-            pending.activator,
-            Some(pending.source),
-            &pending.mana_cost,
-            0,
-            crate::costs::PaymentReason::ActivateManaAbility,
-        ) {
-            return Err(GameLoopError::InvalidState(
-                "Cannot pay mana cost - insufficient mana".to_string(),
-            ));
+        stage => {
+            state.pending_cast = Some(pending);
+            Err(GameLoopError::InvalidState(format!(
+                "Assist choice received during {stage}"
+            )))
         }
-
-        // Execute the pending mana ability
-        execute_pending_mana_ability(game, trigger_queue, &pending, decision_maker)?;
-        // Player retains priority after activating mana ability
-        advance_priority_with_dm(game, trigger_queue, decision_maker)
     }
 }
 
-/// Execute a pending mana ability after its mana cost has been paid.
 pub(super) fn execute_pending_mana_ability(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -3097,369 +1509,6 @@ pub(super) fn execute_pending_mana_ability(
 }
 
 /// Apply a mana payment response for a pending activation.
-pub(super) fn apply_mana_payment_response_activation(
-    game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
-    state: &mut PriorityLoopState,
-    choice: usize,
-    decision_maker: &mut impl DecisionMaker,
-) -> Result<GameProgress, GameLoopError> {
-    use crate::special_actions::{SpecialAction, perform};
-
-    let mut pending = state.pending_activation.take().ok_or_else(|| {
-        GameLoopError::InvalidState("No pending activation for mana payment response".to_string())
-    })?;
-
-    let mana_abilities = get_available_mana_abilities(game, pending.activator, decision_maker);
-
-    if pending.stage == ActivationStage::ActivatingManaAbilities {
-        if choice > mana_abilities.len() {
-            state.pending_activation = Some(pending);
-            return Err(GameLoopError::InvalidState(format!(
-                "Invalid activation mana-ability window choice: {choice} > {}",
-                mana_abilities.len()
-            )));
-        }
-        if choice == mana_abilities.len() {
-            pending.mana_ability_window_closed = true;
-            pending.stage = activation_stage_after_targets(&pending);
-            return continue_activation(game, trigger_queue, state, pending, decision_maker);
-        }
-
-        let (perm_id, ability_index, _) = mana_abilities[choice];
-        let activation_cost_has_tap = activated_ability_has_tap_cost(game, perm_id, ability_index);
-        let action = SpecialAction::ActivateManaAbility {
-            permanent_id: perm_id,
-            ability_index,
-        };
-        perform(action, game, pending.activator, &mut *decision_maker).map_err(|e| {
-            GameLoopError::InvalidState(format!("Failed to activate mana ability: {e}"))
-        })?;
-        drain_pending_trigger_events(game, trigger_queue);
-        queue_ability_activated_event(
-            game,
-            trigger_queue,
-            &mut *decision_maker,
-            perm_id,
-            pending.activator,
-            true,
-            None,
-            activation_cost_has_tap,
-        );
-        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
-        record_activation_mana_ability_payment(&mut pending, perm_id, ability_index);
-        return prompt_activation_mana_ability_window(
-            game,
-            trigger_queue,
-            state,
-            pending,
-            decision_maker,
-        );
-    }
-
-    if choice < mana_abilities.len() {
-        // Player chose to activate a mana ability
-        let (perm_id, ability_index, _) = mana_abilities[choice];
-        let activation_cost_has_tap = activated_ability_has_tap_cost(game, perm_id, ability_index);
-
-        let action = SpecialAction::ActivateManaAbility {
-            permanent_id: perm_id,
-            ability_index,
-        };
-
-        // Perform the mana ability
-        if let Err(e) = perform(action, game, pending.activator, &mut *decision_maker) {
-            return Err(GameLoopError::InvalidState(format!(
-                "Failed to activate mana ability: {e}"
-            )));
-        }
-        drain_pending_trigger_events(game, trigger_queue);
-
-        queue_ability_activated_event(
-            game,
-            trigger_queue,
-            &mut *decision_maker,
-            perm_id,
-            pending.activator,
-            true,
-            None,
-            activation_cost_has_tap,
-        );
-
-        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
-
-        // Record the mana ability activation in the payment trace.
-        record_activation_mana_ability_payment(&mut pending, perm_id, ability_index);
-
-        // Stay in PayingMana stage, continue activation
-        continue_activation(game, trigger_queue, state, pending, decision_maker)
-    } else {
-        // Player chose to pay mana cost
-        // Verify they can actually pay
-        let x_value = pending.x_value.unwrap_or(0) as u32;
-        if let Some(ref cost) = pending.mana_cost_to_pay
-            && !game.can_pay_mana_cost_with_reason(
-                pending.activator,
-                Some(pending.source),
-                cost,
-                x_value,
-                pending.payment_reason,
-            )
-        {
-            return Err(GameLoopError::InvalidState(
-                "Cannot pay mana cost - insufficient mana".to_string(),
-            ));
-        }
-
-        // Pay the mana and finalize
-        let mut pending = pending;
-        if let Some(ref cost) = pending.mana_cost_to_pay {
-            if !game.try_pay_mana_cost_with_reason(
-                pending.activator,
-                Some(pending.source),
-                cost,
-                x_value,
-                pending.payment_reason,
-            ) {
-                return Err(GameLoopError::InvalidState(
-                    "Cannot pay mana cost - insufficient mana".to_string(),
-                ));
-            }
-        }
-        pending.stage = ActivationStage::ReadyToFinalize;
-        continue_activation(game, trigger_queue, state, pending, decision_maker)
-    }
-}
-
-/// Apply a pip payment response for a pending activation.
-pub(super) fn apply_pip_payment_response_activation(
-    game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
-    state: &mut PriorityLoopState,
-    choice: usize,
-    decision_maker: &mut impl DecisionMaker,
-) -> Result<GameProgress, GameLoopError> {
-    let mut pending = state.pending_activation.take().ok_or_else(|| {
-        GameLoopError::InvalidState("No pending activation for pip payment response".to_string())
-    })?;
-
-    // Get the current pip being paid
-    if pending.remaining_mana_pips.is_empty() {
-        return Err(GameLoopError::InvalidState(
-            "No remaining pips to pay".to_string(),
-        ));
-    }
-
-    let pip = pending.remaining_mana_pips[0].clone();
-    let display_pip = current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
-
-    // Rebuild the options to get the action for this choice
-    let mana_spend_policy = game.mana_spend_policy(pending.activator, Some(pending.source));
-    let allow_black_life = display_pip_can_use_black_life(display_pip)
-        && game.player_can_pay_black_with_life_for_reason(
-            pending.activator,
-            Some(pending.source),
-            pending.payment_reason,
-        );
-    let options = build_pip_payment_options(
-        game,
-        pending.activator,
-        &pip,
-        display_pip,
-        &mana_spend_policy,
-        allow_black_life,
-        Some(pending.source),
-        pending.payment_reason,
-        false,
-        &mut *decision_maker,
-    );
-
-    if choice >= options.len() {
-        return Err(GameLoopError::InvalidState(format!(
-            "Invalid pip payment choice: {} >= {}",
-            choice,
-            options.len()
-        )));
-    }
-
-    let action = &options[choice].action;
-    let mana_sources = pending
-        .tagged_objects
-        .entry(crate::tag::TagKey::from(
-            ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG,
-        ))
-        .or_default();
-
-    // Execute the payment action
-    let pip_paid = execute_pip_payment_action(
-        game,
-        trigger_queue,
-        pending.activator,
-        Some(pending.source),
-        pending.payment_reason,
-        &pip,
-        &mana_spend_policy,
-        action,
-        &mut *decision_maker,
-        &mut pending.payment_trace,
-        Some(&mut pending.mana_spent_on_activation),
-        Some(mana_sources),
-    )?;
-    queue_mana_ability_event_for_action(
-        game,
-        trigger_queue,
-        &mut *decision_maker,
-        action,
-        pending.activator,
-    );
-    drain_pending_trigger_events(game, trigger_queue);
-
-    if let ManaPipPaymentAction::ActivateManaAbility {
-        source_id,
-        ability_index,
-    } = action
-    {
-        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, *source_id, *ability_index);
-    }
-
-    // Only remove the pip if it was actually paid (not just mana generated)
-    if pip_paid {
-        pending.remaining_mana_pips.remove(0);
-    }
-
-    // Continue activation (will process next pip or finalize)
-    continue_activation(game, trigger_queue, state, pending, decision_maker)
-}
-
-/// Apply a pip payment response for a pending spell cast.
-pub(super) fn apply_pip_payment_response_cast(
-    game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
-    state: &mut PriorityLoopState,
-    choice: usize,
-    decision_maker: &mut impl DecisionMaker,
-) -> Result<GameProgress, GameLoopError> {
-    let mut pending = state.pending_cast.take().ok_or_else(|| {
-        GameLoopError::InvalidState("No pending cast for pip payment response".to_string())
-    })?;
-
-    // Get the current pip being paid
-    if pending.remaining_mana_pips.is_empty() {
-        return Err(GameLoopError::InvalidState(
-            "No remaining pips to pay".to_string(),
-        ));
-    }
-    let mut perf = super::priority_apply::ManaPipPaymentPerfMetrics {
-        pending_kind: "cast".to_string(),
-        remaining_pips_before: pending.remaining_mana_pips.len(),
-        ..super::priority_apply::ManaPipPaymentPerfMetrics::default()
-    };
-
-    let pip = pending.remaining_mana_pips[0].clone();
-    let display_pip = current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
-
-    let mana_spend_policy = game.mana_spend_policy(pending.caster, Some(pending.spell_id));
-    let cached_options = std::mem::take(&mut pending.current_pip_payment_options);
-    perf.cached_option_count = cached_options.len();
-    perf.used_cached_options = !cached_options.is_empty();
-    let build_options_started_at = crate::perf::PerfTimer::start();
-    let options = if cached_options.is_empty() {
-        let allow_black_life = display_pip_can_use_black_life(display_pip)
-            && game.player_can_pay_black_with_life_for_reason(
-                pending.caster,
-                Some(pending.spell_id),
-                crate::costs::PaymentReason::CastSpell,
-            );
-        build_pip_payment_options(
-            game,
-            pending.caster,
-            &pip,
-            display_pip,
-            &mana_spend_policy,
-            allow_black_life,
-            Some(pending.spell_id),
-            crate::costs::PaymentReason::CastSpell,
-            false,
-            &mut *decision_maker,
-        )
-    } else {
-        cached_options
-    };
-    perf.build_options_ms = build_options_started_at.elapsed_ms();
-    perf.built_option_count = options.len();
-
-    if choice >= options.len() {
-        return Err(GameLoopError::InvalidState(format!(
-            "Invalid pip payment choice: {} >= {}",
-            choice,
-            options.len()
-        )));
-    }
-
-    let action = &options[choice].action;
-
-    // Execute the payment action
-    let execute_started_at = crate::perf::PerfTimer::start();
-    let pip_paid = execute_pip_payment_action(
-        game,
-        trigger_queue,
-        pending.caster,
-        Some(pending.spell_id),
-        crate::costs::PaymentReason::CastSpell,
-        &pip,
-        &mana_spend_policy,
-        action,
-        &mut *decision_maker,
-        &mut pending.payment_trace,
-        Some(&mut pending.mana_spent_to_cast),
-        None,
-    )?;
-    perf.execute_payment_ms = execute_started_at.elapsed_ms();
-    let queue_event_started_at = crate::perf::PerfTimer::start();
-    queue_mana_ability_event_for_action(
-        game,
-        trigger_queue,
-        &mut *decision_maker,
-        action,
-        pending.caster,
-    );
-    perf.queue_mana_event_ms = queue_event_started_at.elapsed_ms();
-    let drain_started_at = crate::perf::PerfTimer::start();
-    drain_pending_trigger_events(game, trigger_queue);
-    perf.drain_triggers_ms = drain_started_at.elapsed_ms();
-
-    if let ManaPipPaymentAction::ActivateManaAbility {
-        source_id,
-        ability_index,
-    } = action
-    {
-        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, *source_id, *ability_index);
-    }
-
-    // Only remove the pip if it was actually paid (not just mana generated)
-    if pip_paid {
-        record_keyword_payment_contribution(&mut pending.keyword_payment_contributions, action);
-        pending.remaining_mana_pips.remove(0);
-    }
-    perf.pip_paid = pip_paid;
-    perf.remaining_pips_after = pending.remaining_mana_pips.len();
-
-    // Continue spell cast mana payment (will process next pip or finalize)
-    let continue_started_at = crate::perf::PerfTimer::start();
-    let result =
-        continue_spell_cast_mana_payment(game, trigger_queue, state, pending, decision_maker);
-    perf.continue_cast_ms = continue_started_at.elapsed_ms();
-    perf.result_kind = match &result {
-        Ok(GameProgress::NeedsDecisionCtx(ctx)) => decision_context_name(ctx).to_string(),
-        Ok(GameProgress::Continue) => "continue".to_string(),
-        Ok(GameProgress::StackResolved) => "stack_resolved".to_string(),
-        Ok(GameProgress::GameOver(_)) => "game_over".to_string(),
-        Err(_) => "error".to_string(),
-    };
-    super::priority_apply::store_mana_pip_payment_perf(perf);
-    result
-}
-
 pub(super) fn apply_next_cost_choice_response(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -3491,8 +1540,19 @@ pub(super) fn apply_next_cost_choice_response(
 
         let has_mana_option = pending.mana_cost_to_pay.is_some();
         if has_mana_option && choice == 0 {
-            pending.stage = ActivationStage::PayingMana;
-            return continue_activation(game, trigger_queue, state, pending, decision_maker);
+            let payment = pending.pending_mana_payment.take().ok_or_else(|| {
+                GameLoopError::InvalidState(
+                    "activation mana sources were not prepared before cost payment".to_string(),
+                )
+            })?;
+            return commit_prepared_activation_mana_payment(
+                game,
+                trigger_queue,
+                state,
+                pending,
+                payment,
+                decision_maker,
+            );
         }
 
         let cost_index = choice.saturating_sub(usize::from(has_mana_option));
@@ -3526,12 +1586,17 @@ pub(super) fn apply_next_cost_choice_response(
         pending
             .remaining_cost_steps
             .retain(|step| delve_generic_reduction(step) == 0);
-        pending.stage = CastStage::PayingMana;
-        return continue_spell_cast_mana_payment(
+        let payment = pending.pending_mana_payment.take().ok_or_else(|| {
+            GameLoopError::InvalidState(
+                "spell mana sources were not prepared before cost payment".to_string(),
+            )
+        })?;
+        return commit_prepared_spell_mana_payment(
             game,
             trigger_queue,
             state,
             pending,
+            payment,
             decision_maker,
         );
     }
@@ -4354,6 +2419,11 @@ pub(crate) fn propose_spell_cast(
             game.turn.phase,
             crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
         );
+    // Capture the exact announcement-time fact before moving the proposed
+    // spell to the stack. "During your main phase" is not sufficient here:
+    // a nonempty stack means a sorcery still could not have been cast.
+    let cast_at_sorcery_timing =
+        game.is_active_player(caster) && crate::turn::is_sorcery_timing(game);
     let selected_method = game.object(spell_id).and_then(|obj| match casting_method {
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
@@ -4372,12 +2442,30 @@ pub(crate) fn propose_spell_cast(
     let cast_origin_snapshot = game.object(spell_id).map(|obj| {
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
+    let shared_usage_to_consume = match casting_method {
+        CastingMethod::PlayFrom { source, zone, .. }
+        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => game
+            .effect_store
+            .grant_registry
+            .shared_usage_to_consume_for_play_from(game, spell_id, *zone, caster, Some(*source)),
+        _ => None,
+    };
 
     let new_id = game
         .move_object_by_effect(spell_id, Zone::Stack)
         .ok_or_else(|| {
             GameLoopError::InvalidState("Failed to move spell to stack during proposal".to_string())
         })?;
+    if let Some(shared_usage_id) = shared_usage_to_consume {
+        let consumed = game
+            .effect_store
+            .grant_registry
+            .consume_shared_usage(shared_usage_id);
+        debug_assert!(
+            consumed,
+            "selected shared play permission should be available"
+        );
+    }
     if let Some(snapshot) = cast_origin_snapshot {
         game.set_cast_origin_snapshot(new_id, snapshot);
     }
@@ -4550,6 +2638,9 @@ pub(crate) fn propose_spell_cast(
         if cast_during_main_phase {
             optional_costs_paid.mark_label_paid("CastDuringYourMainPhase");
         }
+        if cast_at_sorcery_timing {
+            optional_costs_paid.mark_cast_at_sorcery_timing();
+        }
         obj.optional_costs_paid = optional_costs_paid;
     }
 
@@ -4614,7 +2705,18 @@ fn apply_play_from_cast_this_way_grants(
         .or_else(|| spell_as_cast.cast_alternative_method_owned()),
         _ => None,
     };
-    let ctx = game.filter_context_for(caster, Some(source.id));
+    let mut ctx = game.filter_context_for(caster, Some(source.id));
+    // Moving a card from exile to the stack clears its live source-exile
+    // linkage, but cast-this-way riders are selected immediately afterward.
+    // Retain the proposal's origin snapshot under the same provenance tag so
+    // a permission can prove that this exact spell used its source-linked
+    // exile grant before adding any rider abilities.
+    if zone == Zone::Exile
+        && let Some(origin) = game.cast_origin_snapshot(stack_id).cloned()
+    {
+        ctx.tagged_objects
+            .insert(crate::tag::SOURCE_EXILED_TAG.into(), vec![origin]);
+    }
     let mut granted = Vec::new();
     for ability in source.abilities.iter() {
         let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
@@ -4789,8 +2891,7 @@ pub(super) fn finalize_spell_cast(
         None
     };
 
-    // Pay the mana cost (using effective cost with reductions applied)
-    // Skip if mana was already paid via pip-by-pip payment
+    // Pay the mana cost unless the authoritative payment plan already committed it.
     if !mana_already_paid && let Some(cost) = effective_cost {
         let x = x_value.unwrap_or(0);
         let before_pool = game.player(caster).map(|player| player.mana_pool.clone());
@@ -5242,6 +3343,29 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
     }
 
     match ctx {
+        DecisionContext::ManaPayment(payment_ctx) => {
+            let select_ctx = crate::decisions::context::SelectOptionsContext::new(
+                payment_ctx.player,
+                Some(payment_ctx.source),
+                format!("Confirm mana payment for {}", payment_ctx.subject),
+                vec![
+                    crate::decisions::context::SelectableOption::new(1, "Confirm payment"),
+                    crate::decisions::context::SelectableOption::new(0, "Cancel"),
+                ],
+                1,
+                1,
+            );
+            let result = decision_maker.decide_options(game, &select_ctx);
+            let response = if result.first().copied() == Some(1) {
+                crate::mana_payment::ManaPaymentResponse::Confirm {
+                    plan_id: payment_ctx.plan.id,
+                    request_hash: payment_ctx.plan.request_hash,
+                }
+            } else {
+                crate::mana_payment::ManaPaymentResponse::Cancel
+            };
+            apply_mana_payment_plan_response(game, trigger_queue, state, &response, decision_maker)
+        }
         DecisionContext::Priority(priority_ctx) => {
             let action = decision_maker.decide_priority(game, priority_ctx);
             apply_priority_action_with_dm(game, trigger_queue, state, &action, decision_maker)
@@ -5383,51 +3507,18 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
                     decision_maker,
                 );
             }
-            if state.pending_mana_ability.is_some() {
-                let Some(choice) = result.first().copied() else {
-                    return Err(GameLoopError::InvalidState(
-                        "mana payment choice requires one selected option".to_string(),
-                    ));
-                };
-                return apply_mana_payment_response_mana_ability(
-                    game,
-                    trigger_queue,
-                    state,
-                    choice,
-                    decision_maker,
-                );
-            }
             if state.pending_cast.as_ref().is_some_and(|pending| {
                 matches!(
                     pending.stage,
-                    CastStage::ChoosingAssistPlayer
-                        | CastStage::ActivatingAssistManaAbilities
-                        | CastStage::ChoosingAssistContribution
-                        | CastStage::ActivatingManaAbilities
+                    CastStage::ChoosingAssistPlayer | CastStage::ChoosingAssistContribution
                 )
             }) {
                 let Some(choice) = result.first().copied() else {
                     return Err(GameLoopError::InvalidState(
-                        "spell mana-ability window requires one selected option".to_string(),
+                        "Assist setup requires one selected option".to_string(),
                     ));
                 };
-                return apply_mana_payment_response(
-                    game,
-                    trigger_queue,
-                    state,
-                    choice,
-                    decision_maker,
-                );
-            }
-            if state.pending_activation.as_ref().is_some_and(|pending| {
-                matches!(pending.stage, ActivationStage::ActivatingManaAbilities)
-            }) {
-                let Some(choice) = result.first().copied() else {
-                    return Err(GameLoopError::InvalidState(
-                        "activation mana-ability window requires one selected option".to_string(),
-                    ));
-                };
-                return apply_mana_payment_response_activation(
+                return apply_assist_choice_response(
                     game,
                     trigger_queue,
                     state,
@@ -5458,61 +3549,6 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
                     decision_maker,
                 );
             }
-            if state
-                .pending_activation
-                .as_ref()
-                .is_some_and(|pending| matches!(pending.stage, ActivationStage::PayingMana))
-            {
-                let Some(choice) = result.first().copied() else {
-                    return Err(GameLoopError::InvalidState(
-                        "activation mana pip choice requires one selected option".to_string(),
-                    ));
-                };
-                return apply_pip_payment_response_activation(
-                    game,
-                    trigger_queue,
-                    state,
-                    choice,
-                    decision_maker,
-                );
-            }
-            if state
-                .pending_cast
-                .as_ref()
-                .is_some_and(|pending| matches!(pending.stage, CastStage::PayingMana))
-            {
-                let Some(choice) = result.first().copied() else {
-                    return Err(GameLoopError::InvalidState(
-                        "spell mana pip choice requires one selected option".to_string(),
-                    ));
-                };
-                return apply_pip_payment_response_cast(
-                    game,
-                    trigger_queue,
-                    state,
-                    choice,
-                    decision_maker,
-                );
-            }
-            if state
-                .pending_cast
-                .as_ref()
-                .is_some_and(|pending| matches!(pending.stage, CastStage::PayingAssistMana))
-            {
-                let Some(choice) = result.first().copied() else {
-                    return Err(GameLoopError::InvalidState(
-                        "Assist mana pip choice requires one selected option".to_string(),
-                    ));
-                };
-                return apply_assist_pip_payment_response(
-                    game,
-                    trigger_queue,
-                    state,
-                    choice,
-                    decision_maker,
-                );
-            }
-
             Err(GameLoopError::InvalidState(
                 "Unsupported SelectOptions decision in priority loop".to_string(),
             ))

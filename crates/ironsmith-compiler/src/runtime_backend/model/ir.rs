@@ -60,8 +60,15 @@ pub(crate) enum ChosenOptionContext {
     SourceOption(String),
     MaxSpeed,
     StationThreshold(i32),
+    /// Executable support synthesized for a Station row's implicit creature
+    /// characteristics. It shares the row threshold but is not itself an
+    /// authored `N+ | ...` surface.
+    StationThresholdSupport(i32),
     ControlsSubtypePermanent(Subtype),
-    ControlsEitherColorPermanent { left: Color, right: Color },
+    ControlsEitherColorPermanent {
+        left: Color,
+        right: Color,
+    },
 }
 
 impl ChosenOptionContext {
@@ -105,6 +112,7 @@ pub(crate) struct RewriteActivatedLine {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ActivatedPresentationKind {
     Throw,
+    ThrowEllipsis,
     Boast,
     Exhaust,
     Renew,
@@ -117,7 +125,8 @@ pub(crate) enum ActivatedPresentationKind {
 impl ActivatedPresentationKind {
     pub(crate) fn display(self) -> &'static str {
         match self {
-            Self::Throw => "Throw ...",
+            Self::Throw => "Throw",
+            Self::ThrowEllipsis => "Throw ...",
             Self::Boast => "Boast",
             Self::Exhaust => "Exhaust",
             Self::Renew => "Renew",

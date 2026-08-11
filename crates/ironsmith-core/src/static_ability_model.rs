@@ -6,8 +6,8 @@ use crate::{
     ChoiceCount, Color, ColorSet, Condition, CostComponent, CounterType, DamagedBySource,
     DerivedAlternativeCast, GrantSpec, Grantable, KeywordActionKind, ManaCost, ManaSpendPermission,
     ObjectFilter, PlayerFilter, PresentationLabel, ProtectionFrom, ResolutionProgram, Restriction,
-    StaticAbilityId, Subtype, SubtypeFamily, Supertype, TotalCost, TriggeredAbility, Until, Value,
-    Zone,
+    SourceReferenceSurface, StaticAbilityId, Subtype, SubtypeFamily, Supertype, TotalCost,
+    TriggeredAbility, Until, Value, ValueSurfaceHint, Zone,
 };
 
 mod grants;
@@ -346,6 +346,19 @@ pub struct StaticAbility<T, E, C, Cond> {
 /// marker only lets compiled-text rendering restore the presentation prefix.
 pub const EXPLICIT_STATIC_PRESENTATION_LABEL_PREFIX: &str = "__ironsmith_explicit_static_label:";
 
+/// Internal presentation provenance for a static ability authored on a
+/// Station threshold row (`N+ | ...`). The numeric suffix is derived from the
+/// typed station-line CST; renderers must also verify the matching charge-
+/// counter condition before restoring the row surface.
+pub const STATION_THRESHOLD_STATIC_LABEL_PREFIX: &str = "__ironsmith_station_threshold_static:";
+
+/// Presentation provenance for a leading `As long as it's your turn` static
+/// condition. The executable condition remains `YourTurn`; this marker only
+/// distinguishes that authored connective from an ordinary `During your
+/// turn` line.
+pub const AS_LONG_AS_ITS_YOUR_TURN_STATIC_LABEL_PREFIX: &str =
+    "__ironsmith_as_long_as_its_your_turn:";
+
 /// How an ability-loss continuous effect treats later attempts to grant the
 /// same ability.
 ///
@@ -399,6 +412,11 @@ impl<T, E, C, Cond> PowerToughnessChoiceOption<T, E, C, Cond> {
 pub enum StaticAbilityPayload<T, E, C, Cond> {
     #[default]
     None,
+    /// Authored self-reference used to present an otherwise payloadless leaf
+    /// static ability. Runtime semantics still come from `StaticAbility::id`.
+    SelfSubjectSurface {
+        surface: SourceReferenceSurface,
+    },
     /// Presentation provenance for keyword abilities authored together on one
     /// source line. The following `keyword_count` keyword surfaces belong to
     /// one comma-separated Oracle line; this marker has no game semantics.
@@ -410,6 +428,27 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     /// may be structurally recombined only when their typed payloads agree.
     SourceLineStaticGroup {
         member_count: usize,
+    },
+    /// Counters on the source survive a zone change unless the destination is
+    /// one of the explicitly excluded zones. This is a property of the moving
+    /// object, not a counter-placement replacement.
+    CountersRemainAcrossZoneChanges {
+        excluded_destinations: Vec<Zone>,
+        display: String,
+    },
+    /// A priority special action available to any player. Paying `cost`
+    /// causes only that player to ignore this source's applicable static
+    /// restriction through the current turn boundary.
+    AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn {
+        cost: ManaCost,
+        display: String,
+    },
+    /// The legend rule does not apply to matching permanents controlled by
+    /// this ability's controller.  The filter is evaluated per candidate;
+    /// unlike the legacy identifier alone, it does not exempt that player's
+    /// unrelated legendary permanents.
+    LegendRuleDoesntApplyToController {
+        filter: ObjectFilter,
     },
     Companion(CompanionDeckCondition),
     Anthem(Anthem),
@@ -650,11 +689,17 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     MakeColorless(ObjectFilter),
     CostIncreasePerTargetBeyondFirst(u32),
     CostIncreaseManaCostPerTargetBeyondFirst(ManaCost),
+    /// Mandatory nonmana cost paid once for every target announced for this
+    /// spell (for example, "costs 3 life more to cast for each target").
+    AdditionalLifeCostPerTarget(u32),
     MinimumSpellTotalMana(u32),
     PlayersSkipUpkeep {
         player: PlayerFilter,
     },
     PlayerSkipsDrawStep {
+        player: PlayerFilter,
+    },
+    PlayersSkipExtraTurns {
         player: PlayerFilter,
     },
     ActivatedAbilityCostReduction {
@@ -674,7 +719,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         non_mana_only: bool,
         condition: Option<Condition>,
     },
-    ChoosePlayerAsEnters(String),
+    ChoosePlayerAsEnters {
+        filter: PlayerFilter,
+        display: String,
+    },
     NoteLifeTotalAsEnters(String),
     DiscardHandAsEnters(String),
     RevealFromHandAsEnters {
@@ -701,15 +749,20 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         spec: EnterAsCopyAsEntersSpec<T, E, C, Cond>,
         display: String,
     },
-    /// A structured resolution program performed as the source enters.
+    /// A structured resolution program performed as the source enters and/or
+    /// is turned face up.
     ///
-    /// Unlike an ordinary permanent spell effect, this also applies when the
-    /// card enters without being cast. `subject` retains only the authored
-    /// self-kind (for example, "this Vehicle") for canonical rendering.
+    /// Unlike an ordinary permanent spell effect, entry programs also apply
+    /// when the card enters without being cast. `subject` retains only the
+    /// authored self-kind (for example, "this Vehicle") for canonical
+    /// rendering.
     AsEntersEffectProgram {
         program: ResolutionProgram<E>,
         subject: String,
         also_turns_face_up: bool,
+        /// Suppress entry execution for an authored "As this is turned face
+        /// up" program. Such programs also set `also_turns_face_up`.
+        turns_face_up_only: bool,
         uses_enters_with_counter_surface: bool,
         /// When present, this is an immediate "as this transforms into ..."
         /// program rather than an entry replacement program. The legacy
@@ -787,6 +840,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         additional: u32,
         display: String,
     },
+    PlayerCounterPerTurnLimitReplacement {
+        player_filter: PlayerFilter,
+        counter_type: CounterType,
+        maximum: u32,
+        display: String,
+    },
     DoubleTokenCreationReplacement {
         controller: PlayerFilter,
         display: String,
@@ -804,6 +863,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     KeywordActionReplacement {
         action: KeywordActionKind,
         source_filter: ObjectFilter,
+        performer_filter: Option<PlayerFilter>,
         replacement_effects: Vec<E>,
         display: String,
     },
@@ -831,6 +891,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         filter: ObjectFilter,
         redirect_zone: Zone,
     },
+    SacrificeOrRedirectReplacement {
+        filter: ObjectFilter,
+        count: u32,
+        redirect_zone: Zone,
+    },
     PayLifeOrEnterTapped(u32),
     ManaSpendPermission {
         permission: ManaSpendPermission,
@@ -843,6 +908,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         counter_type: CounterType,
         amount: Value,
         follow_up: Option<CounterRemovalFollowUp>,
+        /// Each counter removed prevents one point of the incoming damage,
+        /// rather than replacing the entire damage event.
+        one_damage_per_counter: bool,
     },
     PreventDamageToSelfPutCountersInstead {
         counter_type: CounterType,
@@ -895,6 +963,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         filter: ObjectFilter,
         counter: CounterType,
         count: Value,
+        /// When present, `count` applies if this condition is true for the
+        /// entering object and `otherwise_count` applies if it is false.
+        count_condition: Option<Condition>,
+        otherwise_count: Option<Value>,
         subtypes: Vec<Subtype>,
     },
 }
@@ -1149,6 +1221,7 @@ where
                 beneficiary: spec.beneficiary,
                 usage_limit: spec.usage_limit,
                 cast_this_way_filter: spec.cast_this_way_filter,
+                source_exiled_surface: spec.source_exiled_surface,
                 cast_this_way_grants: spec
                     .cast_this_way_grants
                     .into_iter()
@@ -1173,11 +1246,31 @@ where
         {
             let payload = match ability.payload {
             StaticAbilityPayload::None => StaticAbilityPayload::None,
+            StaticAbilityPayload::SelfSubjectSurface { surface } => {
+                StaticAbilityPayload::SelfSubjectSurface { surface }
+            }
             StaticAbilityPayload::SourceLineKeywordGroup { keyword_count } => {
                 StaticAbilityPayload::SourceLineKeywordGroup { keyword_count }
             }
             StaticAbilityPayload::SourceLineStaticGroup { member_count } => {
                 StaticAbilityPayload::SourceLineStaticGroup { member_count }
+            }
+            StaticAbilityPayload::CountersRemainAcrossZoneChanges {
+                excluded_destinations,
+                display,
+            } => StaticAbilityPayload::CountersRemainAcrossZoneChanges {
+                excluded_destinations,
+                display,
+            },
+            StaticAbilityPayload::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn {
+                cost,
+                display,
+            } => StaticAbilityPayload::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn {
+                cost,
+                display,
+            },
+            StaticAbilityPayload::LegendRuleDoesntApplyToController { filter } => {
+                StaticAbilityPayload::LegendRuleDoesntApplyToController { filter }
             }
             StaticAbilityPayload::Companion(condition) => {
                 StaticAbilityPayload::Companion(condition)
@@ -1202,6 +1295,9 @@ where
             StaticAbilityPayload::PlayerSkipsDrawStep { player } => {
                 StaticAbilityPayload::PlayerSkipsDrawStep { player }
             }
+            StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
+                StaticAbilityPayload::PlayersSkipExtraTurns { player }
+            }
             StaticAbilityPayload::Anthem(anthem) => StaticAbilityPayload::Anthem(anthem),
             StaticAbilityPayload::AttachedAbilityGrant(grant) => {
                 let grant = *grant;
@@ -1214,6 +1310,8 @@ where
                         .collect::<Result<Vec<_>, _>>()?,
                     display: grant.display,
                     condition: grant.condition,
+                    protection_does_not_remove_controlled_attachments: grant
+                        .protection_does_not_remove_controlled_attachments,
                 }))
             }
             StaticAbilityPayload::AttachedChosenLandwalkGrant(grant) => {
@@ -1664,6 +1762,9 @@ where
             StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(cost) => {
                 StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(cost)
             }
+            StaticAbilityPayload::AdditionalLifeCostPerTarget(amount) => {
+                StaticAbilityPayload::AdditionalLifeCostPerTarget(amount)
+            }
             StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbilityPayload::MinimumSpellTotalMana(amount)
             }
@@ -1699,8 +1800,8 @@ where
                 non_mana_only,
                 condition,
             },
-            StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
-                StaticAbilityPayload::ChoosePlayerAsEnters(display)
+            StaticAbilityPayload::ChoosePlayerAsEnters { filter, display } => {
+                StaticAbilityPayload::ChoosePlayerAsEnters { filter, display }
             }
             StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbilityPayload::NoteLifeTotalAsEnters(display)
@@ -1792,6 +1893,7 @@ where
                 program,
                 subject,
                 also_turns_face_up,
+                turns_face_up_only,
                 uses_enters_with_counter_surface,
                 transforms_into,
                 presentation_label,
@@ -1799,6 +1901,7 @@ where
                 program: program.try_map_effects(|effect| map_effect(effect))?,
                 subject,
                 also_turns_face_up,
+                turns_face_up_only,
                 uses_enters_with_counter_surface,
                 transforms_into,
                 presentation_label,
@@ -1937,6 +2040,17 @@ where
                 additional,
                 display,
             },
+            StaticAbilityPayload::PlayerCounterPerTurnLimitReplacement {
+                player_filter,
+                counter_type,
+                maximum,
+                display,
+            } => StaticAbilityPayload::PlayerCounterPerTurnLimitReplacement {
+                player_filter,
+                counter_type,
+                maximum,
+                display,
+            },
             StaticAbilityPayload::DoubleTokenCreationReplacement {
                 controller,
                 display,
@@ -1960,11 +2074,13 @@ where
             StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
+                performer_filter,
                 replacement_effects,
                 display,
             } => StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
+                performer_filter,
                 replacement_effects: replacement_effects
                     .into_iter()
                     .map(map_effect)
@@ -2016,6 +2132,15 @@ where
                 filter,
                 redirect_zone,
             },
+            StaticAbilityPayload::SacrificeOrRedirectReplacement {
+                filter,
+                count,
+                redirect_zone,
+            } => StaticAbilityPayload::SacrificeOrRedirectReplacement {
+                filter,
+                count,
+                redirect_zone,
+            },
             StaticAbilityPayload::PayLifeOrEnterTapped(value) => {
                 StaticAbilityPayload::PayLifeOrEnterTapped(value)
             }
@@ -2035,10 +2160,12 @@ where
                 counter_type,
                 amount,
                 follow_up,
+                one_damage_per_counter,
             } => StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
                 counter_type,
                 amount,
                 follow_up,
+                one_damage_per_counter,
             },
             StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
                 counter_type,
@@ -2138,11 +2265,15 @@ where
                 filter,
                 counter,
                 count,
+                count_condition,
+                otherwise_count,
                 subtypes,
             } => StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
                 filter,
                 counter,
                 count,
+                count_condition,
+                otherwise_count,
                 subtypes,
             },
             };
@@ -2705,6 +2836,24 @@ impl<
         )
     }
 
+    /// A typed, source-scoped special-action permission. It is intentionally
+    /// separate from an activated ability because taking the action does not
+    /// use the stack.
+    pub fn any_player_may_pay_mana_to_ignore_source_effect_until_end_of_turn(
+        cost: ManaCost,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn {
+                cost,
+                display,
+            },
+        }
+    }
+
     pub fn all_creatures_attack_attached_controller_each_combat_if_able() -> Self {
         Self::identified(
             StaticAbilityId::AllCreaturesAttackAttachedControllerEachCombatIfAble,
@@ -3087,6 +3236,16 @@ impl<
 
     pub fn with_text(mut self, text: impl Into<String>) -> Self {
         self.label = text.into();
+        self
+    }
+
+    /// Retain the authored noun used for a payloadless leaf ability's source.
+    /// This is presentation metadata; the ability id continues to carry the
+    /// executable behavior.
+    pub fn with_self_subject_surface(mut self, surface: SourceReferenceSurface) -> Self {
+        if matches!(self.payload, StaticAbilityPayload::None) {
+            self.payload = StaticAbilityPayload::SelfSubjectSurface { surface };
+        }
         self
     }
 
@@ -3964,6 +4123,20 @@ impl<
                 counter_type,
                 amount: amount.into(),
                 follow_up,
+                one_damage_per_counter: false,
+            },
+        }
+    }
+
+    pub fn prevent_one_damage_to_self_per_removed_counter(counter_type: CounterType) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventDamageToSelfRemoveCounter),
+            label: "prevent one damage to self per removed counter".to_string(),
+            payload: StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
+                counter_type,
+                amount: Value::EventValue(crate::EventValueSpec::Amount),
+                follow_up: None,
+                one_damage_per_counter: true,
             },
         }
     }
@@ -4266,7 +4439,28 @@ impl<
                 program,
                 subject,
                 also_turns_face_up,
+                turns_face_up_only: false,
                 uses_enters_with_counter_surface,
+                transforms_into: None,
+                presentation_label,
+            },
+        }
+    }
+    pub fn as_turns_face_up_effect_program(
+        program: ResolutionProgram<E>,
+        subject: impl Into<String>,
+        presentation_label: Option<PresentationLabel>,
+    ) -> Self {
+        let subject = subject.into();
+        Self {
+            id: Some(StaticAbilityId::AsEntersEffectProgram),
+            label: format!("As {subject} is turned face up"),
+            payload: StaticAbilityPayload::AsEntersEffectProgram {
+                program,
+                subject,
+                also_turns_face_up: true,
+                turns_face_up_only: true,
+                uses_enters_with_counter_surface: false,
                 transforms_into: None,
                 presentation_label,
             },
@@ -4287,6 +4481,7 @@ impl<
                 program,
                 subject,
                 also_turns_face_up: false,
+                turns_face_up_only: false,
                 uses_enters_with_counter_surface: false,
                 transforms_into: Some(destination),
                 presentation_label,
@@ -4300,19 +4495,25 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
-    pub fn choose_color_as_becomes_attached(_display: impl Into<String>) -> Self {
+    pub fn choose_color_as_becomes_attached(display: impl Into<String>) -> Self {
         Self {
             id: Some(StaticAbilityId::ChooseColorAsBecomesAttached),
-            label: "choose color as becomes attached".into(),
+            label: display.into(),
             payload: StaticAbilityPayload::None,
         }
     }
     pub fn choose_player_as_enters(display: impl Into<String>) -> Self {
+        Self::choose_player_as_enters_matching(PlayerFilter::Any, display)
+    }
+    pub fn choose_player_as_enters_matching(
+        filter: PlayerFilter,
+        display: impl Into<String>,
+    ) -> Self {
         let display = display.into();
         Self {
             id: Some(StaticAbilityId::ChoosePlayerAsEnters),
             label: display.clone(),
-            payload: StaticAbilityPayload::ChoosePlayerAsEnters(display),
+            payload: StaticAbilityPayload::ChoosePlayerAsEnters { filter, display },
         }
     }
     pub fn note_life_total_as_enters(display: impl Into<String>) -> Self {
@@ -4476,6 +4677,13 @@ impl<
             payload: StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(cost),
         }
     }
+    pub fn additional_life_cost_per_target(amount: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CostIncreasePerAdditionalTarget),
+            label: format!("This spell costs {amount} life more to cast for each target"),
+            payload: StaticAbilityPayload::AdditionalLifeCostPerTarget(amount),
+        }
+    }
     pub fn players_skip_upkeep() -> Self {
         Self::player_skips_upkeep(PlayerFilter::Any)
     }
@@ -4493,6 +4701,13 @@ impl<
             payload: StaticAbilityPayload::PlayerSkipsDrawStep { player },
         }
     }
+    pub fn players_skip_extra_turns(player: PlayerFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PlayersSkipExtraTurns),
+            label: "players skip extra turns".into(),
+            payload: StaticAbilityPayload::PlayersSkipExtraTurns { player },
+        }
+    }
     pub fn legend_rule_doesnt_apply() -> Self {
         Self::identified(
             StaticAbilityId::LegendRuleDoesntApply,
@@ -4500,16 +4715,30 @@ impl<
         )
     }
     pub fn legend_rule_doesnt_apply_to_controller() -> Self {
-        Self::identified(
-            StaticAbilityId::LegendRuleDoesntApplyToController,
-            "legend rule doesnt apply to permanents you control",
-        )
+        Self::legend_rule_doesnt_apply_to_controller_matching(ObjectFilter::permanent())
+    }
+    pub fn legend_rule_doesnt_apply_to_controller_matching(filter: ObjectFilter) -> Self {
+        let noun = if filter.token {
+            "tokens"
+        } else if filter.card_types == [CardType::Creature] {
+            "creatures"
+        } else {
+            "permanents"
+        };
+        Self {
+            id: Some(StaticAbilityId::LegendRuleDoesntApplyToController),
+            label: format!("The \"legend rule\" doesn't apply to {noun} you control"),
+            payload: StaticAbilityPayload::LegendRuleDoesntApplyToController { filter },
+        }
     }
     pub fn legend_rule_doesnt_apply_to_tokens_you_control() -> Self {
-        Self::identified(
-            StaticAbilityId::LegendRuleDoesntApplyToControllerTokens,
-            "legend rule doesnt apply to tokens you control",
-        )
+        let mut filter = ObjectFilter::permanent();
+        filter.token = true;
+        Self {
+            id: Some(StaticAbilityId::LegendRuleDoesntApplyToControllerTokens),
+            label: "The \"legend rule\" doesn't apply to tokens you control".to_string(),
+            payload: StaticAbilityPayload::LegendRuleDoesntApplyToController { filter },
+        }
     }
     pub fn remove_supertypes(filter: ObjectFilter, supertypes: Vec<Supertype>) -> Self {
         Self {
@@ -4876,6 +5105,27 @@ impl<
             payload: StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
+                performer_filter: None,
+                replacement_effects,
+                display,
+            },
+        }
+    }
+
+    pub fn keyword_action_replacement_for_player(
+        action: KeywordActionKind,
+        performer_filter: PlayerFilter,
+        replacement_effects: Vec<E>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::KeywordActionReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::KeywordActionReplacement {
+                action,
+                source_filter: ObjectFilter::default(),
+                performer_filter: Some(performer_filter),
                 replacement_effects,
                 display,
             },
@@ -5085,6 +5335,21 @@ impl<
         }
     }
 
+    pub fn counters_remain_across_zone_changes(
+        excluded_destinations: Vec<Zone>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::CountersRemainAcrossZoneChanges),
+            label: display.clone(),
+            payload: StaticAbilityPayload::CountersRemainAcrossZoneChanges {
+                excluded_destinations,
+                display,
+            },
+        }
+    }
+
     pub fn add_counters_placement_replacement(
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
@@ -5118,6 +5383,25 @@ impl<
                 filter: ObjectFilter::default(),
                 player_filter: Some(player_filter),
                 counter_type,
+                display,
+            },
+        }
+    }
+
+    pub fn player_counter_per_turn_limit_replacement(
+        player_filter: PlayerFilter,
+        counter_type: CounterType,
+        maximum: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::PlayerCounterPerTurnLimitReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::PlayerCounterPerTurnLimitReplacement {
+                player_filter,
+                counter_type,
+                maximum,
                 display,
             },
         }
@@ -5165,6 +5449,21 @@ impl<
             label: "discard or redirect replacement".into(),
             payload: StaticAbilityPayload::DiscardOrRedirectReplacement {
                 filter,
+                redirect_zone,
+            },
+        }
+    }
+    pub fn sacrifice_or_redirect_replacement(
+        filter: ObjectFilter,
+        count: u32,
+        redirect_zone: Zone,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SacrificeOrRedirectReplacement),
+            label: "sacrifice or redirect replacement".into(),
+            payload: StaticAbilityPayload::SacrificeOrRedirectReplacement {
+                filter,
+                count,
                 redirect_zone,
             },
         }
@@ -5244,9 +5543,30 @@ impl<
         }
     }
     pub fn enters_with_counters_value(counter: CounterType, count: Value) -> Self {
+        let counter_text = counter.description();
+        let label = match &count {
+            Value::Fixed(1) => {
+                let article = match counter_text
+                    .chars()
+                    .next()
+                    .map(|ch| ch.to_ascii_lowercase())
+                {
+                    Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+                    _ => "a",
+                };
+                if count.has_surface_hint(ValueSurfaceHint::AdditionalEntryCounter) {
+                    format!(
+                        "Enters the battlefield with an additional {counter_text} counter on it"
+                    )
+                } else {
+                    format!("Enters the battlefield with {article} {counter_text} counter on it")
+                }
+            }
+            _ => "enters with counters value".to_string(),
+        };
         Self {
             id: Some(StaticAbilityId::EnterWithCounters),
-            label: "enters with counters value".to_string(),
+            label,
             payload: StaticAbilityPayload::EntersWithCountersValue { counter, count },
         }
     }
@@ -5319,6 +5639,30 @@ impl<
                 filter,
                 counter,
                 count,
+                count_condition: None,
+                otherwise_count: None,
+                subtypes,
+            },
+        }
+    }
+
+    pub fn enters_with_counters_and_subtypes_for_filter_if_otherwise(
+        filter: ObjectFilter,
+        counter: CounterType,
+        count: Value,
+        count_condition: Condition,
+        otherwise_count: Value,
+        subtypes: Vec<Subtype>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::EnterWithCountersForFilter),
+            label: "conditional enters with counters and subtypes for filter".to_string(),
+            payload: StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+                filter,
+                counter,
+                count,
+                count_condition: Some(count_condition),
+                otherwise_count: Some(otherwise_count),
                 subtypes,
             },
         }

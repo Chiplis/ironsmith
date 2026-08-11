@@ -206,6 +206,60 @@ fn d20_result_conjunction_preserves_explicit_controller_draw_subject() {
     );
 }
 
+#[test]
+fn numeric_result_table_renders_only_typed_authored_branch_labels() {
+    let roll_id = crate::effect::EffectId(30);
+    let labeled = Effect::new(crate::effects::SequenceEffect::result_labeled(
+        vec![Effect::new(crate::effects::LoseLifeEffect::you(3))],
+        "Trapped!",
+    ));
+    let table = vec![
+        Effect::with_id(roll_id.0, Effect::roll_die(20, PlayerFilter::You)),
+        Effect::if_then(
+            roll_id,
+            crate::effect::EffectPredicate::Value(crate::effect::Comparison::Equal(1)),
+            vec![labeled],
+        ),
+        Effect::if_then(
+            roll_id,
+            crate::effect::EffectPredicate::Value(crate::effect::Comparison::BetweenInclusive(
+                2, 20,
+            )),
+            vec![Effect::gain_life(1)],
+        ),
+    ];
+    assert_eq!(
+        describe_roll_die_with_numeric_result_table(&table).as_deref(),
+        Some("Roll a d20.\n1 | Trapped! — You lose 3 life.\n2—20 | You gain 1 life.")
+    );
+
+    let mut non_label_surface = crate::effects::SequenceEffect::result_labeled(
+        vec![Effect::new(crate::effects::LoseLifeEffect::you(3))],
+        "Trapped!",
+    );
+    non_label_surface.surface = ironsmith_core::SequenceSurface::Coordinated;
+    let near_miss = vec![
+        Effect::with_id(roll_id.0, Effect::roll_die(20, PlayerFilter::You)),
+        Effect::if_then(
+            roll_id,
+            crate::effect::EffectPredicate::Value(crate::effect::Comparison::Equal(1)),
+            vec![Effect::new(non_label_surface)],
+        ),
+        Effect::if_then(
+            roll_id,
+            crate::effect::EffectPredicate::Value(crate::effect::Comparison::BetweenInclusive(
+                2, 20,
+            )),
+            vec![Effect::gain_life(1)],
+        ),
+    ];
+    assert!(
+        describe_roll_die_with_numeric_result_table(&near_miss)
+            .is_some_and(|text| !text.contains("Trapped!")),
+        "only the dedicated typed branch-label surface may restore the label"
+    );
+}
+
 fn roll_then_result_draw_program(
     result_id: crate::effect::EffectId,
     include_result_hint: bool,

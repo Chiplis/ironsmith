@@ -4,6 +4,78 @@ use crate::ids::CardId;
 use crate::types::CardType;
 
 #[test]
+fn current_turn_extra_provenance_tracks_the_selected_turn_after_queue_consumption() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    assert_eq!(game.turn.active_player, alice);
+    assert!(!game.turn_store.current_turn_is_extra);
+
+    game.turn_store.extra_turns.push(alice);
+    game.next_turn();
+
+    assert_eq!(game.turn.active_player, alice);
+    assert!(game.turn_store.extra_turns.is_empty());
+    assert!(
+        game.turn_store.current_turn_is_extra,
+        "the active turn must retain its provenance after it leaves the queue"
+    );
+
+    game.next_turn();
+
+    assert_eq!(game.turn.active_player, bob);
+    assert!(!game.turn_store.current_turn_is_extra);
+}
+
+#[test]
+fn skipped_extra_turn_does_not_mark_the_following_normal_turn_as_extra() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn_store.extra_turns.push(alice);
+    game.turn_store.skip_next_turn.insert(alice);
+    game.next_turn();
+
+    assert_eq!(game.turn.active_player, bob);
+    assert!(game.turn_store.extra_turns.is_empty());
+    assert!(!game.turn_store.current_turn_is_extra);
+}
+
+#[test]
+fn grand_melee_keeps_real_extra_turn_provenance_separate_from_lane_scheduling() {
+    let mut game = GameState::new(
+        vec![
+            "Alice".into(),
+            "Bob".into(),
+            "Charlie".into(),
+            "Dana".into(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let seats = (0..4).map(PlayerId::from_index).collect::<Vec<_>>();
+    game.restore_grand_melee_with_starting_player(seats, alice)
+        .expect("four-player Grand Melee should initialize");
+
+    game.turn_store.extra_turns.push(alice);
+    game.next_turn();
+
+    assert_eq!(game.turn.active_player, alice);
+    assert!(game.turn_store.current_turn_is_extra);
+
+    game.next_turn();
+
+    assert_eq!(game.turn.active_player, bob);
+    assert!(
+        !game.turn_store.current_turn_is_extra,
+        "Grand Melee's internal lane queue must not label an ordinary turn extra"
+    );
+}
+
+#[test]
 fn name_sticker_character_count_is_case_insensitive_and_additive() {
     let mut game = GameState::new(vec!["Alice".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -2280,4 +2352,73 @@ fn multiplayer_leave_game_routes_800_4g_h_choices_and_rejects_800_4f_costs() {
     assert!(
         crate::cost::can_pay_cost(&game, source, alice, &crate::cost::TotalCost::free()).is_err()
     );
+}
+
+#[test]
+fn enchanted_combat_history_uses_the_interval_since_controllers_previous_upkeep() {
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::events::combat::{AttackEventTarget, CreatureAttackedEvent};
+    use crate::object::AttachmentTarget;
+
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature_card = CardBuilder::new(CardId::from_raw(50_005), "Tracked Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let aura_card = CardBuilder::new(CardId::from_raw(50_006), "Tracking Aura")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let creature = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+    let aura = game.create_object_from_card(&aura_card, alice, Zone::Battlefield);
+    game.object_mut(aura).expect("aura").attached_to = Some(AttachmentTarget::Object(creature));
+
+    game.turn.turn_number = 1;
+    game.mark_upkeep_began(alice);
+    game.record_turn_history_event(&crate::triggers::TriggerEvent::new(
+        CreatureAttackedEvent::new(creature, AttackEventTarget::Player(bob)),
+        crate::provenance::ProvNodeId::default(),
+    ));
+    game.turn.turn_number = 2;
+    game.mark_upkeep_began(alice);
+    assert!(game.enchanted_permanent_attacked_or_blocked_since_last_upkeep(aura, alice));
+
+    game.turn.turn_number = 3;
+    game.mark_upkeep_began(alice);
+    assert!(
+        !game.enchanted_permanent_attacked_or_blocked_since_last_upkeep(aura, alice),
+        "an attack before the previous upkeep must age out of the predicate"
+    );
+}
+
+#[test]
+fn source_block_history_tracks_blocker_and_blocked_attacker_separately() {
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::events::combat::CreatureBlockedEvent;
+
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let creature_card = CardBuilder::new(CardId::from_raw(50_007), "Tracked Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let blocker = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+    let attacker = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+    game.turn.turn_number = 1;
+    game.mark_upkeep_began(alice);
+    game.record_turn_history_event(&crate::triggers::TriggerEvent::new(
+        CreatureBlockedEvent::new(blocker, attacker),
+        crate::provenance::ProvNodeId::default(),
+    ));
+    game.turn.turn_number = 2;
+    game.mark_upkeep_began(alice);
+    assert!(game.source_blocked_or_became_blocked_since_last_upkeep(blocker, alice));
+    assert!(game.source_blocked_or_became_blocked_since_last_upkeep(attacker, alice));
+
+    game.turn.turn_number = 3;
+    game.mark_upkeep_began(alice);
+    assert!(!game.source_blocked_or_became_blocked_since_last_upkeep(blocker, alice));
+    assert!(!game.source_blocked_or_became_blocked_since_last_upkeep(attacker, alice));
 }

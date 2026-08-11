@@ -9,7 +9,8 @@ use crate::object::CounterType;
 use crate::runtime_backend::front_end::grammar::{filters, leaf, primitives, values};
 use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken, TokenKind};
 use crate::runtime_backend::front_end::shared::util::{
-    source_reference_surface_for_words, this_source_surface_for_words,
+    source_reference_surface_for_possessive_words, source_reference_surface_for_words,
+    this_source_surface_for_words,
 };
 use crate::target::{PlayerFilter, SourceReferenceSurface};
 
@@ -245,7 +246,7 @@ fn parse_counter_noun<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 fn parse_referential_counter_count_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ReferentialCounterCountShape> {
-    let (source, rest) = primitives::parse_prefix(
+    if let Some((source, rest)) = primitives::parse_prefix(
         tokens,
         alt((
             alt((primitives::kw("its"), primitives::kw("those")))
@@ -257,27 +258,50 @@ fn parse_referential_counter_count_shape(
             ))
             .value(CounterReferenceSource::Source),
         )),
-    )?;
-    let source_consumed = tokens.len().checked_sub(rest.len())?;
-    if let Some(((), after_noun)) = primitives::parse_prefix(rest, parse_counter_noun) {
-        let consumed = tokens.len().checked_sub(after_noun.len())?;
+    ) {
+        let source_consumed = tokens.len().checked_sub(rest.len())?;
+        if let Some(((), after_noun)) = primitives::parse_prefix(rest, parse_counter_noun) {
+            let consumed = tokens.len().checked_sub(after_noun.len())?;
+            return Some(ReferentialCounterCountShape {
+                source,
+                counter_type: None,
+                consumed,
+            });
+        }
+        let (noun_idx, (), after_noun) = primitives::find_prefix(rest, || parse_counter_noun)?;
+        if noun_idx == 0 {
+            return None;
+        }
+        let descriptor_end = rest.len().checked_sub(after_noun.len())?;
+        let counter_type = filters::parse_counter_type_from_tokens(&rest[..descriptor_end])?;
         return Some(ReferentialCounterCountShape {
             source,
-            counter_type: None,
-            consumed,
+            counter_type: Some(counter_type),
+            consumed: source_consumed + descriptor_end,
         });
     }
-    let (noun_idx, (), after_noun) = primitives::find_prefix(rest, || parse_counter_noun)?;
-    if noun_idx == 0 {
-        return None;
+
+    let (noun_idx, (), after_noun) = primitives::find_prefix(tokens, || parse_counter_noun)?;
+    let noun_end = tokens.len().checked_sub(after_noun.len())?;
+    for source_end in (1..=noun_idx).rev() {
+        let source_words = primitives::TokenWordView::new(&tokens[..source_end]).to_word_refs();
+        if source_reference_surface_for_possessive_words(&source_words).is_none() {
+            continue;
+        }
+        let counter_type = if source_end == noun_idx {
+            None
+        } else {
+            Some(filters::parse_counter_type_from_tokens(
+                &tokens[source_end..noun_end],
+            )?)
+        };
+        return Some(ReferentialCounterCountShape {
+            source: CounterReferenceSource::Source,
+            counter_type,
+            consumed: noun_end,
+        });
     }
-    let descriptor_end = rest.len().checked_sub(after_noun.len())?;
-    let counter_type = filters::parse_counter_type_from_tokens(&rest[..descriptor_end])?;
-    Some(ReferentialCounterCountShape {
-        source,
-        counter_type: Some(counter_type),
-        consumed: source_consumed + descriptor_end,
-    })
+    None
 }
 
 fn equal_value_shape(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], bool)> {
@@ -653,6 +677,15 @@ fn source_leaves_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
+fn opponent_becomes_monarch_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    (
+        primitives::phrase(&["until", "an", "opponent", "becomes", "the", "monarch"]),
+        primitives::sentence_end(),
+    )
+        .void()
+        .parse_next(input)
+}
+
 fn target_leaves_suffix<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
     primitives::kw("until").parse_next(input)?;
     let target = (
@@ -683,6 +716,13 @@ pub(crate) fn split_until_source_leaves_shape(
     primitives::split_lexed_once_before_suffix(tokens, 1, || source_leaves_suffix)
         .map(|(head, ())| (head, true))
         .unwrap_or((tokens, false))
+}
+
+pub(crate) fn split_until_opponent_becomes_monarch_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    primitives::split_lexed_once_before_suffix(tokens, 1, || opponent_becomes_monarch_suffix)
+        .map(|(head, ())| head)
 }
 
 fn half_starting_life_player<'a>(input: &mut LexStream<'a>) -> WResult<PlayerFilter> {
@@ -843,6 +883,9 @@ pub(crate) fn player_filter_for_half_reference(player: PlayerAst) -> Option<Play
         | PlayerAst::ItsController
         | PlayerAst::ItsOwner
         | PlayerAst::Enchanted => None,
+        PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
+            crate::filter::ObjectRef::tagged("triggering_source"),
+        )),
     }
 }
 
@@ -899,6 +942,21 @@ mod tests {
                 counter_type: None,
                 consumed: 2,
             })
+        );
+        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "Counter Bear",
+            || {
+                assert_eq!(
+                    parse_counter_count_prefix_shape(&tokens(
+                        "Counter Bear's counters on that creature"
+                    )),
+                    CounterCountPrefixShape::Referential(ReferentialCounterCountShape {
+                        source: CounterReferenceSource::Source,
+                        counter_type: None,
+                        consumed: 3,
+                    })
+                );
+            },
         );
         let counter_tokens = tokens("+1/+1 counters on target creature equal to the difference");
         let shape = parse_put_counter_target_shape(&counter_tokens).unwrap();

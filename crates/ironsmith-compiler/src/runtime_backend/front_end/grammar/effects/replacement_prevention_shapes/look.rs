@@ -22,6 +22,7 @@ pub(crate) struct LookHandShape {
 pub(crate) struct LookTopExileOneShape {
     pub(crate) count: u32,
     pub(crate) player: PlayerAst,
+    pub(crate) face_down: bool,
 }
 
 fn look_hand_player<'a>(input: &mut LexStream<'a>) -> WResult<LookHandPlayerShape> {
@@ -81,7 +82,7 @@ pub(crate) fn parse_look_hand_shape(tokens: &[OwnedLexToken]) -> Option<LookHand
     primitives::parse_all(tokens, look_hand, "look at hand shape").ok()
 }
 
-fn exile_one_followup(tokens: &[OwnedLexToken]) -> bool {
+fn exile_one_followup(tokens: &[OwnedLexToken]) -> Option<bool> {
     let tokens = trim_lexed_commas(tokens);
     let tokens = primitives::parse_prefix(
         tokens,
@@ -89,15 +90,23 @@ fn exile_one_followup(tokens: &[OwnedLexToken]) -> bool {
     )
     .map(|(_, rest)| rest)
     .unwrap_or(tokens);
-    primitives::parse_prefix(
+    let (_, rest) = primitives::parse_prefix(
         tokens,
         primitives::any_phrase(&[
             &["exile", "one", "of", "them"],
             &["exile", "one", "of", "those"],
             &["exile", "one", "of", "those", "cards"],
+            &["exile", "it"],
+            &["exile", "that", "card"],
         ]),
-    )
-    .is_some()
+    )?;
+    let rest = trim_lexed_commas(rest);
+    if rest.is_empty() {
+        return Some(false);
+    }
+    primitives::strip_lexed_suffix_phrase(rest, &["face", "down"])
+        .is_some_and(|remaining| trim_lexed_commas(remaining).is_empty())
+        .then_some(true)
 }
 
 pub(crate) fn parse_look_top_exile_one_shape(
@@ -106,25 +115,34 @@ pub(crate) fn parse_look_top_exile_one_shape(
     let (_, body) = primitives::parse_prefix(tokens, primitives::phrase(&["look", "at"]))?;
     let (_, body) = primitives::parse_prefix(body, opt(primitives::kw("the")))?;
     let (_, body) = primitives::parse_prefix(body, primitives::kw("top"))?;
-    let (count, body) = primitives::parse_prefix(body, leaf::parse_leaf_number_prefix_lexed)?;
-    let (_, body) = primitives::parse_prefix(
-        body,
-        alt((
-            primitives::phrase(&["cards", "of"]),
-            primitives::phrase(&["card", "of"]),
-            primitives::kw("of").void(),
-        )),
-    )?;
+    let (count, body) = if let Some((count, body)) =
+        primitives::parse_prefix(body, leaf::parse_leaf_number_prefix_lexed)
+    {
+        let (_, body) = primitives::parse_prefix(
+            body,
+            alt((
+                primitives::phrase(&["cards", "of"]),
+                primitives::phrase(&["card", "of"]),
+                primitives::kw("of").void(),
+            )),
+        )?;
+        (count, body)
+    } else {
+        let (_, body) = primitives::parse_prefix(body, primitives::phrase(&["card", "of"]))?;
+        (1, body)
+    };
     let (owner_tokens, followup_tokens) =
         primitives::split_lexed_once_on_separator(body, || primitives::kw("library").void())?;
     let player = match parse_subject(trim_lexed_commas(owner_tokens)) {
         SubjectAst::Player(player) => player,
         _ => return None,
     };
-    if !exile_one_followup(followup_tokens) {
-        return None;
-    }
-    Some(LookTopExileOneShape { count, player })
+    let face_down = exile_one_followup(followup_tokens)?;
+    Some(LookTopExileOneShape {
+        count,
+        player,
+        face_down,
+    })
 }
 
 #[cfg(test)]

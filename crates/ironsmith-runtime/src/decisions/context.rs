@@ -105,6 +105,43 @@ pub struct DecisionHiddenCardView {
 }
 
 // ============================================================================
+// Mana Payment Context
+// ============================================================================
+
+/// An authoritative proposal for paying a complete mana cost.
+///
+/// Unlike a generic option prompt, this exposes the whole transaction to UI
+/// clients while retaining every executable step in engine-owned data.
+#[derive(Debug, Clone)]
+pub struct ManaPaymentContext {
+    pub player: PlayerId,
+    pub source: ObjectId,
+    pub subject: String,
+    pub request: crate::mana_payment::ManaPaymentRequest,
+    pub plan: crate::mana_payment::ManaPaymentPlan,
+    pub ui_hints: DecisionUiHints,
+}
+
+impl ManaPaymentContext {
+    pub fn new(
+        player: PlayerId,
+        source: ObjectId,
+        subject: impl Into<String>,
+        request: crate::mana_payment::ManaPaymentRequest,
+        plan: crate::mana_payment::ManaPaymentPlan,
+    ) -> Self {
+        Self {
+            player,
+            source,
+            subject: subject.into(),
+            request,
+            plan,
+            ui_hints: DecisionUiHints::default(),
+        }
+    }
+}
+
+// ============================================================================
 // Boolean Context
 // ============================================================================
 
@@ -633,7 +670,7 @@ impl SelectableOption {
 
 /// Context for option selection decisions.
 ///
-/// Used for: modes, choices, priority actions, mana payment, replacement effects, etc.
+/// Used for: modes, choices, priority actions, replacement effects, etc.
 #[derive(Debug, Clone)]
 pub struct SelectOptionsContext {
     /// The player making the decision.
@@ -669,72 +706,6 @@ impl SelectOptionsContext {
             options,
             min,
             max,
-            ui_hints: DecisionUiHints::default(),
-        }
-    }
-
-    /// Create a mana payment context.
-    /// The description includes "mana" to trigger ManaPayment response type.
-    pub fn mana_payment(
-        player: PlayerId,
-        source: ObjectId,
-        spell_name: impl Into<String>,
-        options: Vec<SelectableOption>,
-    ) -> Self {
-        Self {
-            player,
-            source: Some(source),
-            description: format!("Pay mana for {}", spell_name.into()),
-            options,
-            min: 1,
-            max: 1,
-            ui_hints: DecisionUiHints::default(),
-        }
-    }
-
-    /// Create the single pre-payment mana-ability window required by CR 601.2g.
-    pub fn mana_ability_window(
-        player: PlayerId,
-        source: ObjectId,
-        subject: impl Into<String>,
-        options: Vec<SelectableOption>,
-    ) -> Self {
-        Self {
-            player,
-            source: Some(source),
-            description: format!(
-                "Activate mana abilities before paying costs for {}",
-                subject.into()
-            ),
-            options,
-            min: 1,
-            max: 1,
-            ui_hints: DecisionUiHints::default(),
-        }
-    }
-
-    /// Create a mana pip payment context.
-    /// The description includes "mana pip" to trigger ManaPipPayment response type.
-    pub fn mana_pip_payment(
-        player: PlayerId,
-        source: ObjectId,
-        spell_name: impl Into<String>,
-        pip_description: impl Into<String>,
-        remaining_pips: usize,
-        options: Vec<SelectableOption>,
-    ) -> Self {
-        Self {
-            player,
-            source: Some(source),
-            description: format!(
-                "Pay mana pip {} for {} ({} remaining)",
-                pip_description.into(),
-                spell_name.into(),
-                remaining_pips
-            ),
-            options,
-            min: 1,
-            max: 1,
             ui_hints: DecisionUiHints::default(),
         }
     }
@@ -1115,8 +1086,8 @@ pub struct CountersContext {
     pub player: PlayerId,
     /// The source of the effect.
     pub source: Option<ObjectId>,
-    /// The target permanent to remove counters from.
-    pub target: ObjectId,
+    /// The permanent or player to remove counters from.
+    pub target: Target,
     /// Display name of the target.
     pub target_name: String,
     /// Minimum total counters that must be removed.
@@ -1132,7 +1103,7 @@ impl CountersContext {
     pub fn new(
         player: PlayerId,
         source: Option<ObjectId>,
-        target: ObjectId,
+        target: Target,
         target_name: impl Into<String>,
         min_total: u32,
         max_total: u32,
@@ -1301,6 +1272,8 @@ pub struct TargetRequirementContext {
     /// Legal target groups for constraints that apply to the selected set.
     /// If empty, any combination of legal targets is allowed.
     pub legal_target_sets: Vec<Vec<crate::game_state::Target>>,
+    /// Resolved restriction on the selected target set as a whole.
+    pub aggregate_constraint: Option<crate::targeting::ResolvedTargetAggregateConstraint>,
     /// Minimum number of targets to choose.
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited).
@@ -1319,6 +1292,7 @@ impl TargetRequirementContext {
             description: description.into(),
             legal_targets,
             legal_target_sets: Vec::new(),
+            aggregate_constraint: None,
             min_targets: 1,
             max_targets: Some(1),
             distinct_player_group: None,
@@ -1411,6 +1385,8 @@ pub enum DecisionContext {
     Priority(PriorityContext),
     /// Target selection for spells and abilities.
     Targets(TargetsContext),
+    /// Whole-cost mana payment proposal.
+    ManaPayment(ManaPaymentContext),
 }
 
 impl DecisionContext {
@@ -1433,6 +1409,7 @@ impl DecisionContext {
             DecisionContext::Proliferate(ctx) => ctx.player,
             DecisionContext::Priority(ctx) => ctx.player,
             DecisionContext::Targets(ctx) => ctx.player,
+            DecisionContext::ManaPayment(ctx) => ctx.player,
         }
     }
 
@@ -1455,6 +1432,7 @@ impl DecisionContext {
             | DecisionContext::Proliferate(_)
             | DecisionContext::Priority(_) => None,
             DecisionContext::Targets(ctx) => Some(ctx.source),
+            DecisionContext::ManaPayment(ctx) => Some(ctx.source),
         }
     }
 
@@ -1469,6 +1447,7 @@ impl DecisionContext {
             DecisionContext::HybridChoice(ctx) => Some(&ctx.spell_name),
             DecisionContext::Order(ctx) => Some(&ctx.description),
             DecisionContext::Targets(ctx) => Some(&ctx.context),
+            DecisionContext::ManaPayment(ctx) => Some(&ctx.subject),
             DecisionContext::Attackers(_)
             | DecisionContext::Blockers(_)
             | DecisionContext::Distribute(_)
@@ -1488,6 +1467,7 @@ impl DecisionContext {
             DecisionContext::SelectObjects(ctx) => ctx.ui_hints.context_text.as_deref(),
             DecisionContext::SelectOptions(ctx) => ctx.ui_hints.context_text.as_deref(),
             DecisionContext::Targets(ctx) => ctx.ui_hints.context_text.as_deref(),
+            DecisionContext::ManaPayment(ctx) => ctx.ui_hints.context_text.as_deref(),
             DecisionContext::Modes(_)
             | DecisionContext::HybridChoice(_)
             | DecisionContext::Order(_)
@@ -1510,6 +1490,7 @@ impl DecisionContext {
             DecisionContext::SelectObjects(ctx) => ctx.ui_hints.consequence_text.as_deref(),
             DecisionContext::SelectOptions(ctx) => ctx.ui_hints.consequence_text.as_deref(),
             DecisionContext::Targets(ctx) => ctx.ui_hints.consequence_text.as_deref(),
+            DecisionContext::ManaPayment(ctx) => ctx.ui_hints.consequence_text.as_deref(),
             DecisionContext::Modes(_)
             | DecisionContext::HybridChoice(_)
             | DecisionContext::Order(_)
@@ -1532,6 +1513,7 @@ impl DecisionContext {
             DecisionContext::SelectObjects(ctx) => &ctx.ui_hints.hidden_card_views,
             DecisionContext::SelectOptions(ctx) => &ctx.ui_hints.hidden_card_views,
             DecisionContext::Targets(ctx) => &ctx.ui_hints.hidden_card_views,
+            DecisionContext::ManaPayment(ctx) => &ctx.ui_hints.hidden_card_views,
             DecisionContext::Modes(_)
             | DecisionContext::HybridChoice(_)
             | DecisionContext::Order(_)
@@ -1555,6 +1537,7 @@ impl DecisionContext {
             DecisionContext::SelectObjects(ctx) => ctx.ui_hints.context_text = Some(text),
             DecisionContext::SelectOptions(ctx) => ctx.ui_hints.context_text = Some(text),
             DecisionContext::Targets(ctx) => ctx.ui_hints.context_text = Some(text),
+            DecisionContext::ManaPayment(ctx) => ctx.ui_hints.context_text = Some(text),
             DecisionContext::Modes(_)
             | DecisionContext::HybridChoice(_)
             | DecisionContext::Order(_)
@@ -1579,6 +1562,7 @@ impl DecisionContext {
             DecisionContext::SelectObjects(ctx) => ctx.ui_hints.consequence_text = Some(text),
             DecisionContext::SelectOptions(ctx) => ctx.ui_hints.consequence_text = Some(text),
             DecisionContext::Targets(ctx) => ctx.ui_hints.consequence_text = Some(text),
+            DecisionContext::ManaPayment(ctx) => ctx.ui_hints.consequence_text = Some(text),
             DecisionContext::Modes(_)
             | DecisionContext::HybridChoice(_)
             | DecisionContext::Order(_)
@@ -1633,6 +1617,12 @@ impl DecisionContext {
                         .with_hidden_card_view(object_ids, visibility, description)
             }
             DecisionContext::Targets(ctx) => {
+                ctx.ui_hints =
+                    ctx.ui_hints
+                        .clone()
+                        .with_hidden_card_view(object_ids, visibility, description)
+            }
+            DecisionContext::ManaPayment(ctx) => {
                 ctx.ui_hints =
                     ctx.ui_hints
                         .clone()
@@ -1770,6 +1760,13 @@ impl DecisionContext {
         match self {
             DecisionContext::Targets(ctx) => ctx,
             _ => panic!("Expected TargetsContext"),
+        }
+    }
+
+    pub fn into_mana_payment(self) -> ManaPaymentContext {
+        match self {
+            DecisionContext::ManaPayment(ctx) => ctx,
+            _ => panic!("Expected ManaPaymentContext"),
         }
     }
 }

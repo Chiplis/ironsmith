@@ -9,19 +9,18 @@ use super::super::object_filters::{
     set_has, slice_has,
 };
 use super::super::util::{
-    apply_filter_keyword_constraint, comparison_to_at_least_threshold,
+    FilterKeywordListConnective, apply_filter_keyword_constraint, comparison_to_at_least_threshold,
     comparison_to_strict_at_least_threshold, comparison_to_value_comparison_operator, is_article,
     is_demonstrative_object_head, is_non_outlaw_word, is_outlaw_word, is_permanent_type,
     is_source_reference_words, non_article_token_word_refs, non_article_word_refs,
     parse_alternative_cast_words, parse_card_type, parse_color,
     parse_filter_keyword_constraint_list_words, parse_filter_keyword_constraint_words,
-    parse_greater_than_or_equal_quantity_prefix, FilterKeywordListConnective,
-    parse_less_than_or_equal_quantity_prefix, parse_mana_symbol_word_flexible, parse_non_color,
-    parse_non_subtype, parse_non_supertype, parse_non_type, parse_number, parse_number_word_u32,
-    parse_quantity_comparison_prefix, parse_subtype_flexible, parse_subtype_word,
-    parse_supertype_word, parse_unsigned_pt_word, parse_zone_word, push_outlaw_subtypes,
-    source_reference_surface_for_words, strip_leading_article_word_refs,
-    this_source_surface_for_words, trim_commas, word_refs_except,
+    parse_greater_than_or_equal_quantity_prefix, parse_less_than_or_equal_quantity_prefix,
+    parse_mana_symbol_word_flexible, parse_non_color, parse_non_subtype, parse_non_supertype,
+    parse_non_type, parse_number, parse_number_word_u32, parse_quantity_comparison_prefix,
+    parse_subtype_flexible, parse_subtype_word, parse_supertype_word, parse_unsigned_pt_word,
+    parse_zone_word, push_outlaw_subtypes, source_reference_surface_for_words,
+    strip_leading_article_word_refs, this_source_surface_for_words, trim_commas, word_refs_except,
 };
 use super::primitives::{self, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or};
 use super::values::parse_mana_symbol;
@@ -51,6 +50,7 @@ mod domain_unions;
 pub(crate) use domain_unions::{
     parse_branch_scoped_object_filter_union_lexed, parse_domain_union_object_filter_lexed,
     parse_elided_shared_domain_union, parse_repeated_selector_domain_union_lexed,
+    parse_subtype_color_shared_card_union_lexed,
 };
 mod extremum;
 mod meld_and_special_subjects;
@@ -95,7 +95,9 @@ pub(crate) use decorations::{
     strip_not_on_battlefield_phrase, trim_vote_winner_suffix,
 };
 pub(crate) use meld_and_special_subjects::parse_same_color_mana_spent_to_cast_predicate;
-pub(crate) use reference_tag_stage::parse_object_filter_with_grammar_entrypoint_lexed;
+pub(crate) use reference_tag_stage::{
+    apply_supertype_or_mana_capability_union, parse_object_filter_with_grammar_entrypoint_lexed,
+};
 pub(crate) use simple::{
     parse_filter_face_state_words, parse_simple_object_filter_lexed,
     parse_simple_object_filter_words, preserve_branch_scoped_card_type_union,

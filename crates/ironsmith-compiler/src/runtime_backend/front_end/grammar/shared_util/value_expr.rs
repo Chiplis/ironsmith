@@ -4,11 +4,13 @@ use crate::runtime_backend::grammar::{filters::parse_counter_type_words, leaf};
 use crate::runtime_backend::lexer::{OwnedLexToken, TokenWordView, synthetic_word_tokens};
 use crate::runtime_backend::object_filters::parse_object_filter_words;
 use crate::runtime_backend::util::{
-    source_choose_spec_for_surface, source_reference_surface_for_possessive_words,
-    source_reference_surface_for_words, this_source_surface_for_words,
+    possessive_normalized_word_refs, source_choose_spec_for_surface,
+    source_reference_surface_for_possessive_words, source_reference_surface_for_words,
+    this_source_surface_for_words,
 };
 use crate::target::{
-    ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter, SacrificedObjectKind, SourceReferenceSurface,
+    ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SacrificedObjectKind,
+    SourceReferenceSurface,
 };
 use crate::{Color, TagKey};
 use ironsmith_core::ValueSurfaceHint;
@@ -24,6 +26,7 @@ const EVENT_AMOUNT_PREFIXES: &[(&[&str], usize)] = &[
     (&["amount", "of", "e", "paid", "this", "way"], 6),
     (&["that", "amount", "of", "excess", "damage"], 5),
     (&["that", "much", "excess", "damage"], 4),
+    (&["the", "excess"], 2),
 ];
 
 const DAMAGE_EVENT_AMOUNT_PREFIXES: &[(&[&str], usize)] = &[
@@ -341,7 +344,40 @@ enum Rounding {
     Up,
 }
 
+fn parse_devotion_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    let (player, devotion_index) = if permission_shapes::prefix_words(words, &["your", "devotion"])
+    {
+        (PlayerFilter::You, 1)
+    } else if permission_shapes::prefix_words(words, &["their", "devotion"]) {
+        (PlayerFilter::IteratedPlayer, 1)
+    } else if permission_shapes::prefix_words(words, &["opponent", "devotion"])
+        || permission_shapes::prefix_words(words, &["opponents", "devotion"])
+    {
+        (PlayerFilter::Opponent, 1)
+    } else if permission_shapes::prefix_words(words, &["that", "player", "devotion"])
+        || permission_shapes::prefix_words(words, &["that", "players", "devotion"])
+    {
+        (PlayerFilter::target_player(), 2)
+    } else {
+        return None;
+    };
+
+    let to_index = devotion_index + 1;
+    if words.get(to_index) != Some(&"to") {
+        return None;
+    }
+    let color_index = to_index + 1;
+    if words.get(color_index..color_index + 2) == Some(["that", "color"].as_slice()) {
+        return Some((Value::DevotionToChosenColor(player), color_index + 2));
+    }
+    let color = Color::from_name(words.get(color_index).copied()?)?;
+    Some((Value::Devotion { player, color }, color_index + 1))
+}
+
 pub(crate) fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
+    if let Some(parsed) = parse_whichever_is_greater_value_words(words) {
+        return Some(parsed);
+    }
     let (mut value, mut used) = parse_value_expr_term_words(words)?;
     while used < words.len() {
         let (subtract, operator_words, in_excess_of) = if words.get(used) == Some(&"plus") {
@@ -373,6 +409,34 @@ pub(crate) fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
     Some((value, used))
 }
 
+fn parse_whichever_is_greater_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    const SUFFIX: &[&str] = &["whichever", "is", "greater"];
+    let body_len = words.len().checked_sub(SUFFIX.len())?;
+    if words.get(body_len..) != Some(SUFFIX) {
+        return None;
+    }
+    let body = words.get(..body_len)?;
+    for split in (1..body.len()).rev() {
+        if body.get(split) != Some(&"or") {
+            continue;
+        }
+        let (left, left_used) = parse_value_expr_words(&body[..split])?;
+        let (right, right_used) = parse_value_expr_words(&body[split + 1..])?;
+        if left_used != split || right_used != body.len() - split - 1 {
+            continue;
+        }
+        let minimum = Value::Min(Box::new(left.clone()), Box::new(right.clone()));
+        let total = Value::Add(Box::new(left), Box::new(right));
+        let maximum = Value::Add(
+            Box::new(total),
+            Box::new(Value::Scaled(Box::new(minimum), -1)),
+        )
+        .with_surface_hint(ValueSurfaceHint::WhicheverIsGreater);
+        return Some((maximum, words.len()));
+    }
+    None
+}
+
 pub(crate) fn parse_value_expr_tokens(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
     let word_view = TokenWordView::new(tokens);
     let words = word_view.word_refs();
@@ -388,6 +452,9 @@ pub(crate) fn parse_value_expr_tokens(tokens: &[OwnedLexToken]) -> Option<(Value
 fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if words.is_empty() {
         return None;
+    }
+    if let Some(devotion) = parse_devotion_value_words(words) {
+        return Some(devotion);
     }
     for (phrase, player) in [
         (
@@ -770,6 +837,21 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if let Some(used) = prefix_len(words, COLORS_SPENT_PREFIXES) {
         return Some((Value::ColorsOfManaSpentToCastThisSpell, used));
     }
+    const ITERATED_PLAYER_EXILED_OBJECT_POWER: &[&str] =
+        &["the", "power", "of", "the", "creature", "they", "exiled"];
+    if permission_shapes::prefix_words(words, ITERATED_PLAYER_EXILED_OBJECT_POWER) {
+        let query = ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::AffectedObjects,
+            ironsmith_core::EffectMetric::FirstPower,
+        )
+        .with_filter(ObjectFilter::creature())
+        .with_player(PlayerFilter::IteratedPlayer)
+        .with_action(ironsmith_core::PriorEffectAction::Exiled);
+        return Some((
+            Value::PendingPriorEffectMetric(query),
+            ITERATED_PLAYER_EXILED_OBJECT_POWER.len(),
+        ));
+    }
     if let Some(used) = prefix_len(words, TAGGED_POWER_PREFIXES) {
         let tag = tagged_characteristic_reference_tag(&words[..used]);
         return Some((
@@ -832,6 +914,35 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
     idx += 2;
+    // A singular discarded-card characteristic is a metric over the exact
+    // result of the preceding discard, not a count of live objects matching
+    // the words `card types`. Keeping the action on the pending query lets
+    // reference resolution bind it to the producing discard effect.
+    const DISCARDED_CARD_TYPES: &[&str] = &["card", "types", "the", "discarded", "card", "has"];
+    if permission_shapes::starts_at_words(words, idx, DISCARDED_CARD_TYPES) {
+        let query = ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::AffectedObjects,
+            ironsmith_core::EffectMetric::CardTypesAmong,
+        )
+        .with_action(ironsmith_core::PriorEffectAction::Discarded);
+        return Some((
+            Value::PendingPriorEffectMetric(query),
+            idx + DISCARDED_CARD_TYPES.len(),
+        ));
+    }
+    for visit_surface in [
+        &["attractions", "youve", "visited", "this", "turn"][..],
+        &["attractions", "you've", "visited", "this", "turn"][..],
+        &["attraction", "youve", "visited", "this", "turn"][..],
+        &["attraction", "you've", "visited", "this", "turn"][..],
+    ] {
+        if permission_shapes::starts_at_words(words, idx, visit_surface) {
+            return Some((
+                Value::AttractionsVisitedThisTurn(PlayerFilter::You),
+                idx + visit_surface.len(),
+            ));
+        }
+    }
     if let Some(character_word) = words.get(idx)
         && let Some(character) = character_word
             .strip_suffix("'s")
@@ -981,6 +1092,36 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     if let Some(value) = value_helper_shapes::parse_spells_cast_this_turn_value_words(filter_words)
     {
         return Some((value, filter_end));
+    }
+    // In an amount modifying a player-directed action, plural `them` is the
+    // same player antecedent. Curses are player attachments, so keep that
+    // relation typed instead of allowing the generic object-pronoun parser to
+    // manufacture an attached card selector.
+    if matches!(filter_words, ["curse" | "curses", "attached", "to", "them"]) {
+        let mut filter = ObjectFilter::default().with_subtype(crate::Subtype::Curse);
+        filter.zone = Some(crate::zone::Zone::Battlefield);
+        filter.attached_to_player = Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)));
+        return Some((Value::Count(filter), filter_end));
+    }
+    // A possessive target-controller hand is a player-relative zone scope,
+    // not a characteristic on the counted cards. Parse it before the generic
+    // object-filter fallback can absorb `that creature` as a Creature type.
+    let possessive = possessive_normalized_word_refs(filter_words);
+    if matches!(
+        possessive.as_slice(),
+        [
+            "cards" | "card",
+            "in",
+            "that",
+            "creature" | "creatures" | "permanent" | "permanents" | "object" | "objects",
+            "controller" | "controllers",
+            "hand" | "hands"
+        ]
+    ) {
+        let mut filter = ObjectFilter::default();
+        filter.zone = Some(crate::zone::Zone::Hand);
+        filter.owner = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
+        return Some((Value::Count(filter), filter_end));
     }
     // The generic value-expression path runs before several effect-specific
     // value parsers. Preserve every typed prior-action link here so numeric
@@ -1156,6 +1297,62 @@ mod tests {
     }
 
     #[test]
+    fn counted_cards_in_target_creature_controller_hand_keep_player_scope() {
+        let tokens = lex_line(
+            "the number of cards in that creature's controller's hand",
+            0,
+        )
+        .expect("target-controller hand count should lex");
+        let (value, used) =
+            parse_value_expr_tokens(&tokens).expect("target-controller hand count should parse");
+        assert_eq!(used, tokens.len());
+        let Value::Count(filter) = value else {
+            panic!("expected typed object count: {value:?}");
+        };
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Hand));
+        assert!(filter.card_types.is_empty());
+        assert_eq!(
+            filter.owner,
+            Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+        );
+
+        let ordinary = lex_line("the number of creature cards in all players' hands", 0)
+            .expect("ordinary hand count should lex");
+        let (ordinary, _) = parse_value_expr_tokens(&ordinary).expect("ordinary count");
+        let Value::Count(ordinary) = ordinary else {
+            panic!("expected ordinary object count: {ordinary:?}");
+        };
+        assert_eq!(ordinary.card_types, vec![crate::CardType::Creature]);
+        assert_ne!(ordinary.owner, filter.owner);
+    }
+
+    #[test]
+    fn counted_curses_attached_to_them_keep_player_attachment_scope() {
+        let tokens = lex_line("the number of Curses attached to them", 0)
+            .expect("attached Curse count should lex");
+        let (value, used) =
+            parse_value_expr_tokens(&tokens).expect("attached Curse count should parse");
+        assert_eq!(used, tokens.len());
+        let Value::Count(filter) = value else {
+            panic!("expected attached-Curse object count: {value:?}");
+        };
+        assert!(filter.attached_to_object.is_none());
+        assert_eq!(
+            filter.attached_to_player,
+            Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)))
+        );
+
+        let object_attachments = lex_line("the number of Auras attached to them", 0)
+            .expect("object attachment near miss should lex");
+        let (object_attachments, _) = parse_value_expr_tokens(&object_attachments)
+            .expect("object attachment near miss should still parse");
+        let Value::Count(object_attachments) = object_attachments else {
+            panic!("expected ordinary object attachment count");
+        };
+        assert!(object_attachments.attached_to_player.is_none());
+    }
+
+    #[test]
     fn parses_character_count_in_source_name_stickers() {
         let tokens = lex_line("the number of o's in name stickers on this enchantment", 0)
             .expect("name-sticker character-count fixture should lex");
@@ -1291,6 +1488,10 @@ mod tests {
     #[test]
     fn parses_triggering_cast_mana_and_excess_damage_values() {
         assert_eq!(
+            parse_value_expr_words(&["the", "excess"]),
+            Some((Value::EventValue(EventValueSpec::Amount), 2))
+        );
+        assert_eq!(
             parse_value_expr_words(&[
                 "the", "amount", "of", "mana", "spent", "to", "cast", "that", "spell",
             ]),
@@ -1405,6 +1606,59 @@ mod tests {
         assert_eq!(
             query.action,
             Some(ironsmith_core::PriorEffectAction::Tapped)
+        );
+        assert_eq!(
+            query.filter.expect("creature filter").card_types,
+            vec![crate::types::CardType::Creature]
+        );
+    }
+
+    #[test]
+    fn discarded_card_type_count_binds_to_the_discard_result() {
+        let words = [
+            "the",
+            "number",
+            "of",
+            "card",
+            "types",
+            "the",
+            "discarded",
+            "card",
+            "has",
+        ];
+        let (value, used) =
+            parse_value_expr_words(&words).expect("discarded-card type count should parse");
+
+        assert_eq!(used, words.len());
+        let Value::PendingPriorEffectMetric(query) = value else {
+            panic!("expected a typed prior-effect metric, got {value:?}");
+        };
+        assert_eq!(
+            query.source,
+            ironsmith_core::EffectMetricSource::AffectedObjects
+        );
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::CardTypesAmong);
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Discarded)
+        );
+    }
+
+    #[test]
+    fn iterated_players_exiled_creature_power_keeps_partitioned_provenance() {
+        let words = ["the", "power", "of", "the", "creature", "they", "exiled"];
+        let (value, used) =
+            parse_value_expr_words(&words).expect("per-player exiled creature power should parse");
+
+        assert_eq!(used, words.len());
+        let Value::PendingPriorEffectMetric(query) = value else {
+            panic!("expected a typed prior-effect metric")
+        };
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::FirstPower);
+        assert_eq!(query.player, Some(PlayerFilter::IteratedPlayer));
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Exiled)
         );
         assert_eq!(
             query.filter.expect("creature filter").card_types,
@@ -1586,5 +1840,75 @@ mod tests {
             spec.source_reference_surface(),
             Some(&SourceReferenceSurface::ThisPermanentType("it".to_string()))
         );
+    }
+
+    #[test]
+    fn devotion_is_a_typed_value_expression_only_with_a_proven_owner_and_color() {
+        assert_eq!(
+            parse_value_expr_words(&["your", "devotion", "to", "black"]),
+            Some((
+                Value::Devotion {
+                    player: PlayerFilter::You,
+                    color: Color::Black,
+                },
+                4,
+            ))
+        );
+        assert_eq!(
+            parse_value_expr_words(&["their", "devotion", "to", "blue"]),
+            Some((
+                Value::Devotion {
+                    player: PlayerFilter::IteratedPlayer,
+                    color: Color::Blue,
+                },
+                4,
+            ))
+        );
+        assert_eq!(
+            parse_value_expr_words(&["your", "devotion", "to", "that", "color"]),
+            Some((Value::DevotionToChosenColor(PlayerFilter::You), 5))
+        );
+        assert_eq!(
+            parse_value_expr_words(&["your", "devotion", "for", "black"]),
+            None,
+            "near-miss prepositions must not become a devotion value"
+        );
+    }
+
+    #[test]
+    fn whichever_is_greater_builds_an_executable_maximum() {
+        let words = [
+            "the",
+            "number",
+            "of",
+            "zombies",
+            "you",
+            "control",
+            "or",
+            "the",
+            "number",
+            "of",
+            "zombie",
+            "cards",
+            "in",
+            "your",
+            "graveyard",
+            "whichever",
+            "is",
+            "greater",
+        ];
+        let (value, used) = parse_value_expr_words(&words).expect("maximum value should parse");
+        assert_eq!(used, words.len());
+        assert!(value.has_surface_hint(ValueSurfaceHint::WhicheverIsGreater));
+        assert!(matches!(
+            value.unhinted(),
+            Value::Add(total, negative_minimum)
+                if matches!(total.as_ref(), Value::Add(_, _))
+                    && matches!(
+                        negative_minimum.as_ref(),
+                        Value::Scaled(minimum, -1)
+                            if matches!(minimum.as_ref(), Value::Min(_, _))
+                    )
+        ));
     }
 }

@@ -228,9 +228,118 @@ pub(crate) fn describe_value_with_enclosing_target(
     value: &Value,
     enclosing_target: Option<&ChooseSpec>,
 ) -> String {
+    if let Some(target) = enclosing_target
+        && let Some(surface) = describe_target_creature_controller_hand_count(value, target)
+    {
+        return surface;
+    }
     enclosing_target
         .and_then(|target| describe_value_for_same_sole_target(value, target))
         .unwrap_or_else(|| describe_value(value))
+}
+
+/// Keep the creature antecedent explicit for the exact relative hand count
+/// used by effects such as "7 minus the number of cards in that creature's
+/// controller's hand." The controller relation is executable; this only
+/// chooses the unambiguous authored surface when the surrounding action has
+/// one target creature.
+fn describe_target_creature_controller_hand_count(
+    value: &Value,
+    enclosing_target: &ChooseSpec,
+) -> Option<String> {
+    if let Value::Add(left, right) = value.unhinted()
+        && let Value::Fixed(fixed) = left.unhinted()
+        && let Value::Scaled(subtracted, -1) = right.unhinted()
+        && let Some(count) =
+            describe_target_creature_controller_hand_count(subtracted, enclosing_target)
+    {
+        return Some(format!("{fixed} minus {count}"));
+    }
+    let Value::Count(counted) = value.unhinted() else {
+        return None;
+    };
+    let ChooseSpec::Object(target) = canonical_sole_target_inner(enclosing_target)? else {
+        return None;
+    };
+
+    let mut plain_target = target.clone();
+    if plain_target.zone != Some(Zone::Battlefield)
+        || plain_target.card_types.as_slice() != [CardType::Creature]
+    {
+        return None;
+    }
+    plain_target.zone = None;
+    plain_target.card_types.clear();
+    plain_target.set_explicit_card_noun(false);
+    plain_target.set_explicit_card_type_noun(None);
+    if plain_target != ObjectFilter::default() {
+        return None;
+    }
+
+    if counted.zone != Some(Zone::Hand)
+        || counted.owner != Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+    {
+        return None;
+    }
+    let mut plain_count = counted.clone();
+    plain_count.zone = None;
+    plain_count.owner = None;
+    plain_count.set_explicit_card_noun(false);
+    plain_count.set_explicit_card_type_noun(None);
+    if plain_count != ObjectFilter::default() {
+        return None;
+    }
+
+    Some("the number of cards in that creature's controller's hand".to_string())
+}
+
+#[cfg(test)]
+mod target_creature_controller_hand_count_tests {
+    use super::*;
+
+    #[test]
+    fn exact_relative_hand_count_keeps_the_creature_antecedent() {
+        let target = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().in_zone(Zone::Battlefield),
+        ));
+        let count = Value::Count(
+            ObjectFilter::default()
+                .in_zone(Zone::Hand)
+                .owned_by(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
+        );
+        assert_eq!(
+            describe_value_with_enclosing_target(&count, Some(&target)),
+            "the number of cards in that creature's controller's hand"
+        );
+        let difference = Value::Add(
+            Box::new(Value::Fixed(7)),
+            Box::new(Value::Scaled(Box::new(count.clone()), -1)),
+        );
+        assert_eq!(
+            describe_value_with_enclosing_target(&difference, Some(&target)),
+            "7 minus the number of cards in that creature's controller's hand"
+        );
+
+        let permanent = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::permanent().in_zone(Zone::Battlefield),
+        ));
+        assert_ne!(
+            describe_value_with_enclosing_target(&count, Some(&permanent)),
+            "the number of cards in that creature's controller's hand",
+            "a noncreature target must retain the generic relationship surface"
+        );
+
+        let your_hand = Value::Count(
+            ObjectFilter::default()
+                .in_zone(Zone::Hand)
+                .owned_by(PlayerFilter::You),
+        );
+        assert_ne!(
+            describe_value_with_enclosing_target(&your_hand, Some(&target)),
+            "the number of cards in that creature's controller's hand",
+            "a different owner relation must not inherit the target-creature surface"
+        );
+    }
 }
 
 pub(crate) fn possessive_runtime_pt_target(target: &str) -> String {
@@ -991,7 +1100,7 @@ pub(crate) fn describe_apply_continuous_target(
         Some(ironsmith_core::SetQuantifierSurface::Each) => {
             if let crate::continuous::EffectTarget::Filter(filter) = &effect.target {
                 let description = describe_relative_characteristic_list_filter(filter)
-                    .unwrap_or_else(|| filter.description());
+                    .unwrap_or_else(|| describe_object_filter_with_fixed_pt_shorthand(filter));
                 let description = strip_indefinite_article(&description);
                 let description = if filter.other {
                     description
@@ -1315,6 +1424,45 @@ fn is_structural_vanishing_grant(effect: &crate::effects::ApplyContinuousEffect)
     is_vanishing_upkeep_ability(upkeep) && is_vanishing_last_counter_ability(last_counter)
 }
 
+/// Recognize a self-copy whose target is one of the creature cards linked to
+/// the source's own exile collection. Besides giving the target its authored
+/// noun, this exact typed shape retains the comma before a following copy
+/// exception without changing older copy templates that intentionally omit it.
+fn source_linked_exiled_creature_copy_surface(
+    effect: &crate::effects::ApplyContinuousEffect,
+    source: &ChooseSpec,
+) -> Option<String> {
+    if !matches!(effect.target, crate::continuous::EffectTarget::Source) {
+        return None;
+    }
+    let ChooseSpec::Target(inner) = source.unhinted() else {
+        return None;
+    };
+    let ChooseSpec::Object(filter) = inner.unhinted() else {
+        return None;
+    };
+    if filter.zone != Some(Zone::Exile)
+        || filter.card_types.as_slice() != [CardType::Creature]
+        || !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        })
+    {
+        return None;
+    }
+    let mut residual = filter.clone();
+    residual.zone = None;
+    residual.card_types.clear();
+    residual.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    });
+    residual.set_explicit_card_noun(false);
+    residual.set_explicit_card_type_noun(None);
+    (residual == ObjectFilter::default())
+        .then_some("target creature card exiled with it".to_string())
+}
+
 pub(crate) fn describe_apply_continuous_clauses(
     effect: &crate::effects::ApplyContinuousEffect,
     plural_target: bool,
@@ -1488,6 +1636,21 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             };
             let verb = if plural_target { "become" } else { "becomes" };
             clauses.push(format!("{verb} {descriptor} in addition to {other_types}"));
+        }
+        crate::continuous::Modification::RemoveSubtypes(subtypes) => {
+            let words = subtypes
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>();
+            if words.is_empty() {
+                return;
+            }
+            let descriptor = join_with_or(&words);
+            if plural_target {
+                clauses.push(format!("aren't {}", pluralize_noun_phrase(&descriptor)));
+            } else {
+                clauses.push(format!("isn't {}", with_indefinite_article(&descriptor)));
+            }
         }
         crate::continuous::Modification::AddAllSubtypesOfFamily(family) => {
             if *family == crate::types::SubtypeFamily::Creature {
@@ -1775,7 +1938,9 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
         match runtime {
             crate::effects::continuous::RuntimeModification::CopyOf { source, .. } => {
                 let verb = if plural_target { "become" } else { "becomes" };
-                clauses.push(format!("{verb} a copy of {}", describe_choose_spec(source)));
+                let copy_source = source_linked_exiled_creature_copy_surface(effect, source)
+                    .unwrap_or_else(|| describe_choose_spec(source));
+                clauses.push(format!("{verb} a copy of {copy_source}"));
             }
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
                 power,
@@ -2112,7 +2277,7 @@ pub(crate) fn choose_spec_guarantees_artifact(spec: &ChooseSpec) -> bool {
                     hint,
                     crate::target::ChooseSpecSurfaceHint::SourceReference(
                         crate::target::SourceReferenceSurface::ThisPermanentType(text)
-                    ) if text.eq_ignore_ascii_case("this artifact")
+                    ) if source_reference_guarantees_artifact(text)
                 )
             }) || choose_spec_guarantees_artifact(spec)
         }
@@ -2125,6 +2290,20 @@ pub(crate) fn choose_spec_guarantees_artifact(spec: &ChooseSpec) -> bool {
         }
         _ => false,
     }
+}
+
+fn source_reference_guarantees_artifact(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    let noun = normalized
+        .strip_prefix("this ")
+        .unwrap_or(&normalized)
+        .strip_suffix(" token")
+        .unwrap_or_else(|| normalized.strip_prefix("this ").unwrap_or(&normalized));
+    noun == "artifact"
+        || crate::types::SubtypeFamily::Artifact
+            .all_subtypes()
+            .iter()
+            .any(|subtype| subtype.to_string().eq_ignore_ascii_case(noun))
 }
 
 pub(crate) fn plural_non_target_land_animation_target(
@@ -2681,7 +2860,11 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             lowercase_first(&text)
         )
     } else {
-        apply_continuous_text_with_tail(text, tail, has_quoted_generic_ability)
+        // Animation duration placement is carried explicitly. In the absence
+        // of the authored-leading marker, keep the duration after the quoted
+        // granted ability; `apply_continuous_text_with_tail` will move the
+        // quote's sentence period outside before appending it.
+        apply_continuous_text_with_tail(text, tail, false)
     };
     if let Some(where_clause) = pt_where_clause {
         text.push_str(", where X is ");
@@ -2777,6 +2960,31 @@ fn describe_triggered_creature_entry_replacement_grant(
 pub(crate) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
+    if effect.condition.is_none()
+        && effect.target_spec.is_none()
+        && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && matches!(effect.until, Until::EndOfTurn)
+        && let crate::continuous::EffectTarget::Filter(filter) = &effect.target
+        && filter.has_as_you_cast_this_turn_surface()
+        && filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+        && filter.cast_by == Some(PlayerFilter::You)
+        && filter.zone == Some(Zone::Hand)
+        && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
+        && ability.is_keyword()
+    {
+        let mut rendered = format!(
+            "As you cast spells from your hand this turn, they gain {}",
+            lowercase_first(&ability.display())
+        );
+        if ability.id() == crate::static_abilities::StaticAbilityId::Cascade {
+            rendered.push(' ');
+            rendered.push_str(STANDARD_REMINDER_OPEN_SENTINEL);
+            rendered.push_str("When you cast the spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order.");
+            rendered.push_str(STANDARD_REMINDER_CLOSE_SENTINEL);
+        }
+        return Some(rendered);
+    }
     let (mut target, plural_target) = describe_apply_continuous_target(effect);
     if let Some(surface) = source_generic_ability_grant_target_surface(effect) {
         target = surface;
@@ -2900,14 +3108,6 @@ pub(crate) fn describe_apply_continuous_effect(
             "{} gains control of {target}",
             capitalize_first(&controller_text)
         );
-        if matches!(player, PlayerFilter::LowestLifeTied)
-            && matches!(effect.until, Until::Forever)
-            && matches!(effect.target, crate::continuous::EffectTarget::Source)
-        {
-            text.push_str(". If two or more players are tied for lowest life total, you choose one of them, and that player gains control of ");
-            text.push_str(&target);
-            return Some(text);
-        }
         if !matches!(effect.until, Until::Forever) {
             text.push(' ');
             text.push_str(&describe_until(&effect.until));
@@ -2992,11 +3192,21 @@ pub(crate) fn describe_apply_continuous_effect(
 
     let quoted_granted_ability = clauses.iter().any(|clause| clause.contains('"'));
     let mut text = format!("{target} {}", join_with_and(&clauses));
-    text = apply_continuous_text_with_tail(
-        text,
-        describe_apply_continuous_tail(effect),
-        quoted_granted_ability,
-    );
+    let tail = describe_apply_continuous_tail(effect);
+    if tail
+        .as_deref()
+        .is_some_and(|tail| tail.starts_with("except "))
+        && effect.runtime_modifications.iter().any(|runtime| {
+            matches!(
+                runtime,
+                crate::effects::continuous::RuntimeModification::CopyOf { source, .. }
+                    if source_linked_exiled_creature_copy_surface(effect, source).is_some()
+            )
+        })
+    {
+        text.push(',');
+    }
+    text = apply_continuous_text_with_tail(text, tail, quoted_granted_ability);
     if !text.contains("where X is ")
         && let Some(where_x) = effect.runtime_modifications.iter().find_map(|runtime| {
             let crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
@@ -3236,10 +3446,12 @@ pub(crate) fn describe_attack_block_if_able_apply_continuous(
     effect: &crate::effects::ApplyContinuousEffect,
     target: &str,
 ) -> Option<String> {
-    if effect.until != Until::EndOfTurn
-        || effect.condition.is_some()
-        || !effect.runtime_modifications.is_empty()
-    {
+    let scope = match effect.until {
+        Until::EndOfTurn => "this turn",
+        Until::EndOfCombat => "this combat",
+        _ => return None,
+    };
+    if effect.condition.is_some() || !effect.runtime_modifications.is_empty() {
         return None;
     }
 
@@ -3275,9 +3487,9 @@ pub(crate) fn describe_attack_block_if_able_apply_continuous(
     }
 
     match (has_must_attack, has_must_block) {
-        (true, true) => Some(format!("{target} attacks or blocks this turn if able")),
-        (true, false) => Some(format!("{target} attacks this turn if able")),
-        (false, true) => Some(format!("{target} blocks this turn if able")),
+        (true, true) => Some(format!("{target} attacks or blocks {scope} if able")),
+        (true, false) => Some(format!("{target} attacks {scope} if able")),
+        (false, true) => Some(format!("{target} blocks {scope} if able")),
         (false, false) => None,
     }
 }
@@ -4901,6 +5113,18 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
 fn describe_prior_effect_result_surface(
     surface: &crate::effect::PriorEffectResultSurface,
 ) -> String {
+    if surface.action == crate::effect::PriorEffectAction::Returned
+        && surface.actor == crate::effect::PriorEffectResultActor::Passive
+        && surface.quantifier == crate::effect::PriorEffectResultQuantifier::One
+        && surface.required_count.is_none()
+        && surface.shared_characteristic.is_none()
+        && let Some(antecedent) = surface.filter.demonstrative_antecedent_surface()
+    {
+        return format!(
+            "{} is returned to its owner's hand this way",
+            antecedent.phrase()
+        );
+    }
     if surface.quantifier == crate::effect::PriorEffectResultQuantifier::ActionOnly {
         return match (surface.actor, surface.action) {
             (
@@ -5040,6 +5264,10 @@ pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
                 card_type.name().to_ascii_lowercase()
             )
         }
+        EffectPredicate::PlayerAffectedObjectHasGreatestManaValue { player } => format!(
+            "{} affected an object tied for greatest mana value",
+            describe_player_filter(player)
+        ),
         EffectPredicate::PriorEffectResult(surface) => {
             describe_prior_effect_result_surface(surface)
         }

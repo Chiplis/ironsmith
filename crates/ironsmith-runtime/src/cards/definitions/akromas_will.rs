@@ -790,10 +790,7 @@ mod tests {
             vec![
                 "1", // Cast Akroma's Will
                 "1", // Choose mode 2 (Lifelink, Indestructible, Protection) - per 601.2b
-                "0", // Pip payment: Tap Plains 1 for {W}
-                "0", // Pip payment: Tap Plains 2 for generic
-                "0", // Pip payment: Tap Plains 3 for generic
-                     // Fourth Plains auto-taps for last generic, spell resolves
+                "1", // Confirm the authoritative whole-cost mana plan
             ],
             ReplayTestConfig::new()
                 .p1_hand(vec!["Akroma's Will"])

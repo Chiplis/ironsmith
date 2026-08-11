@@ -17,6 +17,17 @@ pub(crate) struct PreventNextTimeDamageShape<'a> {
     pub(crate) reflect_damage_to_source_controller: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DestroyDamageTargetReference {
+    It,
+    Creature,
+    Permanent,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ReplaceNextDamageWithDestroyShape<'a> {
+    pub(crate) target_tokens: &'a [OwnedLexToken],
+    pub(crate) destroyed_reference: DestroyDamageTargetReference,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DamageTargetShape<'a> {
     AnyTarget,
     You,
@@ -450,6 +461,48 @@ pub(crate) fn parse_prevent_next_time_damage_tokens(
     .ok()
 }
 
+fn parse_destroy_damage_target_reference<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<DestroyDamageTargetReference> {
+    alt((
+        primitives::kw("it").value(DestroyDamageTargetReference::It),
+        primitives::phrase(&["that", "creature"]).value(DestroyDamageTargetReference::Creature),
+        primitives::phrase(&["that", "permanent"]).value(DestroyDamageTargetReference::Permanent),
+    ))
+    .parse_next(input)
+}
+
+fn parse_replace_next_damage_with_destroy_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ReplaceNextDamageWithDestroyShape<'a>> {
+    primitives::phrase(&[
+        "the", "next", "time", "damage", "would", "be", "dealt", "to",
+    ])
+    .parse_next(input)?;
+    let target_tokens = one_or_more_tokens_before(input, primitives::phrase(&["this", "turn"]))?;
+    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("destroy").parse_next(input)?;
+    let destroyed_reference = parse_destroy_damage_target_reference.parse_next(input)?;
+    primitives::kw("instead").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ReplaceNextDamageWithDestroyShape {
+        target_tokens,
+        destroyed_reference,
+    })
+}
+
+pub(crate) fn parse_replace_next_damage_with_destroy_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<ReplaceNextDamageWithDestroyShape<'_>> {
+    primitives::parse_all(
+        tokens,
+        parse_replace_next_damage_with_destroy_lexed,
+        "replace next damage with destroy",
+    )
+    .ok()
+}
+
 fn parse_all_to_you_and_permanents<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<RedirectNextDamageShape<'a>> {
@@ -675,6 +728,22 @@ mod tests {
         let shape = parse_prevent_next_damage_tokens(&tokens).expect("shape");
         assert!(shape.source_of_your_choice);
         assert!(shape.protects_you_and_permanents_you_control);
+    }
+
+    #[test]
+    fn parses_passive_next_damage_destroy_replacement() {
+        let tokens = lex(
+            "The next time damage would be dealt to target creature this turn, destroy that creature instead.",
+        );
+        let shape = parse_replace_next_damage_with_destroy_tokens(&tokens).expect("shape");
+        assert_eq!(
+            shape.destroyed_reference,
+            DestroyDamageTargetReference::Creature
+        );
+        assert_eq!(
+            crate::runtime_backend::token_word_refs(shape.target_tokens),
+            ["target", "creature"]
+        );
     }
 
     #[test]

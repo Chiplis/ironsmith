@@ -320,6 +320,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::SetCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::RemoveSubtypes { target, .. }
             | SubjectVerbActionAst::SetCreatureSubtypes { target, .. }
             | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { target }
             | SubjectVerbActionAst::AddColors { target, .. }
@@ -399,6 +400,15 @@ fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bo
             tag: found,
             effects,
         } => found.as_str() == tag || effects_reference_tag_in_object_position(effects, tag),
+        EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+            tag: found,
+            blocker_tag,
+            effects,
+        } => {
+            found.as_str() == tag
+                || blocker_tag.as_str() == tag
+                || effects_reference_tag_in_object_position(effects, tag)
+        }
         _ => {
             let mut references = false;
             for_each_nested_effects(effect, true, |nested| {
@@ -467,6 +477,12 @@ pub(crate) fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
             .as_ref()
             .is_some_and(|player| player_filter_references_tag(player, tag))
         || filter
+            .counters_put_on_this_turn
+            .as_ref()
+            .is_some_and(|constraint| {
+                player_filter_references_tag(&constraint.source_controller, tag)
+            })
+        || filter
             .discarded_or_cycled_this_turn_by
             .as_ref()
             .is_some_and(|player| player_filter_references_tag(player, tag))
@@ -481,6 +497,7 @@ pub(crate) fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
             matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
         })
         || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
+        || matches!(&filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
         || filter
             .targets_object
             .as_deref()
@@ -548,6 +565,15 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
 
 pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     assert_effect_ast_variant_coverage(effect);
+    if tag == "triggering_source"
+        && matches!(
+            effect,
+            EffectAst::SubjectVerb(subject_verb)
+                if subject_verb.subject.player == PlayerAst::TriggeringSourceController
+        )
+    {
+        return true;
+    }
     if direct_effect_targets_reference_tag(effect, tag) {
         return true;
     }
@@ -570,7 +596,11 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         return true;
     }
     if let EffectAst::ChooseObjectsWithAggregateConstraint { constraint, .. } = effect
-        && value_references_tag(&constraint.maximum, tag)
+        && (value_references_tag(&constraint.maximum, tag)
+            || constraint
+                .minimum
+                .as_ref()
+                .is_some_and(|minimum| value_references_tag(minimum, tag)))
     {
         return true;
     }
@@ -678,11 +708,11 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
         | Value::HalfRoundedDown(value) => value_references_tag(value, tag),
-        Value::Count(filter) | Value::CountScaled(filter, _) => filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag),
-        Value::TotalPower(filter)
+        Value::Count(filter)
+        | Value::CountScaled(filter, _)
+        | Value::GreatestCount(filter)
+        | Value::GreatestSharedCreatureTypeCount(filter)
+        | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter)
@@ -824,7 +854,14 @@ pub(crate) fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> 
         | PlayerFilter::AliasedTarget(inner)
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
-        | PlayerFilter::MaxSpeed { base: inner, .. } => player_filter_references_tag(inner, tag),
+        | PlayerFilter::MaxSpeed { base: inner, .. }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner }
+        | PlayerFilter::LostLifeThisTurn { base: inner } => {
+            player_filter_references_tag(inner, tag)
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
+            player_filter_references_tag(base, tag) || filter_references_tag(sources, tag)
+        }
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_references_tag(base, tag) || player_filter_references_tag(excluded, tag)
         }
@@ -1023,7 +1060,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Endure { .. }
         | SubjectVerbActionAst::Exploit
         | SubjectVerbActionAst::ConniveIterated
-        | SubjectVerbActionAst::OpenAttraction
+        | SubjectVerbActionAst::OpenAttraction { .. }
         | SubjectVerbActionAst::ManifestTopCardOfLibrary
         | SubjectVerbActionAst::CloakTopCardOfLibrary
         | SubjectVerbActionAst::ManifestCardFromHand
@@ -1034,6 +1071,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::FightIterated { .. }
         | SubjectVerbActionAst::Clash { .. }
         | SubjectVerbActionAst::FlipCoin
+        | SubjectVerbActionAst::FlipCoinFaceOnly
         | SubjectVerbActionAst::RollDie { .. }
         | SubjectVerbActionAst::RollDiceChooseResult { .. }
         | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
@@ -1141,6 +1179,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
         | SubjectVerbActionAst::PreventNextTimeDamage { .. }
+        | SubjectVerbActionAst::ReplaceNextDamageToTarget { .. }
         | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
         | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
         | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
@@ -1179,6 +1218,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::SetCardTypes { .. }
         | SubjectVerbActionAst::RemoveCardTypes { .. }
         | SubjectVerbActionAst::AddSubtypes { .. }
+        | SubjectVerbActionAst::RemoveSubtypes { .. }
         | SubjectVerbActionAst::SetCreatureSubtypes { .. }
         | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
         | SubjectVerbActionAst::AddColors { .. }
@@ -1204,6 +1244,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::SearchLibrary { .. }
         | SubjectVerbActionAst::Cant { .. }
         | SubjectVerbActionAst::Meld { .. }
+        | SubjectVerbActionAst::CreateTokenChoice { .. }
         | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
         | SubjectVerbActionAst::RetargetStackObject { .. }
         | SubjectVerbActionAst::GrantAbilityToSource { .. }
@@ -1222,10 +1263,13 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RegisterManaReplacement { .. }
         | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
         | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
+        | SubjectVerbActionAst::RegisterEnterTappedReplacement { .. }
+        | SubjectVerbActionAst::RegisterNextBatchEnterWithCounters { .. }
         | SubjectVerbActionAst::Enchant { .. }
         | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
         | SubjectVerbActionAst::AdditionalPhases { .. }
         | SubjectVerbActionAst::Learn
+        | SubjectVerbActionAst::ReverseTurnOrder
         | SubjectVerbActionAst::TurnFaceUp { .. }
         | SubjectVerbActionAst::ShuffleLibrary => None,
     }
@@ -1519,6 +1563,26 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             SubjectVerbActionAst::PutCounterChoice { count, .. } => {
                 value_references_tag(count, IT_TAG)
             }
+            SubjectVerbActionAst::Pump {
+                power, toughness, ..
+            }
+            | SubjectVerbActionAst::SetBasePowerToughness {
+                power, toughness, ..
+            }
+            | SubjectVerbActionAst::BecomeBasePtCreature {
+                power, toughness, ..
+            }
+            | SubjectVerbActionAst::PumpAll {
+                power, toughness, ..
+            } => {
+                value_references_tag(power, IT_TAG) || value_references_tag(toughness, IT_TAG)
+            }
+            SubjectVerbActionAst::SetBasePower { power, .. } => {
+                value_references_tag(power, IT_TAG)
+            }
+            SubjectVerbActionAst::PumpForEach { count, .. } => {
+                value_references_tag(count, IT_TAG)
+            }
             SubjectVerbActionAst::CopySpellForEachTarget { object_filter, .. } => object_filter
                 .as_ref()
                 .is_some_and(|filter| filter_references_tag(filter, IT_TAG)),
@@ -1592,6 +1656,15 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         }
         EffectAst::ForEachTagged { tag, effects } => {
             tag.as_str() == IT_TAG || effects_reference_it_tag(effects)
+        }
+        EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+            tag,
+            blocker_tag,
+            effects,
+        } => {
+            tag.as_str() == IT_TAG
+                || blocker_tag.as_str() == IT_TAG
+                || effects_reference_it_tag(effects)
         }
         EffectAst::DelayedWhenLastObjectDiesThisTurn { .. }
         | EffectAst::DelayedWhenLastObjectLeavesBattlefield { .. } => true,

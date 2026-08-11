@@ -937,8 +937,12 @@ pub(super) fn merge_player_object_subject_union_lines(lines: Vec<String>) -> Vec
 
         let first = subject[..marker_idx].trim();
         let other = subject[marker_idx + " and ".len()..].trim();
+        let first_noun = first
+            .strip_suffix(" you control")
+            .or_else(|| first.strip_suffix(" You Control"))
+            .unwrap_or(first);
         if first.is_empty()
-            || !subject_is_plural(first)
+            || !subject_is_plural(first_noun)
             || first.contains(',')
             || first.to_ascii_lowercase().contains(" and ")
         {
@@ -3429,7 +3433,14 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
     // Haunt is a standalone keyword line whose structural ability includes a
     // target choice. Spree is a standalone typed modal-block header. Both use
     // keyword punctuation rather than sentence punctuation.
-    if matches!(lower.as_str(), "haunt" | "spree") {
+    if matches!(lower.as_str(), "cipher" | "haunt" | "spree" | "tiered") {
+        return true;
+    }
+    let repeated_cascade = {
+        let parts = lower.split(',').map(str::trim).collect::<Vec<_>>();
+        parts.len() >= 2 && parts.iter().all(|part| *part == "cascade")
+    };
+    if repeated_cascade {
         return true;
     }
     if is_keyword_phrase(&lower) || normalize_keyword_list_phrase(&lower).is_some() {
@@ -3445,11 +3456,10 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
         "echo—",
         "echo-",
         "ward ",
-        "ward--",
-        "ward—",
         "kicker ",
         "bloodthirst ",
         "foretell ",
+        "gift ",
         "flashback ",
         "ninjutsu ",
         "cycling ",
@@ -3482,19 +3492,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn player_and_disjoint_object_subjects_rejoin_as_an_authored_union() {
-        let merged = merge_player_object_subject_union_lines(vec![
-            "You have hexproof.".to_string(),
-            "Planeswalkers and other creatures you control have hexproof.".to_string(),
-        ]);
+    fn gift_headers_use_keyword_line_punctuation() {
+        assert!(is_keyword_style_line("Gift an extra turn"));
+        assert!(is_keyword_style_line("Gift an Octopus"));
+        assert!(!is_keyword_style_line("Give an opponent a card"));
+    }
 
-        assert_eq!(
-            merged,
-            vec![
-                "You, planeswalkers you control, and other creatures you control have hexproof."
-                    .to_string()
-            ]
-        );
+    #[test]
+    fn cipher_uses_standalone_keyword_punctuation() {
+        assert!(is_keyword_style_line("Cipher"));
+    }
+
+    #[test]
+    fn repeated_cascade_uses_keyword_line_punctuation() {
+        assert!(is_keyword_style_line("Cascade, cascade"));
+        assert!(!is_keyword_style_line("Cascade, draw a card"));
+    }
+
+    #[test]
+    fn ward_action_costs_use_sentence_punctuation() {
+        assert!(!is_keyword_style_line("Ward—Pay 3 life"));
+        assert!(!is_keyword_style_line("Ward—Sacrifice a permanent"));
+        assert!(is_keyword_style_line("Ward {2}"));
+    }
+
+    #[test]
+    fn player_and_disjoint_object_subjects_rejoin_as_an_authored_union() {
+        for object_line in [
+            "Planeswalkers and other creatures you control have hexproof.",
+            "Planeswalkers you control and other creatures you control have hexproof.",
+        ] {
+            let merged = merge_player_object_subject_union_lines(vec![
+                "You have hexproof.".to_string(),
+                object_line.to_string(),
+            ]);
+
+            assert_eq!(
+                merged,
+                vec![
+                    "You, planeswalkers you control, and other creatures you control have hexproof."
+                        .to_string()
+                ]
+            );
+        }
     }
 
     #[test]

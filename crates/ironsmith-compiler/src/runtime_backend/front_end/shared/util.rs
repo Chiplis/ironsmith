@@ -26,6 +26,7 @@ use crate::target::{
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 use crate::{ChoiceCount, PowerToughness, TagKey};
+use ironsmith_core::CostComponent as _;
 
 use super::activation_and_restrictions::activated_line_core::parse_activation_cost;
 use super::grammar::abilities::{
@@ -179,8 +180,34 @@ pub(crate) fn record_source_reference_surface(
         return;
     };
     SOURCE_REFERENCE_CONTEXT.with(|context| {
-        context.borrow_mut().surfaces_by_span.insert(span, surface);
+        let mut context = context.borrow_mut();
+        let surface = canonical_source_reference_surface(&context.aliases, surface);
+        context.surfaces_by_span.insert(span, surface);
     });
+}
+
+fn canonical_source_reference_surface(
+    aliases: &[SourceReferenceAlias],
+    surface: SourceReferenceSurface,
+) -> SourceReferenceSurface {
+    let surface_text = match &surface {
+        SourceReferenceSurface::FullName(text) | SourceReferenceSurface::ShortName(text) => {
+            text.as_str()
+        }
+        SourceReferenceSurface::ThisPermanentType(_) => return surface,
+    };
+    aliases
+        .iter()
+        .find_map(|alias| match &alias.surface {
+            SourceReferenceSurface::FullName(alias_text)
+            | SourceReferenceSurface::ShortName(alias_text)
+                if alias_text.eq_ignore_ascii_case(surface_text) =>
+            {
+                Some(alias.surface.clone())
+            }
+            _ => None,
+        })
+        .unwrap_or(surface)
 }
 
 pub(crate) fn sacrificed_object_kind_for_span(
@@ -885,6 +912,28 @@ pub(crate) fn parse_filter_keyword_constraint_list_words(
     reference_shapes::parse_filter_keyword_constraint_list_words(words)
 }
 
+/// Return whether the words after a comma continue a keyword predicate list.
+///
+/// This is deliberately a boundary fact rather than a filter parser: callers
+/// use it before splitting trigger and effect clauses, when a tail such as
+/// `double strike, vigilance, or haste` must remain attached to the filter on
+/// the left.  A final list arm begins with its connective, so one parsed
+/// keyword is sufficient in that case; otherwise require at least two parsed
+/// keywords to distinguish a serial list from an independent keyword action.
+pub(crate) fn starts_filter_keyword_list_continuation_words(words: &[&str]) -> bool {
+    let (has_leading_connective, keyword_words) = match words {
+        ["and", "or", rest @ ..] => (true, rest),
+        ["and" | "or" | "and/or", rest @ ..] => (true, rest),
+        _ => (false, words),
+    };
+    let Some((constraints, _, _consumed)) =
+        parse_filter_keyword_constraint_list_words(keyword_words)
+    else {
+        return false;
+    };
+    has_leading_connective || constraints.len() > 1
+}
+
 pub(crate) fn apply_filter_keyword_constraint(
     filter: &mut ObjectFilter,
     constraint: FilterKeywordConstraint,
@@ -1118,6 +1167,32 @@ mod tests {
     use crate::runtime_backend::lexer::lex_line;
 
     #[test]
+    fn source_surface_recording_restores_canonical_alias_casing_only_for_exact_aliases() {
+        let aliases = source_reference_aliases_for_name("Ghyrson Starn, Kelermorph");
+        assert_eq!(
+            canonical_source_reference_surface(
+                &aliases,
+                SourceReferenceSurface::ShortName("ghyrson Starn".to_string()),
+            ),
+            SourceReferenceSurface::ShortName("Ghyrson Starn".to_string())
+        );
+        assert_eq!(
+            canonical_source_reference_surface(
+                &aliases,
+                SourceReferenceSurface::FullName("ghyrson Starn".to_string()),
+            ),
+            SourceReferenceSurface::ShortName("Ghyrson Starn".to_string())
+        );
+        assert_eq!(
+            canonical_source_reference_surface(
+                &aliases,
+                SourceReferenceSurface::ShortName("another source".to_string()),
+            ),
+            SourceReferenceSurface::ShortName("another source".to_string())
+        );
+    }
+
+    #[test]
     fn replacing_surface_hinted_x_flattens_replacement_hints() {
         let value = Value::X
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence);
@@ -1292,6 +1367,85 @@ mod tests {
                 "{text}: {filter:#?}"
             );
         }
+    }
+
+    #[test]
+    fn parse_target_phrase_preserves_opponent_library_to_graveyard_history() {
+        let text = "target artifact or creature card in an opponent's graveyard that was put there from their library this turn";
+        let tokens = lex_line(text, 0).unwrap();
+        let target = parse_target_phrase(&tokens)
+            .expect("opponent library-to-graveyard target should parse");
+        let TargetAst::Object(filter, target_span, _) = target else {
+            panic!("expected target object, got {target:?}");
+        };
+        assert!(target_span.is_some());
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::Opponent));
+        assert_eq!(filter.card_types, [CardType::Artifact, CardType::Creature]);
+        assert!(filter.entered_graveyard_this_turn, "{filter:#?}");
+        assert!(
+            filter.entered_graveyard_from_library_this_turn,
+            "{filter:#?}"
+        );
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+    }
+
+    #[test]
+    fn parse_target_phrase_preserves_distinct_combat_damage_controller_history() {
+        let tokens = lex_line(
+            "target nonland permanent controlled by a player who was dealt combat damage by three or more Pirates this turn",
+            0,
+        )
+        .expect("historical controller target should lex");
+        let TargetAst::Object(filter, explicit_target, _) =
+            parse_target_phrase(&tokens).expect("historical controller target should parse")
+        else {
+            panic!("expected an object target");
+        };
+        assert!(explicit_target.is_some());
+        assert_eq!(filter.excluded_card_types, [CardType::Land]);
+        let Some(PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+            base,
+            sources,
+            minimum,
+        }) = filter.controller.as_ref()
+        else {
+            panic!("historical controller relation was lost: {filter:#?}");
+        };
+        assert_eq!(base.as_ref(), &PlayerFilter::Any);
+        assert_eq!(*minimum, 3);
+        assert_eq!(sources.subtypes, [Subtype::Pirate]);
+    }
+
+    #[test]
+    fn parse_target_phrase_preserves_drafted_color_qualifier_instead_of_card_name() {
+        let tokens = lex_line(
+            "target creature that's one or more of the colors chosen as you drafted cards named Regicide",
+            0,
+        )
+        .expect("drafted-color target should lex");
+        let TargetAst::Object(filter, explicit_target, _) =
+            parse_target_phrase(&tokens).expect("drafted-color target should parse")
+        else {
+            panic!("expected an object target");
+        };
+        assert!(explicit_target.is_some());
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert_eq!(filter.name, None);
+        assert_eq!(
+            filter.colors_chosen_while_drafting_named.as_deref(),
+            Some("Regicide")
+        );
+
+        let named_tokens = lex_line("target creature card named Regicide", 0)
+            .expect("ordinary named-card target should lex");
+        let TargetAst::Object(named_filter, _, _) =
+            parse_target_phrase(&named_tokens).expect("ordinary named target should parse")
+        else {
+            panic!("expected an ordinary named object target");
+        };
+        assert_eq!(named_filter.name.as_deref(), Some("Regicide"));
+        assert!(named_filter.colors_chosen_while_drafting_named.is_none());
     }
 
     #[test]
@@ -1570,26 +1724,121 @@ pub(crate) fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCo
     }
 }
 
+fn with_leading_object_set_quantifier(
+    mut target: TargetAst,
+    surface: Option<ironsmith_core::SetQuantifierSurface>,
+) -> TargetAst {
+    let Some(surface) = surface else {
+        return target;
+    };
+
+    fn apply(target: &mut TargetAst, surface: ironsmith_core::SetQuantifierSurface) {
+        match target {
+            TargetAst::Object(filter, _, _) => filter.set_set_quantifier_surface(Some(surface)),
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                apply(inner, surface)
+            }
+            _ => {}
+        }
+    }
+
+    apply(&mut target, surface);
+    target
+}
+
+/// Preserve a controller-history qualifier that belongs to the target's
+/// object filter. The generic target grammar also recognizes trailing
+/// controller-set constraints ("controlled by different players"); recover
+/// this semantically different singular relation from the complete raw target
+/// tail before those set-level suffixes can narrow the filter surface.
+fn restore_distinct_combat_damage_controller_target(
+    target: &mut TargetAst,
+    tokens: &[OwnedLexToken],
+) {
+    let Ok(head) = leaf::parse_leaf_target_head_tokens(tokens) else {
+        return;
+    };
+    let Some(filter_tokens) = head.tokens().get(head.prefix.consumed..) else {
+        return;
+    };
+    let Ok(authored_filter) =
+        crate::runtime_backend::object_filters::parse_object_filter(filter_tokens, false)
+    else {
+        return;
+    };
+    if !matches!(
+        authored_filter.controller,
+        Some(PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. })
+    ) {
+        return;
+    }
+
+    fn apply(target: &mut TargetAst, authored_filter: &ObjectFilter) {
+        match target {
+            TargetAst::Object(filter, _, _) => {
+                // The complete raw filter is the authoritative typed parse.
+                // The ordinary target envelope can represent `permanent` as
+                // an expanded card-type set while the family parser keeps it
+                // implicit, so an equality check between those equivalent
+                // internal encodings incorrectly rejected this recovery. It
+                // could also consume the terminal source kind ("Pirates") as
+                // a target subtype. Replacing only after the full raw filter
+                // has proven the exact historical-controller variant keeps
+                // both the target domain and the source predicate together.
+                *filter = authored_filter.clone();
+            }
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                apply(inner, authored_filter)
+            }
+            _ => {}
+        }
+    }
+
+    apply(target, &authored_filter);
+}
+
 pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    // A bare object AST does not itself distinguish the chosen singleton in
+    // "a creature" from the complete set in "each/all creature". Preserve
+    // that authored quantifier on the filter so action lowering can retain
+    // complete-set semantics even when the phrase also references a chosen
+    // player (for example, "each creature target player controls").
+    let leading_set_quantifier = match crate::runtime_backend::token_word_refs(tokens).first() {
+        Some(&"each") => Some(ironsmith_core::SetQuantifierSurface::Each),
+        Some(&"all") => Some(ironsmith_core::SetQuantifierSurface::All),
+        _ => None,
+    };
     let envelope = parse_target_envelope(tokens);
     if let Some(count) = envelope.counted_any_target {
-        return Ok(TargetAst::WithCount(
-            Box::new(TargetAst::AnyTarget(span_from_tokens(tokens))),
-            count,
+        return Ok(with_leading_object_set_quantifier(
+            TargetAst::WithCount(
+                Box::new(TargetAst::AnyTarget(span_from_tokens(tokens))),
+                count,
+            ),
+            leading_set_quantifier,
         ));
     }
 
-    match parse_target_phrase_inner(tokens) {
-        Ok(target) => Ok(target),
+    let mut target = match parse_target_phrase_inner(tokens) {
+        Ok(target) => target,
         Err(err) => {
             for candidate in envelope.recovery_candidates {
-                if let Ok(target) = parse_target_phrase_inner(candidate.tokens) {
-                    return Ok(target);
+                if let Ok(mut target) = parse_target_phrase_inner(candidate.tokens) {
+                    restore_distinct_combat_damage_controller_target(&mut target, tokens);
+                    return Ok(with_leading_object_set_quantifier(
+                        target,
+                        leading_set_quantifier,
+                    ));
                 }
             }
-            Err(err)
+            return Err(err);
         }
-    }
+    };
+    restore_distinct_combat_damage_controller_target(&mut target, tokens);
+    Ok(with_leading_object_set_quantifier(
+        target,
+        leading_set_quantifier,
+    ))
 }
 
 fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
@@ -1979,7 +2228,9 @@ pub(crate) fn parse_flashback_line(
         Some(FlashbackCostClause::Cost(cost_tokens)) => cost_tokens,
     };
 
-    let total_cost = match parse_activation_cost(cost_tokens) {
+    let total_cost = match parse_leading_mana_and_payment_total_cost(cost_tokens)? {
+        Some(total_cost) => total_cost,
+        None => match parse_activation_cost(cost_tokens) {
         Ok(total_cost) => total_cost,
         Err(_) => {
             crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
@@ -1992,9 +2243,71 @@ pub(crate) fn parse_flashback_line(
                 ))
             })?
         }
+        },
     };
 
     Ok(Some(AlternativeCastingMethod::Flashback { total_cost }))
+}
+
+/// Parse an alternative cost whose leading mana symbols are followed by a
+/// typed nonmana payment, such as `{R}{R}, discard X cards`.  The ordinary
+/// payment-clause fallback intentionally ignores non-payment prose, but that
+/// also means it can return only the trailing effect cost.  Prove and retain
+/// both halves here before that fallback runs.
+fn parse_leading_mana_and_payment_total_cost(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TotalCost>, CardTextError> {
+    let Some((mana, consumed)) = leading_mana_cost_from_tokens(tokens) else {
+        return Ok(None);
+    };
+    let tail = trim_commas(tokens.get(consumed..).unwrap_or_default());
+    if tail.is_empty() {
+        return Ok(None);
+    }
+    let Some(nonmana) =
+        crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
+            &tail,
+        )?
+    else {
+        return Ok(None);
+    };
+    let Some(nonmana_costs) = nonmana.as_all() else {
+        return Ok(None);
+    };
+    if nonmana_costs.is_empty() || nonmana_costs.iter().any(|cost| cost.is_mana_cost()) {
+        return Ok(None);
+    }
+    let mut costs = Vec::with_capacity(nonmana_costs.len() + 1);
+    costs.push(Cost::mana(mana));
+    costs.extend(nonmana_costs.iter().cloned());
+    Ok(Some(TotalCost::from_costs(costs)))
+}
+
+#[cfg(test)]
+mod mixed_flashback_cost_tests {
+    use super::*;
+
+    #[test]
+    fn flashback_keeps_leading_mana_and_dynamic_discard_payment() {
+        let tokens = lex_line("Flashback—{R}{R}, Discard X cards.", 0)
+            .expect("mixed flashback cost should lex");
+        let method = parse_flashback_line(&tokens)
+            .expect("mixed flashback cost should parse")
+            .expect("flashback should be recognized");
+        let AlternativeCastingMethod::Flashback { total_cost } = method else {
+            panic!("expected flashback alternative cost: {method:#?}");
+        };
+        assert_eq!(
+            total_cost
+                .mana_cost()
+                .expect("leading mana component must survive")
+                .to_oracle(),
+            "{R}{R}"
+        );
+        let debug = format!("{:#?}", total_cost.non_mana_costs().collect::<Vec<_>>());
+        assert!(debug.contains("DiscardEffect"), "{debug}");
+        assert!(debug.contains("count: X"), "{debug}");
+    }
 }
 
 pub(crate) fn parse_flashback_line_lexed(

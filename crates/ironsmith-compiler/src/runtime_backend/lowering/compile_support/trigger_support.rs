@@ -199,6 +199,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::any_of(branches.into_iter().map(compile_trigger_spec).collect())
         }
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
+        TriggerSpec::ThisAndAnotherAttackDifferentPlayers => {
+            Trigger::this_and_another_attack_different_players()
+        }
         TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast { count, filter } => {
             Trigger::this_attacks_player_who_controls_at_least(count as usize, filter)
         }
@@ -224,6 +227,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::AttacksOneOrMore(filter) => Trigger::attacks_one_or_more(filter),
         TriggerSpec::PlayersAttackedOneOrMore(player_filter) => {
             Trigger::players_attacked_one_or_more(player_filter)
+        }
+        TriggerSpec::PlayerAttacksOneOrMore { attacker, target } => {
+            Trigger::player_attacks_one_or_more(attacker, target)
         }
         TriggerSpec::AttacksOneOrMoreWithMinTotal {
             filter,
@@ -343,14 +349,33 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             player,
             source_surface,
         } => Trigger::deals_damage_to_player_with_source_surface(source, player, source_surface),
+        TriggerSpec::DealsExactDamageToObjectOrPlayer {
+            source,
+            object,
+            player,
+            player_first,
+            amount,
+            source_surface,
+        } => Trigger::deals_exact_damage_to_object_or_player_with_source_surface(
+            source,
+            object,
+            player,
+            player_first,
+            amount,
+            source_surface,
+        ),
         TriggerSpec::DealsNoncombatDamageToPlayer {
             source,
             player,
             source_surface,
-        } => Trigger::deals_noncombat_damage_to_player_with_source_surface(
+            damaged_player_one_or_more,
+            during_turn,
+        } => Trigger::deals_noncombat_damage_to_player_qualified(
             source,
             player,
             source_surface,
+            damaged_player_one_or_more,
+            during_turn,
         ),
         TriggerSpec::DealsCombatDamage(filter) => Trigger::deals_combat_damage(filter),
         TriggerSpec::DealsCombatDamageTo { source, target } => {
@@ -395,12 +420,21 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             loyalty_only,
             activation_cost_has_tap,
         ),
-        TriggerSpec::AbilityTriggered { another } => Trigger::ability_triggered(another),
+        TriggerSpec::AbilityTriggered {
+            another,
+            source_filter,
+            caused_by_source_entering,
+        } => {
+            Trigger::ability_triggered_qualified(another, source_filter, caused_by_source_entering)
+        }
         TriggerSpec::ThisIsDealtDamage => Trigger::is_dealt_damage(ChooseSpec::Source),
         TriggerSpec::ThisIsDealtCombatDamage => Trigger::is_dealt_combat_damage(ChooseSpec::Source),
         TriggerSpec::IsDealtDamage(filter) => Trigger::is_dealt_damage(ChooseSpec::Object(filter)),
         TriggerSpec::IsDealtCombatDamage(filter) => {
             Trigger::is_dealt_combat_damage(ChooseSpec::Object(filter))
+        }
+        TriggerSpec::IsDealtExcessNoncombatDamage(filter) => {
+            Trigger::is_dealt_excess_noncombat_damage(ChooseSpec::Object(filter))
         }
         TriggerSpec::YouGainLife => Trigger::you_gain_life(),
         TriggerSpec::YouGainLifeCausedBy(source) => Trigger::you_gain_life_caused_by(source),
@@ -466,12 +500,28 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             filter,
             one_or_more,
         } => Trigger::player_sacrifices_with_surface(player, filter, one_or_more),
+        TriggerSpec::PermanentSacrificed(filter) => Trigger::permanent_sacrificed(filter),
+        TriggerSpec::PermanentDestroyed(filter) => Trigger::permanent_destroyed(filter),
         TriggerSpec::TokensCreated {
             player,
             filter,
             one_or_more,
         } => Trigger::tokens_created(player, filter, one_or_more),
         TriggerSpec::LeavesBattlefield(filter) => Trigger::leaves_battlefield(filter),
+        TriggerSpec::LeavesBattlefieldWithoutDying {
+            filter,
+            one_or_more,
+        } => Trigger::new(
+            crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                .from(crate::zone::Zone::Battlefield)
+                .to_any_except(crate::zone::Zone::Graveyard)
+                .filter(filter)
+                .count(if one_or_more {
+                    crate::triggers::CountMode::OneOrMore
+                } else {
+                    crate::triggers::CountMode::One
+                }),
+        ),
         TriggerSpec::Dies(filter) => {
             let display = format!("Whenever {} dies", filter.description());
             Trigger::new(
@@ -511,6 +561,25 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             }
             Trigger::new(trigger)
         }
+        TriggerSpec::DiesDuringCombat {
+            filter,
+            one_or_more,
+        } => {
+            let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                .from(crate::zone::Zone::Battlefield)
+                .to(crate::zone::Zone::Graveyard)
+                .during_combat()
+                .graveyard_surface(crate::triggers::GraveyardTriggerSurface::Dies);
+            if let Some(filter) = filter {
+                trigger = trigger.filter(filter);
+            } else {
+                trigger = trigger.this();
+            }
+            if one_or_more {
+                trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
+            }
+            Trigger::new(trigger)
+        }
         TriggerSpec::PutIntoGraveyard(filter) => Trigger::new(
             crate::triggers::zone_changes::ZoneChangeTrigger::new()
                 .to(crate::zone::Zone::Graveyard)
@@ -539,6 +608,21 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             } else {
                 Trigger::new(trigger)
             }
+        }
+        TriggerSpec::PutIntoGraveyardFromAnyExcept {
+            filter,
+            excluded,
+            one_or_more,
+        } => {
+            let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                .from_any_except(excluded)
+                .to(crate::zone::Zone::Graveyard)
+                .filter(filter)
+                .graveyard_surface(crate::triggers::GraveyardTriggerSurface::PutIntoGraveyard);
+            if one_or_more {
+                trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
+            }
+            Trigger::new(trigger)
         }
         TriggerSpec::PutIntoExileFromZones {
             filter,
@@ -596,10 +680,18 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         } => Trigger::nth_counter_put_on(filter, counter_type, counter_number),
         TriggerSpec::CounterRemovedFrom {
             filter,
+            counter_type,
+            last,
             one_or_more,
             caused_by_source,
         } => {
             let mut trigger = crate::triggers::CounterRemovedFromTrigger::new(filter);
+            if let Some(counter_type) = counter_type {
+                trigger = trigger.counter_type(counter_type);
+            }
+            if last {
+                trigger = trigger.last();
+            }
             if one_or_more {
                 trigger = trigger.one_or_more();
             }
@@ -633,6 +725,12 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                 Trigger::creature_dealt_damage_by_enchanted_creature_this_turn_dies(victim)
             }
         },
+        TriggerSpec::DiesCreatureDealtDamageByFilteredSourceThisTurn {
+            victim,
+            damager_filter,
+        } => {
+            Trigger::creature_dealt_damage_by_filtered_source_this_turn_dies(victim, damager_filter)
+        }
         TriggerSpec::SpellCast {
             filter,
             mana_source_filter,
@@ -663,7 +761,13 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             mut filter,
             cause_filter,
             origin_condition,
+            during_turn,
         } => {
+            let during_turn_surface = during_turn.as_ref().and_then(|player| match player {
+                PlayerFilter::You => Some(" during your turn"),
+                PlayerFilter::Opponent => Some(" during an opponent's turn"),
+                _ => None,
+            });
             if filter.source {
                 filter.source = false;
                 let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
@@ -674,24 +778,40 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                 if let Some(origin_condition) = origin_condition {
                     trigger = trigger.origin_condition(origin_condition);
                 }
+                if let Some(during_turn) = during_turn {
+                    trigger = trigger.during_turn(during_turn);
+                }
                 Trigger::new(trigger)
             } else if let Some(origin_condition) = origin_condition {
                 let display = format!(
-                    "Whenever {} enters the battlefield{}",
+                    "Whenever {} enters the battlefield{}{}",
                     filter.description(),
                     origin_condition.display_suffix(false),
+                    during_turn_surface.unwrap_or_default(),
                 );
-                Trigger::new(
-                    crate::triggers::zone_changes::ZoneChangeTrigger::new()
-                        .to(crate::zone::Zone::Battlefield)
-                        .filter(filter)
-                        .cause_filter(cause_filter)
-                        .origin_condition(origin_condition),
-                )
-                .with_display_label(display)
+                let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                    .to(crate::zone::Zone::Battlefield)
+                    .filter(filter)
+                    .cause_filter(cause_filter)
+                    .origin_condition(origin_condition);
+                if let Some(during_turn) = during_turn {
+                    trigger = trigger.during_turn(during_turn);
+                }
+                Trigger::new(trigger).with_display_label(display)
             } else {
-                let display = format!("Whenever {} enters the battlefield", filter.description());
-                Trigger::enters_battlefield(filter, cause_filter).with_display_label(display)
+                let display = format!(
+                    "Whenever {} enters the battlefield{}",
+                    filter.description(),
+                    during_turn_surface.unwrap_or_default(),
+                );
+                let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                    .to(crate::zone::Zone::Battlefield)
+                    .filter(filter)
+                    .cause_filter(cause_filter);
+                if let Some(during_turn) = during_turn {
+                    trigger = trigger.during_turn(during_turn);
+                }
+                Trigger::new(trigger).with_display_label(display)
             }
         }
         TriggerSpec::EntersBattlefieldOneOrMore {
@@ -757,11 +877,15 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::BeginningOfCombat(player) => Trigger::beginning_of_combat(player),
         TriggerSpec::BeginningOfEndStep(player) => Trigger::beginning_of_end_step(player),
         TriggerSpec::BeginningOfTheEndStep => Trigger::beginning_of_the_end_step(),
+        TriggerSpec::BeginningOfMonarchEndStep => Trigger::beginning_of_monarch_end_step(),
+        TriggerSpec::BeginningOfMainPhase { player, surface } => {
+            Trigger::beginning_of_main_phase_with_surface(player, surface)
+        }
         TriggerSpec::BeginningOfPrecombatMain(player) => {
             Trigger::beginning_of_precombat_main_phase(player)
         }
-        TriggerSpec::BeginningOfPostcombatMain(player) => {
-            Trigger::beginning_of_postcombat_main_phase(player)
+        TriggerSpec::BeginningOfPostcombatMain { player, surface } => {
+            Trigger::beginning_of_postcombat_main_phase_with_surface(player, surface)
         }
         TriggerSpec::DayNightChanged => Trigger::day_night_changed(),
         TriggerSpec::ThisEntersBattlefield { origin_condition } => match origin_condition {
@@ -835,9 +959,16 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             action,
             player,
             source_filter,
-        } => match source_filter {
-            Some(filter) => Trigger::keyword_action_matching_object(action, player, filter),
-            None => Trigger::keyword_action(action, player),
+            during_your_turn,
+        } => match (source_filter, during_your_turn) {
+            (Some(filter), true) => {
+                Trigger::keyword_action_matching_object_during_your_turn(action, player, filter)
+            }
+            (Some(filter), false) => {
+                Trigger::keyword_action_matching_object(action, player, filter)
+            }
+            (None, true) => Trigger::keyword_action_during_your_turn(action, player),
+            (None, false) => Trigger::keyword_action(action, player),
         },
         TriggerSpec::KeywordActionTaggedObject {
             action,
@@ -937,6 +1068,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::TokensCreated { .. }
         | TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::DealsDamageToPlayer { .. }
+        | TriggerSpec::DealsExactDamageToObjectOrPlayer { .. }
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
         | TriggerSpec::DealsCombatDamageToPlayer { .. }
@@ -945,8 +1077,10 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::BeginningOfCombat(_)
         | TriggerSpec::BeginningOfEndStep(_)
         | TriggerSpec::BeginningOfTheEndStep
+        | TriggerSpec::BeginningOfMonarchEndStep
+        | TriggerSpec::BeginningOfMainPhase { .. }
         | TriggerSpec::BeginningOfPrecombatMain(_)
-        | TriggerSpec::BeginningOfPostcombatMain(_)
+        | TriggerSpec::BeginningOfPostcombatMain { .. }
         | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
@@ -1046,6 +1180,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         }
         TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::DealsDamageToPlayer { .. }
+        | TriggerSpec::DealsExactDamageToObjectOrPlayer { .. }
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
@@ -1079,8 +1214,9 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::BeginningOfDrawStep(player)
         | TriggerSpec::BeginningOfCombat(player)
         | TriggerSpec::BeginningOfEndStep(player)
+        | TriggerSpec::BeginningOfMainPhase { player, .. }
         | TriggerSpec::BeginningOfPrecombatMain(player)
-        | TriggerSpec::BeginningOfPostcombatMain(player) => {
+        | TriggerSpec::BeginningOfPostcombatMain { player, .. } => {
             if *player == PlayerFilter::Any {
                 // `Any` phase/event triggers bind their participant from the
                 // concrete event that fired the ability. This is usually the
@@ -1136,6 +1272,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
             }
         }
         TriggerSpec::BeginningOfTheEndStep => Some(PlayerFilter::Active),
+        TriggerSpec::BeginningOfMonarchEndStep => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::BecomesTargetedBySourceController {
             source_controller, ..
         } => {
@@ -1183,12 +1320,14 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::ThisIsDealtCombatDamage
             | TriggerSpec::IsDealtDamage(_)
             | TriggerSpec::IsDealtCombatDamage(_)
+            | TriggerSpec::IsDealtExcessNoncombatDamage(_)
             | TriggerSpec::ThisDealsDamage
             | TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::ThisDealsDamageToPlayer { .. }
             | TriggerSpec::DealsDamage { .. }
             | TriggerSpec::DealsDamageTo { .. }
             | TriggerSpec::DealsDamageToPlayer { .. }
+            | TriggerSpec::DealsExactDamageToObjectOrPlayer { .. }
             | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
             | TriggerSpec::ThisDealsCombatDamage
             | TriggerSpec::ThisDealsCombatDamageTo(_)
@@ -1302,7 +1441,10 @@ mod tests {
             TriggerSpec::BeginningOfCombat(PlayerFilter::Any),
             TriggerSpec::BeginningOfEndStep(PlayerFilter::Any),
             TriggerSpec::BeginningOfPrecombatMain(PlayerFilter::Any),
-            TriggerSpec::BeginningOfPostcombatMain(PlayerFilter::Any),
+            TriggerSpec::BeginningOfPostcombatMain {
+                player: PlayerFilter::Any,
+                surface: ironsmith_core::trigger_model::PostcombatMainPhaseSurface::PostcombatMain,
+            },
         ] {
             assert_eq!(
                 inferred_trigger_player_filter(&trigger),

@@ -696,10 +696,10 @@ impl GameState {
             .find(|candidate| seats.contains(candidate))
     }
 
-    fn begin_focused_grand_melee_turn(&mut self, player: PlayerId) {
+    fn begin_focused_grand_melee_turn(&mut self, player: PlayerId, is_extra_turn: bool) {
         self.turn_store.extra_turns.clear();
         self.turn_store.extra_turns.push(player);
-        self.next_turn_single_lane();
+        self.next_turn_single_lane_with_extra_turn_override(Some(is_extra_turn));
         self.save_focused_grand_melee_lane();
     }
 
@@ -753,7 +753,7 @@ impl GameState {
             .unwrap_or(marker_number);
         self.switch_grand_melee_lane_unchecked(marker_number)
             .expect("marker exists while beginning its turn");
-        self.begin_focused_grand_melee_turn(holder);
+        self.begin_focused_grand_melee_turn(holder, deferred);
         if previous_focus != marker_number
             && self.grand_melee.as_ref().is_some_and(|state| {
                 state.markers.iter().any(|marker| {
@@ -798,7 +798,7 @@ impl GameState {
                     let old_focus = self.grand_melee.as_ref().unwrap().focused_marker;
                     self.switch_grand_melee_lane_unchecked(number)
                         .expect("waiting marker still exists");
-                    self.begin_focused_grand_melee_turn(holder);
+                    self.begin_focused_grand_melee_turn(holder, true);
                     if old_focus != number
                         && self.grand_melee.as_ref().is_some_and(|state| {
                             state.markers.iter().any(|marker| {
@@ -958,7 +958,7 @@ impl GameState {
             {
                 marker.normal_turn_pending = false;
             }
-            self.begin_focused_grand_melee_turn(holder);
+            self.begin_focused_grand_melee_turn(holder, has_more_deferred);
             return;
         }
 
@@ -1001,7 +1001,7 @@ impl GameState {
                     return;
                 }
                 if !near_right {
-                    self.begin_focused_grand_melee_turn(holder);
+                    self.begin_focused_grand_melee_turn(holder, true);
                     return;
                 }
             }

@@ -151,6 +151,9 @@ impl WasmGame {
 
     pub(super) fn decision_requires_root_reexecution(&self, ctx: &DecisionContext) -> bool {
         match ctx {
+            DecisionContext::ManaPayment(payment) => {
+                !self.mana_payment_uses_live_priority_response(payment)
+            }
             // Number/target prompts only have a direct priority response while a
             // cast or activation is actively staged. Resolution-time prompts are
             // captured by replay and must rebuild their original execution path.
@@ -185,11 +188,8 @@ impl WasmGame {
                         pending.stage,
                         CastStage::ChoosingOptionalCosts
                             | CastStage::ChoosingAssistPlayer
-                            | CastStage::ActivatingAssistManaAbilities
                             | CastStage::ChoosingAssistContribution
                             | CastStage::ChoosingNextCost
-                            | CastStage::PayingAssistMana
-                            | CastStage::PayingMana
                     )
                 })
             || self
@@ -201,7 +201,6 @@ impl WasmGame {
                         pending.stage,
                         ActivationStage::ChoosingAlternativeCost
                             | ActivationStage::ChoosingNextCost
-                            | ActivationStage::PayingMana
                     )
                 })
     }
@@ -215,6 +214,9 @@ impl WasmGame {
             DecisionContext::Priority(_)
             | DecisionContext::Modes(_)
             | DecisionContext::HybridChoice(_) => true,
+            DecisionContext::ManaPayment(payment) => {
+                self.mana_payment_uses_live_priority_response(payment)
+            }
             DecisionContext::Number(_) | DecisionContext::Targets(_) => {
                 self.decision_has_direct_priority_response(ctx)
             }
@@ -224,6 +226,29 @@ impl WasmGame {
             DecisionContext::SelectObjects(_) => self.select_objects_uses_live_priority_response(),
             _ => false,
         }
+    }
+
+    fn mana_payment_uses_live_priority_response(
+        &self,
+        ctx: &ironsmith::decisions::context::ManaPaymentContext,
+    ) -> bool {
+        self.priority_state
+            .pending_cast
+            .as_ref()
+            .and_then(|pending| pending.pending_mana_payment.as_ref())
+            .is_some_and(|payment| payment.plan.id == ctx.plan.id)
+            || self
+                .priority_state
+                .pending_activation
+                .as_ref()
+                .and_then(|pending| pending.pending_mana_payment.as_ref())
+                .is_some_and(|payment| payment.plan.id == ctx.plan.id)
+            || self
+                .priority_state
+                .pending_mana_ability
+                .as_ref()
+                .and_then(|pending| pending.pending_mana_payment.as_ref())
+                .is_some_and(|payment| payment.plan.id == ctx.plan.id)
     }
 
     fn decision_has_direct_priority_response(&self, ctx: &DecisionContext) -> bool {

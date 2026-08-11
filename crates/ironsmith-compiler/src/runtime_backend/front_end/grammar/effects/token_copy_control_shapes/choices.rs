@@ -1,7 +1,7 @@
 use super::super::*;
 
 use crate::runtime_backend::front_end::grammar::leaf;
-use winnow::combinator::{alt, eof, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat_till};
 use winnow::error::{ContextError, ErrMode};
 use winnow::token::any;
 
@@ -17,6 +17,7 @@ pub(crate) struct ExileSourceCounterShape<'a> {
     pub(crate) target_tokens: &'a [OwnedLexToken],
     pub(crate) descriptor_tokens: &'a [OwnedLexToken],
     pub(crate) source_reference: bool,
+    pub(crate) it_reference: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,7 +79,6 @@ fn exact_source_reference(tokens: &[OwnedLexToken]) -> bool {
         tokens,
         (
             primitives::any_phrase(&[
-                &["it"],
                 &["this"],
                 &["this", "card"],
                 &["this", "creature"],
@@ -91,6 +91,29 @@ fn exact_source_reference(tokens: &[OwnedLexToken]) -> bool {
         )
             .void(),
         "exile source reference",
+    )
+    .is_ok()
+}
+
+/// A bare "it" subject is a contextual back-reference, not a source
+/// reference: in "Whenever an opponent discards a card, exile it with a
+/// stash counter on it" the pronoun names the discarded card. Reference
+/// resolution still lands on the source when no antecedent exists (a
+/// dies-trigger's "exile it" resolves to the triggering source).
+fn exact_it_reference(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_all(
+        tokens,
+        (
+            primitives::kw("it"),
+            opt(primitives::any_phrase(&[
+                &["from", "their", "graveyard"],
+                &["from", "that", "player's", "graveyard"],
+                &["from", "that", "players", "graveyard"],
+            ])),
+            primitives::sentence_end(),
+        )
+            .void(),
+        "exile it reference",
     )
     .is_ok()
 }
@@ -166,10 +189,12 @@ pub(crate) fn parse_exile_source_counter_shape(
                 .void()
         })?;
     let descriptor_tokens = trim_lexed_commas(descriptor_tokens);
+    let it_reference = exact_it_reference(target_tokens);
     (!descriptor_tokens.is_empty()).then_some(ExileSourceCounterShape {
         target_tokens,
         descriptor_tokens,
-        source_reference: source_surface_supported(target_tokens),
+        source_reference: !it_reference && source_surface_supported(target_tokens),
+        it_reference,
     })
 }
 

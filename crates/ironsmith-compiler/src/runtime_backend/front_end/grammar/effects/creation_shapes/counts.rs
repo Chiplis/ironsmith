@@ -148,6 +148,22 @@ pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
     let token_surface = CreationTokens::new(tokens);
     let words = token_surface.words();
     let surface = CreationWords::new(&words);
+    // Creation parsing has already removed the authored `for each` marker.
+    // Restore it before the ordinary object-count fallback so provenance
+    // counts such as "mana from a Cave spent to cast it" remain tied to the
+    // spell's actual mana payment rather than becoming battlefield counts.
+    let mut for_each_words = Vec::with_capacity(words.len() + 2);
+    for_each_words.extend(["for", "each"]);
+    for_each_words.extend(words.iter().copied());
+    if let Some((value, used)) =
+        super::super::super::shared_util::count_shapes::parse_for_each_count_value_words(
+            &for_each_words,
+        )
+        && used == for_each_words.len()
+        && !matches!(value.unhinted(), Value::Count(_))
+    {
+        return Some(value.with_surface_hint(ValueSurfaceHint::ForEach));
+    }
     if surface.starts(CreationPhrase::CreatureDiedThisTurn) {
         return Some(Value::CreaturesDiedThisTurn.with_surface_hint(ValueSurfaceHint::ForEach));
     }
@@ -168,9 +184,6 @@ pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
     // Creation parsing has already removed the authored `for each` marker.
     // Restore that marker only for the shared colored-mana-symbol parser so
     // Chroma counts are recognized before the generic object-filter fallback.
-    let mut for_each_words = Vec::with_capacity(words.len() + 2);
-    for_each_words.extend(["for", "each"]);
-    for_each_words.extend(words.iter().copied());
     if let Some((value, used)) =
         super::super::super::shared_util::value_expr::colored_mana_symbols_in_costs(&for_each_words)
         && used == for_each_words.len()
@@ -399,6 +412,24 @@ mod tests {
             query.filter.expect("permanent filter").card_types,
             ObjectFilter::permanent().card_types
         );
+
+        let tokens = lex_line("mana from a Cave spent to cast it", 0).unwrap();
+        let spent_mana = parse_creation_for_each_dynamic_count_tokens(&tokens)
+            .expect("creation count should retain mana-payment provenance");
+        let Value::ManaFromSourceSpentToCastThisSpell {
+            source_filter,
+            include_source_noun,
+            reference,
+        } = spent_mana.unhinted()
+        else {
+            panic!("expected typed mana-source count, got {spent_mana:#?}");
+        };
+        assert!(!include_source_noun);
+        assert_eq!(
+            *reference,
+            ironsmith_core::ManaSpentCastReferenceSurface::It
+        );
+        assert_eq!(source_filter.subtypes, [crate::Subtype::Cave]);
     }
 
     #[test]

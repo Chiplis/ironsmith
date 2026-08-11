@@ -102,12 +102,20 @@ fn until_next_turn(input: &mut WordSliceInput<'_>) -> WResult<Until> {
         primitives::word_slice_exact("until"),
         primitives::word_slice_exact("your"),
         primitives::word_slice_exact("next"),
-        alt((
-            primitives::word_slice_exact("turn"),
-            primitives::word_slice_exact("upkeep"),
-        )),
+        primitives::word_slice_exact("turn"),
     )
         .value(Until::YourNextTurn)
+        .parse_next(input)
+}
+
+fn until_next_upkeep(input: &mut WordSliceInput<'_>) -> WResult<Until> {
+    (
+        primitives::word_slice_exact("until"),
+        primitives::word_slice_exact("your"),
+        primitives::word_slice_exact("next"),
+        primitives::word_slice_exact("upkeep"),
+    )
+        .value(Until::YourNextUpkeep)
         .parse_next(input)
 }
 
@@ -131,6 +139,7 @@ fn simple_turn_duration(input: &mut WordSliceInput<'_>) -> WResult<Until> {
         until_end_of_turn_or_any_player_rolls,
         until_end_of_combat,
         until_end_of_turn,
+        until_next_upkeep,
         until_next_turn,
         next_untap_step,
     ))
@@ -376,7 +385,7 @@ mod tests {
                 .unwrap();
         assert_eq!(duration.start, 1);
         assert_eq!(duration.len, 4);
-        assert_eq!(duration.duration, Until::YourNextTurn);
+        assert_eq!(duration.duration, Until::YourNextUpkeep);
 
         let source_lifetime = parse_simple_ability_duration_shape(&[
             "all",

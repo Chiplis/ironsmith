@@ -33,6 +33,7 @@ pub(crate) struct RemoveCounterPreventionSpec<'a> {
     pub(crate) amount: RemoveCounterPreventionAmount,
     pub(crate) condition_tokens: Option<&'a [OwnedLexToken]>,
     pub(crate) follow_up: Option<RemoveCounterPreventionFollowUp>,
+    pub(crate) one_damage_per_counter: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +74,16 @@ pub(crate) fn parse_put_counter_prevention_tokens(
 }
 
 fn parse_remove_counter_prevention_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<RemoveCounterPreventionSpec<'a>> {
+    alt((
+        parse_one_damage_per_counter_prevention_lexed,
+        parse_standard_remove_counter_prevention_lexed,
+    ))
+    .parse_next(input)
+}
+
+fn parse_standard_remove_counter_prevention_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<RemoveCounterPreventionSpec<'a>> {
     semantic_phrase(&["if", "damage", "would", "be", "dealt", "to"]).parse_next(input)?;
@@ -131,6 +142,69 @@ fn parse_remove_counter_prevention_lexed<'a>(
             counter_type: follow_up.counter_type,
             counters_per_removed: follow_up.counters_per_removed,
         }),
+        one_damage_per_counter: false,
+    })
+}
+
+fn parse_counter_type_before_counter_noun<'a>(
+    input: &mut LexStream<'a>,
+    context: &'static str,
+) -> WResult<CounterType> {
+    let (_, descriptor) = (
+        repeat_till::<_, _, (), _, _, _, _>(
+            1..,
+            any.void(),
+            peek(alt((semantic_kw("counter"), semantic_kw("counters")))),
+        )
+        .void(),
+        alt((semantic_kw("counter"), semantic_kw("counters"))),
+    )
+        .with_taken()
+        .parse_next(input)?;
+    filters::parse_counter_type_from_tokens(trim_lexed_commas(descriptor))
+        .ok_or_else(|| primitives::backtrack_err(context, "known counter type"))
+}
+
+fn parse_one_damage_per_counter_prevention_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<RemoveCounterPreventionSpec<'a>> {
+    semantic_phrase(&[
+        "for", "each", "1", "damage", "that", "would", "be", "dealt", "to",
+    ])
+    .parse_next(input)?;
+    parse_this_source(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    semantic_kw("if").parse_next(input)?;
+    let (condition_counter_type, condition_tokens) = (
+        semantic_phrase(&["it", "has"]).void(),
+        alt((semantic_kw("a"), semantic_kw("an"))).void(),
+        |input: &mut LexStream<'a>| {
+            parse_counter_type_before_counter_noun(input, "per-damage counter condition")
+        },
+        semantic_phrase(&["on", "it"]).void(),
+    )
+        .map(|(_, _, counter_type, _)| counter_type)
+        .with_taken()
+        .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    semantic_kw("remove").parse_next(input)?;
+    alt((semantic_kw("a"), semantic_kw("an"))).parse_next(input)?;
+    let removed_counter_type =
+        parse_counter_type_before_counter_noun(input, "per-damage counter removal")?;
+    if condition_counter_type != removed_counter_type {
+        return Err(primitives::backtrack_err(
+            "per-damage counter prevention",
+            "the counter type named by its condition",
+        ));
+    }
+    semantic_phrase(&["from", "it", "and", "prevent", "that", "1", "damage"]).parse_next(input)?;
+    semantic_finish(input)?;
+    Ok(RemoveCounterPreventionSpec {
+        counter_type: removed_counter_type,
+        amount: RemoveCounterPreventionAmount::DamageAmount,
+        condition_tokens: Some(trim_lexed_commas(condition_tokens)),
+        follow_up: None,
+        one_damage_per_counter: true,
     })
 }
 

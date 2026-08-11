@@ -596,6 +596,53 @@ fn source_exiled_link_count(
     )
 }
 
+/// Return the size of the largest creature-type cohort in `subtype_sets`.
+///
+/// One object can contribute to several cohorts when it has several creature
+/// types, but contributes at most once to any one cohort. Noncreature subtypes
+/// do not participate.
+pub(crate) fn greatest_shared_creature_type_count<I, J>(subtype_sets: I) -> i32
+where
+    I: IntoIterator<Item = J>,
+    J: IntoIterator<Item = Subtype>,
+{
+    let mut counts: HashMap<Subtype, i32> = HashMap::new();
+    for subtypes in subtype_sets {
+        let mut types_on_object = HashSet::new();
+        for subtype in subtypes {
+            if subtype.is_creature_type() && types_on_object.insert(subtype) {
+                *counts.entry(subtype).or_default() += 1;
+            }
+        }
+    }
+    counts.into_values().max().unwrap_or(0)
+}
+
+fn greatest_shared_creature_type_count_for_filter(
+    game: &GameState,
+    filter: &crate::filter::ObjectFilter,
+    ctx: &ExecutionContext,
+    filter_ctx: &FilterContext,
+) -> i32 {
+    let subtype_sets = if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+        snapshots
+            .iter()
+            .filter(|snapshot| {
+                value_tagged_snapshot_matches_filter(game, filter, filter_ctx, snapshot)
+            })
+            .map(|snapshot| snapshot.subtypes.clone())
+            .collect::<Vec<_>>()
+    } else {
+        value_candidate_ids_for_filter(game, filter, ctx)
+            .into_iter()
+            .filter_map(|id| game.object(id).map(|object| (id, object)))
+            .filter(|(_, object)| filter.matches(object, filter_ctx, game))
+            .filter_map(|(id, _)| game.current_subtypes(id))
+            .collect::<Vec<_>>()
+    };
+    greatest_shared_creature_type_count(subtype_sets)
+}
+
 /// Resolve a Value to a concrete i32.
 pub fn resolve_value(
     game: &GameState,
@@ -633,6 +680,12 @@ pub fn resolve_value(
         }
 
         Value::Count(filter) => {
+            if filter.prior_effect_action_surface()
+                == Some(crate::effect::PriorEffectAction::Prevented)
+                && let Some(prevented) = ctx.event_value_amount
+            {
+                return Ok(prevented.max(0));
+            }
             let filter_ctx = ctx.filter_context(game);
             if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
                 let count = snapshots
@@ -743,6 +796,33 @@ pub fn resolve_value(
                     .filter(|obj| player_filter.matches(obj, &filter_ctx, game))
                     .count() as i32;
                 greatest = greatest.max(count);
+            }
+            Ok(greatest)
+        }
+        Value::GreatestSharedCreatureTypeCount(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            let Some(controller_filter) = &filter.controller else {
+                return Ok(greatest_shared_creature_type_count_for_filter(
+                    game,
+                    filter,
+                    ctx,
+                    &filter_ctx,
+                ));
+            };
+
+            let mut greatest = 0;
+            for player in game.players.iter().filter(|player| player.is_in_game()) {
+                if !controller_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                let mut player_filter = filter.clone();
+                player_filter.controller = Some(PlayerFilter::Specific(player.id));
+                greatest = greatest.max(greatest_shared_creature_type_count_for_filter(
+                    game,
+                    &player_filter,
+                    ctx,
+                    &filter_ctx,
+                ));
             }
             Ok(greatest)
         }
@@ -1735,6 +1815,15 @@ pub fn resolve_value(
             Ok(total as i32)
         }
 
+        Value::AttractionsVisitedThisTurn(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            Ok(game
+                .turn_store
+                .turn_history
+                .total_attractions_visited_for_players(&player_ids) as i32)
+        }
+
         Value::DamageDealtToPlayersThisTurn(player_spec) => {
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
@@ -1877,6 +1966,29 @@ pub fn resolve_value(
                 }
             }
             Ok(count)
+        }
+
+        Value::TotalManaValueOfSpellsCastThisTurnMatching {
+            player,
+            filter,
+            exclude_source,
+        } => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player, &ctx.filter_context(game), ctx)?;
+            let filter_ctx = ctx.filter_context(game);
+            let mut total: i32 = 0;
+            for snapshot in game.turn_store.turn_history.spell_cast_snapshot_history() {
+                if *exclude_source && snapshot.object_id == ctx.source {
+                    continue;
+                }
+                if !player_ids.iter().any(|pid| *pid == snapshot.controller) {
+                    continue;
+                }
+                if filter.matches_snapshot(&snapshot, &filter_ctx, game) {
+                    total = total.saturating_add(snapshot.mana_value() as i32);
+                }
+            }
+            Ok(total)
         }
 
         Value::CommanderCastCount(player_spec) => {
@@ -2572,6 +2684,30 @@ fn value_tagged_snapshots_for_filter<'a>(
     filter: &crate::filter::ObjectFilter,
     ctx: &'a ExecutionContext,
 ) -> Option<Vec<&'a ObjectSnapshot>> {
+    // A leave-the-battlefield event captures each attachment under
+    // `attached_source` before state-based actions move unattached Auras to
+    // their owners' graveyards.  Counts such as Hateful Eidolon's "each Aura
+    // ... that was attached to it" must evaluate those LKI snapshots rather
+    // than the attachments' new zone objects.
+    if let [constraint] = filter.tagged_constraints.as_slice()
+        && constraint.relation == crate::filter::TaggedOpbjectRelation::WasAttachedToTaggedObject
+    {
+        let tagged_hosts = ctx.get_tagged_all(&constraint.tag)?;
+        let attached_snapshots = ctx.get_tagged_all("attached_source")?;
+        let mut seen = HashSet::new();
+        return Some(
+            attached_snapshots
+                .iter()
+                .filter(|attachment| {
+                    tagged_hosts
+                        .iter()
+                        .any(|host| host.attachments.contains(&attachment.object_id))
+                })
+                .filter(|attachment| seen.insert(attachment.stable_id))
+                .collect(),
+        );
+    }
+
     let only_is_tagged_constraints = !filter.tagged_constraints.is_empty()
         && filter.tagged_constraints.iter().all(|constraint| {
             matches!(
@@ -2900,19 +3036,38 @@ pub fn resolve_player_filter(
                     }
                 }
             }
-            prior_effect_damaged_player(ctx).ok_or_else(|| {
-                ExecutionError::UnresolvableValue(
-                    "DamagedPlayer requires a player damage event".to_string(),
-                )
-            })
+            ctx.get_tagged_players("damaged_player")
+                .and_then(|players| players.first().copied())
+                .or_else(|| prior_effect_damaged_player(ctx))
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "DamagedPlayer requires a player damage event".to_string(),
+                    )
+                })
         }
-        PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => {
+        PlayerFilter::Target(_) => {
             for target in &ctx.targets {
                 if let ResolvedTarget::Player(id) = target {
                     return Ok(*id);
                 }
             }
             Err(ExecutionError::InvalidTarget)
+        }
+        PlayerFilter::AliasedTarget(inner) => {
+            for target in &ctx.targets {
+                if let ResolvedTarget::Player(id) = target {
+                    return Ok(*id);
+                }
+            }
+            let filter_ctx = ctx.filter_context(game);
+            ctx.get_tagged_players(crate::tag::DELAYED_TARGET_PLAYERS_TAG)
+                .and_then(|players| {
+                    players
+                        .iter()
+                        .copied()
+                        .find(|player| inner.matches_player(*player, &filter_ctx))
+                })
+                .ok_or(ExecutionError::InvalidTarget)
         }
         PlayerFilter::Excluding { .. } => {
             let filter_ctx = ctx.filter_context(game);
@@ -2926,9 +3081,14 @@ pub fn resolve_player_filter(
         PlayerFilter::MostLifeTied
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::AttackedBySourceThisTurn
+        | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::LostLifeThisTurn { .. }
+        | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+        | PlayerFilter::ControlsMost { .. }
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::MostCardsInHand => {
             let filter_ctx = ctx.filter_context(game);
@@ -3472,7 +3632,12 @@ pub fn resolve_objects_for_effect_with_choice_description(
             }
         }
 
-        if !filter.tagged_constraints.is_empty() {
+        if !filter.tagged_constraints.is_empty()
+            && !matches!(
+                spec,
+                ChooseSpec::WithCount(..) | ChooseSpec::WithCountValue(..)
+            )
+        {
             return resolve_objects_from_spec(game, spec, ctx);
         }
 
@@ -3524,7 +3689,12 @@ pub fn resolve_objects_for_effect_with_choice_description(
 
         if count.is_random() {
             game.shuffle_slice(&mut candidates);
-            candidates.truncate(max);
+            if filter.distinct_mana_values {
+                candidates =
+                    normalize_chosen_distinct_mana_values(game, candidates, &[], min, max, false);
+            } else {
+                candidates.truncate(max);
+            }
             if filter.one_per_card_type {
                 candidates =
                     normalize_chosen_one_per_card_type(game, candidates, &[], min, max, false);
@@ -3550,17 +3720,33 @@ pub fn resolve_objects_for_effect_with_choice_description(
                 }
             }
             if chosen.len() >= min && chosen.len() <= max {
-                if !filter.one_per_card_type {
+                if !filter.one_per_card_type && !filter.distinct_mana_values {
                     return Ok(chosen);
                 }
-                let normalized = normalize_chosen_one_per_card_type(
-                    game,
-                    chosen.clone(),
-                    &candidates,
-                    min,
-                    max,
-                    false,
-                );
+                let normalized = if filter.distinct_mana_values {
+                    normalize_chosen_distinct_mana_values(
+                        game,
+                        chosen.clone(),
+                        &candidates,
+                        min,
+                        max,
+                        false,
+                    )
+                } else {
+                    chosen.clone()
+                };
+                let normalized = if filter.one_per_card_type {
+                    normalize_chosen_one_per_card_type(
+                        game,
+                        normalized,
+                        &candidates,
+                        min,
+                        max,
+                        false,
+                    )
+                } else {
+                    normalized
+                };
                 if normalized.len() == chosen.len() {
                     return Ok(normalized);
                 }
@@ -3608,11 +3794,54 @@ pub fn resolve_objects_for_effect_with_choice_description(
         }
 
         let chosen = normalize_objects_for_count(chosen, &candidates, min, max);
+        let chosen = if filter.distinct_mana_values {
+            normalize_chosen_distinct_mana_values(game, chosen, &candidates, min, max, true)
+        } else {
+            chosen
+        };
         let chosen = if filter.one_per_card_type {
             normalize_chosen_one_per_card_type(game, chosen, &candidates, min, max, true)
         } else {
             chosen
         };
+        if chosen.len() < min {
+            return Err(ExecutionError::InvalidTarget);
+        }
+        return Ok(chosen);
+    }
+
+    // A bounded choice from an already tagged set is still a new choice; the
+    // count wrapper must not disappear merely because the inner tagged spec
+    // resolves to every remembered object. This is used by exact partitions
+    // such as "return two of the cards ... and put the rest ...".
+    if !spec.is_target()
+        && let ChooseSpec::WithCount(inner, count) = spec
+        && matches!(inner.base(), ChooseSpec::Tagged(_))
+        && !count.dynamic_x
+        && !count.random
+    {
+        let candidates = resolve_objects_from_spec(game, inner, ctx)?;
+        let min = count.min.min(candidates.len());
+        let max = count.max.unwrap_or(candidates.len()).min(candidates.len());
+        if candidates.len() < count.min || max < min {
+            return Err(ExecutionError::InvalidTarget);
+        }
+        if candidates.len() == min && min == max {
+            return Ok(candidates);
+        }
+        let choosing_player = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
+        let description = choice_description.unwrap_or_else(|| "Choose cards".to_string());
+        let chosen = make_decision(
+            game,
+            ctx.decision_maker,
+            choosing_player,
+            Some(ctx.source),
+            ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max)),
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
+        let chosen = normalize_objects_for_count(chosen, &candidates, min, max);
         if chosen.len() < min {
             return Err(ExecutionError::InvalidTarget);
         }
@@ -3734,6 +3963,45 @@ pub(crate) fn normalize_chosen_one_per_card_type(
         }
     }
 
+    normalized
+}
+
+pub(crate) fn normalize_chosen_distinct_mana_values(
+    game: &GameState,
+    chosen: Vec<ObjectId>,
+    candidates: &[ObjectId],
+    min: usize,
+    max: usize,
+    fill_to_min: bool,
+) -> Vec<ObjectId> {
+    let mana_value = |id: ObjectId| {
+        game.object(id).map(|object| {
+            object
+                .mana_cost
+                .as_ref()
+                .map_or(0, |cost| cost.mana_value())
+        })
+    };
+    let mut used = HashSet::new();
+    let mut normalized = Vec::new();
+    for id in chosen {
+        if normalized.len() >= max {
+            break;
+        }
+        if mana_value(id).is_some_and(|value| used.insert(value)) {
+            normalized.push(id);
+        }
+    }
+    if fill_to_min && normalized.len() < min {
+        for id in candidates {
+            if normalized.len() >= min || normalized.len() >= max {
+                break;
+            }
+            if mana_value(*id).is_some_and(|value| used.insert(value)) {
+                normalized.push(*id);
+            }
+        }
+    }
     normalized
 }
 
@@ -4252,7 +4520,7 @@ pub(crate) fn resolve_player_filter_to_list(
             .filter(|player| player.is_in_game())
             .map(|player| player.id)
             .collect()),
-        PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => {
+        PlayerFilter::Target(_) => {
             let players = ctx
                 .targets
                 .iter()
@@ -4261,6 +4529,34 @@ pub(crate) fn resolve_player_filter_to_list(
                     ResolvedTarget::Object(_) => None,
                 })
                 .collect::<Vec<_>>();
+            if players.is_empty() {
+                Err(ExecutionError::InvalidTarget)
+            } else {
+                Ok(players)
+            }
+        }
+        PlayerFilter::AliasedTarget(inner) => {
+            let mut players = ctx
+                .targets
+                .iter()
+                .filter_map(|target| match target {
+                    ResolvedTarget::Player(id) => Some(*id),
+                    ResolvedTarget::Object(_) => None,
+                })
+                .collect::<Vec<_>>();
+            if players.is_empty() {
+                if let Some(delayed_players) =
+                    ctx.get_tagged_players(crate::tag::DELAYED_TARGET_PLAYERS_TAG)
+                {
+                    let filter_ctx = ctx.filter_context(game);
+                    players.extend(
+                        delayed_players
+                            .iter()
+                            .copied()
+                            .filter(|player| inner.matches_player(*player, &filter_ctx)),
+                    );
+                }
+            }
             if players.is_empty() {
                 Err(ExecutionError::InvalidTarget)
             } else {
@@ -4403,9 +4699,32 @@ pub(crate) fn resolve_player_filter_to_list(
             })
             .map(|player| player.id)
             .collect()),
+        PlayerFilter::AttackedBySourceThisTurn => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .filter(|player| player_filter_matches_game(filter, player.id, game, _filter_ctx))
+            .map(|player| player.id)
+            .collect()),
+        PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::LostLifeThisTurn { .. } => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .filter(|player| player_filter_matches_game(filter, player.id, game, _filter_ctx))
+            .map(|player| player.id)
+            .collect()),
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .filter(|player| player_filter_matches_game(filter, player.id, game, _filter_ctx))
+            .map(|player| player.id)
+            .collect()),
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
-        | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => Ok(game
+        | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+        | PlayerFilter::ControlsMost { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())
@@ -4465,7 +4784,9 @@ pub(crate) fn resolve_player_filter_to_list(
                     }
                 }
             }
-            prior_effect_damaged_player(ctx)
+            ctx.get_tagged_players("damaged_player")
+                .and_then(|players| players.first().copied())
+                .or_else(|| prior_effect_damaged_player(ctx))
                 .map(|player_id| vec![player_id])
                 .ok_or_else(|| {
                     ExecutionError::UnresolvableValue(
@@ -4587,6 +4908,42 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
 
+    #[test]
+    fn distinct_mana_value_selection_rejects_duplicate_values() {
+        let mut game = new_test_game();
+        let alice = PlayerId::from_index(0);
+        let first_two = add_custom_creature(&mut game, 91_001, "First Two", alice, 2, 2, 2);
+        let second_two = add_custom_creature(&mut game, 91_002, "Second Two", alice, 2, 2, 2);
+        let three = add_custom_creature(&mut game, 91_003, "Three", alice, 3, 3, 3);
+
+        assert_eq!(
+            normalize_chosen_distinct_mana_values(
+                &game,
+                vec![first_two, second_two, three],
+                &[],
+                0,
+                3,
+                false,
+            ),
+            vec![first_two, three]
+        );
+    }
+
+    fn add_typed_creature(
+        game: &mut GameState,
+        id_raw: u32,
+        name: &str,
+        owner: PlayerId,
+        subtypes: Vec<Subtype>,
+    ) -> ObjectId {
+        let card = CardBuilder::new(crate::ids::CardId::from_raw(id_raw), name)
+            .card_types(vec![CardType::Creature])
+            .subtypes(subtypes)
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
     fn metric_value(
         effect_id: crate::effect::EffectId,
         source: EffectMetricSource,
@@ -4597,6 +4954,47 @@ mod tests {
             source,
             metric,
         }
+    }
+
+    #[test]
+    fn greatest_shared_creature_type_count_uses_largest_cohort_not_object_total() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source_id = game.new_object_id();
+        add_typed_creature(
+            &mut game,
+            420,
+            "Elf Warrior",
+            alice,
+            vec![Subtype::Elf, Subtype::Warrior],
+        );
+        add_typed_creature(
+            &mut game,
+            421,
+            "Elf Druid",
+            alice,
+            vec![Subtype::Elf, Subtype::Druid],
+        );
+        add_typed_creature(
+            &mut game,
+            422,
+            "Goblin Warrior",
+            alice,
+            vec![Subtype::Goblin, Subtype::Warrior],
+        );
+        add_typed_creature(&mut game, 423, "Opponent Elf", bob, vec![Subtype::Elf]);
+
+        let ctx = ExecutionContext::new_default(source_id, alice);
+        let value = Value::GreatestSharedCreatureTypeCount(
+            ObjectFilter::creature().controlled_by(PlayerFilter::You),
+        );
+
+        assert_eq!(
+            resolve_value(&game, &value, &ctx).expect("shared creature-type count should resolve"),
+            2,
+            "Elf and Warrior each form a two-creature cohort; the Goblin and opposing Elf must not inflate it",
+        );
     }
 
     #[test]
@@ -4727,6 +5125,40 @@ mod tests {
                 "metric {metric:?} should resolve from stored LKI"
             );
         }
+    }
+
+    #[test]
+    fn prior_effect_metric_selects_the_iterated_players_object_partition() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source_id = game.new_object_id();
+        let alice_creature = add_custom_creature(&mut game, 422, "Alice Creature", alice, 3, 4, 2);
+        let bob_creature = add_custom_creature(&mut game, 423, "Bob Creature", bob, 6, 7, 5);
+        let alice_memory = OutcomeObjectMemory::from_object_id(&game, alice_creature).unwrap();
+        let bob_memory = OutcomeObjectMemory::from_object_id(&game, bob_creature).unwrap();
+        let effect_id = crate::effect::EffectId(20);
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.store_outcome(
+            effect_id,
+            EffectOutcome::count(2)
+                .with_affected_object_memory(vec![alice_memory.clone(), bob_memory.clone()])
+                .with_player_affected_object_memory(vec![
+                    (alice, vec![alice_memory]),
+                    (bob, vec![bob_memory]),
+                ]),
+        );
+        let query = crate::effect::PriorEffectMetricQuery::new(
+            EffectMetricSource::AffectedObjects,
+            EffectMetric::FirstPower,
+        )
+        .with_player(PlayerFilter::IteratedPlayer);
+        let value = Value::PriorEffectMetric { effect_id, query };
+
+        ctx.iteration.iterated_player = Some(alice);
+        assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 4);
+        ctx.iteration.iterated_player = Some(bob);
+        assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 7);
     }
 
     #[test]
@@ -6100,5 +6532,36 @@ mod tests {
             1,
             "the controller is not part of the opponent set"
         );
+    }
+
+    #[test]
+    fn targeted_discard_history_count_uses_only_the_selected_opponent() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let cara = game.players[2].id;
+        let source = game.new_object_id();
+
+        for player in [bob, bob, cara, cara, cara] {
+            let event = crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::CardDiscardedEvent::new(player, game.new_object_id()),
+                crate::provenance::ProvNodeId::default(),
+            );
+            game.turn_store
+                .turn_history
+                .record_event(&event, None, None);
+        }
+
+        let value = Value::CardsDiscardedThisTurn(PlayerFilter::target_opponent());
+        let bob_ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Player(bob)]);
+        let cara_ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Player(cara)]);
+
+        assert_eq!(resolve_value(&game, &value, &bob_ctx).unwrap(), 2);
+        assert_eq!(resolve_value(&game, &value, &cara_ctx).unwrap(), 3);
     }
 }

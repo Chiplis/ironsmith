@@ -52,11 +52,17 @@ pub(super) fn rewrite_keyword_static_as_enters_choice_parsers_share_subject_tabl
         .expect("rewrite lexer should classify choose-color static line");
     let player_tokens = lex_line("as this artifact enters, choose a player.", 0)
         .expect("rewrite lexer should classify choose-player static line");
+    let opponent_tokens = lex_line("as this artifact enters, choose an opponent.", 0)
+        .expect("rewrite lexer should classify choose-opponent static line");
 
     let color = super::super::keyword_static::parse_choose_color_as_enters_line(&color_tokens)
         .expect("choose-color static line should parse");
     let player = super::super::keyword_static::parse_choose_player_as_enters_line(&player_tokens)
         .expect("choose-player static line should parse");
+    let opponent =
+        super::super::keyword_static::parse_choose_player_as_enters_line(&opponent_tokens)
+            .expect("choose-opponent static line should parse")
+            .expect("choose-opponent static line should produce an ability");
 
     assert!(matches!(
         color,
@@ -67,6 +73,13 @@ pub(super) fn rewrite_keyword_static_as_enters_choice_parsers_share_subject_tabl
         player,
         Some(ability)
             if ability.id() == crate::static_abilities::StaticAbilityId::ChoosePlayerAsEnters
+    ));
+    assert!(matches!(
+        opponent.payload,
+        ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters {
+            filter: PlayerFilter::Opponent,
+            ..
+        }
     ));
 }
 
@@ -804,6 +817,35 @@ pub(super) fn rewrite_grammar_named_source_characteristic_pt_probe_matches_stati
         Some(ability)
             if ability.id() == crate::static_abilities::StaticAbilityId::CharacteristicDefiningPT
     ));
+}
+
+#[test]
+pub(super) fn characteristic_pt_count_binds_its_controller_graveyard_to_the_affected_object() {
+    let tokens = lex_line(
+        "This token's power and toughness are each equal to the number of creature cards in its controller's graveyard.",
+        0,
+    )
+    .expect("controller-relative characteristic fixture should lex");
+    let ability = super::super::keyword_static::parse_characteristic_defining_pt_line(&tokens)
+        .expect("controller-relative characteristic P/T should parse")
+        .expect("controller-relative characteristic P/T should be typed");
+    let crate::static_abilities::StaticAbilityPayload::CharacteristicDefiningPt {
+        power,
+        toughness,
+    } = &ability.payload
+    else {
+        panic!("expected a characteristic-defining P/T payload: {ability:#?}");
+    };
+    assert_eq!(power.unhinted(), toughness.unhinted());
+    let Value::Count(filter) = power.unhinted() else {
+        panic!("expected a controller-relative creature count: {power:#?}");
+    };
+    assert_eq!(filter.zone, Some(Zone::Graveyard));
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert_eq!(
+        filter.owner,
+        Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+    );
 }
 
 #[test]
@@ -2387,6 +2429,7 @@ pub(super) fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
             action: crate::events::KeywordActionKind::ChaosEnsues,
             player: crate::target::PlayerFilter::Any,
             source_filter: None,
+            during_your_turn: false,
         })
     ));
     assert!(matches!(
@@ -2548,9 +2591,10 @@ pub(super) fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
             &second_main_tokens,
         ),
         Ok(
-            crate::cards::builders::TriggerSpec::BeginningOfPostcombatMain(
-                crate::target::PlayerFilter::You
-            )
+            crate::cards::builders::TriggerSpec::BeginningOfPostcombatMain {
+                player: crate::target::PlayerFilter::You,
+                ..
+            }
         )
     ));
     assert!(matches!(

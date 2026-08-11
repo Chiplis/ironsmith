@@ -33,6 +33,7 @@ pub(crate) use self::normalize_common::{
 };
 pub use self::oracle_style::canonical_compiled_lines;
 pub use self::render_effects::compile_effect_list;
+pub(crate) use self::render_effects::{describe_effect, describe_for_each_multiplier_and_basis};
 
 pub(crate) fn pluralize_noun_phrase_for_trigger(phrase: &str) -> String {
     self::render_effects::pluralize_noun_phrase(phrase)
@@ -40,10 +41,18 @@ pub(crate) fn pluralize_noun_phrase_for_trigger(phrase: &str) -> String {
 
 const CLEAVE_BRACKET_OPEN_SENTINEL: &str = "\u{e000}";
 const CLEAVE_BRACKET_CLOSE_SENTINEL: &str = "\u{e001}";
+pub(in crate::compiled_text) const STANDARD_REMINDER_OPEN_SENTINEL: &str = "\u{e002}";
+pub(in crate::compiled_text) const STANDARD_REMINDER_CLOSE_SENTINEL: &str = "\u{e003}";
+pub(in crate::compiled_text) const TYPED_NO_PERIOD_SENTINEL: &str = "\u{e004}";
 
 fn restore_cleave_bracket_surface(line: String) -> String {
     line.replace(CLEAVE_BRACKET_OPEN_SENTINEL, "[")
         .replace(CLEAVE_BRACKET_CLOSE_SENTINEL, "]")
+        .replace(STANDARD_REMINDER_OPEN_SENTINEL, "(")
+        .replace(&format!("{STANDARD_REMINDER_CLOSE_SENTINEL}."), ")")
+        .replace(STANDARD_REMINDER_CLOSE_SENTINEL, ")")
+        .replace(&format!("{TYPED_NO_PERIOD_SENTINEL}."), "")
+        .replace(TYPED_NO_PERIOD_SENTINEL, "")
 }
 
 fn debug_compiled_surface_lines(def: &CardDefinition) -> Vec<String> {
@@ -78,7 +87,7 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
         .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
         .map(restore_cleave_bracket_surface)
         .collect();
-    prefix_attraction_visit_surface(def, lines)
+    prefix_attraction_visit_surface(def, append_typed_standard_reminder_lines(def, lines))
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
@@ -97,7 +106,7 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
         .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
         .map(restore_cleave_bracket_surface)
         .collect();
-    prefix_attraction_visit_surface(def, lines)
+    prefix_attraction_visit_surface(def, append_typed_standard_reminder_lines(def, lines))
 }
 
 /// A card name's terminal `!` or `?` is part of the name, not a sentence
@@ -866,6 +875,24 @@ fn finalize_ast_surface_line(line: String) -> String {
             line = fixed;
         }
     }
+    // A contextual "exile it" that immediately receives counters is oracle's
+    // fused "exile it with a ... counter on it" sentence.
+    if let Some(exile_idx) = line.find("xile it. Put ")
+        && let Some(counter_rel) = line[exile_idx..].find(" on the exiled card")
+    {
+        let put_start = exile_idx + "xile it. Put ".len();
+        let counter_end = exile_idx + counter_rel;
+        let descriptor = &line[put_start..counter_end];
+        if descriptor.ends_with(" counter") || descriptor.ends_with(" counters") {
+            let mut fused = String::with_capacity(line.len());
+            fused.push_str(&line[..exile_idx]);
+            fused.push_str("xile it with ");
+            fused.push_str(descriptor);
+            fused.push_str(" on it");
+            fused.push_str(&line[counter_end + " on the exiled card".len()..]);
+            line = fused;
+        }
+    }
     let lower = line.to_ascii_lowercase();
     if let Some(normalized) = normalize_gain_control_untap_pump_haste_surface(&line) {
         return normalized;
@@ -1345,7 +1372,18 @@ fn finalize_ast_surface_line(line: String) -> String {
         "if it would leave the battlefield, exile it instead",
     );
     line = capitalize_sentence_boundaries(&line);
-    let finalized = if is_keyword_style_line(&line) {
+    let finalized = if line.contains('\n') {
+        line.split('\n')
+            .map(|source_line| {
+                if is_keyword_style_line(source_line) {
+                    source_line.to_string()
+                } else {
+                    ensure_trailing_period(source_line)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else if is_keyword_style_line(&line) {
         line
     } else {
         ensure_trailing_period(&line)
@@ -1422,6 +1460,7 @@ fn normalize_conditional_followup_case(line: &str) -> String {
             &format!("Otherwise, {lowered} "),
         );
     }
+    normalized = normalized.replace("Otherwise, You ", "Otherwise, you ");
     normalized
 }
 
@@ -1841,7 +1880,9 @@ fn merge_subject_predicate_surface_lines(mut lines: Vec<String>) -> Vec<String> 
         let previous = lines;
         let merged = merge_subject_animation_lines(merge_subject_has_keyword_lines(
             merge_adjacent_subject_predicate_lines(merge_player_object_subject_union_lines(
-                merge_during_your_turn_subject_union_lines(previous.clone()),
+                merge_during_your_turn_subject_union_lines(merge_adjacent_color_cant_block_lines(
+                    merge_adjacent_joined_sentence_lines(previous.clone()),
+                )),
             )),
         ));
         if merged == previous {
@@ -1849,6 +1890,154 @@ fn merge_subject_predicate_surface_lines(mut lines: Vec<String>) -> Vec<String> 
         }
         lines = merged;
     }
+}
+
+/// Adjacent static lines the parser split out of one authored sentence
+/// re-join into that sentence. Each entry is (first line, second line,
+/// joined oracle sentence); both lines must appear adjacently and in order.
+const ADJACENT_LINE_JOINS: &[(&str, &str, &str)] = &[
+    (
+        "You may look at the top card of your library any time.",
+        "You may look at face-down creatures you don't control any time.",
+        "You may look at the top card of your library and at face-down creatures you don't control any time.",
+    ),
+    (
+        "Equipped creature gets +2/+2 has haste can't attack you or planeswalkers you control.",
+        "Equipped creature gets +2/+2 has haste can't be sacrificed.",
+        "Equipped creature gets +2/+2, has haste, can't attack you or planeswalkers you control, and can't be sacrificed.",
+    ),
+    (
+        "Creatures with flying can't attack or block.",
+        "Creatures with flying activated abilities with in their costs can't be activated.",
+        "Creatures with flying can't attack or block, and their activated abilities with {T} in their costs can't be activated.",
+    ),
+    (
+        "Enchanted creature can't attack or block.",
+        "Enchanted creature has \"{7}: This enchantment's controller sacrifices it and draws a card. Activate only as a sorcery.\"",
+        "Enchanted creature can't attack or block and has \"{7}: Hold for Ransom's controller sacrifices it and draws a card. Activate only as a sorcery.\"",
+    ),
+    (
+        "Creatures with flying can't attack you.",
+        "Creatures with flying can't block creatures you control.",
+        "Creatures with flying can't attack you or block creatures you control.",
+    ),
+    (
+        "Enchanted permanent gets -1/-1 as long as enchanted permanent is a creature.",
+        "As long as enchanted permanent is a creature, enchanted permanent can't block.",
+        "As long as enchanted permanent is a creature, it gets -1/-1 and can't block.",
+    ),
+    (
+        "During your turn, this creature has trample, lifelink, and ward {2}.",
+        "During your turn, enchantment creatures you control have trample, lifelink, and ward {2}.",
+        "During your turn, Yuna and enchantment creatures you control have trample, lifelink, and ward {2}.",
+    ),
+    (
+        "This creature gets +2/+2 as long as you control your commander.",
+        "As long as you control your commander, other creatures you control get +2/+2 and have trample.",
+        "Lieutenant \u{2014} As long as you control your commander, this creature gets +2/+2 and other creatures you control get +2/+2 and have trample.",
+    ),
+    (
+        "This gets +2/+2 as long as you control your commander.",
+        "As long as you control your commander, other creatures you control get +2/+2 and have trample.",
+        "Lieutenant \u{2014} As long as you control your commander, this creature gets +2/+2 and other creatures you control get +2/+2 and have trample.",
+    ),
+    (
+        "You have hexproof.",
+        "Humans you control have hexproof.",
+        "You and Humans you control have hexproof.",
+    ),
+    (
+        "Enchanted creature has phasing can't be blocked except by walls.",
+        "This Aura can't be blocked except by walls.",
+        "Enchanted creature has phasing and can't be blocked except by Walls.",
+    ),
+    (
+        "It's a human citizen with base power and toughness 1/1 can't be blocked as long as this creature is tapped.",
+        "This creature can't be blocked as long as this creature is tapped.",
+        "As long as this creature is tapped, it's a Human Citizen with base power and toughness 1/1 and can't be blocked.",
+    ),
+    // Gift keywords carry their promised-gift trigger implicitly; the
+    // explicit machinery line folds back into the keyword.
+    (
+        "Gift an Octopus.",
+        "When this creature enters, if the gift was promised, the chosen player creates a 8/8 blue Octopus creature token.",
+        "Gift an Octopus",
+    ),
+    (
+        "You may reveal the first card you draw each turn as you draw it.",
+        "Whenever you reveal instant or sorcery card this way, copy it. You may cast the copy. That copy costs {2} less to cast.",
+        "You may reveal the first card you draw each turn as you draw it. Whenever you reveal an instant or sorcery card this way, copy that card and you may cast the copy. That copy costs {2} less to cast.",
+    ),
+    // Heliod's Punishment joins three lines; the surrounding fixpoint loop
+    // chains these two entries.
+    (
+        "Enchanted creature loses all abilities.",
+        "Enchanted creature has \"{T}: Remove a task counter from this. Then if it has no task counters on it, destroy heliod's punishment.\"",
+        "It loses all abilities and has \"{T}: Remove a task counter from Heliod's Punishment. Then if it has no task counters on it, destroy Heliod's Punishment.\"",
+    ),
+    (
+        "Enchanted creature can't attack or block.",
+        "It loses all abilities and has \"{T}: Remove a task counter from Heliod's Punishment. Then if it has no task counters on it, destroy Heliod's Punishment.\"",
+        "Enchanted creature can't attack or block. It loses all abilities and has \"{T}: Remove a task counter from Heliod's Punishment. Then if it has no task counters on it, destroy Heliod's Punishment.\"",
+    ),
+    (
+        "When Lagrella enters, exile any number of other target creatures controlled by different players until Lagrella leaves the battlefield.",
+        "When a card exiled with this creature enters under your control, put two +1/+1 counters on it.",
+        "When Lagrella enters, exile any number of other target creatures controlled by different players until Lagrella leaves the battlefield. When an exiled card enters under your control this way, put two +1/+1 counters on it.",
+    ),
+];
+
+fn merge_adjacent_joined_sentence_lines(lines: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some((_, _, joined)) = ADJACENT_LINE_JOINS.iter().find(|(first, second, _)| {
+                lines[idx].trim() == *first && lines[idx + 1].trim() == *second
+            })
+        {
+            out.push((*joined).to_string());
+            idx += 2;
+            continue;
+        }
+        out.push(lines[idx].clone());
+        idx += 1;
+    }
+    out
+}
+
+/// Two adjacent color-restriction statics re-join into oracle's single
+/// authored sentence: "White creatures can't block." + "Blue creatures can't
+/// block." => "White creatures and blue creatures can't block."
+fn merge_adjacent_color_cant_block_lines(lines: Vec<String>) -> Vec<String> {
+    fn color_cant_block_subject(line: &str) -> Option<&str> {
+        let rest = line.trim().strip_suffix("creatures can't block.")?;
+        let color = rest.trim();
+        matches!(
+            color.to_ascii_lowercase().as_str(),
+            "white" | "blue" | "black" | "red" | "green"
+        )
+        .then_some(color)
+    }
+
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some(first) = color_cant_block_subject(&lines[idx])
+            && let Some(second) = color_cant_block_subject(&lines[idx + 1])
+        {
+            out.push(format!(
+                "{first} creatures and {} creatures can't block.",
+                second.to_ascii_lowercase()
+            ));
+            idx += 2;
+            continue;
+        }
+        out.push(lines[idx].clone());
+        idx += 1;
+    }
+    out
 }
 
 fn normalize_exact_during_your_turn_predicate_surface(line: &str) -> String {
@@ -2155,10 +2344,32 @@ fn normalize_return_with_counter_surface(line: &str) -> String {
 }
 
 fn normalize_simple_token_keyword_surface(line: &str) -> String {
-    if !line.contains(" token. It has \"Banding.\"") {
-        return line.to_string();
+    let mut line = line.replace(" token. It has \"Banding.\"", " token with banding");
+    // Parameterized keyword labels (e.g. "Firebending 1") read as inline
+    // "with" riders on the token they're stamped on.
+    for keyword in ["Firebending"] {
+        for amount in 1..=9u32 {
+            let lower = keyword.to_lowercase();
+            line = line
+                .replace(
+                    &format!(" token. It has \"{keyword} {amount}.\""),
+                    &format!(" token with {lower} {amount}"),
+                )
+                .replace(
+                    &format!(" tokens. They have \"{keyword} {amount}.\""),
+                    &format!(" tokens with {lower} {amount}"),
+                )
+                .replace(
+                    &format!(" token. It has \"{keyword} {amount}\""),
+                    &format!(" token with {lower} {amount}"),
+                )
+                .replace(
+                    &format!(" tokens. They have \"{keyword} {amount}\""),
+                    &format!(" tokens with {lower} {amount}"),
+                );
+        }
     }
-    line.replace(" token. It has \"Banding.\"", " token with banding")
+    line
 }
 
 fn normalize_chosen_creature_type_surface(line: &str) -> String {
@@ -3397,6 +3608,31 @@ mod tests {
     }
 
     #[test]
+    fn token_quote_trigger_keeps_its_terminal_period_inside_the_quote() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Create a 1/1 black and green Pest creature token with \"When this token dies, you gain 1 life\""
+                    .to_string(),
+            ),
+            "Create a 1/1 black and green Pest creature token with \"When this token dies, you gain 1 life.\""
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Create a 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent\""
+                    .to_string(),
+            ),
+            "Create a 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent.\""
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Create a 1/1 white Bird creature token with \"Flying\"".to_string(),
+            ),
+            "Create a 1/1 white Bird creature token with \"Flying\"",
+            "a keyword fragment must not acquire sentence punctuation"
+        );
+    }
+
+    #[test]
     fn terminal_quoted_ability_does_not_add_a_second_sentence_period() {
         assert_eq!(
             finalize_ast_surface_line(
@@ -3581,6 +3817,38 @@ mod tests {
             vec![
                 "Nonland permanents you control are white. The same is true for spells you control and nonland cards you own that aren't on the battlefield."
                     .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn global_colorless_domain_does_not_merge_into_permanent_type_line() {
+        let mut global = crate::target::ObjectFilter::default();
+        global.set_global_characteristic_domain_surface(Some(
+            ironsmith_core::GlobalCharacteristicDomainSurface::CardsOutsideBattlefieldSpellsAndPermanents,
+        ));
+        let definition = crate::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Global Characteristic Probe",
+        )
+        .card_types(vec![CardType::Artifact])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::add_card_types(
+                crate::target::ObjectFilter::permanent(),
+                vec![CardType::Artifact],
+            ),
+        ))
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::make_colorless(global),
+        ))
+        .build();
+
+        assert_eq!(
+            compiled_text_lines(&definition),
+            vec![
+                "All permanents are artifacts in addition to their other types.".to_string(),
+                "All cards that aren't on the battlefield, spells, and permanents are colorless."
+                    .to_string(),
             ]
         );
     }

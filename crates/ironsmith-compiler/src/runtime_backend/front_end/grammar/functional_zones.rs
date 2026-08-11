@@ -11,7 +11,13 @@ const STATIC_LIBRARY_SEARCH_ZONE_PHRASES: &[&[&str]] = &[
 const FROM_YOUR_LIBRARY_PHRASE: &[&str] = &["from", "your", "library"];
 const CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PHRASES: &[&[&str]] = &[
     &["cast", "this", "card", "from", "your", "graveyard"],
+    &["cast", "this", "spell", "from", "your", "graveyard"],
+    &["cast", "this", "permanent", "from", "your", "graveyard"],
+    &["cast", "this", "creature", "from", "your", "graveyard"],
+    &["cast", "this", "artifact", "from", "your", "graveyard"],
+    &["cast", "this", "enchantment", "from", "your", "graveyard"],
     &["play", "this", "card", "from", "your", "graveyard"],
+    &["play", "this", "permanent", "from", "your", "graveyard"],
 ];
 const CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES: &[&[&str]] = &[
     &["cast", "this", "card", "from", "exile"],
@@ -27,6 +33,23 @@ const INSTEAD_OF_PUTTING_IT_INTO_YOUR_GRAVEYARD_PHRASE: &[&str] = &[
     "into",
     "your",
     "graveyard",
+];
+const SOURCE_NOT_ON_BATTLEFIELD_PHRASES: &[&[&str]] = &[
+    &["this", "creature", "isn't", "on", "the", "battlefield"],
+    &["this", "permanent", "isn't", "on", "the", "battlefield"],
+    &["this", "card", "isn't", "on", "the", "battlefield"],
+    &["this", "isn't", "on", "the", "battlefield"],
+    &["it", "isn't", "on", "the", "battlefield"],
+    &["this", "creature", "isnt", "on", "the", "battlefield"],
+    &["this", "permanent", "isnt", "on", "the", "battlefield"],
+    &["this", "card", "isnt", "on", "the", "battlefield"],
+    &["this", "isnt", "on", "the", "battlefield"],
+    &["it", "isnt", "on", "the", "battlefield"],
+    &["this", "creature", "is", "not", "on", "the", "battlefield"],
+    &["this", "permanent", "is", "not", "on", "the", "battlefield"],
+    &["this", "card", "is", "not", "on", "the", "battlefield"],
+    &["this", "is", "not", "on", "the", "battlefield"],
+    &["it", "is", "not", "on", "the", "battlefield"],
 ];
 const STATIC_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
     (&["this", "card", "is", "in", "your", "hand"], Zone::Hand),
@@ -91,6 +114,22 @@ const TRIGGER_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
     ),
     (
         &["if", "this", "card", "is", "in", "your", "graveyard"],
+        Zone::Graveyard,
+    ),
+    (
+        &[
+            "if",
+            "this",
+            "card",
+            "is",
+            "the",
+            "only",
+            "creature",
+            "card",
+            "in",
+            "your",
+            "graveyard",
+        ],
         Zone::Graveyard,
     ),
     (
@@ -159,12 +198,31 @@ pub(crate) fn parse_activated_functional_zones_tokens(
         effect_words.iter().any(|words| predicate(words.as_slice()))
     };
 
-    if reference_shapes::contains_source_from_your_graveyard(&cost_words)
+    let returns_source_from_graveyard_or_exile = effect_words.iter().any(|words| {
+        words.windows(8).any(|window| {
+            window
+                == [
+                    "return",
+                    "this",
+                    "card",
+                    "from",
+                    "your",
+                    "graveyard",
+                    "or",
+                    "from",
+                ]
+                && words.iter().any(|word| *word == "exile")
+        })
+    });
+
+    if returns_source_from_graveyard_or_exile {
+        vec![Zone::Graveyard, Zone::Exile]
+    } else if reference_shapes::contains_source_from_your_graveyard(&cost_words)
         || any_effect(reference_shapes::contains_source_from_your_graveyard)
     {
         vec![Zone::Graveyard]
-    } else if reference_shapes::contains_from_command_zone(&cost_words)
-        || any_effect(reference_shapes::contains_from_command_zone)
+    } else if reference_shapes::contains_source_from_command_zone(&cost_words)
+        || any_effect(reference_shapes::contains_source_from_command_zone)
     {
         vec![Zone::Command]
     } else if reference_shapes::contains_source_from_your_hand(&cost_words)
@@ -203,6 +261,16 @@ fn parse_trigger_zone_hint_tokens(tokens: &[OwnedLexToken]) -> Option<Zone> {
 }
 
 pub(crate) fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<Zone>> {
+    if has_any_phrase(tokens, SOURCE_NOT_ON_BATTLEFIELD_PHRASES) {
+        return Some(vec![
+            Zone::Hand,
+            Zone::Stack,
+            Zone::Graveyard,
+            Zone::Exile,
+            Zone::Library,
+            Zone::Command,
+        ]);
+    }
     if has_any_phrase(tokens, STATIC_LIBRARY_SEARCH_ZONE_PHRASES)
         && has_phrase(tokens, FROM_YOUR_LIBRARY_PHRASE)
     {

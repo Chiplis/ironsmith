@@ -44,6 +44,9 @@ pub struct DelayedTriggerConfig {
     pub x_value: Option<u32>,
     pub choices: Vec<crate::target::ChooseSpec>,
     pub tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    pub tagged_players: HashMap<TagKey, Vec<PlayerId>>,
+    pub prepayment: Option<crate::triggers::PendingDelayedTriggerPayment>,
+    pub prevention_shield: Option<crate::prevention::PreventionShieldId>,
 }
 
 impl DelayedTriggerConfig {
@@ -69,6 +72,9 @@ impl DelayedTriggerConfig {
             x_value: None,
             choices: Vec::new(),
             tagged_objects: HashMap::new(),
+            tagged_players: HashMap::new(),
+            prepayment: None,
+            prevention_shield: None,
         }
     }
 
@@ -122,6 +128,27 @@ impl DelayedTriggerConfig {
         self.tagged_objects = tagged_objects;
         self
     }
+
+    pub fn with_tagged_players(mut self, tagged_players: HashMap<TagKey, Vec<PlayerId>>) -> Self {
+        self.tagged_players = tagged_players;
+        self
+    }
+
+    pub fn with_prepayment(
+        mut self,
+        prepayment: Option<crate::triggers::PendingDelayedTriggerPayment>,
+    ) -> Self {
+        self.prepayment = prepayment;
+        self
+    }
+
+    pub fn with_prevention_shield(
+        mut self,
+        prevention_shield: Option<crate::prevention::PreventionShieldId>,
+    ) -> Self {
+        self.prevention_shield = prevention_shield;
+        self
+    }
 }
 
 /// How watcher identity should be represented in delayed scheduling.
@@ -159,6 +186,9 @@ pub(crate) struct DelayedTriggerTemplate {
     pub x_value: Option<u32>,
     pub choices: Vec<crate::target::ChooseSpec>,
     pub tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    pub tagged_players: HashMap<TagKey, Vec<PlayerId>>,
+    pub prepayment: Option<crate::triggers::PendingDelayedTriggerPayment>,
+    pub prevention_shield: Option<crate::prevention::PreventionShieldId>,
 }
 
 impl DelayedTriggerTemplate {
@@ -182,6 +212,9 @@ impl DelayedTriggerTemplate {
             x_value: None,
             choices: Vec::new(),
             tagged_objects: HashMap::new(),
+            tagged_players: HashMap::new(),
+            prepayment: None,
+            prevention_shield: None,
         }
     }
 
@@ -230,6 +263,27 @@ impl DelayedTriggerTemplate {
         self.tagged_objects = tagged_objects;
         self
     }
+
+    pub fn with_tagged_players(mut self, tagged_players: HashMap<TagKey, Vec<PlayerId>>) -> Self {
+        self.tagged_players = tagged_players;
+        self
+    }
+
+    pub fn with_prepayment(
+        mut self,
+        prepayment: Option<crate::triggers::PendingDelayedTriggerPayment>,
+    ) -> Self {
+        self.prepayment = prepayment;
+        self
+    }
+
+    pub fn with_prevention_shield(
+        mut self,
+        prevention_shield: Option<crate::prevention::PreventionShieldId>,
+    ) -> Self {
+        self.prevention_shield = prevention_shield;
+        self
+    }
 }
 
 /// Push a delayed trigger onto the game queue.
@@ -273,6 +327,9 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         controller: config.controller,
         choices: config.choices,
         tagged_objects: config.tagged_objects,
+        tagged_players: config.tagged_players,
+        prepayment: config.prepayment,
+        prevention_shield: config.prevention_shield,
     });
 }
 
@@ -305,7 +362,10 @@ pub(crate) fn queue_delayed_from_template(
                 .with_ability_source(template.ability_source)
                 .with_x_value(template.x_value)
                 .with_choices(template.choices)
-                .with_tagged_objects(template.tagged_objects),
+                .with_tagged_objects(template.tagged_objects)
+                .with_tagged_players(template.tagged_players)
+                .with_prepayment(template.prepayment)
+                .with_prevention_shield(template.prevention_shield),
             );
             1
         }
@@ -333,7 +393,10 @@ pub(crate) fn queue_delayed_from_template(
                     .with_ability_source(template.ability_source)
                     .with_x_value(template.x_value)
                     .with_choices(template.choices.clone())
-                    .with_tagged_objects(template.tagged_objects.clone()),
+                    .with_tagged_objects(template.tagged_objects.clone())
+                    .with_tagged_players(template.tagged_players.clone())
+                    .with_prepayment(template.prepayment.clone())
+                    .with_prevention_shield(template.prevention_shield),
                 );
                 queued += 1;
             }

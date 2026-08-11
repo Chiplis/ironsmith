@@ -54,6 +54,13 @@ pub(crate) struct SourceOrAnotherShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SourceOrFilterShape {
+    pub(crate) source_word_end: usize,
+    pub(crate) connector_word: usize,
+    pub(crate) filter_word: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SpellActivityVerbFacts {
     pub(crate) cast: Option<usize>,
     pub(crate) copy: Option<usize>,
@@ -221,8 +228,8 @@ pub(crate) fn parse_discard_trigger_envelope(
 }
 
 pub(crate) fn parse_source_or_another_shape(words: &[&str]) -> Option<SourceOrAnotherShape> {
-    let connector = parse_word_slice_index(words, &["and", "or"])?;
-    let other_word = connector + 1;
+    let shape = parse_source_or_filter_shape(words)?;
+    let other_word = shape.filter_word;
     if !words
         .get(other_word)
         .is_some_and(|word| matches!(*word, "other" | "another"))
@@ -230,8 +237,25 @@ pub(crate) fn parse_source_or_another_shape(words: &[&str]) -> Option<SourceOrAn
         return None;
     }
     Some(SourceOrAnotherShape {
-        source_word_end: connector,
+        source_word_end: shape.source_word_end,
         other_word,
+    })
+}
+
+/// Find a coordinated trigger subject whose first arm may be the source and
+/// whose second arm is an independently parsed object filter.
+///
+/// The caller validates that the left arm is actually a source reference.
+/// Keeping this shape broader than `source or another ...` is important for
+/// authored alternatives such as `this creature or an instant spell`.
+pub(crate) fn parse_source_or_filter_shape(words: &[&str]) -> Option<SourceOrFilterShape> {
+    let connector_word = parse_word_slice_index(words, &["and", "or", "and/or"])?;
+    let filter_word = connector_word + 1;
+    words.get(filter_word)?;
+    Some(SourceOrFilterShape {
+        source_word_end: connector_word,
+        connector_word,
+        filter_word,
     })
 }
 

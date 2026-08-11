@@ -709,6 +709,25 @@ fn evaluate_value(
                 .count() as i32;
             ValueEval::Scalar(count * *multiplier)
         }
+        Value::GreatestSharedCreatureTypeCount(filter) => {
+            let mut counts = HashMap::new();
+            for (id, chars) in baseline {
+                let Some(obj) = objects.get(id) else {
+                    continue;
+                };
+                if !object_matches_filter_with_chars(filter, obj, chars, game, effect_controller) {
+                    continue;
+                }
+                let controller_group = filter.controller.as_ref().map(|_| chars.controller);
+                let mut types_on_object = HashSet::new();
+                for subtype in &chars.subtypes {
+                    if subtype.is_creature_type() && types_on_object.insert(*subtype) {
+                        *counts.entry((controller_group, *subtype)).or_insert(0i32) += 1;
+                    }
+                }
+            }
+            ValueEval::Scalar(counts.into_values().max().unwrap_or(0))
+        }
         Value::Min(left, right) => {
             let left = evaluate_value(left, source, effect_controller, baseline, objects, game);
             let right = evaluate_value(right, source, effect_controller, baseline, objects, game);
@@ -1079,8 +1098,13 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
             | PlayerFilter::HasMoreLifeThanYou { .. }
             | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+            | PlayerFilter::ControlsMost { .. }
             | PlayerFilter::MaxSpeed { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
+            | PlayerFilter::AttackedBySourceThisTurn
+            | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+            | PlayerFilter::LostLifeThisTurn { .. }
+            | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
             | PlayerFilter::Teammate
             | PlayerFilter::PlayerToYourLeft
             | PlayerFilter::PlayerToYourRight
@@ -1632,6 +1656,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::Count(_)
         | Value::CountScaled(_, _)
         | Value::GreatestCount(_)
+        | Value::GreatestSharedCreatureTypeCount(_)
         | Value::TotalManaValue(_)
         | Value::GreatestManaValue(_)
         | Value::LeastManaValue(_)
@@ -1678,6 +1703,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::LifeGainedThisTurn(_)
         | Value::LifeLostThisTurn(_)
         | Value::CardsDiscardedThisTurn(_)
+        | Value::AttractionsVisitedThisTurn(_)
         | Value::DamageDealtToPlayersThisTurn(_)
         | Value::NoncombatDamageDealtToPlayersThisTurn(_)
         | Value::NoncombatDamageDealtBySourcesControlledThisTurn { .. }
@@ -1693,6 +1719,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::SourceRegeneratedThisTurnCount
         | Value::SourceMutationCount
         | Value::SpellsCastThisTurnMatching { .. }
+        | Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
         | Value::WasKicked

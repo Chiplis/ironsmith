@@ -706,16 +706,16 @@ pub(super) fn calculate_with_layers(
                     abilities_removed = true;
                 }
                 Modification::CantBeBlocked => {
-                    chars.static_abilities.push(StaticAbility::unblockable());
+                    push_static_ability_once(&mut chars, StaticAbility::unblockable());
                 }
                 Modification::CantAttack => {
-                    chars.static_abilities.push(StaticAbility::defender());
+                    push_static_ability_once(&mut chars, StaticAbility::defender());
                 }
                 Modification::CantBlock => {
-                    chars.static_abilities.push(StaticAbility::cant_block());
+                    push_static_ability_once(&mut chars, StaticAbility::cant_block());
                 }
                 Modification::DoesntUntap => {
-                    chars.static_abilities.push(StaticAbility::doesnt_untap());
+                    push_static_ability_once(&mut chars, StaticAbility::doesnt_untap());
                 }
 
                 // Layer 7: P/T changes are handled separately below.
@@ -1480,6 +1480,19 @@ fn for_each_matching_continuous_object(
     });
 }
 
+fn greatest_shared_creature_type_count_for_filter(
+    ctx: &CalculationContext<'_>,
+    filter: &ObjectFilter,
+    controller: PlayerId,
+    source: ObjectId,
+) -> i32 {
+    let mut subtype_sets = Vec::new();
+    for_each_matching_continuous_object(ctx, filter, controller, source, |_, chars| {
+        subtype_sets.push(chars.subtypes.to_vec());
+    });
+    crate::effects::helpers::greatest_shared_creature_type_count(subtype_sets)
+}
+
 fn unsupported_continuous_value(value: &Value, reason: &str) -> ! {
     panic!("unsupported continuous-effect value {value:?}: {reason}")
 }
@@ -1563,6 +1576,30 @@ pub(super) fn resolve_value_with_context(
                 let mut player_filter = filter.clone();
                 player_filter.controller = Some(PlayerFilter::Specific(player.id));
                 greatest = greatest.max(count_filter_matches(&player_filter, ctx, &filter_ctx));
+            }
+            greatest
+        }
+        Value::GreatestSharedCreatureTypeCount(filter) => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            let Some(controller_filter) = &filter.controller else {
+                return greatest_shared_creature_type_count_for_filter(
+                    ctx, filter, controller, source,
+                );
+            };
+
+            let mut greatest = 0;
+            for player in ctx.game.players.iter().filter(|player| player.is_in_game()) {
+                if !controller_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                let mut player_filter = filter.clone();
+                player_filter.controller = Some(PlayerFilter::Specific(player.id));
+                greatest = greatest.max(greatest_shared_creature_type_count_for_filter(
+                    ctx,
+                    &player_filter,
+                    controller,
+                    source,
+                ));
             }
             greatest
         }
@@ -2358,6 +2395,14 @@ pub(super) fn resolve_value_with_context(
                 .turn_history
                 .total_cards_discarded_for_players(&players) as i32
         }
+        Value::AttractionsVisitedThisTurn(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .total_attractions_visited_for_players(&players) as i32
+        }
         Value::DamageDealtToPlayersThisTurn(player_filter) => {
             let players =
                 required_continuous_value_players(value, ctx, player_filter, controller, source);
@@ -2442,6 +2487,26 @@ pub(super) fn resolve_value_with_context(
                         && filter.matches_snapshot(snapshot, &filter_ctx, ctx.game)
                 })
                 .count() as i32
+        }
+        Value::TotalManaValueOfSpellsCastThisTurnMatching {
+            player,
+            filter,
+            exclude_source,
+        } => {
+            let players = required_continuous_value_players(value, ctx, player, controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .spell_cast_snapshot_history()
+                .into_iter()
+                .filter(|snapshot| {
+                    (!*exclude_source || snapshot.object_id != source)
+                        && players.contains(&snapshot.controller)
+                        && filter.matches_snapshot(snapshot, &filter_ctx, ctx.game)
+                })
+                .map(|snapshot| snapshot.mana_value() as i32)
+                .sum()
         }
         Value::SourceRegeneratedThisTurnCount => {
             ctx.game.regenerated_this_turn_count(source) as i32

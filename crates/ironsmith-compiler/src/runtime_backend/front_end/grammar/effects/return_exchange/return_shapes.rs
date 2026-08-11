@@ -20,6 +20,7 @@ pub(crate) enum ReturnControllerShape {
     Preserve,
     You,
     Owner,
+    ThatPlayer,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,6 +68,7 @@ pub(crate) enum ReturnTargetShape {
     Singular {
         target_tokens: Vec<OwnedLexToken>,
         source_from_graveyard_tokens: Option<Vec<OwnedLexToken>>,
+        source_from_graveyard_or_exile_tokens: Option<Vec<OwnedLexToken>>,
         dynamic_count: bool,
         back_reference: bool,
         top_only: bool,
@@ -346,6 +348,15 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
     } else if marker_anywhere(
         destination_head,
         alt((
+            primitives::phrase(&["under", "that", "player", "control"]).void(),
+            primitives::phrase(&["under", "that", "players", "control"]).void(),
+            primitives::phrase(&["under", "that", "player's", "control"]).void(),
+        )),
+    ) {
+        ReturnControllerShape::ThatPlayer
+    } else if marker_anywhere(
+        destination_head,
+        alt((
             primitives::kw("owner"),
             primitives::kw("owners"),
             primitives::kw("owner's"),
@@ -498,11 +509,15 @@ fn classify_target(tokens: &[OwnedLexToken], zone: ReturnZoneShape) -> Option<Re
     let has_exiled_cards = marker_anywhere(tokens, primitives::kw("exiled"))
         && marker_anywhere(tokens, primitives::kw("cards"));
     if !has_target && has_exiled_cards {
-        let parsed_count = leaf::parse_leaf_choice_count_prefix_tokens(tokens);
+        let quantifier_stripped =
+            primitives::parse_prefix(tokens, alt((primitives::kw("all"), primitives::kw("each"))))
+                .map(|(_, rest)| rest)
+                .unwrap_or(tokens);
+        let parsed_count = leaf::parse_leaf_choice_count_prefix_tokens(quantifier_stripped);
         let filter_tokens = parsed_count
             .as_ref()
-            .and_then(|parsed| tokens.get(parsed.consumed..))
-            .unwrap_or(tokens);
+            .and_then(|parsed| quantifier_stripped.get(parsed.consumed..))
+            .unwrap_or(quantifier_stripped);
         return Some(ReturnTargetShape::UntargetedExiledCards {
             filter_tokens: trim_lexed_commas(filter_tokens).to_vec(),
             count: parsed_count.map(|parsed| parsed.count),
@@ -565,6 +580,18 @@ fn classify_target(tokens: &[OwnedLexToken], zone: ReturnZoneShape) -> Option<Re
         });
     }
 
+    let graveyard_or_exile_tails = [
+        (
+            &["from", "your", "graveyard", "or", "from", "exile"][..],
+            false,
+        ),
+        (&["from", "your", "graveyard", "or", "exile"][..], false),
+    ];
+    let source_from_graveyard_or_exile_tokens = if zone == ReturnZoneShape::Battlefield {
+        split_suffix(tokens, &graveyard_or_exile_tails).map(|(head, _)| head.to_vec())
+    } else {
+        None
+    };
     let graveyard_tails = [
         (&["from", "your", "graveyard"][..], false),
         (&["from", "its", "owner", "graveyard"][..], false),
@@ -572,7 +599,9 @@ fn classify_target(tokens: &[OwnedLexToken], zone: ReturnZoneShape) -> Option<Re
         (&["from", "its", "owner's", "graveyard"][..], false),
         (&["from", "its", "owners'", "graveyard"][..], false),
     ];
-    let source_from_graveyard_tokens = if zone == ReturnZoneShape::Battlefield {
+    let source_from_graveyard_tokens = if source_from_graveyard_or_exile_tokens.is_none()
+        && zone == ReturnZoneShape::Battlefield
+    {
         split_suffix(tokens, &graveyard_tails).map(|(head, _)| head.to_vec())
     } else {
         None
@@ -605,6 +634,7 @@ fn classify_target(tokens: &[OwnedLexToken], zone: ReturnZoneShape) -> Option<Re
         back_reference: is_return_back_reference_shape(&target_tokens),
         target_tokens,
         source_from_graveyard_tokens,
+        source_from_graveyard_or_exile_tokens,
         dynamic_count,
         top_only,
     })
@@ -672,6 +702,35 @@ mod tests {
     }
 
     #[test]
+    fn strips_set_quantifier_from_source_linked_exiled_card_filter() {
+        let tokens = lex_line(
+            "all cards exiled with this Vehicle except this card to the battlefield tapped under their owners' control",
+            0,
+        )
+        .unwrap();
+        let shape = parse_return_clause_shape(&tokens).expect("source-linked return shape");
+        let ReturnTargetShape::UntargetedExiledCards {
+            filter_tokens,
+            count,
+        } = shape.target
+        else {
+            panic!("expected source-linked exiled cards: {shape:#?}");
+        };
+        assert!(count.is_none());
+        assert_eq!(
+            filter_tokens
+                .iter()
+                .filter_map(OwnedLexToken::as_word)
+                .collect::<Vec<_>>(),
+            [
+                "cards", "exiled", "with", "this", "vehicle", "except", "this", "card"
+            ]
+        );
+        assert!(shape.destination.tapped);
+        assert_eq!(shape.destination.controller, ReturnControllerShape::Owner);
+    }
+
+    #[test]
     fn parses_delayed_attached_return_surface() {
         let tokens = lex_line(
             "target Aura to the battlefield attached to it at the beginning of the next end step",
@@ -699,6 +758,28 @@ mod tests {
                 shape.destination.destination_player_surface, expected,
                 "{text}"
             );
+        }
+    }
+
+    #[test]
+    fn distinguishes_that_player_battlefield_control_from_owner_and_you() {
+        for (text, expected) in [
+            (
+                "this creature to the battlefield under that player's control at the beginning of their next upkeep",
+                ReturnControllerShape::ThatPlayer,
+            ),
+            (
+                "this creature to the battlefield under its owner's control at the beginning of their next upkeep",
+                ReturnControllerShape::Owner,
+            ),
+            (
+                "this creature to the battlefield under your control at the beginning of your next upkeep",
+                ReturnControllerShape::You,
+            ),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let shape = parse_return_clause_shape(&tokens).expect("return shape");
+            assert_eq!(shape.destination.controller, expected, "{text}");
         }
     }
 
@@ -748,6 +829,34 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["creature", "card", "of", "your", "graveyard"]
         );
+    }
+
+    #[test]
+    fn preserves_source_graveyard_or_exile_return_origin() {
+        let tokens = lex_line(
+            "this card from your graveyard or from exile to the battlefield tapped",
+            0,
+        )
+        .unwrap();
+        let shape = parse_return_clause_shape(&tokens).expect("shape");
+        let ReturnTargetShape::Singular {
+            source_from_graveyard_or_exile_tokens,
+            source_from_graveyard_tokens,
+            ..
+        } = shape.target
+        else {
+            panic!("expected singular return target");
+        };
+        assert!(source_from_graveyard_tokens.is_none());
+        assert_eq!(
+            source_from_graveyard_or_exile_tokens
+                .expect("typed multi-zone source")
+                .iter()
+                .filter_map(OwnedLexToken::as_word)
+                .collect::<Vec<_>>(),
+            ["this", "card"]
+        );
+        assert!(shape.destination.tapped);
     }
 
     #[test]

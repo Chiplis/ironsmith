@@ -1,4 +1,5 @@
 pub(crate) mod additional_cost_choices;
+pub(crate) mod aggregate_constraints;
 pub(crate) mod alternative_cost_lines;
 pub(crate) mod cast_restriction_lines;
 pub(crate) mod count_shapes;

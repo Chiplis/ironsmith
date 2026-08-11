@@ -45,6 +45,43 @@ fn replace_complete_discard_count_filter(value: &mut Value, filter: &ObjectFilte
     }
 }
 
+/// `other` is normally evaluated relative to the resolving ability source.
+/// In "A deals ... to another target ...", however, it is relative to the
+/// grammatical damage source `A`, which may be a tagged trigger participant
+/// rather than the Aura/Equipment carrying the ability. Preserve the authored
+/// `other` surface and add the exact tagged-identity exclusion used by target
+/// legality.
+fn bind_other_damage_target_to_tagged_source(target: &mut ChooseSpec, source: &ChooseSpec) {
+    let ChooseSpec::Tagged(source_tag) = source.base() else {
+        return;
+    };
+
+    fn bind(target: &mut ChooseSpec, source_tag: &TagKey) {
+        match target {
+            ChooseSpec::SurfaceHinted { spec, .. }
+            | ChooseSpec::Target(spec)
+            | ChooseSpec::WithCount(spec, _)
+            | ChooseSpec::WithCountValue(spec, _, _) => bind(spec, source_tag),
+            ChooseSpec::Object(filter) | ChooseSpec::ObjectOrPlayer(filter, _) if filter.other => {
+                if !filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == source_tag.as_str()
+                        && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+                }) {
+                    filter
+                        .tagged_constraints
+                        .push(crate::filter::TaggedObjectConstraint {
+                            tag: source_tag.clone(),
+                            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+                        });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    bind(target, source_tag);
+}
+
 pub(super) fn compile_subject_verb_late(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -139,6 +176,7 @@ pub(super) fn compile_subject_verb_late(
             target,
             source,
             chooser,
+            distribution,
         } => {
             let resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let (source_spec, source_choices) =
@@ -151,7 +189,8 @@ pub(super) fn compile_subject_verb_late(
                             spec,
                         )
                         .with_source(source_spec.clone())
-                        .with_chooser(chooser.clone()),
+                        .with_chooser(chooser.clone())
+                        .with_distribution(*distribution),
                     )
                 })?;
             let mut choices = choices;
@@ -194,8 +233,12 @@ pub(super) fn compile_subject_verb_late(
             let mut damage_target_spec = if source == target {
                 source_spec.clone()
             } else {
-                let (target_spec, target_choices) =
+                let (mut target_spec, mut target_choices) =
                     resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                bind_other_damage_target_to_tagged_source(&mut target_spec, &source_spec);
+                for choice in &mut target_choices {
+                    bind_other_damage_target_to_tagged_source(choice, &source_spec);
+                }
                 for choice in target_choices {
                     push_choice(&mut choices, choice);
                 }
@@ -225,32 +268,63 @@ pub(super) fn compile_subject_verb_late(
                 }
             }
 
-            if !damage_target_spec.is_target()
-                && let ChooseSpec::Object(filter) | ChooseSpec::All(filter) =
-                    damage_target_spec.base()
-            {
+            let mass_damage_filter = if damage_target_spec.is_target() {
+                None
+            } else {
+                match damage_target_spec.base() {
+                    ChooseSpec::All(filter) => Some(filter),
+                    ChooseSpec::Object(filter) if filter.has_plural_object_noun_surface() => {
+                        Some(filter)
+                    }
+                    _ => None,
+                }
+            };
+            if let Some(filter) = mass_damage_filter {
+                // In "it deals damage to each creature blocking it", the
+                // filter's source-relative relation names the grammatical
+                // damage source, not necessarily the source of the resolving
+                // ability (an Equipment is the latter, its equipped creature
+                // is the former). Rebind before enumerating recipients so the
+                // set and the emitted damage events use the same object.
+                let recipient_filter_uses_damage_source = filter.in_combat_with_source;
+                let inner_damage_source = if recipient_filter_uses_damage_source {
+                    ChooseSpec::Source
+                } else {
+                    per_target_source_spec.clone()
+                };
                 let damage = if *unpreventable {
                     Effect::deal_unpreventable_damage(
-                        bind_source_value_to_damage_source(&amount, &per_target_source_spec),
+                        bind_source_value_to_damage_source(&amount, &inner_damage_source),
                         ChooseSpec::Iterated,
                     )
                 } else {
                     Effect::deal_damage(
-                        bind_source_value_to_damage_source(&amount, &per_target_source_spec),
+                        bind_source_value_to_damage_source(&amount, &inner_damage_source),
                         ChooseSpec::Iterated,
                     )
                 };
-                let mut per_target_damage =
+                let mut per_target_damage = if recipient_filter_uses_damage_source {
+                    damage
+                } else {
                     Effect::new(crate::effects::ExecuteWithSourceEffect::new(
                         per_target_source_spec.clone(),
                         damage,
-                    ));
+                    ))
+                };
                 if ctx.auto_tag_object_targets {
                     let tag = ctx.next_tag("damaged");
                     ctx.last_object_tag = Some(tag.clone());
                     per_target_damage = per_target_damage.tag(tag);
                 }
-                effects.push(Effect::for_each(filter.clone(), vec![per_target_damage]));
+                let fanout = Effect::for_each(filter.clone(), vec![per_target_damage]);
+                effects.push(if recipient_filter_uses_damage_source {
+                    Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                        per_target_source_spec.clone(),
+                        fanout,
+                    ))
+                } else {
+                    fanout
+                });
             } else {
                 let damage = if *unpreventable {
                     Effect::deal_unpreventable_damage(
@@ -398,6 +472,12 @@ pub(super) fn compile_subject_verb_late(
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let spec = match spec {
+                ChooseSpec::Object(filter) if filter.set_quantifier_surface().is_some() => {
+                    ChooseSpec::All(filter)
+                }
+                other => other,
+            };
             let mut phase_out = crate::effects::PhaseOutEffect::with_spec(spec.clone());
             phase_out.duration = *duration;
             phase_out.source_surface = source_surface.clone();
@@ -447,9 +527,15 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::Destroy {
             target,
             no_regeneration,
+            creature_destroyed_this_way_surface,
         } => compile_tagged_effect_for_target(target, ctx, "destroyed", |spec| {
             if *no_regeneration {
-                Effect::new(crate::effects::DestroyNoRegenerationEffect::with_spec(spec))
+                Effect::new(
+                    crate::effects::DestroyNoRegenerationEffect::with_spec(spec)
+                        .with_creature_destroyed_this_way_surface(
+                            *creature_destroyed_this_way_surface,
+                        ),
+                )
             } else {
                 Effect::new(crate::effects::DestroyEffect::with_spec(spec))
             }
@@ -457,13 +543,17 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::DestroyAll {
             filter,
             no_regeneration,
+            creature_destroyed_this_way_surface,
         } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
             let mut effect = if *no_regeneration {
-                Effect::new(crate::effects::DestroyNoRegenerationEffect::all(
-                    resolved_filter,
-                ))
+                Effect::new(
+                    crate::effects::DestroyNoRegenerationEffect::all(resolved_filter)
+                        .with_creature_destroyed_this_way_surface(
+                            *creature_destroyed_this_way_surface,
+                        ),
+                )
             } else {
                 Effect::destroy_all(resolved_filter)
             };
@@ -478,6 +568,7 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::DestroyAllOfChosenColor {
             filter,
             no_regeneration,
+            creature_destroyed_this_way_surface,
         } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
@@ -513,7 +604,12 @@ pub(super) fn compile_subject_verb_late(
                     format!("Destroy all {}.", filter.description())
                 };
                 let mut effect = if *no_regeneration {
-                    Effect::new(crate::effects::DestroyNoRegenerationEffect::all(filter))
+                    Effect::new(
+                        crate::effects::DestroyNoRegenerationEffect::all(filter)
+                            .with_creature_destroyed_this_way_surface(
+                                *creature_destroyed_this_way_surface,
+                            ),
+                    )
                 } else {
                     Effect::destroy_all(filter)
                 };
@@ -864,8 +960,15 @@ pub(super) fn compile_subject_verb_late(
                 })
                 .collect();
 
-            let effect =
-                tag_object_target_effect(Effect::choose_one(modes), &spec, ctx, "counters");
+            let effect = tag_object_target_effect(
+                Effect::new(
+                    crate::effects::ChooseModeEffect::choose_one(modes)
+                        .with_chooser(PlayerFilter::You),
+                ),
+                &spec,
+                ctx,
+                "counters",
+            );
             let choices = if spec.is_target() {
                 vec![spec.clone()]
             } else {
@@ -1590,6 +1693,10 @@ pub(super) fn compile_subject_verb_late(
             |value| Effect::set_life_total_player(value, PlayerFilter::You),
             |value, filter| Effect::set_life_total_player(value, filter),
         ),
+        SubjectVerbActionAst::ReverseTurnOrder => Ok((
+            vec![Effect::new(crate::effects::ReverseTurnOrderEffect::new())],
+            Vec::new(),
+        )),
         SubjectVerbActionAst::EndTurn => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::end_turn_player(subject.into_player_filter())
@@ -1700,6 +1807,7 @@ pub(super) fn compile_subject_verb_late(
             filter,
             reduction,
             duration,
+            next_only,
         } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let mut player_filter = subject.into_player_filter();
@@ -1711,17 +1819,21 @@ pub(super) fn compile_subject_verb_late(
                     &last_player_filter,
                 );
             }
-            Ok((
-                vec![Effect::new(
-                    crate::effects::GrantNextSpellCostReductionEffect::all_matching_until(
-                        player_filter,
-                        resolved_filter,
-                        reduction.clone(),
-                        duration.clone(),
-                    ),
-                )],
-                Vec::new(),
-            ))
+            let reduction_effect = if *next_only {
+                crate::effects::GrantNextSpellCostReductionEffect::next_matching_this_turn(
+                    player_filter,
+                    resolved_filter,
+                    reduction.clone(),
+                )
+            } else {
+                crate::effects::GrantNextSpellCostReductionEffect::all_matching_until(
+                    player_filter,
+                    resolved_filter,
+                    reduction.clone(),
+                    duration.clone(),
+                )
+            };
+            Ok((vec![Effect::new(reduction_effect)], Vec::new()))
         }
         SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { filter, ability } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
@@ -1828,7 +1940,15 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::Goad { target, duration } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let spec = if choices.is_empty() {
+            let spec = if matches!(
+                spec.base(),
+                ChooseSpec::Object(filter) if filter.set_quantifier_surface().is_some()
+            ) {
+                match spec {
+                    ChooseSpec::Object(filter) => ChooseSpec::All(filter),
+                    other => other,
+                }
+            } else if choices.is_empty() {
                 match spec {
                     ChooseSpec::Object(filter) => ChooseSpec::All(filter),
                     other => other,

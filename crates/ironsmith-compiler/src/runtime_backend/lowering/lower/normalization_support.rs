@@ -211,7 +211,7 @@ fn normalize_rewrite_line_chunk(
                     cost_tag.as_str().to_string(),
                 ));
             }
-            let prepared = rewrite_prepare_effects_for_lowering(&effects, imports)?;
+            let prepared = rewrite_prepare_statement_effects_for_lowering(&effects, imports)?;
             state.latest_spell_exports = prepared.exports.clone();
             NormalizedLineChunk::Statement {
                 effects_ast: effects,
@@ -310,6 +310,21 @@ fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalA
         )?)
     };
 
+    let prepared_common_prefix = if modal.header.common_prefix_effects_ast.is_empty() {
+        None
+    } else if modal.header.trigger.is_some() || modal.header.activated.is_some() {
+        Some(rewrite_prepare_effects_with_trigger_context_for_lowering(
+            modal.header.trigger.as_ref(),
+            &modal.header.common_prefix_effects_ast,
+            ReferenceImports::default(),
+        )?)
+    } else {
+        Some(rewrite_prepare_effects_for_lowering(
+            &modal.header.common_prefix_effects_ast,
+            ReferenceImports::default(),
+        )?)
+    };
+
     let mut modes = Vec::with_capacity(modal.modes.len());
     for mode in modal.modes {
         let prepared =
@@ -326,6 +341,7 @@ fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalA
     Ok(NormalizedModalAst {
         header: modal.header,
         prepared_prefix,
+        prepared_common_prefix,
         modes,
     })
 }

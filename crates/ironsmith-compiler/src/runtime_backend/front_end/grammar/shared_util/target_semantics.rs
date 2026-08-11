@@ -5,8 +5,9 @@ use crate::runtime_backend::grammar::permission_shapes;
 use crate::runtime_backend::grammar::primitives::{self, token_slice_span};
 use crate::runtime_backend::grammar::targets::{
     EnchantedObjectTargetKind, TargetControllerSetConstraint, TargetPreparationFacts,
-    TargetUnionShape, parse_chosen_object_target, parse_dynamic_target_count_prefix,
-    parse_enchanted_object_target_kind, parse_referenced_target_prefix,
+    TargetUnionShape, TrailingPlayerTargetKind, parse_chosen_object_target,
+    parse_dynamic_target_count_prefix, parse_enchanted_object_target_kind,
+    parse_object_or_player_union_target, parse_referenced_target_prefix,
     parse_target_controller_set_suffix, parse_target_for_each_suffix,
     parse_target_preparation_facts, parse_target_union_shape,
 };
@@ -25,6 +26,7 @@ use crate::types::CardType;
 use crate::zone::Zone;
 use crate::{ChoiceCount, TagKey};
 
+use super::aggregate_constraints::lift_total_mana_value_choice_constraint;
 use super::reference_shapes;
 use super::target_surfaces::*;
 
@@ -34,9 +36,11 @@ fn typed_demonstrative_reference_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceReferenceSurface> {
     let words = TokenWordView::new(tokens).to_word_refs();
-    if words.len() != 2
+    if words.len() < 2
         || !matches!(words[0], "that" | "those")
-        || !is_demonstrative_object_head(words[1])
+        || !words[1..]
+            .iter()
+            .any(|word| is_demonstrative_object_head(word))
     {
         return None;
     }
@@ -170,6 +174,14 @@ pub(crate) fn parse_target_phrase_inner(
     if matches_surface(token_words.as_slice(), YOUR_OPPONENTS_TARGET_PATTERN) {
         return Ok(TargetAst::Player(
             PlayerFilter::Opponent,
+            token_slice_span(tokens),
+        ));
+    }
+    if token_words == ["any", "target", "other", "than", "that", "permanent"] {
+        let filter = ObjectFilter::permanent().not_tagged(TagKey::from("damaged"));
+        return Ok(TargetAst::ObjectOrPlayer(
+            filter,
+            PlayerFilter::Any,
             token_slice_span(tokens),
         ));
     }
@@ -411,6 +423,16 @@ pub(crate) fn parse_target_phrase_inner(
         filter.owner = Some(PlayerFilter::You);
         return Ok(wrap_target_count(
             TargetAst::Object(filter, target_span, None),
+            target_count,
+        ));
+    }
+
+    if remaining_words == ["player", "who", "lost", "life", "this", "turn"] {
+        return Ok(wrap_target_count(
+            TargetAst::Player(
+                PlayerFilter::lost_life_this_turn(PlayerFilter::Any),
+                target_span,
+            ),
             target_count,
         ));
     }
@@ -864,6 +886,20 @@ pub(crate) fn parse_target_phrase_inner(
         ));
     }
 
+    if let Some(union) = parse_object_or_player_union_target(remaining)
+        && let Ok(mut filter) = parse_object_filter(union.object_tokens, other)
+    {
+        filter.other = other;
+        let player_filter = match union.player_kind {
+            TrailingPlayerTargetKind::Any => PlayerFilter::Any,
+            TrailingPlayerTargetKind::Opponent => PlayerFilter::Opponent,
+        };
+        return Ok(wrap_target_count(
+            TargetAst::ObjectOrPlayer(filter, player_filter, target_span),
+            target_count,
+        ));
+    }
+
     if matches!(
         parse_target_union_shape(&remaining_words),
         Some(TargetUnionShape::BattleOrOpponent)
@@ -961,6 +997,8 @@ pub(crate) fn parse_target_phrase_inner(
     );
     filter.target_set_same_controller = target_set_same_controller;
     filter.target_set_different_controllers = target_set_different_controllers;
+    filter.target_set_aggregate_constraint =
+        lift_total_mana_value_choice_constraint(remaining, &mut filter).map(Box::new);
     if filter.with_counter.is_none()
         && remaining_words
             .first()
@@ -997,6 +1035,19 @@ pub(crate) fn parse_target_phrase_inner(
     } else {
         None
     };
+    let qualified_any_target_excluding_subtype = token_words
+        .starts_with(&["any", "target", "that"])
+        && token_words
+            .get(3)
+            .is_some_and(|word| matches!(*word, "isnt" | "isn't"))
+        && !filter.excluded_subtypes.is_empty();
+    if qualified_any_target_excluding_subtype {
+        return Ok(wrap_target_count(
+            TargetAst::ObjectOrPlayer(filter, PlayerFilter::Any, target_span.or(span)),
+            target_count,
+        ));
+    }
+
     Ok(wrap_target_count(
         TargetAst::Object(filter, target_span, reference_span),
         target_count,
@@ -1013,6 +1064,72 @@ mod tests {
     fn parse(raw: &str) -> TargetAst {
         let tokens = lex_line(raw, 0).expect("lex target");
         parse_target_phrase_inner(&tokens).expect(raw)
+    }
+
+    #[test]
+    fn total_mana_value_target_restriction_is_lifted_to_the_selected_set() {
+        let TargetAst::WithCount(inner, count) = parse(
+            "any number of target creature cards with total mana value 6 or less from your graveyard",
+        ) else {
+            panic!("expected a counted target");
+        };
+        assert_eq!(count, ChoiceCount::any_number());
+        let TargetAst::Object(filter, explicit_target, _) = *inner else {
+            panic!("expected an object target");
+        };
+        assert!(explicit_target.is_some());
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert!(filter.mana_value.is_none());
+        let constraint = filter
+            .target_set_aggregate_constraint
+            .as_deref()
+            .expect("aggregate target-set constraint");
+        assert_eq!(
+            constraint,
+            &crate::effect::ChoiceAggregateConstraint::total_mana_value_at_most(6)
+        );
+    }
+
+    #[test]
+    fn ordinary_mana_value_target_restriction_remains_per_object() {
+        let TargetAst::WithCount(inner, _) = parse(
+            "any number of target creature cards with mana value 6 or less from your graveyard",
+        ) else {
+            panic!("expected a counted target");
+        };
+        let TargetAst::Object(filter, _, _) = *inner else {
+            panic!("expected an object target");
+        };
+        assert!(filter.mana_value.is_some());
+        assert!(filter.target_set_aggregate_constraint.is_none());
+    }
+
+    #[test]
+    fn qualified_any_target_exclusion_keeps_players_in_the_target_domain() {
+        let TargetAst::ObjectOrPlayer(filter, player, explicit_target) =
+            parse("any target that isn't a Dinosaur")
+        else {
+            panic!("expected a qualified object-or-player target");
+        };
+        assert_eq!(player, PlayerFilter::Any);
+        assert!(explicit_target.is_some());
+        assert_eq!(filter.excluded_subtypes, [crate::types::Subtype::Dinosaur]);
+    }
+
+    #[test]
+    fn any_target_other_than_damaged_permanent_keeps_both_domains_and_identity() {
+        let TargetAst::ObjectOrPlayer(filter, player, explicit_target) =
+            parse("any target other than that permanent")
+        else {
+            panic!("expected an object-or-player target");
+        };
+        assert_eq!(player, PlayerFilter::Any);
+        assert!(explicit_target.is_some());
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "damaged"
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        }));
     }
 
     #[test]
@@ -1126,6 +1243,26 @@ mod tests {
     }
 
     #[test]
+    fn object_type_list_or_opponent_preserves_every_target_domain() {
+        let TargetAst::ObjectOrPlayer(filter, player, explicit_target) =
+            parse("target artifact, creature, planeswalker, or opponent")
+        else {
+            panic!("expected object/player union target");
+        };
+        assert!(explicit_target.is_some());
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(
+            filter.card_types,
+            vec![
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Planeswalker
+            ]
+        );
+        assert_eq!(player, PlayerFilter::Opponent);
+    }
+
+    #[test]
     fn non_target_permanent_or_player_union_remains_non_targeting() {
         let TargetAst::ObjectOrPlayer(filter, player, explicit_target) =
             parse("a permanent or player")
@@ -1171,6 +1308,25 @@ mod tests {
             crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
             Some(SourceReferenceSurface::ThisPermanentType(
                 "that creature".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn qualified_typed_demonstrative_target_keeps_prior_object_identity() {
+        let tokens = lex_line("that non-Wall creature", 0).expect("lex target");
+        let target = parse_target_phrase_inner(&tokens).expect("parse target");
+        let TargetAst::Object(filter, _, Some(span)) = target else {
+            panic!("expected qualified demonstrative object target with reference span");
+        };
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert_eq!(
+            crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
+            Some(SourceReferenceSurface::ThisPermanentType(
+                "that non-wall creature".to_string()
             ))
         );
     }

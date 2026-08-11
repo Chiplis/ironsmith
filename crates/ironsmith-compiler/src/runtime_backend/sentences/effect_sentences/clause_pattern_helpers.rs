@@ -1,11 +1,12 @@
 use crate::cards::builders::{
     CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
     OwnedLexToken, PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
-    RedirectNextTimeDamageDestinationAst, SubjectAst, SubjectVerbActionAst, TagKey, TargetAst,
-    TextSpan, Verb,
+    RedirectNextTimeDamageDestinationAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    TagKey, TargetAst, TextSpan, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
+use crate::types::CardType;
 use crate::zone::Zone;
 use crate::{ChoiceCount, Supertype};
 
@@ -34,6 +35,7 @@ const EVEN_RESULT_VALUES_D6: &[i32] = &[2, 4, 6];
 pub(crate) fn extract_subject_player(subject: Option<SubjectAst>) -> Option<PlayerAst> {
     match subject {
         Some(SubjectAst::Player(player)) => Some(player),
+        Some(SubjectAst::TriggeringSourceController) => Some(PlayerAst::TriggeringSourceController),
         _ => None,
     }
 }
@@ -190,6 +192,14 @@ pub(crate) fn parse_choose_target_and_verb_clause(
 pub(crate) fn parse_copy_spell_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // A token-copy creation has an inner copular `copies` phrase, but its
+    // executable verb is the leading `create`.  This tolerant recognizer may
+    // scan past surrounding words to find a copy action, so explicitly leave
+    // create-led clauses to the token-creation parser rather than turning the
+    // copied permanent into a spell on the stack.
+    if matches!(find_verb(tokens), Some((Verb::Create, _))) {
+        return Ok(None);
+    }
     // Preserve the optionality and actor of clauses such as "that permanent's
     // controller may copy this spell". This helper is reached before the
     // generic leading-may dispatcher on the subject/verb route, so parse the
@@ -225,6 +235,14 @@ pub(crate) fn parse_copy_spell_clause(
     {
         return Ok(None);
     }
+
+    // Conditional self-replacement bodies retain their authored terminal
+    // `instead` while the ordinary conditional parser dispatches the action.
+    // Strip only that terminal marker here so copy cardinality remains the
+    // true action suffix (`twice`, `X times`, and so on).
+    let authored_tokens = tokens;
+    let tokens = super::super::grammar::primitives::strip_lexed_suffix_phrase(tokens, &["instead"])
+        .unwrap_or(tokens);
 
     fn target_from_shape(shape: clause_shapes::CopyTargetShape<'_>) -> Option<TargetAst> {
         match shape {
@@ -269,7 +287,7 @@ pub(crate) fn parse_copy_spell_clause(
     }
 
     let clause = LexedClause::new(tokens);
-    let clause_text = clause.text();
+    let clause_text = LexedClause::new(authored_tokens).text();
     let Some(copy_shape) = clause_shapes::parse_copy_clause_shape_tokens(tokens) else {
         return Ok(None);
     };
@@ -280,6 +298,8 @@ pub(crate) fn parse_copy_spell_clause(
         super::super::grammar::effects::parse_copy_modifier_words(&clause.word_refs())?;
     let set_colors = copy_modifiers.set_colors;
     let added_card_types = copy_modifiers.added_card_types;
+    let added_subtypes = copy_modifiers.added_subtypes;
+    let set_base_power_toughness = copy_modifiers.set_base_power_toughness;
     let copy_idx = copy_shape.copy_word;
     let tail = &tokens[copy_idx + 1..];
     let split_idx = copy_shape.tail.retarget_split;
@@ -300,6 +320,51 @@ pub(crate) fn parse_copy_spell_clause(
         }));
     }
     if copy_shape.simple_reference {
+        // Oracle may place the copy condition before the coordinated retarget
+        // permission: "copy that spell if ..., and you may choose new targets
+        // for the copy." Parse the typed predicate from the bounded prefix,
+        // then retain the retarget instruction on the conditional copy action.
+        if let Some(retarget_idx) = split_idx {
+            let retarget_token_idx = copy_idx + 1 + retarget_idx;
+            if let Some(trailing_if) = split_trailing_if_clause_lexed(&tokens[..retarget_token_idx])
+            {
+                let Some(mut base) = parse_copy_spell_clause(trailing_if.leading_tokens)? else {
+                    return Ok(None);
+                };
+                let Some(retarget) =
+                    clause_shapes::parse_copy_retarget_shape_tokens(&tail[retarget_idx + 1..])
+                else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported trailing copy clause (clause: '{}')",
+                        clause_text
+                    )));
+                };
+                if !retarget.has_new {
+                    return Err(CardTextError::ParseError(format!(
+                        "missing 'new' in copy retarget clause (clause: '{}')",
+                        clause_text
+                    )));
+                }
+                let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::CopySpell {
+                            may_choose_new_targets,
+                            choose_new_target_singular,
+                            ..
+                        },
+                    ..
+                }) = &mut base
+                else {
+                    return Ok(None);
+                };
+                *may_choose_new_targets = retarget.may_choose;
+                *choose_new_target_singular = retarget.single_target;
+                return Ok(Some(EffectAst::TrailingIf {
+                    predicate: trailing_if.predicate,
+                    effects: vec![base],
+                }));
+            }
+        }
         let trailing_if = split_trailing_if_clause_lexed(tokens);
         let copy_clause_tokens = trailing_if
             .as_ref()
@@ -385,6 +450,8 @@ pub(crate) fn parse_copy_spell_clause(
         )
         .with_copy_set_colors(set_colors)
         .with_copy_added_card_types(added_card_types)
+        .with_copy_added_subtypes(added_subtypes)
+        .with_copy_set_base_power_toughness(set_base_power_toughness)
         .with_copy_target_reference_pronoun(target_reference_pronoun);
         if let Some(kind) = target_reference_kind(copy_target_tail) {
             base = base.with_copy_target_reference_kind(kind);
@@ -517,6 +584,8 @@ pub(crate) fn parse_copy_spell_clause(
     )
     .with_copy_set_colors(set_colors)
     .with_copy_added_card_types(added_card_types)
+    .with_copy_added_subtypes(added_subtypes)
+    .with_copy_set_base_power_toughness(set_base_power_toughness)
     .with_copy_all_matches(copy_all_matches)
     .with_copy_target_reference_pronoun(target_reference_pronoun);
     if let Some(kind) = target_reference_kind(copy_target_clause.tokens()) {
@@ -548,7 +617,41 @@ fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Optio
 #[cfg(test)]
 mod copy_all_tests {
     use super::*;
-    use crate::runtime_backend::ast::SubjectVerbEffectAst;
+    use crate::runtime_backend::ast::{PredicateAst, SubjectVerbEffectAst};
+
+    #[test]
+    fn create_token_copies_are_not_claimed_as_spell_copy_actions() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Create X tokens that are copies of another target creature you control, where X is one plus the number of instant and sorcery spells you've cast this turn.",
+            0,
+        )
+        .expect("token-copy sentence should lex");
+
+        assert!(
+            parse_copy_spell_clause(&tokens)
+                .expect("copy-spell recognizer should inspect the clause")
+                .is_none(),
+            "a create-led token-copy clause is not a spell-copy action"
+        );
+
+        let parsed = crate::runtime_backend::parse_effect_sentence_lexed(&tokens)
+            .expect("token-copy sentence should reach creation dispatch");
+        assert!(matches!(
+            parsed.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    source: TargetAst::Object(filter, ..),
+                    count,
+                    ..
+                },
+                ..
+            })]
+                if filter.card_types == [CardType::Creature]
+                    && filter.controller == Some(PlayerFilter::You)
+                    && filter.other
+                    && matches!(count.unhinted(), Value::Add(_, _))
+        ));
+    }
 
     #[test]
     fn parses_coordinated_copy_all_stack_sets_without_collapsing_them() {
@@ -597,6 +700,10 @@ mod copy_all_tests {
         let parsed = parse_copy_spell_clause(&tokens)
             .expect("variable-count copy sentence should parse")
             .expect("copy parser should match");
+        let parsed = match parsed {
+            EffectAst::MayByPlayer { mut effects, .. } if effects.len() == 1 => effects.remove(0),
+            effect => effect,
+        };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::CopySpell {
@@ -611,6 +718,84 @@ mod copy_all_tests {
         };
         assert_eq!(count, Value::X);
         assert!(may_choose_new_targets);
+    }
+
+    #[test]
+    fn condition_before_retarget_keeps_triggering_spell_and_both_target_domains() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Copy that spell if it targets a permanent or player, and you may choose new targets for the copy.",
+            0,
+        )
+        .expect("conditional copy sentence should lex");
+        let parsed = parse_copy_spell_clause(&tokens)
+            .expect("conditional copy sentence should parse")
+            .expect("copy parser should match");
+        let EffectAst::TrailingIf {
+            predicate: PredicateAst::ItMatches(filter),
+            effects,
+        } = parsed
+        else {
+            panic!("expected a typed trailing-if copy, got {parsed:#?}");
+        };
+        assert!(filter.targets_any_of, "{filter:#?}");
+        assert_eq!(filter.targets_player, Some(PlayerFilter::Any));
+        assert!(filter.targets_object.is_some(), "{filter:#?}");
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CopySpell {
+                    target: TargetAst::Tagged(tag, _),
+                    target_reference_kind: Some(crate::filter::StackObjectKind::Spell),
+                    may_choose_new_targets: true,
+                    ..
+                },
+                ..
+            })] if tag.as_str() == "triggering"
+        ));
+    }
+
+    #[test]
+    fn terminal_instead_does_not_hide_copy_count() {
+        let tokens = crate::runtime_backend::lex_line("Copy that spell twice instead.", 0)
+            .expect("replacement copy sentence should lex");
+        let parsed = parse_copy_spell_clause(&tokens)
+            .expect("replacement copy sentence should parse")
+            .expect("copy parser should match");
+        assert!(matches!(
+            parsed,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CopySpell {
+                    count: Value::Fixed(2),
+                    ..
+                },
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn conditional_copy_replacement_keeps_twice_cardinality() {
+        let tokens = crate::runtime_backend::lex_line(
+            "If this spell was kicked, copy that spell twice instead.",
+            0,
+        )
+        .expect("conditional replacement should lex");
+        let parsed = crate::runtime_backend::parse_effect_sentence_lexed(&tokens)
+            .expect("conditional replacement should parse");
+        assert!(matches!(
+            parsed.as_slice(),
+            [EffectAst::Conditional { if_true, .. }]
+                if matches!(
+                    if_true.as_slice(),
+                    [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::CopySpell {
+                            count: Value::Fixed(2),
+                            ..
+                        },
+                        ..
+                    })]
+                )
+        ));
     }
 
     #[test]
@@ -713,6 +898,94 @@ mod copy_all_tests {
             filter.mana_value.as_ref(),
             Some(crate::filter::Comparison::EqualExpr(value))
                 if value.unhinted() == &Value::X
+        ));
+    }
+
+    #[test]
+    fn explicit_spell_copy_keeps_color_exception_on_the_copy_action() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Copy target instant or sorcery spell, except that the copy is red.",
+            0,
+        )
+        .expect("colored spell-copy sentence should lex");
+        let parsed = parse_copy_spell_clause(&tokens)
+            .expect("colored spell-copy sentence should parse")
+            .expect("copy parser should own the complete sentence");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    target: TargetAst::Object(filter, ..),
+                    set_colors,
+                    ..
+                },
+            ..
+        }) = parsed
+        else {
+            panic!("expected a typed copy-spell action, got {parsed:#?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Stack), "{filter:#?}");
+        assert_eq!(
+            filter.card_types,
+            [
+                crate::types::CardType::Instant,
+                crate::types::CardType::Sorcery,
+            ],
+            "{filter:#?}"
+        );
+        assert_eq!(set_colors, Some(crate::color::ColorSet::RED));
+    }
+
+    #[test]
+    fn spell_copy_keeps_fixed_pt_and_added_subtype_exception() {
+        let tokens = crate::runtime_backend::lex_line(
+            "You may copy it, except the copy is a 1/1 Spirit in addition to its other types.",
+            0,
+        )
+        .expect("fixed P/T spell-copy sentence should lex");
+        let parsed = parse_copy_spell_clause(&tokens)
+            .expect("fixed P/T spell-copy sentence should parse")
+            .expect("copy parser should own the complete sentence");
+        let parsed = match parsed {
+            EffectAst::MayByPlayer { mut effects, .. } if effects.len() == 1 => effects.remove(0),
+            effect => effect,
+        };
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    added_subtypes,
+                    set_base_power_toughness,
+                    ..
+                },
+            ..
+        }) = parsed
+        else {
+            panic!("expected a typed copy-spell action, got {parsed:#?}");
+        };
+
+        assert_eq!(added_subtypes, [crate::types::Subtype::Spirit]);
+        assert_eq!(set_base_power_toughness, Some((1, 1)));
+    }
+
+    #[test]
+    fn whole_sentence_dispatch_keeps_color_exception_on_the_copy_action() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Copy target instant or sorcery spell, except that the copy is red.",
+            0,
+        )
+        .expect("colored spell-copy sentence should lex");
+        let parsed = crate::runtime_backend::parse_effect_sentence_lexed(&tokens)
+            .expect("whole colored spell-copy sentence should parse");
+
+        assert!(matches!(
+            parsed.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CopySpell {
+                    set_colors: Some(colors),
+                    ..
+                },
+                ..
+            })] if *colors == crate::color::ColorSet::RED
         ));
     }
 }
@@ -938,6 +1211,37 @@ pub(crate) fn parse_can_attack_as_though_no_defender_clause(
 pub(crate) fn parse_prevent_next_time_damage_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(shape) = clause_shapes::parse_replace_next_damage_with_destroy_tokens(tokens) {
+        let target = parse_target_phrase(shape.target_tokens)?;
+        let target_filter = match &target {
+            TargetAst::Object(filter, _, _) => filter,
+            _ => return Ok(None),
+        };
+        let compatible_reference = match shape.destroyed_reference {
+            clause_shapes::DestroyDamageTargetReference::It => true,
+            clause_shapes::DestroyDamageTargetReference::Creature => {
+                target_filter.card_types.as_slice() == [CardType::Creature]
+            }
+            clause_shapes::DestroyDamageTargetReference::Permanent => {
+                !target_filter.card_types.is_empty() || !target_filter.subtypes.is_empty()
+            }
+        };
+        if !compatible_reference {
+            return Ok(None);
+        }
+        let damage_target_tag =
+            crate::runtime_backend::util::helper_tag_for_tokens(tokens, "replaced_damage_target");
+        let replacement =
+            EffectAst::subject_verb_destroy(TargetAst::Tagged(damage_target_tag.clone(), None));
+        return Ok(Some(vec![
+            EffectAst::subject_verb_replace_next_damage_to_target(
+                target,
+                damage_target_tag,
+                vec![replacement],
+            ),
+        ]));
+    }
+
     let Some(shape) = clause_shapes::parse_prevent_next_time_damage_tokens(tokens) else {
         return Ok(None);
     };
@@ -1517,8 +1821,8 @@ pub(crate) fn parse_keyword_mechanic_clause(
                 }
             }
         },
-        clause_shapes::KeywordMechanicShape::OpenAttraction => {
-            EffectAst::subject_verb_open_attraction(PlayerAst::Implicit)
+        clause_shapes::KeywordMechanicShape::OpenAttraction { reminder } => {
+            EffectAst::subject_verb_open_attraction(PlayerAst::Implicit, reminder)
         }
         clause_shapes::KeywordMechanicShape::Behold { subtype, count } => {
             EffectAst::subject_verb_behold(subtype, count)
@@ -1609,7 +1913,26 @@ pub(crate) fn parse_keyword_mechanic_clause(
                     parse_target_phrase(subject_tokens)?
                 }
                 clause_shapes::KeywordSubjectShape::Source(subject_tokens) => {
-                    TargetAst::Source(span_from_tokens(subject_tokens))
+                    let span = span_from_tokens(subject_tokens);
+                    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
+                    if let Some(
+                        surface @ (crate::target::SourceReferenceSurface::FullName(_)
+                        | crate::target::SourceReferenceSurface::ShortName(_)),
+                    ) = crate::runtime_backend::util::source_reference_surface_for_words(
+                        &subject_words,
+                    ) {
+                        crate::runtime_backend::util::record_source_reference_surface(
+                            span,
+                            surface.clone(),
+                        );
+                        // The source-reference context's span map exists only
+                        // during parsing. Carry the grammar-proven proper-name
+                        // surface on the typed source filter as well so public
+                        // lowering can preserve it without consulting raw text.
+                        TargetAst::Object(ObjectFilter::source_with_surface(surface), None, span)
+                    } else {
+                        TargetAst::Source(span)
+                    }
                 }
                 clause_shapes::KeywordSubjectShape::Target(subject_tokens) => {
                     parse_target_phrase(subject_tokens)?

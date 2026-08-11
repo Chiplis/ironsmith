@@ -167,11 +167,25 @@ fn lower_consult_repeated_move(
     let mut second = parse_object_filter_lexed(&repeated.repeated_filter, false).ok()?;
     first.zone = None;
     second.zone = None;
+    // Each authored partition says "revealed this way", so the standalone
+    // filter parser carries an unresolved `__it__` collection constraint.
+    // This bundle already has the exact LookAtTopCards result tag.  Remove
+    // only that generic collection marker before installing the exact tag;
+    // otherwise lowering the preceding union capture makes `__it__` resolve
+    // to the newly-created moved-union tag instead of the reveal collection.
+    for filter in [&mut first, &mut second] {
+        filter.tagged_constraints.retain(|constraint| {
+            constraint.tag.as_str() != IT_TAG
+                || constraint.relation != TaggedOpbjectRelation::IsTaggedObject
+        });
+    }
     first = first.match_tagged(all_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
     second = second.match_tagged(all_tag, TaggedOpbjectRelation::IsTaggedObject);
     let mut union = ObjectFilter::default();
-    union.any_of = vec![first, second];
+    union.any_of = vec![first.clone(), second.clone()];
     let moved_tag = helper_tag_for_tokens(tag_seed, "consult_repeated_moved");
+    let first_tag = helper_tag_for_tokens(tag_seed, "consult_repeated_first");
+    let second_tag = helper_tag_for_tokens(tag_seed, "consult_repeated_second");
     Some((
         vec![
             EffectAst::subject_verb_tag_matching_objects(
@@ -179,7 +193,18 @@ fn lower_consult_repeated_move(
                 vec![Zone::Library],
                 moved_tag.clone(),
             ),
-            move_consult_tagged_group(moved_tag.clone(), repeated.zone, false),
+            EffectAst::subject_verb_tag_matching_objects(
+                first,
+                vec![Zone::Library],
+                first_tag.clone(),
+            ),
+            move_consult_tagged_group(first_tag, repeated.zone, false),
+            EffectAst::subject_verb_tag_matching_objects(
+                second,
+                vec![Zone::Library],
+                second_tag.clone(),
+            ),
+            move_consult_tagged_group(second_tag, repeated.zone, false),
         ],
         moved_tag,
     ))
@@ -274,12 +299,48 @@ pub(crate) fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Opti
 pub(super) fn parse_reveal_repeated_disposition_bundle(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
+    fn revealed_top_collection_tag(effects: &[EffectAst]) -> Option<TagKey> {
+        fn collect(effect: &EffectAst, tags: &mut Vec<TagKey>) {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::LookAtTopCards {
+                        tag, reveal: true, ..
+                    },
+                ..
+            }) = effect
+            {
+                tags.push(tag.clone());
+            }
+            crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effects(
+                effect,
+                true,
+                |nested| {
+                    for effect in nested {
+                        collect(effect, tags);
+                    }
+                },
+            );
+        }
+
+        let mut tags = Vec::new();
+        for effect in effects {
+            collect(effect, &mut tags);
+        }
+        let [tag] = tags.as_slice() else {
+            return None;
+        };
+        Some(tag.clone())
+    }
+
     let shape = bundle_grammar::parse_reveal_repeated_disposition_sequence_shape(tokens)?;
     let mut effects = effect_sentences::parse_effect_chain(&shape.reveal_tokens).ok()?;
-    let all_tag = helper_tag_for_tokens(&shape.reveal_tokens, "revealed_collection");
-    effects.push(EffectAst::SnapshotLastObjectTag {
-        into: all_tag.clone(),
-    });
+    // Repeated disposition filters and the final remainder must consume the
+    // exact collection populated by the preceding reveal. A synthetic
+    // SnapshotLastObjectTag alias cannot cross the public sentence-boundary
+    // lowering route reliably, leaving every later filter pointed at an empty
+    // tag. The grammar has already proved one revealed top-card collection,
+    // so transport that tag directly.
+    let all_tag = revealed_top_collection_tag(&effects)?;
     let (mut repeated_effects, moved_tag) =
         lower_consult_repeated_move(shape.repeated, all_tag.clone(), &shape.reveal_tokens)?;
     effects.append(&mut repeated_effects);

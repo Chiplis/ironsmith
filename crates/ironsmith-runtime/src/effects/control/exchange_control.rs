@@ -402,6 +402,30 @@ mod tests {
     }
 
     #[test]
+    fn public_optional_source_exchange_keeps_joint_negative_target_filter() {
+        let oracle = "At the beginning of your upkeep, you may exchange control of this enchantment and target permanent you neither own nor control.";
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Joint Negative Exchange Probe",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("optional heterogeneous exchange should parse");
+
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            [oracle]
+        );
+        let debug = format!("{:#?}", definition.abilities);
+        assert!(debug.contains("ExchangeControlEffect"), "{debug}");
+        assert!(
+            debug.contains("owner: Some(\n") && debug.contains("NotYou"),
+            "{debug}"
+        );
+        assert!(debug.contains("controller: Some(\n"), "{debug}");
+    }
+
+    #[test]
     fn test_exchange_control_relative_shared_type_uses_first_target_context() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

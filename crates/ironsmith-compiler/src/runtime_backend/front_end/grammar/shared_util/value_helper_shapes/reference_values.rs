@@ -23,7 +23,11 @@ const TAGGED_COUNTER_REFERENCE_PHRASES: &[&[&str]] = &[
 ];
 
 fn parse_value_player_reference(words: &[&str]) -> PlayerFilter {
-    if has_any(words, &["you", "your", "youve"]) {
+    if permission_shapes::find_words(words, &["target", "opponent"]).is_some() {
+        PlayerFilter::target_opponent()
+    } else if permission_shapes::find_words(words, &["target", "player"]).is_some() {
+        PlayerFilter::target_player()
+    } else if has_any(words, &["you", "your", "youve"]) {
         PlayerFilter::You
     } else if has_any(words, &["opponent", "opponents"]) {
         PlayerFilter::Opponent

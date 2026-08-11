@@ -6,7 +6,7 @@ use super::shard_04::*;
 use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 
 #[test]
 pub(super) fn legendary_creatures_gain_typed_bands_with_other_quality() {
@@ -562,6 +562,53 @@ pub(super) fn self_replacement_damage_keeps_its_unpreventable_rider() {
 }
 
 #[test]
+pub(super) fn throw_from_the_saddle_keeps_common_damage_after_both_replacement_arms() {
+    let lexed = lex_line(
+        "Target creature you control gets +1/+1 until end of turn. Put a +1/+1 counter on it instead if it's a Mount. Then it deals damage equal to its power to target creature you don't control.",
+        0,
+    )
+    .expect("Throw from the Saddle should lex");
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("Throw from the Saddle should parse to typed effects");
+
+    let [
+        EffectAst::SelfReplacement {
+            predicate,
+            if_true,
+            if_false,
+            ..
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("Throw should remain one executable self-replacement: {effects:#?}");
+    };
+    let crate::cards::builders::PredicateAst::TargetMatches(mount_filter) = predicate else {
+        panic!("the trailing 'if it's a Mount' must test the first target: {predicate:#?}");
+    };
+    assert_eq!(mount_filter.subtypes, [Subtype::Mount], "{predicate:#?}");
+    assert_eq!(mount_filter.controller, None, "{predicate:#?}");
+
+    let replacement_debug = format!("{if_true:#?}");
+    assert!(
+        replacement_debug.contains("PutCounters"),
+        "{replacement_debug}"
+    );
+    assert!(
+        replacement_debug.contains("DealDamageEqualToPower"),
+        "the common damage suffix must remain after the counter arm: {replacement_debug}"
+    );
+    let default_debug = format!("{if_false:#?}");
+    assert!(
+        default_debug.contains("ModifyPowerToughness"),
+        "{default_debug}"
+    );
+    assert!(
+        default_debug.contains("DealDamageEqualToPower"),
+        "the common damage suffix must remain after the pump arm: {default_debug}"
+    );
+}
+
+#[test]
 pub(super) fn rewrite_conditional_self_damage_prevention_preserves_counter_amount() {
     for (name, text, dynamic_amount) in [
         (
@@ -656,7 +703,7 @@ pub(super) fn rewrite_counter_prevention_keeps_each_player_counter_followup() {
 
 #[test]
 pub(super) fn rewrite_possessive_self_counters_move_from_source_lki() {
-    let text = "{1}, Sacrifice this creature: Target creature you control gains indestructible until end of turn. Put this's counters on that creature and attach an Equipment that was attached to this creature to that creature.";
+    let text = "{1}, Sacrifice this creature: Target creature you control gains indestructible until end of turn. Put Typed Counter Inheritance's counters on that creature and attach an Equipment that was attached to this creature to that creature.";
     let (compiled, loss) = crate::parse_loss::capture(|| {
         super::super::compile_card_text(
             CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Counter Inheritance")
@@ -670,6 +717,26 @@ pub(super) fn rewrite_possessive_self_counters_move_from_source_lki() {
     let debug = format!("{:#?}", compiled.definition.abilities);
     assert!(debug.contains("MoveAllCountersEffect"), "{debug}");
     assert!(debug.contains("from: Source"), "{debug}");
+    let attach = compiled
+        .definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| {
+                    super::find_nested_effect::<crate::effects::AttachObjectsEffect>(effect)
+                }),
+            _ => None,
+        })
+        .expect("expected typed Equipment attachment");
+    assert_eq!(attach.objects.count(), ChoiceCount::exactly(1));
+    assert!(
+        matches!(attach.objects.base(), crate::target::ChooseSpec::Object(_)),
+        "a counted Equipment attachment must remain a resolving choice: {attach:#?}"
+    );
 }
 
 #[test]
@@ -1221,6 +1288,43 @@ pub(super) fn rewrite_lexed_next_spell_cascade_grants_parse_natively() {
         )
     ))
     );
+}
+
+#[test]
+pub(super) fn rewrite_next_noncreature_spell_affinity_grant_parses_natively() {
+    let tokens = lex_line(
+        "The next noncreature spell you cast this turn has affinity for artifacts.",
+        0,
+    )
+    .expect("next-spell affinity grant should lex");
+    let effects = super::super::effect_sentences::parse_effect_sentence_lexed(&tokens)
+        .expect("next-spell affinity grant should parse");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("GrantNextSpellAbilityThisTurn"), "{debug}");
+    assert!(debug.contains("AffinityForArtifacts"), "{debug}");
+    assert!(
+        debug.contains("excluded_card_types") && debug.contains("Creature"),
+        "{debug}"
+    );
+}
+
+#[test]
+pub(super) fn rewrite_next_spell_grant_keeps_coordinated_optional_keyword_action() {
+    let tokens = lex_line(
+        "The next spell you cast this turn has cascade and you may planeswalk.",
+        0,
+    )
+    .expect("coordinated next-spell grant should lex");
+
+    let effects = super::super::effect_sentences::parse_effect_sentence_lexed(&tokens)
+        .expect("coordinated next-spell grant should parse");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("GrantNextSpellAbilityThisTurn"), "{debug}");
+    assert!(debug.contains("May"), "{debug}");
+    assert!(debug.contains("EmitKeywordAction"), "{debug}");
+    assert!(debug.contains("Planeswalk"), "{debug}");
 }
 
 #[test]
@@ -2619,6 +2723,21 @@ pub(super) fn rewrite_search_library_effect_routing_tracks_destination_and_flags
 }
 
 #[test]
+pub(super) fn searched_card_battlefield_entry_counter_survives_lowering() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Search Entry Counter Probe")
+        .parse_text(
+            "When this creature enters, destroy target nonbasic land an opponent controls. Its controller searches their library for a basic land card, puts it onto the battlefield tapped with a stun counter on it, then shuffles.",
+        )
+        .expect("countered battlefield search should parse");
+    let debug = format!("{definition:#?}");
+
+    assert!(debug.contains("PutOntoBattlefieldEffect"), "{debug}");
+    assert!(debug.contains("enters_with_counters"), "{debug}");
+    assert!(debug.contains("counter_type: Stun"), "{debug}");
+    assert!(debug.contains("surface: Inline"), "{debug}");
+}
+
+#[test]
 pub(super) fn rewrite_split_destination_search_uses_one_tagged_partition() {
     let lexed = lex_line(
         "Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.",
@@ -2646,6 +2765,97 @@ pub(super) fn rewrite_split_destination_search_uses_one_tagged_partition() {
     assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
     assert!(debug.contains("zone: Hand"), "{debug}");
     assert_eq!(debug.matches("ShuffleLibrary").count(), 1, "{debug}");
+}
+
+#[test]
+pub(super) fn rewrite_split_destination_search_accepts_rest_as_the_hand_remainder() {
+    let lexed = lex_line(
+        "Search your library for up to two basic Forest cards, reveal those cards, and put one onto the battlefield tapped and the rest into your hand.",
+        0,
+    )
+    .expect("rest-based split-destination search should lex");
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("rest-based split-destination search should parse");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("ChooseObjectsAcrossZones"), "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+    assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+}
+
+#[test]
+pub(super) fn split_search_spell_mastery_replaces_only_the_typed_search_limit() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Pilgrimage Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search your library for up to two basic Forest cards, reveal those cards, and put one onto the battlefield tapped and the rest into your hand. Then shuffle.\nSpell mastery — If there are two or more instant and/or sorcery cards in your graveyard, search your library for up to three basic Forest cards instead of two.",
+        )
+        .expect("count-only split search replacement should parse");
+    let program = definition
+        .spell_effect
+        .as_ref()
+        .expect("spell should have a resolution program");
+    let [partition_segment, shuffle_segment] = program.segments.as_slice() else {
+        panic!("expected partition plus common shuffle: {program:#?}");
+    };
+    let [branch] = partition_segment.self_replacements.as_slice() else {
+        panic!("expected one count replacement: {partition_segment:#?}");
+    };
+    let [default_effect] = partition_segment.default_effects.as_slice() else {
+        panic!("expected one coordinated default pipeline: {partition_segment:#?}");
+    };
+    let [replacement_effect] = branch.replacement_effects.as_slice() else {
+        panic!("expected one coordinated replacement pipeline: {branch:#?}");
+    };
+    let default = default_effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("default split-search sequence");
+    let replacement = replacement_effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("replacement split-search sequence");
+    let default_search = default.effects[0]
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("default search");
+    let replacement_search = replacement.effects[0]
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("replacement search");
+
+    assert_eq!(default_search.count, ChoiceCount::up_to(2));
+    assert_eq!(replacement_search.count, ChoiceCount::up_to(3));
+    assert_eq!(default_search.filter.card_types, [CardType::Land]);
+    assert_eq!(default_search.filter.subtypes, [Subtype::Forest]);
+    assert_eq!(default_search.filter.supertypes, [Supertype::Basic]);
+    assert_eq!(default_search.filter.zone, Some(crate::zone::Zone::Library));
+    assert_eq!(default_search.filter.owner, Some(PlayerFilter::You));
+    assert_eq!(
+        &default.effects[1..],
+        &replacement.effects[1..],
+        "reveal and one-versus-rest disposition must be common to both search limits"
+    );
+    let remainder = default.effects[4]
+        .downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+        .expect("searched-set remainder loop");
+    let conditional = remainder.effects[0]
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("chosen-card exclusion");
+    let hand_move = conditional.if_false[0]
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .expect("remainder-to-hand move");
+    assert_eq!(
+        hand_move.remainder_surface,
+        Some(ironsmith_core::LibraryRemainderSurface::Rest)
+    );
+    assert!(
+        shuffle_segment.self_replacements.is_empty(),
+        "shuffle must execute after either search limit"
+    );
+    assert_eq!(
+        format!("{shuffle_segment:#?}")
+            .matches("ShuffleLibraryEffect")
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -3658,6 +3868,31 @@ pub(super) fn rewrite_activation_line_collects_any_player_restriction_from_token
 }
 
 #[test]
+pub(super) fn rewrite_activation_line_types_any_player_before_end_step_window() {
+    let tokens = lex_line(
+        "Remove a charge counter from this enchantment: Add {C}. Any player may activate this ability but only during their turn before the end step.",
+        0,
+    )
+    .expect("combined any-player activation window should lex");
+
+    let parsed = super::super::parse_activated_line(&tokens)
+        .expect("combined any-player activation window should parse")
+        .expect("activated line should produce an ability");
+
+    match parsed.kind() {
+        crate::ability::AbilityKind::Activated(activated) => {
+            assert_eq!(
+                activated.timing,
+                crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
+            );
+            assert!(activated.allows_any_player_to_activate());
+            assert!(activated.additional_restrictions.is_empty());
+        }
+        other => panic!("expected activated ability, got {other:?}"),
+    }
+}
+
+#[test]
 pub(super) fn rewrite_activation_line_collects_sentence_modifiers_via_activated_sentence_module() {
     let tokens = lex_line(
         "{T}: Add {C}. The next noncreature spell you cast this turn costs {2} less to cast. Spend this mana only to cast artifact spells of the chosen type and that spell can't be countered. Any player may activate this ability. Activate only once each turn.",
@@ -4210,4 +4445,65 @@ pub(super) fn rewrite_keyword_static_reveal_first_card_probe_uses_parser_text_wo
         [crate::cards::builders::StaticAbilityAst::Static(ability)]
             if ability.id() == crate::static_abilities::StaticAbilityId::RevealFirstCardYouDrawEachTurn
     ));
+}
+
+#[test]
+pub(super) fn narset_enlightened_master_compiles_filtered_temporary_free_cast_pool() {
+    let oracle = "First strike, hexproof\nWhenever Narset attacks, exile the top four cards of your library. Until end of turn, you may cast noncreature spells from among those cards without paying their mana costs.";
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(2), "Narset, Enlightened Master")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Monk])
+        .parse_text(oracle)
+        .expect("Narset should compile without score-path fallback");
+    let debug = format!("{:#?}", definition.abilities);
+    let compact = debug.split_whitespace().collect::<String>();
+
+    assert!(debug.contains("ExileTopOfLibraryEffect"), "{debug}");
+    assert!(debug.contains("TagMatchingObjectsEffect"), "{debug}");
+    assert!(
+        compact.contains("excluded_card_types:[Creature,Land,]"),
+        "{debug}"
+    );
+    assert!(debug.contains("GrantPlayTaggedEffect"), "{debug}");
+    assert!(
+        debug.contains("GrantTaggedSpellFreeCastUntilEndOfTurnEffect"),
+        "{debug}"
+    );
+}
+
+#[test]
+pub(super) fn searing_rays_counts_only_creatures_of_the_chosen_color_per_player() {
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(3), "Searing Rays Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose a color. This spell deals damage to each player equal to the number of creatures of that color that player controls.",
+        )
+        .expect("chosen-color per-player damage should parse");
+    let debug = format!("{:#?}", definition.spell_effect);
+    let compact = debug.split_whitespace().collect::<String>();
+
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(debug.contains("DealDamageEffect"), "{debug}");
+    assert!(debug.contains("chosen_color: true"), "{debug}");
+    assert!(
+        compact.contains("controller:Some(IteratedPlayer"),
+        "{debug}"
+    );
+}
+
+#[test]
+pub(super) fn definite_player_damage_followup_keeps_the_end_step_participant() {
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(4), "End Step Trumpet Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "At the beginning of each player's end step, tap all untapped creatures that player controls that didn't attack this turn. This artifact deals damage to the player equal to the number of creatures tapped this way.",
+        )
+        .expect("cross-sentence participant damage should parse");
+    let debug = format!("{:#?}", definition.abilities);
+    let compact = debug.split_whitespace().collect::<String>();
+
+    assert!(debug.contains("didnt_attack_this_turn: true"), "{debug}");
+    assert!(debug.contains("PriorEffectMetric"), "{debug}");
+    assert!(compact.contains("target:Player(IteratedPlayer"), "{debug}");
+    assert!(!compact.contains("target:Player(Any"), "{debug}");
 }

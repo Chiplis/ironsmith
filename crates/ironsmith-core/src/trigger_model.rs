@@ -18,6 +18,28 @@ pub enum EndStepSurface {
     #[default]
     Each,
     Definite,
+    /// The current monarch's end step. Unlike `Each`, this surface also
+    /// carries the event-time monarch qualification used by the matcher.
+    Monarch,
+}
+
+/// Authored wording for a trigger that subscribes to both main phases.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MainPhaseSurface {
+    #[default]
+    MainPhase,
+    EachOfMainPhases,
+}
+
+/// Authored wording for a postcombat-main-phase trigger. Every variant
+/// subscribes to the same postcombat-main event; this only distinguishes the
+/// traditional ordinal wording from the rules-precise postcombat surfaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PostcombatMainPhaseSurface {
+    #[default]
+    SecondMain,
+    PostcombatMain,
+    EachOfPostcombatMains,
 }
 
 /// Authored wording for a zone change into a graveyard.
@@ -59,6 +81,18 @@ pub enum TriggerTimingRestriction {
     DuringCombat,
 }
 
+/// Which kind of defending game object qualifies an attack trigger.
+///
+/// Keeping this separate from the attacking-player filter prevents authored
+/// planeswalker-only triggers from silently widening to attacks against the
+/// player, and prevents either form from accidentally including Battles.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttackTargetRestriction {
+    Player(PlayerFilter),
+    PlaneswalkerControlledBy(PlayerFilter),
+    PlayerOrPlaneswalkerControlledBy(PlayerFilter),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DamageSourceSurface {
     Filter,
@@ -78,6 +112,7 @@ pub enum TriggerKind {
     /// "Whenever A or B" — fires when any branch's event occurs.
     AnyOf(Vec<Trigger>),
     ThisAttacks,
+    ThisAndAnotherAttackDifferentPlayers,
     ThisAttacksPlayerWhoControlsAtLeast {
         count: usize,
         filter: ObjectFilter,
@@ -109,6 +144,10 @@ pub enum TriggerKind {
     },
     PlayersAttackedOneOrMore {
         player_filter: PlayerFilter,
+    },
+    PlayerAttacksOneOrMore {
+        attacker: PlayerFilter,
+        target: AttackTargetRestriction,
     },
     AttacksOneOrMoreWithMinTotal {
         filter: ObjectFilter,
@@ -235,10 +274,20 @@ pub enum TriggerKind {
         player: PlayerFilter,
         source_surface: DamageSourceSurface,
     },
+    DealsExactDamageToObjectOrPlayer {
+        source: ObjectFilter,
+        object: ObjectFilter,
+        player: PlayerFilter,
+        player_first: bool,
+        amount: u32,
+        source_surface: DamageSourceSurface,
+    },
     DealsNoncombatDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,
         source_surface: DamageSourceSurface,
+        damaged_player_one_or_more: bool,
+        during_turn: Option<PlayerFilter>,
     },
     DealsCombatDamage {
         filter: ObjectFilter,
@@ -295,10 +344,18 @@ pub enum TriggerKind {
     },
     AbilityTriggered {
         another: bool,
+        /// Optional characteristic/controller qualification on the source of
+        /// the ability that triggered.
+        source_filter: Option<ObjectFilter>,
+        /// The triggering ability must have been caused by that same source
+        /// entering the battlefield, rather than by an unrelated event.
+        caused_by_source_entering: bool,
     },
     IsDealtDamage {
         target: ChooseSpec,
         combat_only: bool,
+        noncombat_only: bool,
+        excess_only: bool,
     },
     YouGainLife,
     YouGainLifeCausedBy {
@@ -368,6 +425,12 @@ pub enum TriggerKind {
         filter: ObjectFilter,
         one_or_more_surface: bool,
     },
+    PermanentSacrificed {
+        filter: ObjectFilter,
+    },
+    PermanentDestroyed {
+        filter: ObjectFilter,
+    },
     TokensCreated {
         player: PlayerFilter,
         filter: ObjectFilter,
@@ -388,6 +451,13 @@ pub enum TriggerKind {
         victim: ObjectFilter,
         damager: DamagedBySource,
     },
+    /// A creature dies after having been dealt damage this turn by any source
+    /// matching the typed filter. The source filter is evaluated against the
+    /// damage event's captured source characteristics and controller.
+    DiesCreatureDealtDamageByFilteredSourceThisTurn {
+        victim: ObjectFilter,
+        damager_filter: ObjectFilter,
+    },
     SpellCastQualified {
         filter: Option<ObjectFilter>,
         mana_source_filter: Option<ObjectFilter>,
@@ -401,6 +471,15 @@ pub enum TriggerKind {
     SpellCast {
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
+    },
+    /// A spell is cast while a card with the same name exists in a specified
+    /// player's zone. The relation is evaluated at cast time rather than as
+    /// an intervening-if condition.
+    SpellCastSameNameCardInZone {
+        filter: Option<ObjectFilter>,
+        caster: PlayerFilter,
+        zone: Zone,
+        owner: PlayerFilter,
     },
     /// The Nth spell cast during the turn, counted across every player.
     NthSpellOfTurnCast {
@@ -430,11 +509,16 @@ pub enum TriggerKind {
         player: PlayerFilter,
         surface: EndStepSurface,
     },
+    BeginningOfMainPhase {
+        player: PlayerFilter,
+        surface: MainPhaseSurface,
+    },
     BeginningOfPrecombatMainPhase {
         player: PlayerFilter,
     },
     BeginningOfPostcombatMainPhase {
         player: PlayerFilter,
+        surface: PostcombatMainPhaseSurface,
     },
     DayNightChanged,
     ThisEntersBattlefield,
@@ -451,6 +535,11 @@ pub enum TriggerKind {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    KeywordActionMatchingObjectDuringYourTurn {
+        action: KeywordActionKind,
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
     KeywordActionMatchingTaggedObject {
         action: KeywordActionKind,
         player: PlayerFilter,
@@ -460,6 +549,10 @@ pub enum TriggerKind {
         during_your_main_phase: bool,
     },
     KeywordAction {
+        action: KeywordActionKind,
+        player: PlayerFilter,
+    },
+    KeywordActionDuringYourTurn {
         action: KeywordActionKind,
         player: PlayerFilter,
     },
@@ -582,6 +675,12 @@ impl Trigger {
     pub fn this_attacks() -> Self {
         Self::typed("this_attacks", TriggerKind::ThisAttacks)
     }
+    pub fn this_and_another_attack_different_players() -> Self {
+        Self::typed(
+            "this_and_another_attack_different_players",
+            TriggerKind::ThisAndAnotherAttackDifferentPlayers,
+        )
+    }
     pub fn this_attacks_player_who_controls_at_least(count: usize, filter: ObjectFilter) -> Self {
         Self::typed(
             "this_attacks_player_who_controls_at_least",
@@ -679,6 +778,15 @@ impl Trigger {
         Self::typed(
             "players_attacked_one_or_more",
             TriggerKind::PlayersAttackedOneOrMore { player_filter },
+        )
+    }
+    pub fn player_attacks_one_or_more(
+        attacker: PlayerFilter,
+        target: AttackTargetRestriction,
+    ) -> Self {
+        Self::typed(
+            "player_attacks_one_or_more",
+            TriggerKind::PlayerAttacksOneOrMore { attacker, target },
         )
     }
     pub fn attacks_one_or_more_with_min_total(
@@ -1014,6 +1122,26 @@ impl Trigger {
             },
         )
     }
+    pub fn deals_exact_damage_to_object_or_player_with_source_surface(
+        source: ObjectFilter,
+        object: ObjectFilter,
+        player: PlayerFilter,
+        player_first: bool,
+        amount: u32,
+        source_surface: DamageSourceSurface,
+    ) -> Self {
+        Self::typed(
+            "deals_exact_damage_to_object_or_player",
+            TriggerKind::DealsExactDamageToObjectOrPlayer {
+                source,
+                object,
+                player,
+                player_first,
+                amount,
+                source_surface,
+            },
+        )
+    }
     pub fn deals_noncombat_damage_to_player(source: ObjectFilter, player: PlayerFilter) -> Self {
         Self::deals_noncombat_damage_to_player_with_source_surface(
             source,
@@ -1026,12 +1154,29 @@ impl Trigger {
         player: PlayerFilter,
         source_surface: DamageSourceSurface,
     ) -> Self {
+        Self::deals_noncombat_damage_to_player_qualified(
+            source,
+            player,
+            source_surface,
+            false,
+            None,
+        )
+    }
+    pub fn deals_noncombat_damage_to_player_qualified(
+        source: ObjectFilter,
+        player: PlayerFilter,
+        source_surface: DamageSourceSurface,
+        damaged_player_one_or_more: bool,
+        during_turn: Option<PlayerFilter>,
+    ) -> Self {
         Self::typed(
             "deals_noncombat_damage_to_player",
             TriggerKind::DealsNoncombatDamageToPlayer {
                 source,
                 player,
                 source_surface,
+                damaged_player_one_or_more,
+                during_turn,
             },
         )
     }
@@ -1169,13 +1314,24 @@ impl Trigger {
         )
     }
     pub fn ability_triggered(another: bool) -> Self {
+        Self::ability_triggered_qualified(another, None, false)
+    }
+    pub fn ability_triggered_qualified(
+        another: bool,
+        source_filter: Option<ObjectFilter>,
+        caused_by_source_entering: bool,
+    ) -> Self {
         Self::typed(
             if another {
                 "Whenever another ability triggers"
             } else {
                 "Whenever an ability triggers"
             },
-            TriggerKind::AbilityTriggered { another },
+            TriggerKind::AbilityTriggered {
+                another,
+                source_filter,
+                caused_by_source_entering,
+            },
         )
     }
     pub fn is_dealt_damage(target: ChooseSpec) -> Self {
@@ -1184,6 +1340,8 @@ impl Trigger {
             TriggerKind::IsDealtDamage {
                 target,
                 combat_only: false,
+                noncombat_only: false,
+                excess_only: false,
             },
         )
     }
@@ -1193,6 +1351,19 @@ impl Trigger {
             TriggerKind::IsDealtDamage {
                 target,
                 combat_only: true,
+                noncombat_only: false,
+                excess_only: false,
+            },
+        )
+    }
+    pub fn is_dealt_excess_noncombat_damage(target: ChooseSpec) -> Self {
+        Self::typed(
+            "is_dealt_excess_noncombat_damage",
+            TriggerKind::IsDealtDamage {
+                target,
+                combat_only: false,
+                noncombat_only: true,
+                excess_only: true,
             },
         )
     }
@@ -1382,6 +1553,18 @@ impl Trigger {
             },
         )
     }
+    pub fn permanent_sacrificed(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "permanent_sacrificed",
+            TriggerKind::PermanentSacrificed { filter },
+        )
+    }
+    pub fn permanent_destroyed(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "permanent_destroyed",
+            TriggerKind::PermanentDestroyed { filter },
+        )
+    }
     pub fn tokens_created(player: PlayerFilter, filter: ObjectFilter, one_or_more: bool) -> Self {
         Self::typed(
             "tokens_created",
@@ -1444,6 +1627,19 @@ impl Trigger {
             },
         )
     }
+
+    pub fn creature_dealt_damage_by_filtered_source_this_turn_dies(
+        victim: ObjectFilter,
+        damager_filter: ObjectFilter,
+    ) -> Self {
+        Self::typed(
+            "creature_dealt_damage_by_filtered_source_this_turn_dies",
+            TriggerKind::DiesCreatureDealtDamageByFilteredSourceThisTurn {
+                victim,
+                damager_filter,
+            },
+        )
+    }
     pub fn spell_cast_qualified(
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
@@ -1490,6 +1686,22 @@ impl Trigger {
     }
     pub fn spell_cast(filter: Option<ObjectFilter>, caster: PlayerFilter) -> Self {
         Self::typed("spell_cast", TriggerKind::SpellCast { filter, caster })
+    }
+    pub fn spell_cast_same_name_card_in_zone(
+        filter: Option<ObjectFilter>,
+        caster: PlayerFilter,
+        zone: Zone,
+        owner: PlayerFilter,
+    ) -> Self {
+        Self::typed(
+            "spell_cast_same_name_card_in_zone",
+            TriggerKind::SpellCastSameNameCardInZone {
+                filter,
+                caster,
+                zone,
+                owner,
+            },
+        )
     }
     pub fn nth_spell_of_turn_cast(spell_number: u32) -> Self {
         Self::typed(
@@ -1606,16 +1818,43 @@ impl Trigger {
             },
         )
     }
+    pub fn beginning_of_monarch_end_step() -> Self {
+        Self::typed(
+            "beginning_of_end_step",
+            TriggerKind::BeginningOfEndStep {
+                player: PlayerFilter::Any,
+                surface: EndStepSurface::Monarch,
+            },
+        )
+    }
     pub fn beginning_of_precombat_main_phase(player: PlayerFilter) -> Self {
         Self::typed(
             "beginning_of_precombat_main_phase",
             TriggerKind::BeginningOfPrecombatMainPhase { player },
         )
     }
+    pub fn beginning_of_main_phase_with_surface(
+        player: PlayerFilter,
+        surface: MainPhaseSurface,
+    ) -> Self {
+        Self::typed(
+            "beginning_of_main_phase",
+            TriggerKind::BeginningOfMainPhase { player, surface },
+        )
+    }
     pub fn beginning_of_postcombat_main_phase(player: PlayerFilter) -> Self {
+        Self::beginning_of_postcombat_main_phase_with_surface(
+            player,
+            PostcombatMainPhaseSurface::SecondMain,
+        )
+    }
+    pub fn beginning_of_postcombat_main_phase_with_surface(
+        player: PlayerFilter,
+        surface: PostcombatMainPhaseSurface,
+    ) -> Self {
         Self::typed(
             "beginning_of_postcombat_main_phase",
-            TriggerKind::BeginningOfPostcombatMainPhase { player },
+            TriggerKind::BeginningOfPostcombatMainPhase { player, surface },
         )
     }
     pub fn day_night_changed() -> Self {
@@ -1668,6 +1907,20 @@ impl Trigger {
             },
         )
     }
+    pub fn keyword_action_matching_object_during_your_turn(
+        action: KeywordActionKind,
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    ) -> Self {
+        Self::typed(
+            "keyword_action_matching_object_during_your_turn",
+            TriggerKind::KeywordActionMatchingObjectDuringYourTurn {
+                action,
+                player,
+                filter,
+            },
+        )
+    }
     pub fn keyword_action_matching_source_and_tagged_object(
         action: KeywordActionKind,
         player: PlayerFilter,
@@ -1710,6 +1963,15 @@ impl Trigger {
         Self::typed(
             "keyword_action",
             TriggerKind::KeywordAction { action, player },
+        )
+    }
+    pub fn keyword_action_during_your_turn(
+        action: KeywordActionKind,
+        player: PlayerFilter,
+    ) -> Self {
+        Self::typed(
+            "keyword_action_during_your_turn",
+            TriggerKind::KeywordActionDuringYourTurn { action, player },
         )
     }
     pub fn keyword_action_from_source(action: KeywordActionKind, player: PlayerFilter) -> Self {
@@ -1887,7 +2149,14 @@ pub enum TriggerSubjectNumber {
 pub struct ZoneChangeTrigger {
     pub from: Option<Zone>,
     pub from_zones: Option<Vec<Zone>>,
+    /// Match every origin except this zone. Mutually exclusive with `from`
+    /// and `from_zones`.
+    pub from_excluded: Option<Zone>,
     pub to: Option<Zone>,
+    /// Match every destination except this zone. Mutually exclusive with
+    /// `to`; this preserves authored exclusions such as "leave the
+    /// battlefield without dying" without enumerating every other zone.
+    pub to_excluded: Option<Zone>,
     pub filter: Option<ObjectFilter>,
     pub this: bool,
     pub this_surface: Option<SourceReferenceSurface>,
@@ -1895,6 +2164,8 @@ pub struct ZoneChangeTrigger {
     pub count: CountMode,
     pub cause_filter: Option<CauseFilter>,
     pub during_turn: Option<PlayerFilter>,
+    /// Optional phase restriction on when the zone change event occurs.
+    pub timing: Option<TriggerTimingRestriction>,
     pub origin_condition: Option<ZoneChangeOriginCondition>,
     pub graveyard_surface: Option<GraveyardTriggerSurface>,
 }
@@ -1904,7 +2175,9 @@ impl ZoneChangeTrigger {
         Self {
             from: None,
             from_zones: None,
+            from_excluded: None,
             to: None,
+            to_excluded: None,
             filter: None,
             this: false,
             this_surface: None,
@@ -1912,6 +2185,7 @@ impl ZoneChangeTrigger {
             count: CountMode::One,
             cause_filter: None,
             during_turn: None,
+            timing: None,
             origin_condition: None,
             graveyard_surface: None,
         }
@@ -1925,6 +2199,7 @@ impl ZoneChangeTrigger {
     pub fn from(mut self, zone: Zone) -> Self {
         self.from = Some(zone);
         self.from_zones = None;
+        self.from_excluded = None;
         self
     }
 
@@ -1936,11 +2211,26 @@ impl ZoneChangeTrigger {
             self.from = None;
             self.from_zones = Some(zones);
         }
+        self.from_excluded = None;
+        self
+    }
+
+    pub fn from_any_except(mut self, zone: Zone) -> Self {
+        self.from = None;
+        self.from_zones = None;
+        self.from_excluded = Some(zone);
         self
     }
 
     pub fn to(mut self, zone: Zone) -> Self {
         self.to = Some(zone);
+        self.to_excluded = None;
+        self
+    }
+
+    pub fn to_any_except(mut self, zone: Zone) -> Self {
+        self.to = None;
+        self.to_excluded = Some(zone);
         self
     }
 
@@ -1971,6 +2261,11 @@ impl ZoneChangeTrigger {
 
     pub fn during_turn(mut self, player: PlayerFilter) -> Self {
         self.during_turn = Some(player);
+        self
+    }
+
+    pub fn during_combat(mut self) -> Self {
+        self.timing = Some(TriggerTimingRestriction::DuringCombat);
         self
     }
 
@@ -2088,6 +2383,12 @@ impl CompilerTriggerMatcher for CounterPutOnTrigger {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CounterRemovedFromTrigger {
     pub filter: ObjectFilter,
+    /// Restrict the event to a named counter type when Oracle names it.
+    pub counter_type: Option<CounterType>,
+    /// Trigger only when the removal leaves no counters of that type on the
+    /// object. The event-time `count_after` value avoids observing later
+    /// state changes.
+    pub last: bool,
     /// Preserve the grouped Oracle surface "one or more counters". A grouped
     /// marker-change event still queues this trigger exactly once.
     pub one_or_more: bool,
@@ -2100,6 +2401,8 @@ impl CounterRemovedFromTrigger {
     pub fn new(filter: ObjectFilter) -> Self {
         Self {
             filter,
+            counter_type: None,
+            last: false,
             one_or_more: false,
             caused_by_source: false,
         }
@@ -2107,6 +2410,16 @@ impl CounterRemovedFromTrigger {
 
     pub fn one_or_more(mut self) -> Self {
         self.one_or_more = true;
+        self
+    }
+
+    pub fn counter_type(mut self, counter_type: CounterType) -> Self {
+        self.counter_type = Some(counter_type);
+        self
+    }
+
+    pub fn last(mut self) -> Self {
+        self.last = true;
         self
     }
 

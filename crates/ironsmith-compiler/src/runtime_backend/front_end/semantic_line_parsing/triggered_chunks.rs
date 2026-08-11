@@ -62,6 +62,7 @@ fn apply_trigger_intro_surface(
         | TriggerSpec::AttacksWhileSaddled(_)
         | TriggerSpec::AttacksOneOrMore(_)
         | TriggerSpec::PlayersAttackedOneOrMore(_)
+        | TriggerSpec::PlayerAttacksOneOrMore { .. }
         | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
         | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
         | TriggerSpec::AttacksAlone(_)
@@ -82,6 +83,19 @@ fn apply_trigger_intro_surface(
     }
 }
 
+fn apply_frequency_turn_scope(
+    trigger: TriggerSpec,
+    facts: &TriggeredLineSemanticFacts,
+) -> TriggerSpec {
+    if facts.frequency.first_time_during_each_of_your_turns
+        && matches!(trigger, TriggerSpec::YouGainLife)
+    {
+        TriggerSpec::YouGainLifeDuringTurn(PlayerFilter::You)
+    } else {
+        trigger
+    }
+}
+
 fn merge_spell_cast_trigger_filter(base: &mut ObjectFilter, overlay: ObjectFilter) {
     if let Some(zone) = overlay.zone {
         base.zone.get_or_insert(zone);
@@ -90,6 +104,7 @@ fn merge_spell_cast_trigger_filter(base: &mut ObjectFilter, overlay: ObjectFilte
         base.stack_kind = overlay.stack_kind;
     }
     base.has_mana_cost |= overlay.has_mana_cost;
+    base.has_phyrexian_mana_symbol |= overlay.has_phyrexian_mana_symbol;
     for card_type in overlay.card_types {
         if !base.card_types.contains(&card_type) {
             base.card_types.push(card_type);
@@ -300,7 +315,8 @@ fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
         TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
         }
-        TriggerSpec::PutIntoGraveyardFromZone { filter, .. } => {
+        TriggerSpec::PutIntoGraveyardFromZone { filter, .. }
+        | TriggerSpec::PutIntoGraveyardFromAnyExcept { filter, .. } => {
             filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
         }
         TriggerSpec::Either(left, right) => {
@@ -319,6 +335,7 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
             matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
         })
         || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
+        || matches!(&filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
         || filter.targets_object.as_deref().is_some_and(|targets| filter_references_tag(targets, tag))
         || filter.targets_only_object.as_deref().is_some_and(|targets| filter_references_tag(targets, tag))
         || filter.attached_to_object.as_deref().is_some_and(|attached_to| filter_references_tag(attached_to, tag))
@@ -392,6 +409,7 @@ pub(crate) fn apply_chosen_option_to_triggered_chunk(
             effects,
             max_triggers_per_turn: chunk_max_triggers_per_turn,
         } => {
+            let trigger = apply_frequency_turn_scope(trigger, facts);
             let trigger = apply_trigger_intro_surface(trigger, facts.intro_surface);
             let merged_max_condition = chunk_max_triggers_per_turn
                 .or(max_triggers_per_turn)

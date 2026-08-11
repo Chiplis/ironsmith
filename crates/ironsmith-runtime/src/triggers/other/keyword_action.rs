@@ -69,6 +69,7 @@ pub struct KeywordActionTrigger {
     pub source_must_match: bool,
     pub source_filter: Option<ObjectFilter>,
     pub tagged_object_filter: Option<(TagKey, ObjectFilter)>,
+    pub during_your_turn: bool,
     pub during_your_main_phase: bool,
 }
 
@@ -80,6 +81,7 @@ impl KeywordActionTrigger {
             source_must_match: false,
             source_filter: None,
             tagged_object_filter: None,
+            during_your_turn: false,
             during_your_main_phase: false,
         }
     }
@@ -91,6 +93,7 @@ impl KeywordActionTrigger {
             source_must_match: true,
             source_filter: None,
             tagged_object_filter: None,
+            during_your_turn: false,
             during_your_main_phase: false,
         }
     }
@@ -106,6 +109,7 @@ impl KeywordActionTrigger {
             source_must_match: false,
             source_filter: Some(source_filter),
             tagged_object_filter: None,
+            during_your_turn: false,
             during_your_main_phase: false,
         }
     }
@@ -123,8 +127,14 @@ impl KeywordActionTrigger {
             source_must_match: false,
             source_filter: Some(source_filter),
             tagged_object_filter: Some((object_tag, object_filter)),
+            during_your_turn: false,
             during_your_main_phase: false,
         }
+    }
+
+    pub fn during_your_turn(mut self) -> Self {
+        self.during_your_turn = true;
+        self
     }
 
     pub fn during_your_main_phase(mut self) -> Self {
@@ -133,7 +143,9 @@ impl KeywordActionTrigger {
     }
 
     fn with_timing_suffix(&self, display: String) -> String {
-        if self.during_your_main_phase {
+        if self.during_your_turn {
+            format!("{display} during your turn")
+        } else if self.during_your_main_phase {
             format!("{display} during your main phase")
         } else {
             display
@@ -150,6 +162,9 @@ impl TriggerMatcher for KeywordActionTrigger {
             return false;
         };
         if !self.action.matches_performed_action(e.action) {
+            return false;
+        }
+        if self.during_your_turn && !ctx.game.is_active_player(ctx.controller) {
             return false;
         }
         if self.during_your_main_phase
@@ -230,10 +245,10 @@ impl TriggerMatcher for KeywordActionTrigger {
         }
         if self.source_must_match && self.action == KeywordActionKind::Cycle {
             return match &self.player {
-                PlayerFilter::You => "Whenever you cycle this card".to_string(),
-                PlayerFilter::Opponent => "Whenever an opponent cycles this card".to_string(),
-                PlayerFilter::Any => "Whenever a player cycles this card".to_string(),
-                _ => "Whenever a player cycles this card".to_string(),
+                PlayerFilter::You => "When you cycle this card".to_string(),
+                PlayerFilter::Opponent => "When an opponent cycles this card".to_string(),
+                PlayerFilter::Any => "When a player cycles this card".to_string(),
+                _ => "When a player cycles this card".to_string(),
             };
         }
         if self.source_must_match && self.action == KeywordActionKind::Plot {
@@ -244,6 +259,14 @@ impl TriggerMatcher for KeywordActionTrigger {
                 }
                 PlayerFilter::Any => "When this card becomes plotted".to_string(),
                 _ => "When this card becomes plotted".to_string(),
+            };
+        }
+        if self.source_must_match && self.action == KeywordActionKind::UnlockDoor {
+            return match &self.player {
+                PlayerFilter::You => "When you unlock this door".to_string(),
+                PlayerFilter::Opponent => "When an opponent unlocks this door".to_string(),
+                PlayerFilter::Any => "When a player unlocks this door".to_string(),
+                _ => "When a player unlocks this door".to_string(),
             };
         }
         if self.source_must_match && self.action == KeywordActionKind::Exploit {
@@ -423,7 +446,7 @@ impl TriggerMatcher for KeywordActionTrigger {
         } else {
             ""
         };
-        match &self.player {
+        let display = match &self.player {
             PlayerFilter::You => {
                 format!("Whenever you {}{object_suffix}", self.action.infinitive())
             }
@@ -441,7 +464,8 @@ impl TriggerMatcher for KeywordActionTrigger {
                 "Whenever a player {}{object_suffix}",
                 self.action.third_person()
             ),
-        }
+        };
+        self.with_timing_suffix(display)
     }
 
     fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
@@ -623,6 +647,13 @@ mod tests {
             ObjectFilter::default().with_subtype(crate::types::Subtype::Room),
         );
         assert_eq!(trigger.display(), "Whenever you fully unlock a Room");
+    }
+
+    #[test]
+    fn source_door_unlock_is_a_one_shot_when_surface() {
+        let trigger =
+            KeywordActionTrigger::from_source(KeywordActionKind::UnlockDoor, PlayerFilter::You);
+        assert_eq!(trigger.display(), "When you unlock this door");
     }
 
     #[test]
@@ -927,6 +958,32 @@ mod tests {
 
         game.turn.active_player = bob;
         game.turn.phase = Phase::NextMain;
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(!trigger.matches(&event, &ctx));
+    }
+
+    #[test]
+    fn keyword_action_during_your_turn_gates_keyword_events_and_renders_timing() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(1);
+        let trigger = KeywordActionTrigger::new(KeywordActionKind::CommitCrime, PlayerFilter::You)
+            .during_your_turn();
+        let event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::CommitCrime, alice, source_id, 1),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        game.turn.active_player = alice;
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(trigger.matches(&event, &ctx));
+        assert_eq!(
+            trigger.display(),
+            "Whenever you commit a crime during your turn"
+        );
+
+        game.turn.active_player = bob;
         let ctx = TriggerContext::for_source(source_id, alice, &game);
         assert!(!trigger.matches(&event, &ctx));
     }

@@ -1555,6 +1555,91 @@ pub(super) fn rewrite_structure_triggered_conditional_clause_parser_splits_inter
 }
 
 #[test]
+pub(super) fn rewrite_structure_attack_while_most_life_keeps_typed_condition() {
+    let tokens = lex_line(
+        "Whenever this creature attacks while you have the most life or are tied for most life, you draw a card and you lose 1 life.",
+        0,
+    )
+    .expect("most-life attack condition should lex");
+    let spec =
+        super::super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
+            .expect("the authored while condition must be preserved");
+
+    assert_eq!(
+        spec.predicate,
+        super::super::model::ast::PredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
+            player: crate::PlayerAst::You,
+        }
+    );
+    assert_eq!(
+        spec.trigger_tokens
+            .iter()
+            .filter_map(|token| token.as_word())
+            .collect::<Vec<_>>(),
+        ["this", "creature", "attacks"]
+    );
+}
+
+#[test]
+pub(super) fn rewrite_structure_cast_source_intervening_if_keeps_multi_sentence_effect_body() {
+    let tokens = lex_line(
+        "When this creature enters, if you cast it, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard, then you may cast it without paying its mana cost.",
+        0,
+    )
+    .expect("cast-source conditional trigger should lex");
+    let spec =
+        super::super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
+            .expect("cast-source conditional trigger should split");
+
+    assert_eq!(
+        spec.predicate,
+        super::super::model::ast::PredicateAst::SourceWasCast
+    );
+    assert!(
+        spec.effects_tokens
+            .iter()
+            .filter_map(|token| token.as_word())
+            .collect::<Vec<_>>()
+            .starts_with(&["counter", "target", "spell"])
+    );
+}
+
+#[test]
+pub(super) fn rewrite_transcendent_dragon_keeps_cast_gate_counter_exile_and_free_cast() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Transcendent Dragon")
+        .mana_cost(crate::mana::ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(4),
+            ManaSymbol::Blue,
+            ManaSymbol::Blue,
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dragon])
+        .power_toughness(crate::card::PowerToughness::fixed(4, 5))
+        .parse_text(
+            "Flash\nFlying\nWhen this creature enters, if you cast it, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard, then you may cast it without paying its mana cost.",
+        )
+        .expect("Transcendent Dragon should parse without a card-specific definition");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Transcendent Dragon should retain its ETB trigger");
+    let debug = format!("{triggered:#?}");
+
+    assert!(debug.contains("SourceWasCast"), "{debug}");
+    assert!(debug.contains("Counter"), "{debug}");
+    assert!(debug.contains("LocalRewriteEffect"), "{debug}");
+    assert!(debug.contains("RegisterZoneReplacementEffect"), "{debug}");
+    assert!(
+        debug.contains("without_paying_mana_cost: true") || debug.contains("WithoutPayingManaCost"),
+        "{debug}"
+    );
+}
+
+#[test]
 pub(super) fn rewrite_structure_conditional_damage_action_is_not_absorbed_into_predicate() {
     let tokens = lex_line(
         "When this creature enters, if an opponent lost life this turn, it deals X damage to up to one target creature or planeswalker, where X is the number of Vampires you control.",
@@ -1998,6 +2083,45 @@ pub(super) fn rewrite_modal_header_parser_keeps_prefix_effect_and_result_gate() 
             reflexive: false,
         })
     ));
+}
+
+#[test]
+pub(super) fn rewrite_modal_header_parser_keeps_post_choice_common_effect_separate() {
+    let text = "Whenever you scry, choose one and this creature gets +1/+1 until end of turn.";
+    let header = parse_modal_header_for_test(text)
+        .expect("modal header should parse")
+        .expect("modal header should be recognized");
+
+    assert!(header.trigger.is_some(), "{header:?}");
+    assert!(header.prefix_effects_ast.is_empty(), "{header:?}");
+    assert_eq!(header.common_prefix_effects_ast.len(), 1, "{header:?}");
+    let debug = format!("{:#?}", header.common_prefix_effects_ast);
+    assert!(debug.contains("ModifyPowerToughness"), "{debug}");
+
+    let ordinary = parse_modal_header_for_test("Choose one —")
+        .expect("ordinary modal header should parse")
+        .expect("ordinary modal header should be recognized");
+    assert!(
+        ordinary.common_prefix_effects_ast.is_empty(),
+        "{ordinary:?}"
+    );
+}
+
+#[test]
+pub(super) fn rewrite_modal_header_parser_keeps_common_effect_before_bullet_dash() {
+    let text = "At the beginning of your first main phase, choose one that hasn't been chosen and you lose 2 life —";
+    let header = parse_modal_header_for_test(text)
+        .expect("modal header should parse")
+        .expect("modal header should be recognized");
+
+    assert!(header.trigger.is_some(), "{header:?}");
+    assert!(header.prefix_effects_ast.is_empty(), "{header:?}");
+    assert_eq!(header.common_prefix_effects_ast.len(), 1, "{header:?}");
+    let debug = format!("{:#?}", header.common_prefix_effects_ast);
+    assert!(
+        debug.contains("LoseLife") && debug.contains("Fixed(\n            2"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -2563,6 +2687,27 @@ pub(super) fn rewrite_statement_lowering_reuses_full_token_slice_for_pact_line()
         other => panic!("expected single pact statement chunk, got {other:?}"),
     }
 
+    Ok(())
+}
+
+#[test]
+pub(super) fn rewrite_statement_keeps_graveyard_card_copy_cast_as_one_typed_sequence()
+-> Result<(), CardTextError> {
+    let text = "Exile target instant or sorcery card from a graveyard and copy it. You may cast the copy without paying its mana cost.";
+    let tokens = lex_line(text, 0).expect("graveyard card-copy statement should lex");
+
+    let parsed_chunks = super::super::parse_statement_token_groups_to_chunks(
+        rewrite_line_info(text),
+        &tokens,
+        &[],
+    )?;
+    let [crate::cards::builders::LineAst::Statement { effects }] = parsed_chunks.as_slice() else {
+        panic!("expected one statement chunk, got {parsed_chunks:#?}");
+    };
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("as_copy: true"), "{debug}");
+    assert!(!debug.contains("CopySpell"), "{debug}");
     Ok(())
 }
 

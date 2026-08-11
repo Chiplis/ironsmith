@@ -179,6 +179,10 @@ impl CreationPhrase {
                 &["abilities", "from", "among"],
             ],
             Self::AdditionToOtherTypes => &[
+                &["in", "addition", "to", "its", "other", "creature", "types"],
+                &[
+                    "in", "addition", "to", "their", "other", "creature", "types",
+                ],
                 &["in", "addition", "to", "its", "other", "types"],
                 &["in", "addition", "to", "their", "other", "types"],
             ],

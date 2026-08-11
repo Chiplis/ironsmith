@@ -274,6 +274,26 @@ fn dispatch_kind_summary(dispatch: &LineDispatchResult) -> String {
 fn dispatch_line_family_registry(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<LineDispatchResult, CardTextError> {
+    // Borrow preprocessing expands a removed-from-draft `The same is true`
+    // ladder into independent leading-condition sentences. Preserve that
+    // complete typed program before keyword discovery can claim consequence
+    // words such as flying or haste as one unconditional keyword line.
+    if let Some(abilities) =
+        crate::runtime_backend::families::keyword_static::parse_removed_draft_leading_conditional_static_sentence_chain(
+            &ctx.line.tokens,
+        )?
+    {
+        return Ok(LineDispatchResult::single(
+            RewriteLineCst::Static(StaticLineCst {
+                info: ctx.line.info.clone(),
+                parse_tokens: ctx.line.tokens.clone(),
+                chosen_option: None,
+                parsed: Some(LineAst::StaticAbilities(abilities)),
+            }),
+            ctx.idx + 1,
+        ));
+    }
+
     let (head, second) = lexed_head_words(&ctx.line.tokens).unwrap_or(("", None));
     let mut candidate_indices = LINE_FAMILY_RULE_INDEX.candidate_indices(head, second);
     let mut hinted = vec![false; LINE_FAMILY_RULES.len()];

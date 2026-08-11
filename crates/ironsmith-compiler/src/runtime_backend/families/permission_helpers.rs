@@ -16,7 +16,7 @@ use crate::runtime_backend::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, starts_explicit_ordered_comparison,
 };
 use crate::static_abilities::StaticAbility;
-use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
 
@@ -39,6 +39,8 @@ pub(crate) enum PermissionClauseSpec {
         player: PlayerAst,
         allow_land: bool,
         as_copy: bool,
+        /// Total plays shared by the tagged collection, if authored.
+        max_plays: Option<u32>,
         without_paying_mana_cost: bool,
         lifetime: PermissionLifetime,
         filter: Option<ObjectFilter>,
@@ -61,6 +63,7 @@ struct PermissionLead {
 struct TaggedPermissionTarget {
     tag: TagKey,
     as_copy: bool,
+    max_plays: Option<u32>,
     surface: Option<ironsmith_core::GrantPlayTaggedObjectSurface>,
 }
 
@@ -158,6 +161,7 @@ struct ConditionalTaggedFreeCastTail<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TaggedPermissionTail<'a> {
+    from_exile: bool,
     tail_tokens: &'a [OwnedLexToken],
 }
 
@@ -181,6 +185,9 @@ fn tagged_permission_object_surface(
         }
         permission_tagged_facts::TaggedPermissionTargetSurface::ThatSpell => {
             Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatSpell)
+        }
+        permission_tagged_facts::TaggedPermissionTargetSurface::Them => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::Them)
         }
         permission_tagged_facts::TaggedPermissionTargetSurface::ThoseCards => {
             Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThoseCards)
@@ -345,19 +352,28 @@ fn strip_for_as_long_as_look_at_tagged_prefix_tokens(
     Some(permission_tokens)
 }
 
-fn parse_permanent_spells_from_among_tagged_tokens<'a>(
+fn parse_filtered_spells_from_among_tagged_tokens<'a>(
     tokens: &'a [OwnedLexToken],
-) -> Option<(TaggedPermissionTarget, &'a [OwnedLexToken], ObjectFilter)> {
-    let fact = permission_tagged_facts::parse_permanent_spells_from_tagged_tokens(tokens)?;
-    Some((
+) -> Result<Option<(TaggedPermissionTarget, &'a [OwnedLexToken], ObjectFilter)>, CardTextError> {
+    let Some(fact) = permission_tagged_facts::parse_spells_from_tagged_tokens(tokens) else {
+        return Ok(None);
+    };
+    let Some(mut filter) =
+        permission_subject_facts::parse_cast_permission_filter_tokens(fact.subject_tokens)?
+    else {
+        return Ok(None);
+    };
+    mark_generic_spell_filter_nonland(&mut filter, fact.subject_tokens);
+    Ok(Some((
         TaggedPermissionTarget {
             tag: TagKey::from(IT_TAG),
             as_copy: false,
-            surface: None,
+            max_plays: None,
+            surface: tagged_permission_object_surface(fact.surface),
         },
         fact.tail_tokens,
-        permission_subject_facts::permanent_spell_filter(),
-    ))
+        filter,
+    )))
 }
 
 /// "a [creature] spell from among cards exiled with this <source-type>"
@@ -381,6 +397,7 @@ fn parse_spell_from_among_source_exiled_tokens<'a>(
         TaggedPermissionTarget {
             tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
             as_copy: false,
+            max_plays: None,
             surface: Some(
                 ironsmith_core::GrantPlayTaggedObjectSurface::SpellFromAmongCardsExiledWithSource {
                     creature_spell: matches!(
@@ -557,6 +574,7 @@ fn parse_tagged_cast_or_play_target_tokens<'a>(
         TaggedPermissionTarget {
             tag,
             as_copy: fact.as_copy,
+            max_plays: fact.max_plays,
             surface: tagged_permission_object_surface(fact.surface),
         },
         fact.rest_tokens,
@@ -601,6 +619,7 @@ fn parse_tagged_permission_tail_tokens<'a>(
 ) -> TaggedPermissionTail<'a> {
     let fact = permission_tagged_facts::parse_tagged_permission_tail_tokens(tokens);
     TaggedPermissionTail {
+        from_exile: fact.from_exile,
         tail_tokens: fact.tail_tokens,
     }
 }
@@ -702,6 +721,51 @@ fn exclude_lands_from_spell_filter(filter: &mut ObjectFilter) {
 fn mark_generic_spell_filter_nonland(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     if permission_subject_facts::generic_spell_subject_requires_nonland(tokens) {
         exclude_lands_from_spell_filter(filter);
+    }
+}
+
+fn build_temporary_tagged_permission_effect(
+    tokens: &[OwnedLexToken],
+    tag: TagKey,
+    player: PlayerAst,
+    allow_land: bool,
+    without_paying_mana_cost: bool,
+    mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
+    filter: Option<ObjectFilter>,
+) -> EffectAst {
+    let grant = |tag| {
+        EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
+            tag,
+            player,
+            allow_land,
+            without_paying_mana_cost,
+            mana_spend_mode,
+            surface,
+        )
+    };
+    let Some(mut filter) = filter else {
+        return grant(tag);
+    };
+
+    // Both the ordinary play permission and the alternative-cost grant are
+    // tag-scoped. Narrow the preceding exiled collection to the authored
+    // spell subject first so neither grant leaks to excluded cards.
+    let narrowed_tag = super::util::helper_tag_for_tokens(tokens, "castable");
+    filter.zone = Some(Zone::Exile);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag,
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    EffectAst::Sequence {
+        effects: vec![
+            EffectAst::subject_verb_tag_matching_objects(
+                filter,
+                vec![Zone::Exile],
+                narrowed_tag.clone(),
+            ),
+            grant(narrowed_tag),
+        ],
     }
 }
 
@@ -934,6 +998,41 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     let player = lead.player;
     let allow_land = lead.allow_land;
 
+    if !allow_land
+        && prefixed_lifetime.is_none()
+        && let Some(parsed) =
+            permission_source_exiled_facts::parse_spells_from_source_exiled_tokens(rest_tokens)
+        && trim_lexed_commas(parsed.tail_tokens).is_empty()
+    {
+        let Some(mut filter) =
+            permission_subject_facts::parse_cast_permission_filter_tokens(parsed.subject_tokens)?
+        else {
+            return Ok(None);
+        };
+        mark_generic_spell_filter_nonland(&mut filter, parsed.subject_tokens);
+        filter.zone = Some(Zone::Exile);
+        if parsed.owned_by_you {
+            filter.owner = Some(PlayerFilter::You);
+        }
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let spec =
+            crate::grant::GrantSpec::new(crate::grant::Grantable::play_from(), filter, Zone::Exile)
+                .with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
+                    source: parsed.reference.surface,
+                    plural_spell_subject: true,
+                    generic_card_pool: true,
+                    generic_cast_this_way_subject: true,
+                });
+        return Ok(Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec,
+            lifetime: PermissionLifetime::Static,
+        }));
+    }
+
     if prefixed_lifetime.is_none()
         && !allow_land
         && matches!(player, PlayerAst::Implicit | PlayerAst::You)
@@ -942,14 +1041,14 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         return Ok(None);
     }
 
-    if let Some((target_ref, tagged_tail_tokens, filter)) =
-        parse_permanent_spells_from_among_tagged_tokens(rest_tokens)
-            .map(|(target_ref, tail, filter)| (target_ref, tail, Some(filter)))
-            .or_else(|| parse_spell_from_among_source_exiled_tokens(rest_tokens))
-            .or_else(|| {
-                parse_tagged_cast_or_play_target_tokens(rest_tokens)
-                    .map(|(target_ref, tail)| (target_ref, tail, None))
-            })
+    let filtered_tagged_target = parse_filtered_spells_from_among_tagged_tokens(rest_tokens)?
+        .map(|(target_ref, tail, filter)| (target_ref, tail, Some(filter)));
+    if let Some((target_ref, tagged_tail_tokens, filter)) = filtered_tagged_target
+        .or_else(|| parse_spell_from_among_source_exiled_tokens(rest_tokens))
+        .or_else(|| {
+            parse_tagged_cast_or_play_target_tokens(rest_tokens)
+                .map(|(target_ref, tail)| (target_ref, tail, None))
+        })
     {
         let target_len = rest_tokens.len() - tagged_tail_tokens.len();
         let target_tokens = &rest_tokens[..target_len];
@@ -976,10 +1075,15 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             return Ok(None);
         };
 
-        let target_surface = target_ref
+        let mut target_surface = target_ref
             .surface
             .clone()
             .or_else(|| tagged_permission_target_surface(target_tokens));
+        if tail.from_exile
+            && target_surface == Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)
+        {
+            target_surface = Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCardFromExile);
+        }
         if matches!(
             lifetime,
             PermissionLifetime::ThisTurn
@@ -1014,8 +1118,12 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 Some(
                     ironsmith_core::GrantPlayTaggedObjectSurface::It
                         | ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard
+                        | ironsmith_core::GrantPlayTaggedObjectSurface::ThatCardFromExile
                         | ironsmith_core::GrantPlayTaggedObjectSurface::ThatSpell
+                        | ironsmith_core::GrantPlayTaggedObjectSurface::Them
                         | ironsmith_core::GrantPlayTaggedObjectSurface::ThoseCards
+                        | ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseCards
+                        | ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseExiledCards
                         | ironsmith_core::GrantPlayTaggedObjectSurface::SpellFromAmongCardsExiledWithSource {
                             ..
                         }
@@ -1069,6 +1177,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             player,
             allow_land,
             as_copy: target_ref.as_copy,
+            max_plays: target_ref.max_plays,
             without_paying_mana_cost,
             lifetime,
             filter,
@@ -1347,18 +1456,19 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::UntilEndOfTurn,
+            filter,
             surface,
             ..
-        }) if player == PlayerAst::You => Ok(Some(
-            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
-                tag,
-                player,
-                allow_land,
-                without_paying_mana_cost,
-                mana_spend_mode,
-                with_mana_reference_surface(surface, mana_reference),
-            ),
-        )),
+        }) if player == PlayerAst::You => Ok(Some(build_temporary_tagged_permission_effect(
+            &trimmed,
+            tag,
+            player,
+            allow_land,
+            without_paying_mana_cost,
+            mana_spend_mode,
+            with_mana_reference_surface(surface, mana_reference),
+            filter,
+        ))),
         _ => Ok(None),
     }
 }
@@ -1376,6 +1486,7 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
             player,
             allow_land: true,
             as_copy: false,
+            max_plays,
             without_paying_mana_cost: false,
             lifetime,
             ..
@@ -1392,6 +1503,7 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
                         true,
                         mana_spend_mode,
                     )
+                    .with_tagged_play_max_plays(max_plays)
                 } else {
                     EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
                         tag,
@@ -1399,6 +1511,7 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
                         true,
                         mana_spend_mode,
                     )
+                    .with_tagged_play_max_plays(max_plays)
                 },
             ))
         }
@@ -1676,6 +1789,47 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         return Ok(None);
     }
 
+    // A singular spell permission with an unqualified "equal or lesser mana
+    // value" compares against the object established by the immediately
+    // preceding instruction. Keep that relation typed instead of feeding the
+    // word `or` to the ordinary object-filter union parser.
+    if matches!(
+        token_word_refs(rest_tokens).as_slice(),
+        [
+            "a",
+            "spell",
+            "with",
+            "equal",
+            "or",
+            "lesser" | "less",
+            "mana",
+            "value",
+            "from",
+            "your",
+            "hand",
+            "without",
+            "paying",
+            "its",
+            "mana",
+            "cost"
+        ]
+    ) {
+        let mut filter = ObjectFilter::nonland()
+            .owned_by(crate::target::PlayerFilter::You)
+            .match_tagged(
+                TagKey::from(IT_TAG),
+                crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
+            );
+        filter.union_surface = filter.union_surface.with_equal_or_lesser_mana_value(true);
+        return Ok(Some(
+            EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+                lead.player,
+                filter,
+                Zone::Hand,
+            ),
+        ));
+    }
+
     if let Some(parsed) = parse_command_zone_free_cast_rest_tokens(rest_tokens) {
         if permission_subject_facts::parse_exact_permission_subject(parsed.filter_tokens)
             == Some(permission_subject_facts::ExactPermissionSubject::YourCommander)
@@ -1924,8 +2078,27 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::Immediate,
+            filter,
             ..
         }) => {
+            let (tag, narrowing) = if let Some(mut filter) = filter {
+                let narrowed_tag = super::util::helper_tag_for_tokens(&trimmed, "castable");
+                filter.zone = Some(Zone::Exile);
+                filter.tagged_constraints.push(TaggedObjectConstraint {
+                    tag,
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+                (
+                    narrowed_tag.clone(),
+                    Some(EffectAst::subject_verb_tag_matching_objects(
+                        filter,
+                        vec![Zone::Exile],
+                        narrowed_tag,
+                    )),
+                )
+            } else {
+                (tag, None)
+            };
             let cast = EffectAst::subject_verb_cast_tagged(
                 tag,
                 player,
@@ -1934,13 +2107,20 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 without_paying_mana_cost,
                 None,
             );
-            if matches!(player, PlayerAst::Implicit | PlayerAst::You) {
-                Ok(Some(cast))
+            let cast = if matches!(player, PlayerAst::Implicit | PlayerAst::You) {
+                cast
             } else {
-                Ok(Some(EffectAst::MayByPlayer {
+                EffectAst::MayByPlayer {
                     player,
                     effects: vec![cast],
+                }
+            };
+            if let Some(narrowing) = narrowing {
+                Ok(Some(EffectAst::Sequence {
+                    effects: vec![narrowing, cast],
                 }))
+            } else {
+                Ok(Some(cast))
             }
         }
         Some(PermissionClauseSpec::Tagged {
@@ -1950,23 +2130,28 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn,
+            filter,
             surface,
             ..
-        }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
-            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
+        }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
+            let surface = with_mana_reference_surface(surface, mana_reference);
+            Ok(Some(build_temporary_tagged_permission_effect(
+                &trimmed,
                 tag,
                 PlayerAst::Implicit,
                 allow_land,
                 without_paying_mana_cost,
                 mana_spend_mode,
-                with_mana_reference_surface(surface, mana_reference),
-            ),
-        )),
+                surface,
+                filter,
+            )))
+        }
         Some(PermissionClauseSpec::Tagged {
             tag,
             player,
             allow_land,
             as_copy: false,
+            max_plays,
             without_paying_mana_cost: false,
             lifetime,
             ..
@@ -1983,6 +2168,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                         allow_land,
                         mana_spend_mode,
                     )
+                    .with_tagged_play_max_plays(max_plays)
                 } else {
                     EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
                         tag,
@@ -1990,6 +2176,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                         allow_land,
                         mana_spend_mode,
                     )
+                    .with_tagged_play_max_plays(max_plays)
                 },
             ))
         }
@@ -2076,7 +2263,91 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
 #[cfg(test)]
 mod source_exile_duration_tests {
     use super::*;
+    use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn authored_from_exile_survives_temporary_tagged_play_permission() {
+        let tokens = lex_line("You may play that card from exile this turn", 0)
+            .expect("permission should lex");
+        let effect = parse_cast_or_play_tagged_clause(&tokens)
+            .expect("permission parsing should not error")
+            .expect("tagged permission should parse");
+        assert!(matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                    allow_land: true,
+                    surface: Some(ironsmith_core::GrantPlayTaggedSurface {
+                        object: Some(
+                            ironsmith_core::GrantPlayTaggedObjectSurface::ThatCardFromExile
+                        ),
+                        ..
+                    }),
+                    ..
+                },
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn equal_or_lesser_hand_spell_permission_keeps_one_nonland_tagged_filter() {
+        let text = "You may cast a spell with equal or lesser mana value from your hand without paying its mana cost";
+        let tokens = lex_line(text, 0).expect("permission should lex");
+        let effect = parse_cast_or_play_tagged_clause(&tokens)
+            .expect("permission parsing should not error")
+            .expect("permission should parse");
+        let EffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, zone, .. } = effect
+        else {
+            panic!("expected one matching-spell cast permission: {effect:#?}");
+        };
+        assert_eq!(zone, Zone::Hand);
+        assert_eq!(filter.excluded_card_types, [crate::types::CardType::Land]);
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
+        assert!(filter.union_surface.equal_or_lesser_mana_value());
+        let constraint = &filter.tagged_constraints[0];
+        assert_eq!(constraint.tag, TagKey::from(IT_TAG));
+        assert_eq!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
+        );
+    }
+
+    #[test]
+    fn equal_or_lesser_permission_near_miss_keeps_its_authored_zone() {
+        let text = "You may cast a spell with equal or lesser mana value from your graveyard without paying its mana cost";
+        let tokens = lex_line(text, 0).expect("permission should lex");
+        let effect = parse_cast_or_play_tagged_clause(&tokens)
+            .expect("permission parsing should not error")
+            .expect("ordinary graveyard permission should remain parseable");
+        let debug = format!("{effect:#?}");
+        assert!(debug.contains("Graveyard"), "{debug}");
+        assert!(!debug.contains("zone: Hand"), "{debug}");
+    }
+
+    #[test]
+    fn narset_spell_pool_is_narrowed_before_play_and_free_cast_grants() {
+        let text = "Until end of turn, you may cast noncreature spells from among those cards without paying their mana costs";
+        let tokens = lex_line(text, 0).expect("permission should lex");
+        let effect = parse_cast_or_play_tagged_clause(&tokens)
+            .expect("permission parsing should not error")
+            .expect("permission should parse");
+        let debug = format!("{effect:#?}");
+        let compact = debug.split_whitespace().collect::<String>();
+        assert!(debug.contains("TagMatchingObjects"), "{debug}");
+        assert!(
+            compact.contains("excluded_card_types:[Creature,Land,]"),
+            "{debug}"
+        );
+        assert!(
+            debug.contains("GrantPlayTaggedUntilEndOfTurn")
+                && debug.contains("without_paying_mana_cost: true"),
+            "{debug}"
+        );
+        assert!(debug.contains("SpellsFromAmongThoseCards"), "{debug}");
+    }
 
     #[test]
     fn event_bounded_play_permission_stays_typed_through_family_parsing() {

@@ -53,6 +53,9 @@ pub struct ForEachTaggedEffect {
     pub tag: TagKey,
     /// Effects to execute for each tagged object.
     pub effects: Vec<Effect>,
+    /// Bind the iterated player to the controller recorded by the latest block
+    /// event in which this object was blocked by an object in the tagged set.
+    pub controller_at_last_blocked_by: Option<TagKey>,
 }
 
 impl ForEachTaggedEffect {
@@ -61,7 +64,55 @@ impl ForEachTaggedEffect {
         Self {
             tag: tag.into(),
             effects,
+            controller_at_last_blocked_by: None,
         }
+    }
+
+    pub fn with_controller_at_last_blocked_by(mut self, tag: impl Into<TagKey>) -> Self {
+        self.controller_at_last_blocked_by = Some(tag.into());
+        self
+    }
+
+    fn iterated_player(
+        &self,
+        game: &GameState,
+        ctx: &ExecutionContext,
+        snapshot: &ObjectSnapshot,
+    ) -> Result<PlayerId, ExecutionError> {
+        let Some(blocker_tag) = &self.controller_at_last_blocked_by else {
+            return Ok(snapshot.controller);
+        };
+        let blockers = ctx.get_tagged_all(blocker_tag).ok_or_else(|| {
+            ExecutionError::UnresolvableValue(format!(
+                "historical block controller requires tagged blockers '{blocker_tag}'"
+            ))
+        })?;
+        game.turn_store
+            .turn_history
+            .projected_records()
+            .rev()
+            .filter_map(|record| {
+                record
+                    .event
+                    .downcast::<crate::events::combat::CreatureBlockedEvent>()
+            })
+            .find_map(|event| {
+                let attacker = event.attacker_snapshot.as_ref()?;
+                if attacker.stable_id != snapshot.stable_id {
+                    return None;
+                }
+                let blocker = event.blocker_snapshot.as_ref()?;
+                blockers
+                    .iter()
+                    .any(|candidate| candidate.stable_id == blocker.stable_id)
+                    .then_some(attacker.controller)
+            })
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(format!(
+                    "no matching historical block event for iterated object {:?} and tagged blockers '{blocker_tag}'",
+                    snapshot.object_id
+                ))
+            })
     }
 }
 
@@ -74,6 +125,7 @@ impl ForEachTaggedEffect {
 struct ForEachTaggedProposal {
     tag: TagKey,
     snapshots: Vec<ObjectSnapshot>,
+    iterated_players: Vec<PlayerId>,
     iterations: Vec<Vec<Box<dyn SimultaneousEffectProposal>>>,
 }
 
@@ -86,6 +138,7 @@ impl SimultaneousEffectProposal for ForEachTaggedProposal {
         let Self {
             tag,
             snapshots,
+            iterated_players,
             iterations,
         } = *self;
         let it_tag = TagKey::from("__it__");
@@ -98,14 +151,17 @@ impl SimultaneousEffectProposal for ForEachTaggedProposal {
         let result = (|| {
             let mut outcomes = Vec::new();
             let mut player_counts: Vec<(PlayerId, i32)> = Vec::new();
-            for (index, (snapshot, proposals)) in
-                snapshots.iter().zip(iterations.into_iter()).enumerate()
+            for (index, ((snapshot, iterated_player), proposals)) in snapshots
+                .iter()
+                .zip(iterated_players.into_iter())
+                .zip(iterations.into_iter())
+                .enumerate()
             {
                 ctx.set_tagged_objects(previous_tag.clone(), snapshots[..index].to_vec());
                 ctx.set_tagged_objects(it_tag.clone(), vec![snapshot.clone()]);
                 let start = outcomes.len();
                 ctx.with_temp_iterated_object(Some(snapshot.object_id), |ctx| {
-                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
+                    ctx.with_temp_iterated_player(Some(iterated_player), |ctx| {
                         for proposal in proposals {
                             outcomes.push(proposal.commit(game, ctx)?);
                         }
@@ -115,11 +171,11 @@ impl SimultaneousEffectProposal for ForEachTaggedProposal {
                 let count = correlated_player_count(&outcomes[start..]);
                 if let Some((_, total)) = player_counts
                     .iter_mut()
-                    .find(|(player, _)| *player == snapshot.controller)
+                    .find(|(player, _)| *player == iterated_player)
                 {
                     *total += count;
                 } else {
-                    player_counts.push((snapshot.controller, count));
+                    player_counts.push((iterated_player, count));
                 }
             }
             Ok(EffectOutcome::aggregate_summing_counts(outcomes).with_player_counts(player_counts))
@@ -186,22 +242,26 @@ impl EffectExecutor for ForEachTaggedEffect {
 
         let result = (|| {
             let mut iterations = Vec::with_capacity(snapshots.len());
+            let mut iterated_players = Vec::with_capacity(snapshots.len());
             for (index, snapshot) in snapshots.iter().enumerate() {
+                let iterated_player = self.iterated_player(game, ctx, snapshot)?;
                 ctx.set_tagged_objects(previous_tag.clone(), snapshots[..index].to_vec());
                 ctx.set_tagged_objects(it_tag.clone(), vec![snapshot.clone()]);
                 let proposals = ctx.with_temp_iterated_object(Some(snapshot.object_id), |ctx| {
-                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
+                    ctx.with_temp_iterated_player(Some(iterated_player), |ctx| {
                         self.effects
                             .iter()
                             .map(|effect| effect.0.prepare_simultaneous_player_action(game, ctx))
                             .collect::<Result<Vec<_>, _>>()
                     })
                 })?;
+                iterated_players.push(iterated_player);
                 iterations.push(proposals);
             }
             Ok::<_, ExecutionError>(Box::new(ForEachTaggedProposal {
                 tag: self.tag.clone(),
                 snapshots: snapshots.clone(),
+                iterated_players,
                 iterations,
             }) as Box<dyn SimultaneousEffectProposal>)
         })();
@@ -247,6 +307,7 @@ impl EffectExecutor for ForEachTaggedEffect {
         let previous_tag = TagKey::from(ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG);
         let original_previous = ctx.tagged_objects.remove(&previous_tag);
         for (index, snapshot) in snapshots.iter().enumerate() {
+            let iterated_player = self.iterated_player(game, ctx, snapshot)?;
             // Ordered iterations expose exactly the objects processed before
             // the current one. Ordinary loops can ignore this tag; values such
             // as "for each creature chosen before it" count it directly.
@@ -260,7 +321,7 @@ impl EffectExecutor for ForEachTaggedEffect {
             ctx.with_temp_iterated_object(Some(snapshot.object_id), |ctx| {
                 // Also expose this object's controller as the iterated player.
                 // This lets inner effects naturally say "its controller" via IteratedPlayer.
-                ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
+                ctx.with_temp_iterated_player(Some(iterated_player), |ctx| {
                     // Execute all inner effects for this object
                     for effect in &self.effects {
                         outcomes.push(execute_effect(game, effect, ctx)?);
@@ -271,11 +332,11 @@ impl EffectExecutor for ForEachTaggedEffect {
             let count = correlated_player_count(&outcomes[start..]);
             if let Some((_, total)) = player_counts
                 .iter_mut()
-                .find(|(player, _)| *player == snapshot.controller)
+                .find(|(player, _)| *player == iterated_player)
             {
                 *total += count;
             } else {
-                player_counts.push((snapshot.controller, count));
+                player_counts.push((iterated_player, count));
             }
 
             match original_it {
@@ -578,6 +639,108 @@ mod tests {
 
         // Should restore original iterated_object
         assert_eq!(ctx.iteration.iterated_object, Some(original));
+    }
+
+    #[test]
+    fn historical_block_controller_binds_iterated_player_by_stable_identity() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let attacker = create_creature(&mut game, "Attacker", bob);
+        let wall = create_creature(&mut game, "Wall", alice);
+
+        let wall_at_block = ObjectSnapshot::from_object(game.object(wall).unwrap(), &game);
+        let attacker_at_block = ObjectSnapshot::from_object(game.object(attacker).unwrap(), &game);
+        let event = crate::triggers::TriggerEvent::new(
+            crate::events::combat::CreatureBlockedEvent::with_snapshots(
+                wall,
+                attacker,
+                wall_at_block.clone(),
+                attacker_at_block.clone(),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&event);
+
+        // The successful-destroy result may carry a later controller. Stable
+        // identity must still recover the controller stored by the block event.
+        let mut destroyed_lki = attacker_at_block;
+        destroyed_lki.controller = alice;
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.tag_objects("wall", vec![wall_at_block]);
+        ctx.tag_objects("destroyed", vec![destroyed_lki]);
+
+        let effect = ForEachTaggedEffect::new(
+            "destroyed",
+            vec![Effect::gain_life_player(
+                1,
+                crate::target::ChooseSpec::Player(crate::target::PlayerFilter::IteratedPlayer),
+            )],
+        )
+        .with_controller_at_last_blocked_by("wall");
+        effect.execute(&mut game, &mut ctx).expect("execute");
+
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(bob).unwrap().life, 21);
+    }
+
+    #[test]
+    fn historical_block_controller_skips_later_unrelated_blocker_and_rejects_no_match() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let attacker = create_creature(&mut game, "Attacker", bob);
+        let wall = create_creature(&mut game, "Wall", alice);
+        let other_blocker = create_creature(&mut game, "Other blocker", alice);
+
+        let wall_snapshot = ObjectSnapshot::from_object(game.object(wall).unwrap(), &game);
+        let attacker_snapshot = ObjectSnapshot::from_object(game.object(attacker).unwrap(), &game);
+        for blocker in [wall, other_blocker] {
+            let blocker_snapshot =
+                ObjectSnapshot::from_object(game.object(blocker).unwrap(), &game);
+            let mut event_attacker = attacker_snapshot.clone();
+            if blocker == other_blocker {
+                event_attacker.controller = alice;
+            }
+            let event = crate::triggers::TriggerEvent::new(
+                crate::events::combat::CreatureBlockedEvent::with_snapshots(
+                    blocker,
+                    attacker,
+                    blocker_snapshot,
+                    event_attacker,
+                ),
+                crate::provenance::ProvNodeId::default(),
+            );
+            game.record_turn_history_event(&event);
+        }
+
+        let mut destroyed_lki = attacker_snapshot;
+        destroyed_lki.controller = alice;
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.tag_objects("wall", vec![wall_snapshot]);
+        ctx.tag_objects("destroyed", vec![destroyed_lki.clone()]);
+        let effect = ForEachTaggedEffect::new(
+            "destroyed",
+            vec![Effect::gain_life_player(
+                1,
+                crate::target::ChooseSpec::Player(crate::target::PlayerFilter::IteratedPlayer),
+            )],
+        )
+        .with_controller_at_last_blocked_by("wall");
+        effect.execute(&mut game, &mut ctx).expect("matching wall");
+        assert_eq!(game.player(bob).unwrap().life, 21);
+
+        let unrelated = create_creature(&mut game, "Unrelated", alice);
+        let unrelated_snapshot =
+            ObjectSnapshot::from_object(game.object(unrelated).unwrap(), &game);
+        ctx.tag_objects("wall", vec![unrelated_snapshot]);
+        ctx.tag_objects("destroyed", vec![destroyed_lki]);
+        assert!(matches!(
+            effect.execute(&mut game, &mut ctx),
+            Err(ExecutionError::UnresolvableValue(_))
+        ));
     }
 
     #[test]

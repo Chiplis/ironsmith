@@ -222,6 +222,9 @@ pub(crate) fn normalize_activate_only_restriction(
     tokens: &[OwnedLexToken],
     timing: &ActivationTiming,
 ) -> Option<String> {
+    if timing == &ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep {
+        return None;
+    }
     if timing != &ActivationTiming::OncePerTurn {
         return Some(crate::runtime_backend::token_word_refs(tokens).join(" "));
     }
@@ -339,5 +342,30 @@ mod tests {
                 .is_some_and(|restriction| restriction.contains("opponent lost life this turn"))
         );
         assert!(details.once_per_turn_after_other_restrictions);
+    }
+
+    #[test]
+    fn any_player_before_end_step_is_a_typed_activator_relative_window() {
+        let sentence = lex(
+            "Any player may activate this ability but only during their turn before the end step.",
+        );
+        let details =
+            parse_activate_only_sentence_details_lexed(&sentence, &ActivationTiming::AnyTime)
+                .expect("combined authority and timing sentence should parse");
+
+        assert_eq!(
+            details.timing,
+            ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
+        );
+        assert_eq!(details.condition, None);
+        assert_eq!(details.normalized_restriction, None);
+
+        let scan = collect_activated_sentence_modifiers(&[&sentence], ActivationTiming::AnyTime);
+        assert_eq!(
+            scan.timing,
+            ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
+        );
+        assert!(scan.additional_activation_restrictions.is_empty());
+        assert!(scan.kept_sentences.is_empty());
     }
 }

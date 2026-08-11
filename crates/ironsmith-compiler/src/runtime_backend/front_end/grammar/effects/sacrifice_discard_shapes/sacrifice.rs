@@ -62,6 +62,12 @@ pub(crate) enum SacrificeQuantityShape<'a> {
     AllOrEach {
         filter_tokens: &'a [OwnedLexToken],
         other: bool,
+        each_surface: bool,
+    },
+    AllExcept {
+        filter_tokens: &'a [OwnedLexToken],
+        keep_count: u32,
+        other: bool,
     },
 }
 
@@ -100,8 +106,9 @@ pub(crate) struct SacrificeCountShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SacrificeHalfRoundedUpShape<'a> {
+pub(crate) struct SacrificeFractionRoundedShape<'a> {
     pub(crate) filter_tokens: &'a [OwnedLexToken],
+    pub(crate) denominator: u32,
     pub(crate) rounded_up: bool,
 }
 
@@ -193,9 +200,12 @@ pub(crate) fn parse_sacrifice_quantity_shape(
             filter_tokens: rest,
         });
     }
-    let (_, mut rest) = primitives::parse_prefix(
+    let (each_surface, mut rest) = primitives::parse_prefix(
         tokens,
-        alt((primitives::kw("all").void(), primitives::kw("each").void())),
+        alt((
+            primitives::kw("all").value(false),
+            primitives::kw("each").value(true),
+        )),
     )?;
     let mut other = false;
     if let Some((_, after_other)) = primitives::parse_prefix(
@@ -208,16 +218,46 @@ pub(crate) fn parse_sacrifice_quantity_shape(
         other = true;
         rest = after_other;
     }
+    if let Some((except_offset, _, after_except)) =
+        primitives::find_prefix(rest, || primitives::phrase(&["except", "for"]).void())
+        && except_offset > 0
+        && let Some(prefix) = leaf::parse_leaf_number_prefix_tokens(after_except)
+        && let Some((keep_count, used)) = prefix.into_fixed()
+        && keep_count > 0
+        && used == after_except.len()
+    {
+        return Some(SacrificeQuantityShape::AllExcept {
+            filter_tokens: &rest[..except_offset],
+            keep_count,
+            other,
+        });
+    }
     Some(SacrificeQuantityShape::AllOrEach {
         filter_tokens: rest,
         other,
+        each_surface,
     })
 }
 
-pub(crate) fn parse_sacrifice_half_rounded_up_shape(
+pub(crate) fn parse_sacrifice_fraction_rounded_shape(
     tokens: &[OwnedLexToken],
-) -> Option<SacrificeHalfRoundedUpShape<'_>> {
-    let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["half", "the"]).void())?;
+) -> Option<SacrificeFractionRoundedShape<'_>> {
+    let (denominator, rest) = if let Some((_, rest)) =
+        primitives::parse_prefix(tokens, primitives::phrase(&["half", "the"]).void())
+    {
+        (2, rest)
+    } else {
+        let (_, after_article) = primitives::parse_prefix(tokens, primitives::kw("a").void())?;
+        (1..after_article.len()).find_map(|of_index| {
+            let (_, rest) = primitives::parse_prefix(
+                &after_article[of_index..],
+                primitives::phrase(&["of", "the"]).void(),
+            )?;
+            let ordinal_words = parser_token_word_refs(&after_article[..of_index]);
+            let (denominator, used) = ironsmith_core::parse_ordinal_words(&ordinal_words)?;
+            (denominator > 1 && used == ordinal_words.len()).then_some((denominator, rest))
+        })?
+    };
     let (rounded_up, before_rounding) = if let Some((_, stripped)) =
         primitives::strip_lexed_suffix_phrases(rest, &[&["rounded", "up"]])
     {
@@ -230,8 +270,9 @@ pub(crate) fn parse_sacrifice_half_rounded_up_shape(
         return None;
     };
     let object = parse_sacrifice_object_shape(before_rounding);
-    (!object.filter_tokens.is_empty()).then_some(SacrificeHalfRoundedUpShape {
+    (!object.filter_tokens.is_empty()).then_some(SacrificeFractionRoundedShape {
         filter_tokens: object.filter_tokens,
+        denominator,
         rounded_up,
     })
 }
@@ -364,6 +405,26 @@ mod tests {
     }
 
     #[test]
+    fn sacrifice_all_or_each_preserves_only_the_authored_each_surface() {
+        for (text, expected_each) in [
+            ("each other creature you control", true),
+            ("all other creatures you control", false),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let Some(SacrificeQuantityShape::AllOrEach {
+                each_surface,
+                other,
+                ..
+            }) = parse_sacrifice_quantity_shape(&tokens)
+            else {
+                panic!("expected all/each sacrifice quantity: {text}");
+            };
+            assert_eq!(each_surface, expected_each, "{text}");
+            assert!(other, "{text}");
+        }
+    }
+
+    #[test]
     fn sacrifice_object_shape_preserves_definite_object_references() {
         for text in [
             "that creature",
@@ -445,16 +506,79 @@ mod tests {
     }
 
     #[test]
-    fn sacrifice_half_rounded_up_shape_preserves_controlled_filter() {
+    fn sacrifice_fraction_rounded_shape_preserves_denominator_and_controlled_filter() {
         let tokens = lex_line(
             "half the creatures they control of their choice, rounded up",
             0,
         )
         .unwrap();
-        let shape = parse_sacrifice_half_rounded_up_shape(&tokens).unwrap();
+        let shape = parse_sacrifice_fraction_rounded_shape(&tokens).unwrap();
+        assert_eq!(shape.denominator, 2);
         assert_eq!(
             parser_token_word_refs(shape.filter_tokens),
             ["creatures", "they", "control"]
         );
+
+        let tokens = lex_line(
+            "a tenth of the creatures they control of their choice, rounded up",
+            0,
+        )
+        .unwrap();
+        let shape = parse_sacrifice_fraction_rounded_shape(&tokens).unwrap();
+        assert_eq!(shape.denominator, 10);
+        assert!(shape.rounded_up);
+        assert_eq!(
+            parser_token_word_refs(shape.filter_tokens),
+            ["creatures", "they", "control"]
+        );
+    }
+
+    #[test]
+    fn sacrifice_fraction_shape_requires_a_rounding_surface_and_valid_unit_fraction() {
+        for text in [
+            "a tenth of the creatures they control of their choice",
+            "a first of the creatures they control of their choice, rounded up",
+            "a tenth creatures they control of their choice, rounded up",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert!(
+                parse_sacrifice_fraction_rounded_shape(&tokens).is_none(),
+                "near miss must not claim {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sacrifice_all_except_shape_preserves_filter_and_keep_count() {
+        let tokens = lex_line("all lands they control except for three", 0).unwrap();
+        let Some(SacrificeQuantityShape::AllExcept {
+            filter_tokens,
+            keep_count,
+            other,
+        }) = parse_sacrifice_quantity_shape(&tokens)
+        else {
+            panic!("expected typed all-except quantity");
+        };
+        assert_eq!(keep_count, 3);
+        assert!(!other);
+        assert_eq!(
+            parser_token_word_refs(filter_tokens),
+            ["lands", "they", "control"]
+        );
+
+        for text in [
+            "all lands they control except for zero",
+            "all lands they control except for",
+            "lands they control except for three",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert!(
+                !matches!(
+                    parse_sacrifice_quantity_shape(&tokens),
+                    Some(SacrificeQuantityShape::AllExcept { .. })
+                ),
+                "near miss must not claim {text:?}"
+            );
+        }
     }
 }

@@ -35,6 +35,7 @@ pub use ironsmith_core::{
     GrantAbilitiesTargetEffect as CoreGrantAbilitiesTargetEffect,
     GrantBySpecEffect as CoreGrantBySpecEffect, GrantEffect as CoreGrantEffect,
     GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
+    GrantRepeatableManaPaymentActionUntilEndOfTurnEffect as CoreGrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
     HauntExileEffect as CoreHauntExileEffect, HealDamageEffect, IfEffect as CoreIfEffect,
     IncubateEffect, InvestigateEffect, LearnEffect, LibraryBottomOrder, LibraryConsultMode,
@@ -60,18 +61,21 @@ pub use ironsmith_core::{
     RedirectNextTimeDamageDestination, RedirectNextTimeDamageSource,
     RedirectNextTimeDamageToSourceEffect, ReflexiveTriggerEffect as CoreReflexiveTriggerEffect,
     RegenerateEffect as CoreRegenerateEffect, RegisterDamagedBySourceZoneReplacementEffect,
-    RegisterDrawReplacementEffect, RegisterEnterUnderControlReplacementEffect,
-    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
+    RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
+    RegisterEnterUnderControlReplacementEffect, RegisterFutureZoneReplacementEffect,
+    RegisterManaReplacementEffect, RegisterNextBatchEnterWithCountersEffect,
     RegisterZoneReplacementEffect, RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect,
     RemoveCountersEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect,
     RemoveUpToCountersEffect, RenownEffect, ReorderGraveyardEffect, ReorderLibraryTopEffect,
-    RepeatProcessPromptEffect, ReplacementApplyMode, RestartGameEffect,
-    RetainManaUntilEndOfTurnEffect, RetargetMode, RetargetStackObjectEffect,
-    ReturnAllToBattlefieldEffect, ReturnAsAuraOptions, ReturnFromGraveyardToBattlefieldEffect,
+    ReorderTopPlanarDeckEffect, RepeatProcessPromptEffect,
+    ReplaceNextDamageToTargetEffect as CoreReplaceNextDamageToTargetEffect, ReplacementApplyMode,
+    RestartGameEffect, RetainManaUntilEndOfTurnEffect, RetargetMode, RetargetStackObjectEffect,
+    ReturnAllToBattlefieldEffect, ReturnAsAuraOptions,
+    ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, RevealFromHandEffect,
     RevealSourceFromHandDuration, RevealSourceFromHandEffect, RevealTaggedEffect, RevealTopEffect,
-    RingTemptsYouEffect, RollDiceChooseResultEffect, RollDieEffect, SacrificeEffect,
-    SacrificePlayerEffect, SacrificeTargetEffect,
+    ReverseTurnOrderEffect, RingTemptsYouEffect, RollDiceChooseResultEffect, RollDieEffect,
+    SacrificeEffect, SacrificePlayerEffect, SacrificeTargetEffect,
     ScheduleEffectsWhenTaggedLeavesEffect as CoreScheduleEffectsWhenTaggedLeavesEffect, ScryEffect,
     SearchLibraryEffect as CoreSearchLibraryEffect, SearchLibrarySlot,
     SearchLibrarySlotsEffect as CoreSearchLibrarySlotsEffect, SecretChoiceEffect,
@@ -82,13 +86,13 @@ pub use ironsmith_core::{
     SkipDrawStepEffect, SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect,
     SkipTurnEffect, SneakCostEffect, SolveCaseEffect, SoulbondPairEffect, SupportEffect,
     SurveilEffect, SuspectEffect, TagAttachedToSourceEffect, TagMatchingObjectsEffect,
-    TagTriggeringBlockersEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
-    TagTriggeringSourceEffect, TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource,
-    TakeInitiativeEffect, TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect,
-    UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect,
-    VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect,
-    VillainousChoiceEffect as CoreVillainousChoiceEffect, WinTheGameEffect,
-    WithIdEffect as CoreWithIdEffect,
+    TagOtherBlockParticipantEffect, TagTriggeringAttackerEffect, TagTriggeringBlockersEffect,
+    TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TagTriggeringSourceEffect,
+    TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect, TapEffect,
+    TargetOnlyEffect, TicketCountersEffect, TransformEffect, UnattachObjectsEffect, UnearthEffect,
+    UnlessActionEffect, UnlessPaysEffect, UntapEffect, VariableCasualtyPlaneswalkerCopyEffect,
+    VentureIntoDungeonEffect, VillainousChoiceEffect as CoreVillainousChoiceEffect,
+    WinTheGameEffect, WithIdEffect as CoreWithIdEffect,
 };
 
 pub type ChooseModeEffect = CoreChooseModeEffect<Effect>;
@@ -106,6 +110,7 @@ pub type ManaRestrictedEffect = CoreManaRestrictedEffect<Effect>;
 pub type ManaRetainedEffect = CoreManaRetainedEffect<Effect>;
 pub type PreventDamageEffect = CorePreventDamageEffect<Effect>;
 pub type PreventAllDamageToTargetEffect = CorePreventAllDamageToTargetEffect<Effect>;
+pub type ReplaceNextDamageToTargetEffect = CoreReplaceNextDamageToTargetEffect<Effect>;
 pub type RegenerateEffect = CoreRegenerateEffect<Effect>;
 pub type ScheduleEffectsWhenTaggedLeavesEffect = CoreScheduleEffectsWhenTaggedLeavesEffect<Effect>;
 pub type SequenceEffect = CoreSequenceEffect<Effect>;
@@ -114,6 +119,8 @@ pub type TaggedEffect = CoreTaggedEffect<Effect>;
 pub type ReflexiveTriggerEffect = CoreReflexiveTriggerEffect<Effect>;
 pub type RepeatEffectsEffect = ironsmith_core::RepeatEffectsEffect<Effect>;
 pub type RepeatProcessEffect = ironsmith_core::RepeatProcessEffect<Effect>;
+pub type GrantRepeatableManaPaymentActionUntilEndOfTurnEffect =
+    CoreGrantRepeatableManaPaymentActionUntilEndOfTurnEffect<Effect>;
 pub type BidLifeEffect = CoreBidLifeEffect<Effect>;
 pub type VoteChoice = ironsmith_core::VoteChoice<Effect>;
 pub type VoteEffect = ironsmith_core::VoteEffect<Effect>;

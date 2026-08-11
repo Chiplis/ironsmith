@@ -110,12 +110,22 @@ fn choose_reflexive_targets(
 
         let legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, &resolved_spec, &legal_targets);
+        let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
+            game,
+            &resolved_spec,
+            ctx.controller,
+            Some(ctx.source),
+            &legal_targets,
+        );
         if !crate::targeting::has_enough_legal_targets_for_spec(
             game,
             &resolved_spec,
             &legal_targets,
             count.min,
-        ) {
+        ) || aggregate_constraint
+            .as_ref()
+            .is_some_and(|constraint| !constraint.supports_minimum(count.min))
+        {
             return None;
         }
 
@@ -127,6 +137,7 @@ fn choose_reflexive_targets(
                 description: describe_choice(spec),
                 legal_targets: legal_targets.clone(),
                 legal_target_sets,
+                aggregate_constraint,
                 min_targets: count.min,
                 max_targets: count.max,
                 distinct_player_group: None,
@@ -182,6 +193,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: crate::player::ManaPool::default(),
+            mana_sources_spent_to_cast: Vec::new(),
             counters: HashMap::new(),
             is_token: memory.is_token,
             tapped: false,
@@ -406,6 +418,14 @@ mod tests {
         assert_eq!(it.len(), 1);
         assert_eq!(it[0].object_id, tagged_snapshot.object_id);
         assert_eq!(
+            entry
+                .effect_outcomes
+                .get(&condition)
+                .and_then(EffectOutcome::as_count),
+            Some(1),
+            "the reflexive ability must retain parent outcomes used by its child effects"
+        );
+        assert_eq!(
             entry.source_name.as_deref(),
             Some(game.object(source).expect("source object").name.as_str())
         );
@@ -450,7 +470,8 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         let mut entry = StackEntry::ability(ctx.source, ctx.controller, self.effects.clone())
             .with_targets(targets)
             .with_optional_costs_paid(ctx.optional_costs_paid.clone())
-            .with_tagged_objects(tagged_objects);
+            .with_tagged_objects(tagged_objects)
+            .with_effect_outcomes(ctx.effect_outcomes.clone());
 
         if let Some(x) = ctx.x_value {
             entry = entry.with_x(x);

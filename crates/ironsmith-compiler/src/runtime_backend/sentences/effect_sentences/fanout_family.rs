@@ -12,10 +12,11 @@ use super::zone_counter_helpers::{split_until_source_leaves_tail, target_object_
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
 use super::{apply_where_x_to_damage_amounts, find_verb, parse_simple_gain_ability_clause};
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    TagKey, TargetAst, Verb,
+    CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, TagKey, TargetAst, Verb,
 };
-use crate::effect::{Until, Value};
+use crate::effect::{EventValueSpec, Until, Value};
+use crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
@@ -596,6 +597,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
 #[derive(Debug, Clone)]
 enum CompoundDamagePart {
     Target(TargetAst),
+    OpponentChosenTarget(TargetAst),
     EachObject(ObjectFilter),
     EachPlayer(PlayerFilter),
 }
@@ -603,7 +605,9 @@ enum CompoundDamagePart {
 fn target_context_for_damage_part(part: &CompoundDamagePart) -> Option<PlayerFilter> {
     match part {
         CompoundDamagePart::Target(TargetAst::Player(filter, span))
-        | CompoundDamagePart::Target(TargetAst::PlayerOrPlaneswalker(filter, span)) => {
+        | CompoundDamagePart::Target(TargetAst::PlayerOrPlaneswalker(filter, span))
+        | CompoundDamagePart::OpponentChosenTarget(TargetAst::Player(filter, span))
+        | CompoundDamagePart::OpponentChosenTarget(TargetAst::PlayerOrPlaneswalker(filter, span)) => {
             if span.is_some() {
                 Some(PlayerFilter::Target(Box::new(filter.clone())))
             } else {
@@ -660,6 +664,17 @@ fn lower_damage_part_shape(
             ))))
         }
         fanout_grammar::DamagePartShape::TargetTokens { tokens, controller } => {
+            if let Some(choice) =
+                crate::runtime_backend::front_end::grammar::choices::parse_possessive_object_choice_tokens(
+                    &tokens,
+                )
+                && choice.actor
+                    == crate::runtime_backend::front_end::grammar::choices::PossessiveObjectChoiceActor::Opponent
+            {
+                return Ok(Some(CompoundDamagePart::OpponentChosenTarget(
+                    parse_target_phrase(&choice.object_tokens)?,
+                )));
+            }
             let mut target = parse_target_phrase(&tokens)?;
             if let Some(controller) = controller
                 && let Some(filter) = target_object_filter_mut(&mut target)
@@ -716,6 +731,18 @@ fn damage_player_iteration_effect(filter: PlayerFilter, effects: Vec<EffectAst>)
 fn compound_damage_part_to_effect(part: CompoundDamagePart, amount: Value) -> EffectAst {
     match part {
         CompoundDamagePart::Target(target) => EffectAst::subject_verb_damage(amount, target),
+        CompoundDamagePart::OpponentChosenTarget(target) => EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_explicit_target_only_for_chooser(
+                    target,
+                    PlayerAst::Opponent,
+                ),
+                EffectAst::subject_verb_damage(
+                    amount,
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                ),
+            ],
+        },
         CompoundDamagePart::EachObject(filter) => {
             EffectAst::subject_verb_damage_each(amount, filter)
         }
@@ -867,6 +894,15 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
     let Some(shape) = fanout_grammar::parse_compound_damage_shape(tokens) else {
         return Ok(None);
     };
+    let source_words = non_article_token_word_refs(&shape.source_tokens);
+    if !shape.source_tokens.is_empty() && !is_source_reference_words(&source_words) {
+        // The fanout grammar locates the first `deal(s)` so it can parse a
+        // compact shared-recipient clause. Text before that verb still has to
+        // be the damage source, not an earlier action or a leading condition.
+        // Otherwise a sentence such as `remove ..., and it deals ...` loses
+        // the producer action before chain parsing can preserve it.
+        return Ok(None);
+    }
     let Some(left) = parse_damage_part(&shape.left_tokens, None)? else {
         return Ok(None);
     };
@@ -882,6 +918,167 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
         leading_duration: false,
         result_conjunction: false,
     }]))
+}
+
+fn source_counter_removal(effect: &EffectAst) -> Option<crate::object::CounterType> {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::RemoveUpToAnyCounters {
+                amount,
+                target: TargetAst::Source(_),
+                counter_type: Some(counter_type),
+                up_to: false,
+                distributed_across_all: false,
+                all_of_them: false,
+            },
+        ..
+    }) = effect
+    else {
+        return None;
+    };
+    matches!(amount.unhinted(), Value::CountersOnSource(kind) if kind == counter_type)
+        .then_some(*counter_type)
+}
+
+fn bind_damage_amount_to_removed_counter_count(
+    effect: &mut EffectAst,
+    counter_type: crate::object::CounterType,
+) -> usize {
+    let mut bound = 0;
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
+        let amount = match action {
+            SubjectVerbActionAst::DealDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
+            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEach { amount, .. } => Some(amount),
+            _ => None,
+        };
+        if let Some(amount) = amount
+            && matches!(amount.unhinted(), Value::EventValue(EventValueSpec::Amount))
+        {
+            let hints = amount.surface_hints().to_vec();
+            *amount = Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::Removed)
+                .with_counter_type(Some(counter_type)),
+            )
+            .with_surface_hints(hints);
+            bound += 1;
+        }
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for child in nested {
+            bound += bind_damage_amount_to_removed_counter_count(child, counter_type);
+        }
+    });
+    bound
+}
+
+fn is_removed_counter_damage_fanout_member(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => matches!(
+            action,
+            SubjectVerbActionAst::DealDamage { .. }
+                | SubjectVerbActionAst::DealDamageEqualToPower { .. }
+                | SubjectVerbActionAst::DealDistributedDamage { .. }
+                | SubjectVerbActionAst::DealDamageEach { .. }
+        ),
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
+        | EffectAst::ForEachObject { effects, .. } => {
+            !effects.is_empty() && effects.iter().all(is_removed_counter_damage_fanout_member)
+        }
+        _ => false,
+    }
+}
+
+/// Recover a shared removed-counter result after a broader public parser has
+/// already constructed the exact typed removal-plus-damage fanout shape.
+///
+/// Some full-card routes normalize source-name references after the narrow
+/// sentence recognizer runs. At that earlier point the removal does not yet
+/// look source-bound, so each `that much` damage arm is still represented by
+/// an ordinary event amount. Once the target is a typed source removal, bind
+/// every arm to the same removal outcome. Requiring an all-damage tail and at
+/// least two replaced arms prevents an unrelated later damage instruction
+/// from inheriting this provenance.
+pub(crate) fn bind_removed_counter_damage_fanout(effects: &mut [EffectAst]) -> bool {
+    let [removal, damage @ ..] = effects else {
+        return false;
+    };
+    let Some(counter_type) = source_counter_removal(removal) else {
+        return false;
+    };
+    if damage.is_empty() || !damage.iter().all(is_removed_counter_damage_fanout_member) {
+        return false;
+    }
+
+    let mut rebound = damage.to_vec();
+    let bound = rebound
+        .iter_mut()
+        .map(|effect| bind_damage_amount_to_removed_counter_count(effect, counter_type))
+        .sum::<usize>();
+    if bound < 2 {
+        return false;
+    }
+    damage.clone_from_slice(&rebound);
+    true
+}
+
+/// Parse an authored result chain of the form
+/// `remove all [kind] counters from SOURCE, and it deals that much damage ...`.
+///
+/// The typed `Removed` metric is important for a multi-recipient fanout: both
+/// damage arms read the same removal outcome. The first damage effect must not
+/// become the numeric producer for the second arm.
+pub(crate) fn parse_remove_counters_then_shared_damage_fanout(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    for (and_idx, token) in tokens.iter().enumerate() {
+        if !token.is_word("and") {
+            continue;
+        }
+        let first_tokens = trim_edge_punctuation(&tokens[..and_idx]);
+        let second_tokens = trim_edge_punctuation(&tokens[and_idx + 1..]);
+        if !second_tokens
+            .first()
+            .is_some_and(|token| token.is_word("it"))
+        {
+            continue;
+        }
+        let Ok(removal) = super::zone_handlers::parse_remove(&first_tokens) else {
+            continue;
+        };
+        if source_counter_removal(&removal).is_none() {
+            continue;
+        }
+        let Some(mut damage) = parse_compound_damage_fanout_sentence(&second_tokens)? else {
+            continue;
+        };
+        let [
+            EffectAst::Coordinated {
+                effects: damage_effects,
+                ..
+            },
+        ] = damage.as_mut_slice()
+        else {
+            continue;
+        };
+        let mut effects = vec![removal];
+        effects.append(damage_effects);
+        if bind_removed_counter_damage_fanout(&mut effects) {
+            return Ok(Some(effects));
+        }
+    }
+    Ok(None)
 }
 
 pub(crate) fn parse_same_name_gets_fanout_sentence(
@@ -958,7 +1155,178 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
 #[cfg(test)]
 mod coordinated_target_tests {
     use super::*;
+    use crate::runtime_backend::ast::SubjectVerbRoleAst;
     use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn prefixed_action_is_not_mistaken_for_damage_source() {
+        let tokens = lex_line(
+            "Remove all +1/+1 counters from this creature, and it deals that much damage to each creature and each player.",
+            0,
+        )
+        .unwrap();
+
+        assert!(
+            parse_compound_damage_fanout_sentence(&tokens)
+                .unwrap()
+                .is_none(),
+            "a preceding counter action is not the source of the damage fanout"
+        );
+    }
+
+    #[test]
+    fn removal_damage_fanout_shares_one_typed_removed_count() {
+        let tokens = lex_line(
+            "Remove all +1/+1 counters from this creature, and it deals that much damage to each creature and each player.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_remove_counters_then_shared_damage_fanout(&tokens)
+            .unwrap()
+            .expect("counter-removal damage chain");
+        let debug = format!("{parsed:#?}");
+
+        assert_eq!(parsed.len(), 3, "{debug}");
+        assert_eq!(debug.matches("RemoveUpToAnyCounters").count(), 1, "{debug}");
+        assert_eq!(
+            debug.matches("PendingPriorEffectMetric").count(),
+            2,
+            "{debug}"
+        );
+        assert_eq!(debug.matches("Removed").count(), 2, "{debug}");
+    }
+
+    #[test]
+    fn normalized_player_and_creature_fanout_recovers_shared_removed_count() {
+        let counter_type = crate::object::CounterType::PlusOnePlusOne;
+        let removal = EffectAst::subject_verb_remove_up_to_any_counters(
+            Value::CountersOnSource(counter_type),
+            TargetAst::Source(None),
+            Some(counter_type),
+            false,
+        );
+        let mut creature_filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
+        creature_filter.controller = Some(PlayerFilter::IteratedPlayer);
+        let mut effects = vec![
+            removal,
+            EffectAst::ForEachPlayer {
+                effects: vec![
+                    EffectAst::subject_verb_damage(
+                        Value::EventValue(EventValueSpec::Amount),
+                        TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                    ),
+                    EffectAst::subject_verb_damage_each(
+                        Value::EventValue(EventValueSpec::Amount),
+                        creature_filter,
+                    ),
+                ],
+            },
+        ];
+
+        assert!(bind_removed_counter_damage_fanout(&mut effects));
+        let debug = format!("{effects:#?}");
+        assert_eq!(
+            debug.matches("PendingPriorEffectMetric").count(),
+            2,
+            "{debug}"
+        );
+        assert_eq!(debug.matches("Removed").count(), 2, "{debug}");
+        assert!(
+            !debug.contains("EventValue(\n                    Amount"),
+            "{debug}"
+        );
+    }
+
+    #[test]
+    fn normalized_removed_count_recovery_rejects_a_non_damage_tail() {
+        let counter_type = crate::object::CounterType::PlusOnePlusOne;
+        let mut effects = vec![
+            EffectAst::subject_verb_remove_up_to_any_counters(
+                Value::CountersOnSource(counter_type),
+                TargetAst::Source(None),
+                Some(counter_type),
+                false,
+            ),
+            EffectAst::subject_verb_damage(
+                Value::EventValue(EventValueSpec::Amount),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            ),
+            EffectAst::subject_verb(
+                crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                crate::cards::builders::PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            ),
+        ];
+
+        assert!(!bind_removed_counter_damage_fanout(&mut effects));
+        let debug = format!("{effects:#?}");
+        assert!(!debug.contains("PendingPriorEffectMetric"), "{debug}");
+    }
+
+    #[test]
+    fn leading_ability_ordinal_condition_owns_removal_and_both_damage_arms() {
+        let tokens = lex_line(
+            "If this is the third time this ability has resolved this turn, remove all +1/+1 counters from this creature, and it deals that much damage to each creature and each player.",
+            0,
+        )
+        .unwrap();
+        let parsed = super::super::parse_effect_sentence_lexed(&tokens)
+            .expect("conditional counter-removal fanout");
+        let debug = format!("{parsed:#?}");
+
+        assert!(
+            matches!(
+                parsed.as_slice(),
+                [EffectAst::Conditional {
+                    predicate: PredicateAst::ThisAbilityResolvedThisTurnExactly(3),
+                    if_false,
+                    ..
+                }] if if_false.is_empty()
+            ),
+            "{debug}"
+        );
+        assert_eq!(debug.matches("RemoveUpToAnyCounters").count(), 1, "{debug}");
+        assert_eq!(
+            debug.matches("PendingPriorEffectMetric").count(),
+            2,
+            "{debug}"
+        );
+        assert_eq!(debug.matches("DealDamageEach").count(), 1, "{debug}");
+        assert_eq!(debug.matches("ForEachPlayer").count(), 1, "{debug}");
+    }
+
+    #[test]
+    fn punctuation_normalized_ordinal_fanout_keeps_removed_count_provenance() {
+        let tokens = lex_line(
+            "If this is the third time this ability has resolved this turn remove all +1/+1 counters from this creature and it deals that much damage to each creature and each player",
+            0,
+        )
+        .unwrap();
+        let parsed = super::super::parse_effect_sentence_lexed(&tokens)
+            .expect("normalized conditional counter-removal fanout");
+        let debug = format!("{parsed:#?}");
+
+        assert!(
+            matches!(
+                parsed.as_slice(),
+                [EffectAst::Conditional {
+                    predicate: PredicateAst::ThisAbilityResolvedThisTurnExactly(3),
+                    if_false,
+                    ..
+                }] if if_false.is_empty()
+            ),
+            "{debug}"
+        );
+        assert_eq!(debug.matches("RemoveUpToAnyCounters").count(), 1, "{debug}");
+        assert_eq!(
+            debug.matches("PendingPriorEffectMetric").count(),
+            2,
+            "both normalized fanout arms must consume the removal outcome: {debug}"
+        );
+        assert_eq!(debug.matches("Removed").count(), 2, "{debug}");
+    }
 
     #[test]
     fn searing_blaze_second_target_keeps_prior_recipient_controller_relation() {
@@ -990,6 +1358,48 @@ mod coordinated_target_tests {
             filter.controller,
             Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
         );
+    }
+
+    #[test]
+    fn repeated_damage_keeps_opponent_chooser_on_second_target() {
+        let tokens = lex_line(
+            "This spell deals 7 damage to target creature you don't control and 7 damage to target creature of an opponent's choice you don't control.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_compound_damage_fanout_sentence(&tokens)
+            .unwrap()
+            .expect("damage pair");
+        let [EffectAst::Coordinated { effects, .. }] = parsed.as_slice() else {
+            panic!("expected coordinated damage pair: {parsed:#?}");
+        };
+        let [_, EffectAst::Sequence { effects: chosen }] = effects.as_slice() else {
+            panic!("the second damage must retain its delegated choice: {effects:#?}");
+        };
+        let [
+            EffectAst::SubjectVerb(target_only),
+            EffectAst::SubjectVerb(damage),
+        ] = chosen.as_slice()
+        else {
+            panic!("expected target declaration followed by damage: {chosen:#?}");
+        };
+        assert_eq!(target_only.subject.role, SubjectVerbRoleAst::Chooser);
+        assert_eq!(target_only.subject.player, PlayerAst::Opponent);
+        assert!(matches!(
+            target_only.action,
+            SubjectVerbActionAst::TargetOnly {
+                explicit_declaration: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            damage.action,
+            SubjectVerbActionAst::DealDamage {
+                target: TargetAst::Tagged(_, _),
+                amount: Value::Fixed(7),
+                ..
+            }
+        ));
     }
 
     #[test]

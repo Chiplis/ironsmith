@@ -55,3 +55,22 @@ fn parses_attachment_clause_shapes() {
         ["equipment", "you", "control"]
     );
 }
+
+#[test]
+fn attachment_separator_ignores_to_inside_optional_target_count() {
+    let tokens = lex_line("this Equipment to up to one target creature you control", 0).unwrap();
+    let CombatAttachClauseShape::Standard {
+        object_tokens,
+        target_tokens,
+        ..
+    } = parse_combat_attach_clause_shape_lexed(&tokens).unwrap()
+    else {
+        panic!("expected standard attachment")
+    };
+
+    assert_eq!(parser_token_word_refs(object_tokens), ["this", "equipment"]);
+    assert_eq!(
+        parser_token_word_refs(target_tokens),
+        ["up", "to", "one", "target", "creature", "you", "control"]
+    );
+}

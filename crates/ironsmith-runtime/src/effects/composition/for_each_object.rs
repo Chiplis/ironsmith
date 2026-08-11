@@ -4,8 +4,8 @@ use crate::filter::ObjectFilterExt as _;
 use std::collections::HashSet;
 
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
+use crate::effects::{EffectExecutor, SimultaneousEffectProposal};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::events::ShuffleLibraryEvent;
 use crate::game_state::GameState;
@@ -14,6 +14,113 @@ use crate::tag::TagKey;
 use crate::target::{ChooseSpec, TaggedOpbjectRelation};
 use crate::triggers::TriggerEvent;
 pub type ForEachObject = ironsmith_core::ForEachObject<Effect>;
+
+fn matching_objects(
+    effect: &ForEachObject,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Vec<(crate::ids::ObjectId, ObjectSnapshot)> {
+    let filter_ctx = ctx.filter_context(game);
+
+    // For "for each ... revealed/exiled/... this way" patterns, the filter can
+    // reference tagged cards outside the battlefield.
+    let has_only_is_tagged_constraints = !effect.filter.tagged_constraints.is_empty()
+        && effect
+            .filter
+            .tagged_constraints
+            .iter()
+            .all(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject);
+
+    if has_only_is_tagged_constraints {
+        let mut seen = HashSet::new();
+        let mut candidates = Vec::new();
+        for constraint in &effect.filter.tagged_constraints {
+            let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) else {
+                continue;
+            };
+            for snapshot in snapshots {
+                if seen.insert(snapshot.stable_id) {
+                    candidates.push(snapshot.clone());
+                }
+            }
+        }
+        candidates
+            .into_iter()
+            .filter_map(|snapshot| {
+                let current_id = crate::effects::helpers::resolve_tagged_object_id(game, &snapshot);
+                let matched_as_lki = effect.filter.matches_snapshot(&snapshot, &filter_ctx, game);
+                let matched_current = current_id
+                    .and_then(|id| game.object(id))
+                    .is_some_and(|object| effect.filter.matches(object, &filter_ctx, game));
+                (matched_as_lki || matched_current)
+                    .then_some((current_id.unwrap_or(snapshot.object_id), snapshot))
+            })
+            .collect()
+    } else {
+        let candidate_ids: Vec<_> = if let Some(zone) = effect.filter.zone {
+            game.zone_ids(zone).collect()
+        } else {
+            game.battlefield.clone()
+        };
+        candidate_ids
+            .into_iter()
+            .filter_map(|id| {
+                game.object(id).and_then(|object| {
+                    effect
+                        .filter
+                        .matches(object, &filter_ctx, game)
+                        .then(|| (id, ObjectSnapshot::from_object(object, game)))
+                })
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug)]
+struct ForEachObjectProposal {
+    matching: Vec<(crate::ids::ObjectId, ObjectSnapshot)>,
+    iterations: Vec<Vec<Box<dyn SimultaneousEffectProposal>>>,
+}
+
+impl SimultaneousEffectProposal for ForEachObjectProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let Self {
+            matching,
+            iterations,
+        } = *self;
+        let it_tag = TagKey::from("__it__");
+        let original_it = ctx.tagged_objects.remove(&it_tag);
+        let result = (|| {
+            let mut outcomes = Vec::new();
+            for ((object_id, snapshot), proposals) in matching.iter().zip(iterations.into_iter()) {
+                ctx.set_tagged_objects(it_tag.clone(), vec![snapshot.clone()]);
+                ctx.with_temp_iterated_object(Some(*object_id), |ctx| {
+                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
+                        for proposal in proposals {
+                            outcomes.push(proposal.commit(game, ctx)?);
+                        }
+                        Ok::<(), ExecutionError>(())
+                    })
+                })?;
+            }
+            Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+        })();
+
+        match original_it {
+            Some(value) => {
+                ctx.tagged_objects.insert(it_tag, value);
+            }
+            None => {
+                ctx.tagged_objects.remove(&it_tag);
+            }
+        }
+        result
+    }
+}
 
 impl EffectExecutor for ForEachObject {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -30,67 +137,59 @@ impl EffectExecutor for ForEachObject {
         vec![ChooseSpec::All(self.filter.clone())]
     }
 
+    fn supports_simultaneous_player_action(&self) -> bool {
+        !self.effects.is_empty()
+            && self
+                .effects
+                .iter()
+                .all(|effect| effect.0.supports_simultaneous_player_action())
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
+        let matching = matching_objects(self, game, ctx);
+        let it_tag = TagKey::from("__it__");
+        let original_it = ctx.tagged_objects.remove(&it_tag);
+        let result = (|| {
+            let mut iterations = Vec::with_capacity(matching.len());
+            for (object_id, snapshot) in &matching {
+                ctx.set_tagged_objects(it_tag.clone(), vec![snapshot.clone()]);
+                let proposals = ctx.with_temp_iterated_object(Some(*object_id), |ctx| {
+                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
+                        self.effects
+                            .iter()
+                            .map(|effect| effect.0.prepare_simultaneous_player_action(game, ctx))
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                })?;
+                iterations.push(proposals);
+            }
+            Ok::<_, ExecutionError>(Box::new(ForEachObjectProposal {
+                matching: matching.clone(),
+                iterations,
+            }) as Box<dyn SimultaneousEffectProposal>)
+        })();
+
+        match original_it {
+            Some(value) => {
+                ctx.tagged_objects.insert(it_tag, value);
+            }
+            None => {
+                ctx.tagged_objects.remove(&it_tag);
+            }
+        }
+        result
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let filter_ctx = ctx.filter_context(game);
-
-        // For "for each ... revealed/exiled/... this way" patterns, the filter can
-        // reference tagged cards outside the battlefield.
-        let has_only_is_tagged_constraints = !self.filter.tagged_constraints.is_empty()
-            && self
-                .filter
-                .tagged_constraints
-                .iter()
-                .all(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject);
-
-        let matching: Vec<(crate::ids::ObjectId, ObjectSnapshot)> =
-            if has_only_is_tagged_constraints {
-                let mut seen = HashSet::new();
-                let mut candidates = Vec::new();
-                for constraint in &self.filter.tagged_constraints {
-                    let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) else {
-                        continue;
-                    };
-                    for snapshot in snapshots {
-                        if seen.insert(snapshot.stable_id) {
-                            candidates.push(snapshot.clone());
-                        }
-                    }
-                }
-                candidates
-                    .into_iter()
-                    .filter_map(|snapshot| {
-                        let current_id =
-                            crate::effects::helpers::resolve_tagged_object_id(game, &snapshot);
-                        let matched_as_lki =
-                            self.filter.matches_snapshot(&snapshot, &filter_ctx, game);
-                        let matched_current = current_id
-                            .and_then(|id| game.object(id))
-                            .is_some_and(|object| self.filter.matches(object, &filter_ctx, game));
-                        (matched_as_lki || matched_current)
-                            .then_some((current_id.unwrap_or(snapshot.object_id), snapshot))
-                    })
-                    .collect()
-            } else {
-                let candidate_ids: Vec<_> = if let Some(zone) = self.filter.zone {
-                    game.zone_ids(zone).collect()
-                } else {
-                    game.battlefield.clone()
-                };
-                candidate_ids
-                    .into_iter()
-                    .filter_map(|id| {
-                        game.object(id).and_then(|object| {
-                            self.filter
-                                .matches(object, &filter_ctx, game)
-                                .then(|| (id, ObjectSnapshot::from_object(object, game)))
-                        })
-                    })
-                    .collect()
-            };
+        let matching = matching_objects(self, game, ctx);
 
         let mut outcomes = Vec::new();
 
@@ -187,7 +286,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effects::CounterEffect;
-    use crate::events::DamageEvent;
+    use crate::events::{DamageEvent, DamageTarget};
     use crate::game_state::StackEntry;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -379,6 +478,79 @@ mod tests {
     }
 
     #[test]
+    fn each_selected_creature_deals_its_toughness_to_the_other_selected_creature() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let spell_source = game.new_object_id();
+        let your_creature = create_creature_with_stats(&mut game, "Your Creature", alice, 1, 5);
+        let opposing_creature =
+            create_creature_with_stats(&mut game, "Opposing Creature", bob, 1, 3);
+        let mut ctx = ExecutionContext::new_default(spell_source, alice).with_targets(vec![
+            crate::ResolvedTarget::Object(your_creature),
+            crate::ResolvedTarget::Object(opposing_creature),
+        ]);
+        let pair_tag = crate::tag::TagKey::from("chosen_pair");
+        ctx.tag_object(
+            pair_tag.clone(),
+            crate::snapshot::ObjectSnapshot::from_object(
+                game.object(your_creature).expect("your creature exists"),
+                &game,
+            ),
+        );
+        ctx.tag_object(
+            pair_tag.clone(),
+            crate::snapshot::ObjectSnapshot::from_object(
+                game.object(opposing_creature)
+                    .expect("opposing creature exists"),
+                &game,
+            ),
+        );
+        let mut pair_filter = ObjectFilter::creature().match_tagged(
+            pair_tag,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        pair_filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those));
+        let effect = ForEachObject::new(
+            pair_filter.clone(),
+            vec![Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                ChooseSpec::Iterated,
+                Effect::deal_damage(
+                    crate::effect::Value::ToughnessOf(Box::new(ChooseSpec::Iterated)),
+                    ChooseSpec::Object(pair_filter.other()),
+                ),
+            ))],
+        );
+        assert!(
+            effect.effects[0].0.get_target_spec().is_none(),
+            "the other member of an already targeted pair must not announce a third target"
+        );
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("reciprocal toughness damage resolves");
+        let damage = outcome
+            .events
+            .iter()
+            .filter_map(|event| event.downcast::<DamageEvent>())
+            .map(|event| (event.source, event.amount, event.target))
+            .collect::<Vec<_>>();
+
+        assert_eq!(game.damage_on(your_creature), 3);
+        assert_eq!(game.damage_on(opposing_creature), 5);
+        assert!(damage.iter().any(|(source, amount, target)| {
+            *source == your_creature
+                && *amount == 5
+                && matches!(target, DamageTarget::Object(id) if *id == opposing_creature)
+        }));
+        assert!(damage.iter().any(|(source, amount, target)| {
+            *source == opposing_creature
+                && *amount == 3
+                && matches!(target, DamageTarget::Object(id) if *id == your_creature)
+        }));
+    }
+
+    #[test]
     fn test_for_each_clone_box() {
         let effect = ForEachObject::new(ObjectFilter::creature(), vec![Effect::gain_life(1)]);
         let cloned = effect.clone_box();
@@ -411,6 +583,35 @@ mod tests {
         let c2_obj = game.object(c2).expect("c2 should exist");
         assert_eq!(c1_obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
         assert_eq!(c2_obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
+    }
+
+    #[test]
+    fn simultaneous_player_action_can_propose_nested_controlled_object_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let alice_creature = create_creature(&mut game, "Alice Bear", alice);
+        let bob_creature = create_creature(&mut game, "Bob Bear", bob);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let mut controlled_creature = ObjectFilter::creature();
+        controlled_creature.controller = Some(PlayerFilter::IteratedPlayer);
+        let nested = Effect::new(ForEachObject::new(
+            controlled_creature,
+            vec![Effect::deal_damage(
+                crate::effect::Value::Fixed(1),
+                ChooseSpec::Iterated,
+            )],
+        ));
+        let effect = crate::effects::ForPlayersEffect::new(PlayerFilter::Any, vec![nested]);
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("nested object fanout should participate in simultaneous proposals");
+
+        assert_eq!(game.damage_on(alice_creature), 1);
+        assert_eq!(game.damage_on(bob_creature), 1);
     }
 
     #[test]

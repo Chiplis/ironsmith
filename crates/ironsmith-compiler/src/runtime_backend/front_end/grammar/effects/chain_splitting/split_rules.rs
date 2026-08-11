@@ -55,17 +55,25 @@ pub(crate) fn split_segments_on_comma_then_tokens<'a>(
 ) -> Vec<&'a [OwnedLexToken]> {
     let mut result = Vec::new();
     for segment in segments {
-        if let Some(split) = find_then_split(segment, &mut is_ability_head) {
-            let first = trim_lexed_commas(segment.get(..split.separator_idx).unwrap_or_default());
-            let second = trim_lexed_commas(segment.get(split.then_idx + 1..).unwrap_or_default());
+        // A source sentence may contain more than one authored `, then`
+        // boundary. Keep splitting the unconsumed tail so an n-ary ordered
+        // chain does not leave its final actions inside a prefix-tolerant
+        // parser for the second arm.
+        let mut remaining = segment;
+        while let Some(split) = find_then_split(remaining, &mut is_ability_head) {
+            let first = trim_lexed_commas(remaining.get(..split.separator_idx).unwrap_or_default());
+            let second = trim_lexed_commas(remaining.get(split.then_idx + 1..).unwrap_or_default());
             if !first.is_empty() {
                 result.push(first);
             }
-            if !second.is_empty() {
-                result.push(second);
+            if second.is_empty() || second.len() >= remaining.len() {
+                remaining = &[];
+                break;
             }
-        } else {
-            result.push(segment);
+            remaining = second;
+        }
+        if !remaining.is_empty() {
+            result.push(remaining);
         }
     }
     result
@@ -192,6 +200,13 @@ pub(crate) fn split_segments_on_comma_effect_head_tokens(
                 continue;
             }
             if facts.before_has_verb && facts.after_starts_effect {
+                if std::env::var_os("IRONSMITH_CHOICE_TRACE").is_some() {
+                    eprintln!(
+                        "comma-effect-head split: before='{}' after='{}'",
+                        crate::runtime_backend::token_word_refs(before).join(" "),
+                        crate::runtime_backend::token_word_refs(after).join(" ")
+                    );
+                }
                 result.push(before);
                 start = idx + 1;
                 split_any = true;
@@ -226,6 +241,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn serial_keyword_filter_commas_are_not_effect_boundaries() {
+        let tokens = lex_line(
+            "It deals 1 damage to each creature that doesn't have first strike, double strike, vigilance, or haste.",
+            0,
+        )
+        .expect("lex");
+        let segments = split_segments_on_comma_effect_head_tokens(vec![&tokens]);
+        assert_eq!(segments, vec![tokens.as_slice()]);
+    }
+
+    #[test]
     fn quoted_granted_ability_is_not_an_effect_chain_boundary() {
         let tokens = lex_line(
             "Until end of turn, target creature gains trample and \"Whenever this creature attacks, draw a card and gain 1 life.\"",
@@ -238,6 +264,31 @@ mod tests {
         assert_eq!(
             split_effect_chain_on_and_tokens(&actual_chain, true).len(),
             2
+        );
+    }
+
+    #[test]
+    fn explicit_player_token_creation_keeps_adjacent_quoted_rules_atomic() {
+        let tokens = lex_line(
+            "That player creates a 0/1 colorless Goblin Construct artifact creature token with \"This token can't block\" and \"At the beginning of your upkeep, this token deals 1 damage to you.\"",
+            0,
+        )
+        .expect("multi-rule token creation should lex");
+        assert_eq!(
+            split_effect_chain_on_and_tokens(&tokens, true),
+            vec![tokens.as_slice()],
+            "the conjunction between quoted token rules belongs to the token blueprint"
+        );
+
+        let outer_action = lex_line(
+            "That player creates a 0/1 Goblin creature token and that player draws a card.",
+            0,
+        )
+        .expect("token creation followed by a real outer action should lex");
+        assert_eq!(
+            split_effect_chain_on_and_tokens(&outer_action, true).len(),
+            2,
+            "an executable action outside quotes must remain a coordination boundary"
         );
     }
 
@@ -387,6 +438,25 @@ mod tests {
                 "permanent",
                 "card"
             ]
+        );
+    }
+
+    #[test]
+    fn repeated_comma_then_boundaries_split_every_ordered_action() {
+        let tokens = lex_line("Scry 1, then scry 2, then scry 3.", 0)
+            .expect("three-action scry chain should lex");
+        let segments = split_segments_on_comma_then_tokens(vec![&tokens], |_| false);
+
+        assert_eq!(segments.len(), 3, "{segments:#?}");
+        let words = segments
+            .iter()
+            .map(|segment| {
+                crate::runtime_backend::front_end::lexer::parser_token_word_refs(segment)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            words,
+            vec![vec!["scry", "1"], vec!["scry", "2"], vec!["scry", "3"]]
         );
     }
 

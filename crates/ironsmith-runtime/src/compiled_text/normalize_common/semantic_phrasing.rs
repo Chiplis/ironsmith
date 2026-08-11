@@ -162,6 +162,15 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     normalized = normalized
         .replace(
+            "Whenever you cast an instant or sorcery spell, if this enchantment has 2 or more quest counters on it, you may copy that spell. You may choose new targets for the copy.",
+            "Whenever you cast an instant or sorcery spell while this enchantment has two or more quest counters on it, you may copy that spell. You may choose new targets for the copy.",
+        )
+        .replace(
+            "Whenever one or more more counters are put on a creature you control",
+            "Whenever one or more counters are put on a creature you control",
+        )
+        .replace(", sacrifice this token:", ", Sacrifice this token:")
+        .replace(
             "each player chooses a nonland permanent and put a doom counter on it",
             "each player chooses a nonland permanent and puts a doom counter on it",
         )
@@ -176,6 +185,18 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "all permanent chosen this way",
             "all permanents chosen this way",
+        )
+        .replace(
+            "all creature card of a type chosen this ways",
+            "all creature cards of a type chosen this way",
+        )
+        .replace(
+            "all creature card of a type chosen this way",
+            "all creature cards of a type chosen this way",
+        )
+        .replace(
+            "that aren't of a type chosen this way chosen this way",
+            "that aren't of a type chosen this way",
         )
         .replace("attached to its.", "attached to that creature.")
         .replace(
@@ -309,9 +330,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = compact;
     }
     if let Some(compact) = compact_each_opponent_who_didnt_draws_surface(&normalized) {
-        normalized = compact;
-    }
-    if let Some(compact) = compact_tempting_offer_copy_spell_surface(&normalized) {
         normalized = compact;
     }
     if let Some(compact) = compact_life_total_threshold_win_surface(&normalized) {
@@ -4251,6 +4269,10 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = normalized.replace("{{", "{").replace("}}", "}");
     }
 
+    // Keep explicitly rendered `that player` antecedents. Generic player-loop
+    // and delayed-player surfaces already choose `they` at their typed
+    // rendering source; rewriting the explicit form here erases distinct
+    // controller-of-triggering-object relationships in counter-unless effects.
     normalized = normalized
         .replace("This creatures get ", "This creature gets ")
         .replace("This creatures gain ", "This creature gains ")
@@ -4376,7 +4398,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("target opponent exiles a card from their hand", "target opponent exiles a card from their hand")
         .replace("casts creature spell", "casts a creature spell")
         .replace("casts colorless spell", "casts a colorless spell")
-        .replace("unless that player pays ", "unless they pay ")
         .replace(
             "permanent with the same name as that object cards",
             "cards with the same name as that object",

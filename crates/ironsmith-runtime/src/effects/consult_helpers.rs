@@ -4,7 +4,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::snapshot::ObjectSnapshot;
-use crate::tag::TagKey;
+use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::{LibraryBottomOrder, LibraryConsultMode};
@@ -160,6 +160,14 @@ pub fn execute_library_consult(
             };
             let snapshot = ObjectSnapshot::from_object(object, game);
             let matched = is_match(object, game);
+
+            // Exile-mode consultation performs the zone change directly
+            // instead of through MoveToZoneEffect/ExileEffect. Preserve the
+            // same source-linked exile provenance those effects record so a
+            // later "cards exiled with this source" cleanup can consume the
+            // entire consulted collection, including nonmatching cards.
+            game.add_exiled_with_source_link(ctx.source, exiled_id);
+            ctx.tag_object(SOURCE_EXILED_TAG, snapshot.clone());
 
             result.exposed_object_ids.push(exiled_id);
             result.exposed_snapshots.push(snapshot.clone());
@@ -625,6 +633,16 @@ mod tests {
             ]
         );
         assert_eq!(snapshot_ids(&ctx, "all"), result.exposed_object_ids);
+        assert_eq!(
+            game.get_exiled_with_source_links(ctx.source),
+            result.exposed_object_ids.as_slice(),
+            "exile consultation must retain source-linked cleanup provenance"
+        );
+        assert_eq!(
+            snapshot_ids(&ctx, SOURCE_EXILED_TAG),
+            result.exposed_object_ids,
+            "the shared source-exiled tag must cover matching and nonmatching cards"
+        );
         assert_eq!(
             names_for_ids(&game, &snapshot_ids(&ctx, "match")),
             vec!["First Match".to_string(), "Second Match".to_string()]

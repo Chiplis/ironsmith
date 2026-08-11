@@ -7,7 +7,7 @@ use crate::color::Color;
 use crate::decision::FallbackStrategy;
 use crate::decisions::context::{
     ColorsContext, CountersContext, DecisionContext, DistributeContext, DistributeTarget,
-    OrderContext, PartitionContext, SelectOptionsContext, SelectableOption,
+    OrderContext, PartitionContext,
 };
 use crate::decisions::spec::{DecisionPrimitive, DecisionSpec};
 use crate::game_state::{GameState, Target};
@@ -511,14 +511,14 @@ impl DecisionSpec for ManaColorsSpec {
 // CounterRemovalSpec - Choose counters to remove
 // ============================================================================
 
-/// Specification for choosing counters to remove from a permanent.
-/// Used by effects like Hex Parasite.
+/// Specification for choosing counters to remove from a permanent or player.
+/// Used by effects like Hex Parasite and Price of Betrayal.
 #[derive(Debug, Clone)]
 pub struct CounterRemovalSpec {
     /// The source of the effect.
     pub source: ObjectId,
-    /// The permanent to remove counters from.
-    pub target: ObjectId,
+    /// The permanent or player to remove counters from.
+    pub target: Target,
     /// Minimum total counters that must be removed.
     pub min_total: u32,
     /// Maximum total counters that can be removed.
@@ -532,6 +532,36 @@ impl CounterRemovalSpec {
     pub fn new(
         source: ObjectId,
         target: ObjectId,
+        max_total: u32,
+        available_counters: Vec<(CounterType, u32)>,
+    ) -> Self {
+        Self::for_target(
+            source,
+            Target::Object(target),
+            max_total,
+            available_counters,
+        )
+    }
+
+    /// Create a counter-removal decision for a player.
+    pub fn for_player(
+        source: ObjectId,
+        target: PlayerId,
+        max_total: u32,
+        available_counters: Vec<(CounterType, u32)>,
+    ) -> Self {
+        Self::for_target(
+            source,
+            Target::Player(target),
+            max_total,
+            available_counters,
+        )
+    }
+
+    /// Create a counter-removal decision for either supported target domain.
+    pub fn for_target(
+        source: ObjectId,
+        target: Target,
         max_total: u32,
         available_counters: Vec<(CounterType, u32)>,
     ) -> Self {
@@ -599,10 +629,11 @@ impl DecisionSpec for CounterRemovalSpec {
         _source: Option<ObjectId>,
         game: &GameState,
     ) -> DecisionContext {
-        let target_name = game
-            .object(self.target)
-            .map(|o| o.name.to_string())
-            .unwrap_or_else(|| "Unknown".to_string());
+        let target_name = match self.target {
+            Target::Object(id) => game.object(id).map(|object| object.name.to_string()),
+            Target::Player(id) => game.player(id).map(|player| player.name.clone()),
+        }
+        .unwrap_or_else(|| "Unknown".to_string());
 
         DecisionContext::Counters(CountersContext::new(
             player,
@@ -612,128 +643,6 @@ impl DecisionSpec for CounterRemovalSpec {
             self.min_total,
             self.max_total,
             self.available_counters.clone(),
-        ))
-    }
-}
-
-// ============================================================================
-// ManaPipSpec - Choose how to pay a single mana pip
-// ============================================================================
-
-/// An action for paying a mana pip.
-#[derive(Debug, Clone)]
-pub enum ManaPipAction {
-    /// Use mana from the pool.
-    UseFromPool(crate::mana::ManaSymbol),
-    /// Activate a mana ability.
-    ActivateManaAbility {
-        source_id: ObjectId,
-        ability_index: usize,
-    },
-    /// Pay life (for Phyrexian mana).
-    PayLife(u32),
-}
-
-/// An option for paying a mana pip.
-#[derive(Debug, Clone)]
-pub struct ManaPipOption {
-    /// Index of this option.
-    pub index: usize,
-    /// Description of this payment method.
-    pub description: String,
-    /// The action to take.
-    pub action: ManaPipAction,
-}
-
-impl ManaPipOption {
-    /// Create a new ManaPipOption.
-    pub fn new(index: usize, description: impl Into<String>, action: ManaPipAction) -> Self {
-        Self {
-            index,
-            description: description.into(),
-            action,
-        }
-    }
-}
-
-/// Specification for paying a single mana pip.
-#[derive(Debug, Clone)]
-pub struct ManaPipSpec {
-    /// The source being paid for.
-    pub source: ObjectId,
-    /// Description of what is being paid for.
-    pub context: String,
-    /// The pip being paid (as alternatives).
-    pub pip: Vec<crate::mana::ManaSymbol>,
-    /// Human-readable description of this pip.
-    pub pip_description: String,
-    /// How many pips remain after this one.
-    pub remaining_pips: usize,
-    /// Payment options for this pip.
-    pub options: Vec<ManaPipOption>,
-}
-
-impl ManaPipSpec {
-    /// Create a new ManaPipSpec.
-    pub fn new(
-        source: ObjectId,
-        context: impl Into<String>,
-        pip: Vec<crate::mana::ManaSymbol>,
-        pip_description: impl Into<String>,
-        remaining_pips: usize,
-        options: Vec<ManaPipOption>,
-    ) -> Self {
-        Self {
-            source,
-            context: context.into(),
-            pip,
-            pip_description: pip_description.into(),
-            remaining_pips,
-            options,
-        }
-    }
-}
-
-impl DecisionSpec for ManaPipSpec {
-    type Response = usize;
-
-    fn description(&self) -> String {
-        format!(
-            "Pay {} for {} ({} remaining)",
-            self.pip_description, self.context, self.remaining_pips
-        )
-    }
-
-    fn primitive(&self) -> DecisionPrimitive {
-        DecisionPrimitive::SelectOptions { min: 1, max: 1 }
-    }
-
-    fn default_response(&self, _strategy: FallbackStrategy) -> usize {
-        0 // Default to first payment option
-    }
-
-    fn build_context(
-        &self,
-        player: PlayerId,
-        _source: Option<ObjectId>,
-        _game: &GameState,
-    ) -> DecisionContext {
-        let options: Vec<SelectableOption> = self
-            .options
-            .iter()
-            .map(|opt| SelectableOption::new(opt.index, &opt.description))
-            .collect();
-
-        DecisionContext::SelectOptions(SelectOptionsContext::new(
-            player,
-            Some(self.source),
-            format!(
-                "Pay {} for {} ({} remaining)",
-                self.pip_description, self.context, self.remaining_pips
-            ),
-            options,
-            1,
-            1,
         ))
     }
 }

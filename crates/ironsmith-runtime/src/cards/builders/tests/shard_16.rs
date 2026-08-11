@@ -2344,6 +2344,9 @@ pub(super) struct RegressionCardFaceJson {
     pub(super) name: String,
     pub(super) oracle_text: Option<String>,
     pub(super) type_line: Option<String>,
+    pub(super) power: Option<String>,
+    pub(super) toughness: Option<String>,
+    pub(super) attraction_lights: Option<Vec<u8>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -2351,6 +2354,9 @@ pub(super) struct RegressionCardJson {
     pub(super) name: String,
     pub(super) oracle_text: Option<String>,
     pub(super) type_line: Option<String>,
+    pub(super) power: Option<String>,
+    pub(super) toughness: Option<String>,
+    pub(super) attraction_lights: Option<Vec<u8>>,
     pub(super) card_faces: Option<Vec<RegressionCardFaceJson>>,
     pub(super) lang: Option<String>,
 }
@@ -2359,6 +2365,15 @@ pub(super) struct RegressionCardJson {
 pub(super) struct RegressionOracleCardInfo {
     pub(super) oracle_text: String,
     pub(super) type_line: Option<String>,
+    pub(super) power_toughness: Option<PowerToughness>,
+    pub(super) attraction_lights: Vec<u8>,
+}
+
+fn regression_power_toughness(
+    power: Option<&str>,
+    toughness: Option<&str>,
+) -> Option<PowerToughness> {
+    super::super::parse_power_toughness(&format!("{}/{}", power?, toughness?))
 }
 
 pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionOracleCardInfo> {
@@ -2381,6 +2396,9 @@ pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionO
             }
 
             let full_name = card.name;
+            let root_attraction_lights = card.attraction_lights.clone().unwrap_or_default();
+            let root_power_toughness =
+                regression_power_toughness(card.power.as_deref(), card.toughness.as_deref());
             let root_text = card.oracle_text.and_then(|text| {
                 let trimmed = text.trim();
                 (!trimmed.is_empty()).then(|| trimmed.to_string())
@@ -2395,29 +2413,58 @@ pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionO
                     }) else {
                         continue;
                     };
-                    face_entries.push((face.name, text, face.type_line));
+                    face_entries.push((
+                        face.name,
+                        text,
+                        face.type_line,
+                        regression_power_toughness(
+                            face.power.as_deref(),
+                            face.toughness.as_deref(),
+                        ),
+                        face.attraction_lights.unwrap_or_default(),
+                    ));
                 }
             }
 
             let Some(primary_text) = root_text
                 .clone()
-                .or_else(|| face_entries.first().map(|(_, text, _)| text.clone()))
+                .or_else(|| face_entries.first().map(|(_, text, _, _, _)| text.clone()))
             else {
                 continue;
             };
+            let primary_power_toughness = root_power_toughness.clone().or_else(|| {
+                face_entries
+                    .first()
+                    .and_then(|(_, _, _, power_toughness, _)| power_toughness.clone())
+            });
 
             out.entry(full_name.clone())
                 .or_insert(RegressionOracleCardInfo {
                     oracle_text: primary_text.clone(),
                     type_line: card.type_line.clone(),
+                    power_toughness: primary_power_toughness.clone(),
+                    attraction_lights: root_attraction_lights.clone(),
                 });
             // A real face entry is more specific than the convenience aliases
             // derived from the combined `Front // Back` name. Register faces
             // first so the back-face name retains its own oracle text.
-            for (face_name, face_text, face_type_line) in face_entries {
+            for (
+                face_name,
+                face_text,
+                face_type_line,
+                face_power_toughness,
+                face_attraction_lights,
+            ) in face_entries
+            {
                 out.entry(face_name).or_insert(RegressionOracleCardInfo {
                     oracle_text: face_text,
                     type_line: face_type_line.or_else(|| card.type_line.clone()),
+                    power_toughness: face_power_toughness.or_else(|| root_power_toughness.clone()),
+                    attraction_lights: if face_attraction_lights.is_empty() {
+                        root_attraction_lights.clone()
+                    } else {
+                        face_attraction_lights
+                    },
                 });
             }
             if full_name.contains(" // ") {
@@ -2426,6 +2473,8 @@ pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionO
                         .or_insert(RegressionOracleCardInfo {
                             oracle_text: primary_text.clone(),
                             type_line: card.type_line.clone(),
+                            power_toughness: primary_power_toughness.clone(),
+                            attraction_lights: root_attraction_lights.clone(),
                         });
                 }
             }
@@ -2449,6 +2498,12 @@ pub(super) fn parse_oracle_card_definition(name: &str) -> CardDefinition {
         .get(name)
         .unwrap_or_else(|| panic!("missing oracle text for regression card '{name}'"));
     let mut builder = CardDefinitionBuilder::new(CardId::new(), name);
+    if !info.attraction_lights.is_empty() {
+        builder = builder.attraction_lights(info.attraction_lights.clone());
+    }
+    if let Some(power_toughness) = info.power_toughness.clone() {
+        builder = builder.power_toughness(power_toughness);
+    }
     if let Some(type_line) = info.type_line.as_deref() {
         let (supertypes, card_types, subtypes) = parse_type_line(type_line)
             .unwrap_or_else(|err| panic!("type-line regression failed for '{name}': {err:?}"));
@@ -2465,6 +2520,31 @@ pub(super) fn parse_oracle_card_definition(name: &str) -> CardDefinition {
     builder
         .parse_text(info.oracle_text.clone())
         .unwrap_or_else(|err| panic!("strict parser regression failed for '{name}': {err:?}"))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn cards_json_regression_loader_preserves_root_and_face_power_toughness() {
+    for (name, expected) in [
+        ("Gnarled Sage", PowerToughness::fixed(4, 4)),
+        ("Mila, Crafty Companion", PowerToughness::fixed(2, 3)),
+    ] {
+        let info = oracle_card_info_by_name()
+            .get(name)
+            .unwrap_or_else(|| panic!("missing cards.json regression entry for '{name}'"));
+        assert_eq!(
+            info.power_toughness.as_ref(),
+            Some(&expected),
+            "the raw cards.json regression index must retain printed P/T for root and face entries"
+        );
+
+        let definition = parse_oracle_card_definition(name);
+        assert_eq!(
+            definition.card.power_toughness,
+            Some(expected),
+            "the shared definition loader must apply indexed printed P/T for '{name}'"
+        );
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

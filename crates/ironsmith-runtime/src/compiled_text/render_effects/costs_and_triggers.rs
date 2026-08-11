@@ -175,6 +175,22 @@ pub(super) fn apply_triggered_presentation_label(
         PresentationLabel::Keyword(PresentationKeyword::Firebending(amount)) => {
             format!("Firebending {amount}")
         }
+        PresentationLabel::AbilityWord(label)
+            if label
+                .trim()
+                .strip_prefix(
+                    ironsmith_core::static_ability_model::STATION_THRESHOLD_STATIC_LABEL_PREFIX,
+                )
+                .is_some_and(|threshold| threshold.parse::<i32>().is_ok()) =>
+        {
+            let threshold = label
+                .trim()
+                .strip_prefix(
+                    ironsmith_core::static_ability_model::STATION_THRESHOLD_STATIC_LABEL_PREFIX,
+                )
+                .expect("station presentation prefix checked above");
+            format!("{threshold}+ | {line}")
+        }
         PresentationLabel::AbilityWord(label) if label.trim().is_empty() => line,
         PresentationLabel::AbilityWord(label) if label.trim().starts_with("__ironsmith_") => line,
         _ => {
@@ -253,8 +269,34 @@ pub(crate) fn granted_ability_self_subject_for_filter(filter: &ObjectFilter) -> 
         [CardType::Land] => "this land",
         [CardType::Planeswalker] => "this planeswalker",
         [CardType::Battle] => "this battle",
+        _ if card_types.is_empty()
+            && !filter.subtypes.is_empty()
+            && filter
+                .subtypes
+                .iter()
+                .all(|subtype| subtype.is_creature_type()) =>
+        {
+            "this creature"
+        }
         _ => "this permanent",
     }
+}
+
+#[cfg(test)]
+#[test]
+fn creature_subtype_only_grant_uses_a_creature_self_subject() {
+    let time_lord = ObjectFilter::default().with_subtype(Subtype::TimeLord);
+    assert_eq!(
+        granted_ability_self_subject_for_filter(&time_lord),
+        "this creature"
+    );
+
+    let aura = ObjectFilter::default().with_subtype(Subtype::Aura);
+    assert_eq!(
+        granted_ability_self_subject_for_filter(&aura),
+        "this permanent",
+        "a noncreature subtype must not inherit the creature death surface"
+    );
 }
 
 pub(crate) fn granted_ability_self_subject_for_choose_spec(spec: &ChooseSpec) -> &'static str {
@@ -371,7 +413,10 @@ pub(crate) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
         {
             return "{Q}".to_string();
         }
-        if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>()
+        // Result IDs and affected-object tags make a discard usable by later
+        // effects, but they do not change the authored cost surface.
+        let transparent_effect = structural_unwrap_render_wrappers(effect);
+        if let Some(discard) = transparent_effect.downcast_ref::<crate::effects::DiscardEffect>()
             && let Some(text) = describe_simple_discard_cost(discard)
         {
             return text;
@@ -544,13 +589,21 @@ pub(super) fn describe_simple_discard_cost(
         return None;
     };
     let count = count.max(0) as u32;
-    let (card_type, supertypes, name_filter, other_filter) = match &discard.card_filter {
-        None => (None, Vec::new(), None, false),
+    if count == 1
+        && let Some(filter) = discard.card_filter.as_ref()
+        && filter.colors.is_some()
+        && let Some(filter_text) = describe_simple_hand_card_filter(filter)
+    {
+        return Some(format!("Discard {filter_text}"));
+    }
+    let (card_type, subtype, supertypes, name_filter, other_filter) = match &discard.card_filter {
+        None => (None, None, Vec::new(), None, false),
         Some(filter) if !filter.any_of.is_empty() => {
             if let Some(filter_text) = describe_discard_any_of_filter(filter) {
                 return Some(if count == 1 {
                     format!("Discard {filter_text}")
                 } else {
+                    let count = number_word(count as i32).unwrap_or_else(|| count.to_string());
                     format!("Discard {count} {filter_text}s")
                 });
             }
@@ -560,16 +613,18 @@ pub(super) fn describe_simple_discard_cost(
             let expected = ObjectFilter {
                 zone: Some(Zone::Hand),
                 card_types: filter.card_types.clone(),
+                subtypes: filter.subtypes.clone(),
                 supertypes: filter.supertypes.clone(),
                 name: filter.name.clone(),
                 other: filter.other,
                 ..Default::default()
             };
-            if filter != &expected {
+            if filter != &expected || filter.subtypes.len() > 1 {
                 return None;
             }
             (
                 filter.card_types.first().copied(),
+                filter.subtypes.first().copied(),
                 filter.supertypes.clone(),
                 filter.name.as_deref(),
                 filter.other,
@@ -590,25 +645,30 @@ pub(super) fn describe_simple_discard_cost(
         });
     }
 
-    if supertypes.is_empty() && card_type.is_none() {
+    if supertypes.is_empty() && card_type.is_none() && subtype.is_none() {
         return Some(if count == 1 {
             "Discard a card".to_string()
         } else {
+            let count = number_word(count as i32).unwrap_or_else(|| count.to_string());
             format!("Discard {count} cards")
         });
     }
 
-    let mut descriptors: Vec<&str> = supertypes
+    let mut descriptors: Vec<String> = supertypes
         .iter()
-        .map(|supertype| supertype.name())
+        .map(|supertype| supertype.name().to_string())
         .collect();
+    if let Some(subtype) = subtype {
+        descriptors.push(subtype.display_name());
+    }
     if let Some(card_type) = card_type {
-        descriptors.push(describe_card_type_word_local(card_type));
+        descriptors.push(describe_card_type_word_local(card_type).to_string());
     }
     let type_text = with_indefinite_article(&format!("{} card", descriptors.join(" ")));
     Some(if count == 1 {
         format!("Discard {type_text}")
     } else {
+        let count = number_word(count as i32).unwrap_or_else(|| count.to_string());
         format!("Discard {count} {type_text}")
     })
 }
@@ -632,8 +692,12 @@ pub(super) fn describe_discard_any_of_filter(filter: &ObjectFilter) -> Option<St
 }
 
 pub(super) fn describe_simple_hand_card_filter(filter: &ObjectFilter) -> Option<String> {
+    if !matches!(filter.owner.as_ref(), None | Some(PlayerFilter::You)) {
+        return None;
+    }
     let mut expected = ObjectFilter {
         zone: filter.zone,
+        owner: filter.owner.clone(),
         card_types: filter.card_types.clone(),
         subtypes: filter.subtypes.clone(),
         colors: filter.colors,
@@ -667,16 +731,65 @@ pub(super) fn describe_simple_hand_card_filter(filter: &ObjectFilter) -> Option<
         )));
     }
     if let Some(colors) = filter.colors
-        && colors.count() == 1
         && filter.card_types.is_empty()
         && filter.subtypes.is_empty()
     {
-        let color = crate::color::Color::ALL
+        let color_names = crate::color::Color::ALL
             .into_iter()
-            .find(|color| colors.contains(*color))?;
-        return Some(with_indefinite_article(&format!("{} card", color.name())));
+            .filter(|color| colors.contains(*color))
+            .map(|color| color.name().to_string())
+            .collect::<Vec<_>>();
+        if color_names.is_empty() {
+            return None;
+        }
+        return Some(with_indefinite_article(&format!(
+            "{} card",
+            join_with_or(&color_names)
+        )));
     }
     None
+}
+
+#[cfg(test)]
+mod colored_discard_cost_tests {
+    use super::*;
+
+    fn red_or_green_hand_card(owner: PlayerFilter) -> ObjectFilter {
+        ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(owner)
+            .with_colors(crate::color::ColorSet::RED.union(crate::color::ColorSet::GREEN))
+    }
+
+    #[test]
+    fn transparent_result_id_preserves_the_exact_color_choice() {
+        let discard = Effect::new(crate::effects::DiscardEffect::new_with_filter(
+            Value::Fixed(1),
+            PlayerFilter::You,
+            false,
+            Some(red_or_green_hand_card(PlayerFilter::You)),
+        ));
+        let cost = crate::costs::Cost::validated_effect(Effect::with_id(7, discard));
+
+        assert_eq!(
+            describe_cost_component(&cost),
+            "Discard a red or green card"
+        );
+    }
+
+    #[test]
+    fn color_surface_rejects_a_different_owner_or_extra_type_constraint() {
+        assert_eq!(
+            describe_simple_hand_card_filter(&red_or_green_hand_card(PlayerFilter::Opponent)),
+            None
+        );
+        assert_eq!(
+            describe_simple_hand_card_filter(
+                &red_or_green_hand_card(PlayerFilter::You).with_type(CardType::Creature)
+            ),
+            None
+        );
+    }
 }
 
 pub(super) fn is_grandeur_activation_cost(activated: &crate::ability::ActivatedAbility) -> bool {
@@ -730,6 +843,13 @@ fn describe_dynamic_mana_cost_with_target(
     dynamic: &ironsmith_core::DynamicManaCost,
     enclosing_target: Option<&ChooseSpec>,
 ) -> String {
+    if dynamic.source_mana_cost
+        && dynamic.x_value.is_none()
+        && dynamic.additional_generic.is_none()
+        && dynamic.multiplier.is_none()
+    {
+        return "its mana cost".to_string();
+    }
     if matches!(
         dynamic.display_hint,
         ironsmith_core::DynamicManaDisplayHint::ManaEqualTo
@@ -1083,10 +1203,38 @@ fn describe_cost_component_parts_with_target(
             }
         }
         if idx + 1 < costs.len()
+            && costs[idx + 1].is_sacrifice_self()
+            && let Some(sacrifice) = costs[idx].effect_ref().and_then(sacrifice_view)
+            && sacrifice.player == &PlayerFilter::You
+            && matches!(sacrifice.count, Value::Fixed(count) if *count > 0)
+        {
+            let mut display_filter = sacrifice.filter.clone();
+            if display_filter.controller == Some(PlayerFilter::You) {
+                display_filter.controller = None;
+            }
+            let chosen = normalize_cost_phrase(&describe_sacrifice_effect(SacrificeView {
+                filter: &display_filter,
+                count: sacrifice.count,
+                player: sacrifice.player,
+            }));
+            if let Some(chosen) = chosen.strip_prefix("Sacrifice ") {
+                parts.push(format!("Sacrifice {chosen} and this source"));
+                idx += 2;
+                continue;
+            }
+        }
+        if idx + 1 < costs.len()
             && let Some(compact) = describe_behold_then_exile_cost(&costs[idx], &costs[idx + 1])
         {
             parts.push(compact);
             idx += 2;
+            continue;
+        }
+        if let Some((compact, consumed)) =
+            describe_exile_source_and_other_objects_cost(&costs[idx..])
+        {
+            parts.push(compact);
+            idx += consumed;
             continue;
         }
         if idx + 1 < costs.len()
@@ -1560,6 +1708,79 @@ pub(super) fn describe_exile_source_and_named_artifact_costs(
     ))
 }
 
+fn describe_exile_source_and_other_objects_cost(
+    costs: &[crate::costs::Cost],
+) -> Option<(String, usize)> {
+    fn typed_source_surface(surface: &crate::target::SourceReferenceSurface) -> String {
+        let text = surface.display_text();
+        let crate::target::SourceReferenceSurface::ThisPermanentType(_) = surface else {
+            return text;
+        };
+        let Some(noun) = text.strip_prefix("this ") else {
+            return text;
+        };
+        let authored_subtype = [
+            crate::types::SubtypeFamily::Land,
+            crate::types::SubtypeFamily::Creature,
+            crate::types::SubtypeFamily::Artifact,
+            crate::types::SubtypeFamily::Enchantment,
+            crate::types::SubtypeFamily::Spell,
+            crate::types::SubtypeFamily::Planeswalker,
+            crate::types::SubtypeFamily::Battle,
+        ]
+        .into_iter()
+        .flat_map(crate::types::SubtypeFamily::all_subtypes)
+        .find(|subtype| subtype.display_name().eq_ignore_ascii_case(noun));
+        authored_subtype
+            .map(|subtype| format!("this {}", subtype.display_name()))
+            .unwrap_or(text)
+    }
+
+    let [
+        source_choose_cost,
+        source_exile_cost,
+        other_choose_cost,
+        other_exile_cost,
+        ..,
+    ] = costs
+    else {
+        return None;
+    };
+    let source_choose = source_choose_cost
+        .effect_ref()?
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let source_exile = source_exile_cost
+        .effect_ref()?
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    let other_choose = other_choose_cost
+        .effect_ref()?
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let other_exile = other_exile_cost
+        .effect_ref()?
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    let source_surface = source_choose.filter.source_surface.as_ref()?;
+    if !source_choose.filter.source
+        || source_choose.chooser != PlayerFilter::You
+        || choose_exact_count(source_choose) != Some(1)
+        || choose_primary_zone(source_choose) != Some(Zone::Battlefield)
+        || !exile_uses_chosen_tag(&source_exile.spec, source_choose.tag.as_str())
+        || other_choose.chooser != PlayerFilter::You
+        || choose_exact_count(other_choose).is_none_or(|count| count == 0)
+        || choose_primary_zone(other_choose) != Some(Zone::Battlefield)
+        || !other_choose.filter.other
+        || other_choose.filter.controller != Some(PlayerFilter::You)
+        || !exile_uses_chosen_tag(&other_exile.spec, other_choose.tag.as_str())
+    {
+        return None;
+    }
+    let other = normalize_cost_phrase(&describe_choose_then_exile(other_choose, other_exile)?);
+    let other = other.strip_prefix("Exile ")?;
+    Some((
+        format!("Exile {} and {other}", typed_source_surface(source_surface)),
+        4,
+    ))
+}
+
 pub(super) fn named_artifact_exile_cost_name(
     choose: &crate::effects::ChooseObjectsEffect,
     exile: &crate::effects::ExileEffect,
@@ -1648,12 +1869,37 @@ pub(crate) fn describe_cost_list(costs: &[crate::costs::Cost]) -> String {
 pub(crate) fn describe_total_cost(cost: &crate::cost::TotalCost) -> String {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => describe_cost_list(costs),
-        ironsmith_core::TotalCostKind::OneOf(branches) => branches
-            .iter()
-            .map(describe_total_cost)
-            .collect::<Vec<_>>()
-            .join(" or "),
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            // Waterbend's expanded tap branches are the executable payment
+            // model; the authored keyword is the public cost surface.
+            if let Some(generic) = waterbend_generic_from_branches(branches) {
+                return format!("Waterbend {{{generic}}}");
+            }
+            branches
+                .iter()
+                .map(describe_total_cost)
+                .collect::<Vec<_>>()
+                .join(" or ")
+        }
     }
+}
+
+pub(super) fn waterbend_generic_from_branches(branches: &[crate::cost::TotalCost]) -> Option<u32> {
+    branches.iter().find_map(|branch| {
+        let ironsmith_core::TotalCostKind::All(costs) = branch.kind() else {
+            return None;
+        };
+        costs.iter().find_map(|cost| {
+            let effect = &cost.downcast_ref::<crate::costs::CostEffect>()?.effect;
+            let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+            choose
+                .tag
+                .as_str()
+                .strip_prefix("waterbend_cost_")?
+                .parse::<u32>()
+                .ok()
+        })
+    })
 }
 
 pub(super) fn describe_total_cost_with_trailing_x_definition(
@@ -1922,7 +2168,10 @@ pub(crate) fn describe_choose_creature_type_then_x_boost(
     choose: &crate::effects::ChooseCreatureTypeEffect,
     followup: &Effect,
 ) -> Option<String> {
-    if !choose.excluded_subtypes.is_empty() || !matches!(choose.chooser, PlayerFilter::You) {
+    if choose.family != crate::types::SubtypeFamily::Creature
+        || !choose.excluded_subtypes.is_empty()
+        || !matches!(choose.chooser, PlayerFilter::You)
+    {
         return None;
     }
     let followup = if let Some(tagged) = followup.downcast_ref::<crate::effects::TaggedEffect>() {
@@ -1961,7 +2210,10 @@ pub(super) fn describe_choose_creature_type_then_must_attack(
     choose: &crate::effects::ChooseCreatureTypeEffect,
     followup: &Effect,
 ) -> Option<String> {
-    if !choose.excluded_subtypes.is_empty() || !matches!(choose.chooser, PlayerFilter::You) {
+    if choose.family != crate::types::SubtypeFamily::Creature
+        || !choose.excluded_subtypes.is_empty()
+        || !matches!(choose.chooser, PlayerFilter::You)
+    {
         return None;
     }
     let followup = if let Some(tagged) = followup.downcast_ref::<crate::effects::TaggedEffect>() {
@@ -2283,19 +2535,29 @@ pub(crate) fn describe_for_each_tagged_this_way_subject(filter: &ObjectFilter) -
             return None;
         }
         let tag = constraint.tag.as_str();
-        if tag.starts_with("exiled_") {
+        if tag.starts_with("exiled_") || crate::cards::is_sentence_helper_tag(tag, "exiled") {
             Some("exiled")
-        } else if tag.starts_with("destroyed_") {
+        } else if tag.starts_with("destroyed_")
+            || crate::cards::is_sentence_helper_tag(tag, "destroyed")
+        {
             Some("destroyed")
-        } else if tag.starts_with("sacrificed_") {
+        } else if tag.starts_with("sacrificed_")
+            || crate::cards::is_sentence_helper_tag(tag, "sacrificed")
+        {
             Some("sacrificed")
-        } else if tag.starts_with("revealed_") {
+        } else if tag.starts_with("revealed_")
+            || crate::cards::is_sentence_helper_tag(tag, "revealed")
+        {
             Some("revealed")
-        } else if tag.starts_with("discarded_") {
+        } else if tag.starts_with("discarded_")
+            || crate::cards::is_sentence_helper_tag(tag, "discarded")
+        {
             Some("discarded")
-        } else if tag.starts_with("milled_") {
+        } else if tag.starts_with("milled_") || crate::cards::is_sentence_helper_tag(tag, "milled")
+        {
             Some("milled")
-        } else if tag.starts_with("tapped_") {
+        } else if tag.starts_with("tapped_") || crate::cards::is_sentence_helper_tag(tag, "tapped")
+        {
             Some("tapped")
         } else {
             None
@@ -2339,7 +2601,11 @@ pub(crate) fn describe_for_each_tagged_this_way_subject(filter: &ObjectFilter) -
         return None;
     }
 
-    Some(format!("For each {subject} {action} this way"))
+    if filter.has_put_into_graveyard_this_way_surface() {
+        Some(format!("For each {subject} put into a graveyard this way"))
+    } else {
+        Some(format!("For each {subject} {action} this way"))
+    }
 }
 
 #[cfg(test)]
@@ -2368,6 +2634,55 @@ mod for_each_tagged_set_surface_tests {
         assert_eq!(
             describe_for_each_tagged_this_way_subject(&those).as_deref(),
             Some("For each of those permanents")
+        );
+
+        let mut sentence_helper = ObjectFilter::default().match_tagged(
+            TagKey::from("__sentence_helper_revealed_l0_s0_e0"),
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        sentence_helper.set_explicit_card_noun(true);
+        sentence_helper
+            .set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those));
+        assert_eq!(
+            describe_for_each_tagged_this_way_subject(&sentence_helper).as_deref(),
+            Some("For each of those cards")
+        );
+    }
+
+    #[test]
+    fn public_reveal_each_unless_payment_program_keeps_the_authored_set_surface() {
+        let oracle = "Reveal the top three cards of your library. For each of those cards, put that card into your hand unless any opponent pays 3 life. Then exile the rest.";
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Reveal Payment Probe",
+        )
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("reveal/offer/rest program should parse");
+
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            [oracle]
+        );
+        let debug = format!("{:#?}", definition.spell_effect);
+        assert!(debug.contains("UnlessPaysEffect"), "{debug}");
+        assert!(debug.contains("player: Opponent"), "{debug}");
+        assert!(debug.contains("PayLife"), "{debug}");
+    }
+
+    #[test]
+    fn typed_graveyard_action_surface_overrides_a_mill_result_tag() {
+        let mut filter = ObjectFilter::creature()
+            .in_zone(Zone::Graveyard)
+            .match_tagged(
+                TagKey::from("milled_0"),
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            );
+        filter.zone = None;
+        filter.set_put_into_graveyard_this_way_surface(true);
+        assert_eq!(
+            describe_for_each_tagged_this_way_subject(&filter).as_deref(),
+            Some("For each creature put into a graveyard this way")
         );
     }
 }
@@ -3502,6 +3817,52 @@ fn choice_count_is_half_rounded_up_of_filter(choose: &crate::effects::ChooseObje
     )
 }
 
+fn choice_count_unit_fraction_of_filter(
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> Option<(u32, &'static str)> {
+    let Value::DividedRoundedDown(inner, divisor) = choose.count_value.as_ref()? else {
+        return None;
+    };
+    let denominator = u32::try_from(*divisor).ok().filter(|value| *value > 1)?;
+    let (count_filter, rounding) = match inner.as_ref() {
+        Value::Count(filter) => (filter, "down"),
+        Value::Add(left, right) => match (left.as_ref(), right.as_ref()) {
+            (Value::Count(filter), Value::Fixed(offset))
+            | (Value::Fixed(offset), Value::Count(filter))
+                if *offset == divisor.saturating_sub(1) =>
+            {
+                (filter, "up")
+            }
+            _ => return None,
+        },
+        _ => return None,
+    };
+    choice_count_filter_matches(count_filter, choose).then_some((denominator, rounding))
+}
+
+fn choice_count_all_except_of_filter(choose: &crate::effects::ChooseObjectsEffect) -> Option<u32> {
+    let Value::Add(left, right) = choose.count_value.as_ref()? else {
+        return None;
+    };
+    let (count_filter, offset) = match (left.as_ref(), right.as_ref()) {
+        (Value::Count(filter), Value::Fixed(offset))
+        | (Value::Fixed(offset), Value::Count(filter)) => (filter, *offset),
+        _ => return None,
+    };
+    let keep_count = offset
+        .checked_neg()
+        .and_then(|value| u32::try_from(value).ok())?;
+    (keep_count > 0 && choice_count_filter_matches(count_filter, choose)).then_some(keep_count)
+}
+
+fn unit_fraction_quantifier(denominator: u32) -> Option<String> {
+    if denominator == 2 {
+        Some("half the".to_string())
+    } else {
+        ironsmith_core::ordinal_word(denominator).map(|ordinal| format!("a {ordinal} of the"))
+    }
+}
+
 fn sacrifice_choice_players_match(left: &PlayerFilter, right: &PlayerFilter) -> bool {
     player_filters_refer_to_same_player(left, right)
         || matches!(
@@ -3686,6 +4047,32 @@ pub(crate) fn describe_for_players_choose_then_sacrifice(
     if let Some(chosen) = describe_greatest_power_choice_filter(&choose.filter) {
         let chosen = with_indefinite_article(&chosen);
         return Some(format!("{subject} {verb} {chosen}"));
+    }
+    if choose.count.is_dynamic_x()
+        && let Some((denominator, rounding)) = choice_count_unit_fraction_of_filter(choose)
+        && matches!(
+            choose.filter.controller.as_ref(),
+            Some(&PlayerFilter::IteratedPlayer)
+        )
+    {
+        let fraction = unit_fraction_quantifier(denominator)?;
+        let kind = pluralize_noun_phrase(&describe_sacrifice_choice_kind(choose));
+        return Some(format!(
+            "{subject} {verb} {fraction} {kind} {actor} control of {possessive} choice, rounded {rounding}"
+        ));
+    }
+    if choose.count.is_dynamic_x()
+        && let Some(keep_count) = choice_count_all_except_of_filter(choose)
+        && matches!(
+            choose.filter.controller.as_ref(),
+            Some(&PlayerFilter::IteratedPlayer)
+        )
+    {
+        let kind = pluralize_noun_phrase(&describe_sacrifice_choice_kind(choose));
+        let keep_count = number_word(keep_count as i32).unwrap_or_else(|| keep_count.to_string());
+        return Some(format!(
+            "{subject} {verb} all {kind} {actor} control except for {keep_count}"
+        ));
     }
     if choose.count.is_dynamic_x()
         && choice_count_is_half_rounded_up_of_filter(choose)
@@ -3980,7 +4367,7 @@ pub(super) fn describe_for_players_controls_no_lose_game(
     }
 }
 
-pub(super) fn describe_for_players_bottom_library_exile_then_look_cast(
+pub(crate) fn describe_for_players_bottom_library_exile_then_look_cast(
     for_players: &crate::effects::ForPlayersEffect,
     look: &crate::effects::LookAtObjectsEffect,
     grant: &crate::effects::GrantPlayTaggedEffect,
@@ -4588,17 +4975,41 @@ pub(crate) fn describe_choose_then_sacrifice(
         choose.filter.description()
     };
     if sacrifice_count_tracks_chosen_set(sacrifice, choose) {
-        let rounded = if choose.count.is_dynamic_x()
-            && choice_count_is_half_rounded_up_of_filter(choose)
+        if choose.count.is_dynamic_x()
+            && let Some(keep_count) = choice_count_all_except_of_filter(choose)
         {
-            Some("up")
+            let kind = pluralize_noun_phrase(&describe_sacrifice_choice_kind(choose));
+            let controls = choose.filter.controller.as_ref().is_some_and(|controller| {
+                sacrifice_choice_players_match(controller, &choose.chooser)
+            });
+            let control_suffix = if controls {
+                if render_player == &PlayerFilter::You {
+                    " you control"
+                } else {
+                    " they control"
+                }
+            } else {
+                ""
+            };
+            let keep_count =
+                number_word(keep_count as i32).unwrap_or_else(|| keep_count.to_string());
+            return Some(format!(
+                "{player} {verb} all {kind}{control_suffix} except for {keep_count}"
+            ));
+        }
+        let fraction = if choose.count.is_dynamic_x()
+            && let Some((denominator, rounded)) = choice_count_unit_fraction_of_filter(choose)
+        {
+            Some((unit_fraction_quantifier(denominator)?, rounded))
+        } else if choose.count.is_dynamic_x() && choice_count_is_half_rounded_up_of_filter(choose) {
+            Some(("half the".to_string(), "up"))
         } else if choose.count.is_dynamic_x() && choice_count_is_half_rounded_down_of_filter(choose)
         {
-            Some("down")
+            Some(("half the".to_string(), "down"))
         } else {
             None
         };
-        if let Some(rounded) = rounded {
+        if let Some((fraction, rounded)) = fraction {
             let kind = pluralize_noun_phrase(&describe_sacrifice_choice_kind(choose));
             let controls = choose.filter.controller.as_ref().is_some_and(|controller| {
                 sacrifice_choice_players_match(controller, &choose.chooser)
@@ -4618,7 +5029,7 @@ pub(crate) fn describe_choose_then_sacrifice(
                 ""
             };
             return Some(format!(
-                "{player} {verb} half the {kind}{control_suffix}{choice_suffix}, rounded {rounded}"
+                "{player} {verb} {fraction} {kind}{control_suffix}{choice_suffix}, rounded {rounded}"
             ));
         }
         let selection = describe_counted_sacrifice_choice_selection(choose)?;
@@ -4724,7 +5135,19 @@ pub(super) fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String 
         } else if let Some(rest) = noun.strip_prefix("an ") {
             noun = rest.to_string();
         }
-        let subject = pluralize_noun_phrase(&noun);
+        let authored_each = sacrifice.filter.set_quantifier_surface()
+            == Some(ironsmith_core::SetQuantifierSurface::Each);
+        let subject = if authored_each {
+            noun
+        } else {
+            pluralize_noun_phrase(&noun)
+        };
+        if authored_each {
+            if matches!(sacrifice.player, PlayerFilter::You) {
+                return format!("Sacrifice each {subject}");
+            }
+            return format!("{player} {verb} each {subject}");
+        }
         if matches!(sacrifice.player, PlayerFilter::You) {
             return format!("Sacrifice all {subject}");
         }
@@ -4941,6 +5364,7 @@ fn describe_choose_then_for_each_copy_effects(
         || !create_copy.added_subtypes.is_empty()
         || !create_copy.removed_supertypes.is_empty()
         || create_copy.set_base_power_toughness.is_some()
+        || create_copy.set_base_power_toughness_value.is_some()
         || create_copy.set_colors.is_some()
         || create_copy.set_card_types.is_some()
         || create_copy.set_subtypes.is_some()
@@ -5570,6 +5994,9 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
     {
         return "modified creature you controlled as you cast this spell".to_string();
     }
+    if let Some(subject) = describe_shared_tagged_attachment_union_count_subject(filter) {
+        return subject;
+    }
     if let Some(relative) = describe_relative_characteristic_list_filter(filter) {
         return relative;
     }
@@ -5676,6 +6103,9 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
             // therefore use the plural possessive ("for each creature your
             // opponents control"), while target filters remain singular.
             PlayerFilter::Opponent => "your opponents control".to_string(),
+            PlayerFilter::Target(inner) if inner.relative_target_exclusion_base().is_some() => {
+                "another target player controls".to_string()
+            }
             _ => format!("{} controls", describe_player_filter(controller)),
         };
         if filter.has_controller_after_qualifiers_surface() {

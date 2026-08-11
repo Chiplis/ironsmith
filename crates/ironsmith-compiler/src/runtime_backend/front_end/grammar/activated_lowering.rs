@@ -82,17 +82,13 @@ pub(crate) fn any_player_may_activate_on_stack(tokens: &[OwnedLexToken]) -> bool
     ) && surface_has_sequence(tokens, &["on", "the", "stack"])
 }
 
-fn has_command_zone_origin(tokens: &[OwnedLexToken]) -> bool {
-    primitives::find_prefix(tokens, || {
-        (
-            primitives::kw("from"),
-            opt(primitives::kw("the")),
-            primitives::kw("command"),
-            primitives::kw("zone"),
-        )
-            .void()
-    })
-    .is_some()
+fn has_source_command_zone_origin(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens)
+        .word_refs()
+        .into_iter()
+        .filter(|word| super::leaf::parse_leaf_article_complete(word).is_err())
+        .collect::<Vec<_>>();
+    reference_shapes::contains_source_from_command_zone(&words)
 }
 
 pub(crate) fn parse_activated_presentation_kind_tokens(
@@ -108,7 +104,18 @@ pub(crate) fn parse_activated_presentation_kind_tokens(
     let label_words = TokenWordView::new(label);
     let head = label_words.first()?;
     match head {
-        "throw" => Some(ActivatedPresentationKind::Throw),
+        "throw" => Some(
+            if label
+                .iter()
+                .filter(|token| token.kind == TokenKind::Period)
+                .count()
+                >= 3
+            {
+                ActivatedPresentationKind::ThrowEllipsis
+            } else {
+                ActivatedPresentationKind::Throw
+            },
+        ),
         "boast" => Some(ActivatedPresentationKind::Boast),
         "exhaust" => Some(ActivatedPresentationKind::Exhaust),
         "renew" => Some(ActivatedPresentationKind::Renew),
@@ -143,10 +150,10 @@ pub(crate) fn parse_activated_functional_zones_tokens(
         || effect_has(reference_shapes::contains_source_from_your_graveyard)
     {
         vec![Zone::Graveyard]
-    } else if has_command_zone_origin(cost_tokens)
+    } else if has_source_command_zone_origin(cost_tokens)
         || effect_sentences
             .iter()
-            .any(|sentence| has_command_zone_origin(sentence))
+            .any(|sentence| has_source_command_zone_origin(sentence))
     {
         vec![Zone::Command]
     } else if reference_shapes::contains_source_from_your_hand(&cost_words)

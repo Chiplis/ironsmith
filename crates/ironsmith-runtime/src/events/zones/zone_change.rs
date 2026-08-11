@@ -253,6 +253,10 @@ impl GameEventType for ZoneChangeEvent {
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
         self.snapshot.as_ref()
     }
+
+    fn snapshots(&self) -> Vec<&ObjectSnapshot> {
+        ZoneChangeEvent::snapshots(self).iter().collect()
+    }
 }
 
 #[cfg(test)]

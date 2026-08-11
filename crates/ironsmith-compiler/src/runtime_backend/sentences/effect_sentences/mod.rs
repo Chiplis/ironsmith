@@ -88,21 +88,32 @@ pub(crate) use clause_dispatch::*;
 #[cfg(test)]
 pub(crate) use conditionals::parse_conditional_sentence_lexed;
 pub(crate) use conditionals::*;
+pub(crate) use creation_handlers::{
+    attach_inline_token_granted_abilities_to_last_create, parse_create,
+};
 pub(crate) use dispatch_entry::SentenceInput;
 pub(crate) use dispatch_entry::*;
 pub(crate) use dispatch_inner::*;
 pub(crate) use fanout_family::{
-    parse_compound_damage_fanout_sentence, parse_same_name_gets_fanout_sentence,
-    parse_same_name_target_fanout_sentence, parse_serial_target_pt_modifiers_sentence,
-    parse_shared_color_target_fanout_sentence,
+    bind_removed_counter_damage_fanout, parse_compound_damage_fanout_sentence,
+    parse_same_name_gets_fanout_sentence, parse_same_name_target_fanout_sentence,
+    parse_serial_target_pt_modifiers_sentence, parse_shared_color_target_fanout_sentence,
 };
 pub(crate) use gain_ability::*;
 pub(crate) use search_library::parse_search_library_sentence;
 pub(crate) use search_library::parse_search_library_sentence as parse_search_library_sentence_lexed;
 pub(crate) use search_library::*;
-#[cfg(test)]
+pub(crate) use sequence_rules::generic_subject_verb_sequences::exile_permission_followups::parse_dynamic_exile_top_then_play_for_as_long_as_exiled;
+pub(crate) use sequence_rules::generic_subject_verb_sequences::pairs::parse_look_at_players_hand_then_may_cast_from_those_cards;
+pub(crate) use sequence_rules::generic_subject_verb_sequences::parse_destroy_then_no_regeneration_sequence;
+pub(crate) use sequence_rules::generic_subject_verb_sequences::triples::parse_look_at_top_partition_face_down_then_filtered_permission;
 pub(crate) use sequence_rules::try_parse_subject_verb_sequence_rule;
 pub(crate) use subject_verb_primitives::*;
+pub(crate) use verb_handlers::parse_exiled_with_source_move_surface;
+pub(crate) use verb_handlers::{
+    damage_clause_has_terminal_unpreventable_rider, mark_damage_ast_unpreventable,
+};
+pub(crate) use zone_counter_helpers::target_object_filter_mut;
 #[cfg(test)]
 pub(crate) use zone_counter_helpers::{
     parse_half_starting_life_total_value, parse_sentence_put_multiple_counters_on_target,

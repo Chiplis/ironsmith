@@ -25,18 +25,23 @@ use crate::target::{ChooseSpec, ObjectFilter};
 pub struct DestroyNoRegenerationEffect {
     /// What to destroy - can be targeted, all matching, source, etc.
     pub spec: ChooseSpec,
+    pub creature_destroyed_this_way_surface: bool,
 }
 
 impl DestroyNoRegenerationEffect {
     /// Create a destroy-no-regeneration effect with a custom spec.
     pub fn with_spec(spec: ChooseSpec) -> Self {
-        Self { spec }
+        Self {
+            spec,
+            creature_destroyed_this_way_surface: false,
+        }
     }
 
     /// Create a targeted destroy-no-regeneration effect (single target).
     pub fn target(spec: ChooseSpec) -> Self {
         Self {
             spec: ChooseSpec::target(spec),
+            creature_destroyed_this_way_surface: false,
         }
     }
 
@@ -44,6 +49,7 @@ impl DestroyNoRegenerationEffect {
     pub fn targets(spec: ChooseSpec, count: ChoiceCount) -> Self {
         Self {
             spec: ChooseSpec::target(spec).with_count(count),
+            creature_destroyed_this_way_surface: false,
         }
     }
 
@@ -51,7 +57,13 @@ impl DestroyNoRegenerationEffect {
     pub fn all(filter: ObjectFilter) -> Self {
         Self {
             spec: ChooseSpec::all(filter),
+            creature_destroyed_this_way_surface: false,
         }
+    }
+
+    pub fn with_creature_destroyed_this_way_surface(mut self, present: bool) -> Self {
+        self.creature_destroyed_this_way_surface = present;
+        self
     }
 
     fn destroy_object_no_regen(
@@ -253,6 +265,45 @@ mod tests {
             }),
             "destroy-no-regeneration effect should surface graveyard objects, got {:?}",
             outcome.output_objects()
+        );
+    }
+
+    #[test]
+    fn destroy_all_other_without_regeneration_spares_source_and_breaks_shields() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::from_raw(4), "Wrathful Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let shielded_card = CardBuilder::new(CardId::from_raw(5), "Shielded Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let shielded_id = game.create_object_from_card(&shielded_card, bob, Zone::Battlefield);
+
+        let mut regen_ctx = ExecutionContext::new_default(shielded_id, bob);
+        RegenerateEffect::source(crate::effect::Until::EndOfTurn)
+            .execute(&mut game, &mut regen_ctx)
+            .expect("regeneration shield should resolve");
+
+        let mut filter = ObjectFilter::creature();
+        filter.other = true;
+        let effect = DestroyNoRegenerationEffect::all(filter);
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("mass destruction should resolve");
+
+        assert_eq!(outcome.as_count(), Some(1));
+        assert!(
+            game.object(source_id).is_some(),
+            "the source-identity exception must survive"
+        );
+        assert!(
+            game.object(shielded_id).is_none(),
+            "the affected creature must die despite its regeneration shield"
         );
     }
 }

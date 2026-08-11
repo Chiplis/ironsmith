@@ -1276,14 +1276,26 @@ pub(super) fn finish_surtland_cast(
                             .index
                     });
                 let description = ctx.description.to_ascii_lowercase();
-                let response = if description.starts_with("choose the next cost to pay") {
-                    PriorityResponse::NextCostChoice(choice)
-                } else {
-                    PriorityResponse::ManaPayment(choice)
-                };
+                assert!(description.starts_with("choose the next cost to pay"));
+                let response = PriorityResponse::NextCostChoice(choice);
                 apply_priority_response_with_dm(game, trigger_queue, state, &response, dm)
                     .expect("Surtland cast option should be accepted")
             }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::ManaPayment(ctx),
+            ) => apply_priority_response_with_dm(
+                game,
+                trigger_queue,
+                state,
+                &PriorityResponse::ManaPaymentPlan(
+                    crate::mana_payment::ManaPaymentResponse::Confirm {
+                        plan_id: ctx.plan.id,
+                        request_hash: ctx.plan.request_hash,
+                    },
+                ),
+                dm,
+            )
+            .expect("Surtland mana plan should be accepted"),
             crate::decision::GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::Priority(_),
             )
@@ -1990,22 +2002,20 @@ pub(super) fn test_brain_in_a_jar_second_ability_removes_x_charge_counters_for_s
                 .expect("chosen Brain in a Jar cost should be payable")
             }
             crate::decision::GameProgress::NeedsDecisionCtx(
-                crate::decisions::context::DecisionContext::SelectOptions(ctx),
-            ) => {
-                let option = ctx
-                    .options
-                    .iter()
-                    .find(|option| option.legal)
-                    .expect("Brain in a Jar mana payment should have a legal option");
-                apply_priority_response_with_dm(
-                    &mut game,
-                    &mut trigger_queue,
-                    &mut state,
-                    &PriorityResponse::ManaPayment(option.index),
-                    &mut dm,
-                )
-                .expect("Brain in a Jar mana payment should succeed")
-            }
+                crate::decisions::context::DecisionContext::ManaPayment(ctx),
+            ) => apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::ManaPaymentPlan(
+                    crate::mana_payment::ManaPaymentResponse::Confirm {
+                        plan_id: ctx.plan.id,
+                        request_hash: ctx.plan.request_hash,
+                    },
+                ),
+                &mut dm,
+            )
+            .expect("Brain in a Jar mana payment should succeed"),
             crate::decision::GameProgress::Continue => break,
             crate::decision::GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::Priority(_),

@@ -1926,6 +1926,7 @@ pub(super) fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell()
         &crate::cost::OptionalCostsPaid::default(),
         &[],
         None,
+        0,
     );
     assert!(
         steps.iter().any(|step| matches!(
@@ -1934,6 +1935,61 @@ pub(super) fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell()
         )),
         "granted emerge should retain its sacrifice payment step after proposal"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn per_target_life_cost_becomes_one_locked_payment_after_targets() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Per-Target Life Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "This spell costs 3 life more to cast for each target.\nDestroy any number of target creatures.",
+        )
+        .expect("per-target life cost should parse");
+    let spell_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+
+    let steps = super::priority_cast::collect_spell_cost_steps(
+        &game,
+        spell_id,
+        alice,
+        &CastingMethod::Normal,
+        &crate::cost::OptionalCostsPaid::default(),
+        &[],
+        None,
+        2,
+    );
+    assert!(
+        steps.iter().any(|step| matches!(
+            step,
+            super::priority_state::ActivationCostStep::Cost(cost)
+                if cost.life_amount() == Some(6)
+        )),
+        "two announced targets should lock one 6-life payment step, got {steps:?}"
+    );
+
+    let life_cost = steps
+        .iter()
+        .find_map(|step| match step {
+            super::priority_state::ActivationCostStep::Cost(cost)
+                if cost.life_amount() == Some(6) =>
+            {
+                Some(cost.clone())
+            }
+            _ => None,
+        })
+        .expect("locked life payment step");
+    let mut dm = SelectFirstDecisionMaker;
+    let mut context = crate::costs::CostContext::new(spell_id, alice, &mut dm)
+        .with_reason(crate::costs::PaymentReason::CastSpell);
+    assert!(matches!(
+        life_cost
+            .pay(&mut game, &mut context)
+            .expect("locked life cost should be payable"),
+        crate::costs::CostPaymentResult::Paid
+    ));
+    assert_eq!(game.player(alice).expect("alice exists").life, 14);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

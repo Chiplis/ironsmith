@@ -80,6 +80,30 @@ pub(super) fn describe_for_players_unless_pays(
         return None;
     }
 
+    if for_players.filter == PlayerFilter::Opponent
+        && let [create_effect] = unless_pays.effects.as_slice()
+        && let Some(create) = create_effect.downcast_ref::<crate::effects::CreateTokenEffect>()
+        && create.controller == PlayerFilter::You
+        && create.controller_target.is_none()
+        && create.actor_surface_explicit
+        && let Some([cost]) = unless_pays.cost.as_all()
+        && let Some(sacrifice) = cost
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::SacrificeEffect>())
+        && sacrifice.player == PlayerFilter::You
+        && sacrifice.count == Value::Fixed(1)
+        && sacrifice.filter == ObjectFilter::creature().controlled_by(PlayerFilter::You)
+    {
+        let consequence = lowercase_first(
+            describe_effect_list(&unless_pays.effects)
+                .trim()
+                .trim_end_matches('.'),
+        );
+        return Some(format!(
+            "For each opponent, {consequence} unless that player sacrifices a creature of their choice"
+        ));
+    }
+
     let player_filter_text = describe_for_each_player_filter(&for_players.filter);
     let each_player = strip_leading_article(&player_filter_text);
     let consequence = describe_effect_list(&unless_pays.effects);
@@ -1033,20 +1057,26 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             "card type among {}",
             describe_count_filter_value_subject(filter)
         )),
-        Value::ColorsAmong(filter) => Some(describe_colors_among(filter)),
+        Value::ColorsAmong(filter) => Some(format!(
+            "color among {}",
+            describe_count_filter_value_subject(filter)
+        )),
         Value::ColorsOfManaSpentToCastThisSpell => {
             Some("color of mana spent to cast this spell".to_string())
         }
         Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
             include_source_noun,
+            reference,
         } => {
             let mut source = source_filter.description();
             if *include_source_noun {
                 source.push_str(" source");
             }
             Some(format!(
-                "mana from {source} that was spent to cast this spell"
+                "mana from {} spent to cast {}",
+                with_indefinite_article(&source),
+                reference.text()
             ))
         }
         Value::CreaturesDiedThisTurn => Some("creature that died this turn".to_string()),
@@ -1116,6 +1146,9 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
                 strip_leading_article(&describe_for_each_player_filter(player)).to_string();
             Some(format!("{player} who lost life this turn"))
         }
+        Value::CountPlayers(PlayerFilter::Opponent) => Some("opponent you have".to_string()),
+        Value::CountPlayers(PlayerFilter::Any) => Some("player".to_string()),
+        Value::CountPlayers(PlayerFilter::NotYou) => Some("player other than you".to_string()),
         Value::KickCount => Some("time it was kicked".to_string()),
         Value::SpellsCastThisTurn(player) => Some(describe_spells_cast_this_turn_each(player)),
         Value::SpellsCastThisTurnMatching {
@@ -1318,9 +1351,29 @@ pub(super) fn normalize_dynamic_equal_pt_create_text(text: &str) -> Option<Strin
 pub(super) fn singular_token_phrase_with_article(token_main: &str) -> String {
     let trimmed = token_main.trim();
     if trimmed.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
-        format!("a {trimmed}")
+        let leading_number = trimmed.split_once('/').map_or(trimmed, |(power, _)| power);
+        let vowel_sound = leading_number.starts_with('8') || matches!(leading_number, "11" | "18");
+        let article = if vowel_sound { "an" } else { "a" };
+        format!("{article} {trimmed}")
     } else {
         with_indefinite_article(trimmed)
+    }
+}
+
+#[cfg(test)]
+mod singular_token_article_tests {
+    use super::singular_token_phrase_with_article;
+
+    #[test]
+    fn numeric_power_toughness_uses_its_spoken_indefinite_article() {
+        assert_eq!(
+            singular_token_phrase_with_article("8/8 blue Octopus creature token"),
+            "an 8/8 blue Octopus creature token"
+        );
+        assert_eq!(
+            singular_token_phrase_with_article("1/1 white Soldier creature token"),
+            "a 1/1 white Soldier creature token"
+        );
     }
 }
 
@@ -1483,6 +1536,10 @@ pub(crate) fn describe_compact_token_count(value: &Value, token_name: &str) -> S
     }
     match value.unhinted() {
         Value::Fixed(1) => format!("a {token_name} token"),
+        Value::Fixed(n) if *n > 1 => format!(
+            "{} {token_name} tokens",
+            number_word(*n).unwrap_or_else(|| n.to_string())
+        ),
         Value::Fixed(n) => format!("{n} {token_name} tokens"),
         Value::X => format!("X {token_name} tokens"),
         Value::EffectMetric {
@@ -1991,10 +2048,14 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             crate::effect::ChoiceAggregateMetric::Toughness => "toughness",
             crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
         };
-        let maximum = describe_value(&constraint.maximum);
-        if matches!(constraint.maximum.unhinted(), Value::Fixed(_)) {
+        if let Some(minimum) = constraint.minimum.as_ref() {
+            let minimum = describe_value(minimum);
+            selection.push_str(&format!(" with total {metric} {minimum} or greater"));
+        } else if matches!(constraint.maximum.unhinted(), Value::Fixed(_)) {
+            let maximum = describe_value(&constraint.maximum);
             selection.push_str(&format!(" with total {metric} {maximum} or less"));
         } else {
+            let maximum = describe_value(&constraint.maximum);
             selection.push_str(&format!(
                 " with total {metric} less than or equal to {maximum}"
             ));
@@ -2092,7 +2153,7 @@ pub(crate) fn choose_reference_noun(choose: &crate::effects::ChooseObjectsEffect
     }
 }
 
-pub(super) fn source_exiled_with_phrase(filter: &ObjectFilter) -> String {
+pub(crate) fn source_exiled_with_phrase(filter: &ObjectFilter) -> String {
     let description = filter.description();
     let base = description
         .split(" in ")
@@ -2197,21 +2258,47 @@ pub(crate) fn describe_choose_then_exile(
         return None;
     }
 
+    let face_state_suffix = if exile.face_down {
+        " face down"
+    } else if exile.turn_face_up {
+        " face up"
+    } else {
+        ""
+    };
+
     if choose_primary_zone(choose) == Some(Zone::Stack)
         && choose.filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
     {
         let chosen = describe_stack_spell_choice(choose)
             .unwrap_or_else(|| describe_choose_selection(choose));
-        let face_down_suffix = if exile.face_down { " face down" } else { "" };
-        return Some(format!("Exile {chosen}{face_down_suffix}"));
+        return Some(format!("Exile {chosen}{face_state_suffix}"));
     }
 
     if choose_primary_zone(choose) == Some(Zone::Battlefield) {
+        // A singular opponent may be the authored chooser rather than merely
+        // the actor performing a generic exile. Preserve that choice when the
+        // chosen object explicitly excludes the source ("other than this
+        // creature"). The ordinary compact form below remains appropriate
+        // for effects that simply instruct a player to exile something.
+        if choose.chooser == PlayerFilter::Opponent
+            && choose.count.min == 1
+            && choose.count.max == Some(1)
+            && choose.filter.other
+            && let Some(source_surface) = choose.filter.source_surface.as_ref()
+        {
+            let mut displayed_choice = choose.clone();
+            displayed_choice.filter.other = false;
+            displayed_choice.filter.source_surface = None;
+            let chosen = describe_choose_selection(&displayed_choice);
+            return Some(format!(
+                "an opponent chooses {chosen} other than {} and exiles it{face_state_suffix}",
+                source_surface.display_text()
+            ));
+        }
         let chooser = describe_player_filter(&choose.chooser);
         let verb = player_verb(&chooser, "exile", "exiles");
         let chosen = describe_choose_selection(choose);
-        let face_down_suffix = if exile.face_down { " face down" } else { "" };
-        return Some(format!("{chooser} {verb} {chosen}{face_down_suffix}"));
+        return Some(format!("{chooser} {verb} {chosen}{face_state_suffix}"));
     }
 
     let zones = choose_search_zones(choose)?;
@@ -2223,17 +2310,21 @@ pub(crate) fn describe_choose_then_exile(
     }
     let owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
     let owner_text = describe_possessive_player_filter(owner);
-    let origin_zones =
-        if zones.len() == 2 && zones.contains(&Zone::Hand) && zones.contains(&Zone::Graveyard) {
-            format!("{owner_text} hand or graveyard")
-        } else {
-            match zones.as_slice() {
-                [Zone::Hand] => format!("{owner_text} hand"),
-                [Zone::Graveyard] => format!("{owner_text} graveyard"),
-                [Zone::Library] => format!("{owner_text} library"),
-                _ => describe_search_origin_zones(choose)?,
-            }
-        };
+    let origin_zones = if zones.as_slice() == [Zone::Graveyard]
+        && choose.filter.single_graveyard
+        && choose.filter.owner.is_none()
+    {
+        "a single graveyard".to_string()
+    } else if zones.len() == 2 && zones.contains(&Zone::Hand) && zones.contains(&Zone::Graveyard) {
+        format!("{owner_text} hand or graveyard")
+    } else {
+        match zones.as_slice() {
+            [Zone::Hand] => format!("{owner_text} hand"),
+            [Zone::Graveyard] => format!("{owner_text} graveyard"),
+            [Zone::Library] => format!("{owner_text} library"),
+            _ => describe_search_origin_zones(choose)?,
+        }
+    };
     let primary_zone = choose_primary_zone(choose)?;
     let origin_prefix = match primary_zone {
         Zone::Library | Zone::Graveyard if choose.top_only => "of",
@@ -2254,10 +2345,54 @@ pub(crate) fn describe_choose_then_exile(
             chosen.push_str(" card");
         }
     }
-    let face_down_suffix = if exile.face_down { " face down" } else { "" };
     Some(format!(
-        "{chooser} {verb} {chosen} {origin_prefix} {origin_zones}{face_down_suffix}"
+        "{chooser} {verb} {chosen} {origin_prefix} {origin_zones}{face_state_suffix}"
     ))
+}
+
+#[cfg(test)]
+mod single_graveyard_exile_surface_tests {
+    use super::*;
+
+    fn exile_pair(
+        single_graveyard: bool,
+    ) -> (
+        crate::effects::ChooseObjectsEffect,
+        crate::effects::ExileEffect,
+    ) {
+        let tag = TagKey::from("graveyard_cost");
+        let mut filter = ObjectFilter::creature().in_zone(Zone::Graveyard);
+        filter.set_explicit_card_noun(true);
+        filter.set_explicit_card_type_noun(Some(CardType::Creature));
+        filter.single_graveyard = single_graveyard;
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::exactly(2),
+            PlayerFilter::You,
+            tag.clone(),
+        )
+        .in_zone(Zone::Graveyard);
+        let exile = crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(tag));
+        (choose, exile)
+    }
+
+    #[test]
+    fn paired_exile_preserves_the_single_graveyard_origin() {
+        let (choose, exile) = exile_pair(true);
+        assert_eq!(
+            describe_choose_then_exile(&choose, &exile).as_deref(),
+            Some("you exile two creature cards from a single graveyard")
+        );
+    }
+
+    #[test]
+    fn ordinary_graveyard_cost_does_not_inherit_the_single_graveyard_surface() {
+        let (choose, exile) = exile_pair(false);
+        assert_eq!(
+            describe_choose_then_exile(&choose, &exile).as_deref(),
+            Some("you exile two creature cards from your graveyard")
+        );
+    }
 }
 
 pub(super) fn describe_choose_exile_then_put_counter(
@@ -2761,6 +2896,7 @@ pub(super) fn describe_each_player_return_all_from_their_graveyard(
         remaining.card_types.clear();
         remaining.entered_graveyard_this_turn = false;
         remaining.entered_graveyard_from_battlefield_this_turn = false;
+        remaining.entered_graveyard_from_library_this_turn = false;
         if !return_all.filter.card_types.is_empty() && remaining == ObjectFilter::default() {
             let card_types = return_all
                 .filter
@@ -3782,14 +3918,34 @@ pub(super) fn describe_exile_top_clause(
     } else {
         describe_possessive_player_filter(&exile_top.player)
     };
-    let dynamic_count_basis = match &exile_top.count {
+    let dynamic_count_basis = match exile_top.count.unhinted() {
         Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" || tag.as_str().starts_with("sacrificed")) => {
             Some("its mana value")
         }
+        Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering") => {
+            Some("its power")
+        }
         _ => None,
     };
-    let singular_count = matches!(exile_top.count, Value::Fixed(1));
-    let exile_clause = if let Some(backref) = describe_effect_count_backref(&exile_top.count) {
+    let for_each_count = describe_for_each_multiplier_and_basis(&exile_top.count);
+    let singular_count = for_each_count
+        .as_ref()
+        .is_some_and(|(multiplier, _)| *multiplier == 1)
+        || matches!(exile_top.count, Value::Fixed(1));
+    let exile_clause = if let Some((multiplier, basis)) = for_each_count {
+        let cards = if multiplier == 1 {
+            "a card".to_string()
+        } else {
+            let count = number_word(multiplier).unwrap_or_else(|| multiplier.to_string());
+            format!("{count} cards")
+        };
+        let face_down = if exile_top.face_down {
+            " face down"
+        } else {
+            ""
+        };
+        format!("Exile {cards} from the top of {owner} library{face_down} for each {basis}")
+    } else if let Some(backref) = describe_effect_count_backref(&exile_top.count) {
         format!("Exile {backref} cards from the top of {owner} library")
     } else if let Some(basis) = dynamic_count_basis {
         format!("Exile cards equal to {basis} from the top of {owner} library")
@@ -3834,6 +3990,80 @@ pub(super) fn describe_exile_top_clause(
             exile_clause
         };
     Some((exile_clause, singular_count))
+}
+
+#[cfg(test)]
+mod exile_top_for_each_surface_tests {
+    use super::*;
+
+    #[test]
+    fn typed_player_count_renders_one_top_card_per_opponent_with_face_state() {
+        let count = Value::CountPlayers(PlayerFilter::Opponent)
+            .with_surface_hint(ValueSurfaceHint::ForEach);
+        let face_down =
+            crate::effects::ExileTopOfLibraryEffect::new(count.clone(), PlayerFilter::You)
+                .face_down();
+        let face_up = crate::effects::ExileTopOfLibraryEffect::new(count, PlayerFilter::You);
+
+        assert_eq!(
+            describe_exile_top_clause(&face_down, false),
+            Some((
+                "Exile a card from the top of your library face down for each opponent you have"
+                    .to_string(),
+                true,
+            ))
+        );
+        assert_eq!(
+            describe_exile_top_clause(&face_up, false),
+            Some((
+                "Exile a card from the top of your library for each opponent you have".to_string(),
+                true,
+            ))
+        );
+    }
+
+    #[test]
+    fn unhinted_player_count_keeps_numeric_x_surface() {
+        let exile = crate::effects::ExileTopOfLibraryEffect::new(
+            Value::CountPlayers(PlayerFilter::Opponent),
+            PlayerFilter::You,
+        );
+        let rendered = describe_exile_top_clause(&exile, false)
+            .expect("dynamic exile-top should render")
+            .0;
+
+        assert_eq!(
+            rendered,
+            "Exile the top X cards of your library, where X is the number of opponents"
+        );
+    }
+
+    #[test]
+    fn prior_object_power_and_owner_render_the_shared_possessive_reference() {
+        let count = Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from("triggering"))))
+            .with_surface_hint(ValueSurfaceHint::EqualTo);
+        let exile = crate::effects::ExileTopOfLibraryEffect::new(
+            count,
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(TagKey::from("triggering"))),
+        );
+        assert_eq!(
+            describe_exile_top_clause(&exile, false),
+            Some((
+                "Exile cards equal to its power from the top of its owner's library".to_string(),
+                false,
+            ))
+        );
+
+        let source_power = crate::effects::ExileTopOfLibraryEffect::new(
+            Value::SourcePower.with_surface_hint(ValueSurfaceHint::EqualTo),
+            PlayerFilter::You,
+        );
+        assert_ne!(
+            describe_exile_top_clause(&source_power, false),
+            describe_exile_top_clause(&exile, false),
+            "a source-power count must not inherit the triggering-object possessive surface"
+        );
+    }
 }
 
 pub(super) fn filter_is_exactly_tagged_in_zone(
@@ -4201,6 +4431,7 @@ pub(super) fn describe_look_at_top_choose_exile_face_down_rest_bottom_then_play_
     choose: &crate::effects::ChooseObjectsEffect,
     exile: &crate::effects::ExileEffect,
     rest: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+    look_permission: Option<&crate::effects::LookAtObjectsEffect>,
     grant: &crate::effects::GrantPlayTaggedEffect,
 ) -> Option<String> {
     if look_at_top.reveal
@@ -4219,6 +4450,67 @@ pub(super) fn describe_look_at_top_choose_exile_face_down_rest_bottom_then_play_
         || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
     {
         return None;
+    }
+
+    if let Some(look_permission) = look_permission {
+        let mut exact_look_filter = look_permission.filter.clone();
+        exact_look_filter.controller = None;
+        let mut expected_look_filter = ObjectFilter::tagged(choose.tag.clone());
+        expected_look_filter.zone = Some(Zone::Exile);
+        if look_permission.viewer != PlayerFilter::You
+            || look_permission.subject != PlayerFilter::You
+            || exact_look_filter != expected_look_filter
+            || !choose.count.is_single()
+            || rest.order != crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
+            || grant.player != PlayerFilter::You
+            || grant.allow_land
+            || grant.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+        {
+            return None;
+        }
+        let mut spell_filter = grant.filter.clone()?;
+        spell_filter.zone = None;
+        spell_filter
+            .excluded_card_types
+            .retain(|kind| *kind != CardType::Land);
+        let mut expected_spell_filter = ObjectFilter::default();
+        expected_spell_filter.card_types = vec![CardType::Creature];
+        if spell_filter != expected_spell_filter {
+            return None;
+        }
+        let owner = describe_possessive_player_filter(&look_at_top.player);
+        let (count_text, noun, singular_count) = describe_look_count_and_noun(&look_at_top.count);
+        if singular_count {
+            return None;
+        }
+        return Some(format!(
+            "Look at the top {count_text} {noun} of {owner} library. Exile one face down and put the rest on the bottom of {owner} library in any order. For as long as it remains exiled, you may look at that card and you may cast it if it's a creature spell"
+        ));
+    }
+    if let Some(mut spell_filter) = grant.filter.clone() {
+        spell_filter.zone = None;
+        spell_filter
+            .excluded_card_types
+            .retain(|kind| *kind != CardType::Land);
+        let mut expected_spell_filter = ObjectFilter::default();
+        expected_spell_filter.card_types = vec![CardType::Creature];
+        if spell_filter != expected_spell_filter
+            || !choose.count.is_single()
+            || rest.order != crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
+            || grant.player != PlayerFilter::You
+            || grant.allow_land
+            || grant.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+        {
+            return None;
+        }
+        let owner = describe_possessive_player_filter(&look_at_top.player);
+        let (count_text, noun, singular_count) = describe_look_count_and_noun(&look_at_top.count);
+        if singular_count {
+            return None;
+        }
+        return Some(format!(
+            "Look at the top {count_text} {noun} of {owner} library. Exile one face down and put the rest on the bottom of {owner} library in any order. For as long as it remains exiled, you may cast it if it's a creature spell"
+        ));
     }
 
     let singleton_complement = matches!(look_at_top.count.unhinted(), Value::Fixed(2))
@@ -4708,6 +5000,14 @@ pub(super) fn describe_choice_aggregate_constraint_suffix(
         crate::effect::ChoiceAggregateMetric::Toughness => "toughness",
         crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
     };
+    if let Some(minimum_value) = constraint.minimum.as_ref() {
+        let minimum = describe_value(minimum_value);
+        return if matches!(minimum_value.unhinted(), Value::Fixed(_)) {
+            format!(" with total {metric} {minimum} or greater")
+        } else {
+            format!(" with total {metric} greater than or equal to {minimum}")
+        };
+    }
     let maximum = describe_value(&constraint.maximum);
     if matches!(constraint.maximum.unhinted(), Value::Fixed(_)) {
         format!(" with total {metric} {maximum} or less")

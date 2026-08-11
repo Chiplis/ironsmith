@@ -581,6 +581,7 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
             effects: vec![EffectAst::subject_verb_lose_game(PlayerAst::You)],
             player: PlayerAst::You,
             cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
+            before_delayed_step: false,
         }],
     });
     Ok(Some(effects))
@@ -694,6 +695,21 @@ fn parse_unless_sacrifice_or_pay_cost(
     )))
 }
 
+/// Return whether an `or` inside an `unless` tail joins two ways to pay the
+/// same player-facing cost. The outer action-choice splitter runs before the
+/// ordinary unless primitive, so it uses this fact to avoid turning
+/// `... unless target opponent sacrifices ... or pays 3 life` into a choice
+/// made by the source controller.
+pub(crate) fn has_unless_sacrifice_or_pay_choice(
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    let Some(unless_idx) = tokens.iter().position(|token| token.is_word("unless")) else {
+        return Ok(false);
+    };
+    let after_clause = SubjectVerbPrimitiveClause::new(&tokens[unless_idx + 1..]).trimmed();
+    Ok(parse_unless_sacrifice_or_pay_cost(after_clause)?.is_some())
+}
+
 /// Try to build an UnlessPays or UnlessAction AST from the tokens after "unless".
 /// Returns the unless wrapper containing the given `effects` as the main effects.
 pub(crate) fn try_build_unless(
@@ -703,6 +719,14 @@ pub(crate) fn try_build_unless(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let after_clause = clause.from(unless_idx + 1).trimmed();
     let after_words = after_clause.words().to_word_refs();
+    let before_delayed_step = after_words
+        .iter()
+        .position(|word| *word == "before")
+        .is_some_and(|before| {
+            after_words[before + 1..]
+                .iter()
+                .any(|word| matches!(*word, "step" | "upkeep"))
+        });
     let payment_shape = delayed_grammar::split_delayed_payment_action_shape(after_clause.tokens());
 
     if let Some((player, cost)) = parse_unless_sacrifice_or_pay_cost(after_clause)? {
@@ -710,6 +734,7 @@ pub(crate) fn try_build_unless(
             effects,
             player,
             cost,
+            before_delayed_step,
         }));
     }
 
@@ -767,6 +792,7 @@ pub(crate) fn try_build_unless(
             effects,
             player,
             cost,
+            before_delayed_step,
         }));
     }
 
@@ -795,6 +821,7 @@ pub(crate) fn try_build_unless(
             effects,
             player,
             cost,
+            before_delayed_step,
         }));
     }
 
@@ -1168,6 +1195,28 @@ mod tests {
         assert!(debug.contains("Creature"), "{debug}");
         assert!(debug.contains("Life"), "{debug}");
     }
+
+    #[test]
+    fn effect_chain_keeps_target_opponent_sacrifice_or_life_as_one_payment_choice() {
+        let tokens = lex_line(
+            "Draw a card unless target opponent sacrifices a creature of their choice or pays 3 life.",
+            0,
+        )
+        .expect("unless sacrifice-or-pay text should lex");
+
+        let effects = parse_effect_chain(&tokens).expect("full effect chain should parse");
+        let [
+            EffectAst::UnlessPays {
+                player: PlayerAst::TargetOpponent,
+                cost,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one target-opponent UnlessPays branch, got {effects:#?}");
+        };
+        assert_eq!(cost.as_one_of().map(<[_]>::len), Some(2), "{cost:#?}");
+    }
 }
 
 pub(crate) fn parse_sentence_fallback_mechanic_marker(
@@ -1269,6 +1318,24 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         if all_card_types && !card_types.is_empty() {
             return Ok(Some(vec![EffectAst::subject_verb_remove_card_types(
                 target, card_types, duration,
+            )]));
+        }
+
+        let mut subtypes = Vec::new();
+        let mut all_subtypes = true;
+        for word in type_words {
+            if let Some(subtype) = parse_subtype_flexible(word) {
+                if !iter_contains(subtypes.iter(), &subtype) {
+                    subtypes.push(subtype);
+                }
+            } else {
+                all_subtypes = false;
+                break;
+            }
+        }
+        if all_subtypes && !subtypes.is_empty() {
+            return Ok(Some(vec![EffectAst::subject_verb_remove_subtypes(
+                target, subtypes, duration,
             )]));
         }
     }

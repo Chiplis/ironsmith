@@ -472,6 +472,8 @@ pub(crate) fn parse_value_comparison_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(ValueComparisonOperator, &'a [OwnedLexToken])> {
     for (phrase, operator) in [
+        (&["is", "exactly"][..], ValueComparisonOperator::Equal),
+        (&["exactly"][..], ValueComparisonOperator::Equal),
         (&["is", "equal", "to"][..], ValueComparisonOperator::Equal),
         (&["equal", "to"][..], ValueComparisonOperator::Equal),
         (
@@ -556,6 +558,8 @@ pub(crate) fn parse_value_comparison_words<'a>(
     words: &'a [&'a str],
 ) -> Option<(ValueComparisonOperator, &'a [&'a str], usize)> {
     for (phrase, operator) in [
+        (&["is", "exactly"][..], ValueComparisonOperator::Equal),
+        (&["exactly"][..], ValueComparisonOperator::Equal),
         (&["is", "equal", "to"][..], ValueComparisonOperator::Equal),
         (&["equal", "to"][..], ValueComparisonOperator::Equal),
         (
@@ -684,10 +688,21 @@ pub(crate) fn parse_type_line_with(
                 (supers, types)
             });
 
-    let subtypes: Vec<_> = right_words
-        .iter()
-        .filter_map(|word| parse_subtype(word))
-        .collect();
+    let mut subtypes = Vec::new();
+    let mut index = 0;
+    while index < right_words.len() {
+        if right_words.get(index..index + 2).is_some_and(|words| {
+            words[0].eq_ignore_ascii_case("time") && words[1].eq_ignore_ascii_case("lord")
+        }) {
+            subtypes.push(Subtype::TimeLord);
+            index += 2;
+            continue;
+        }
+        if let Some(subtype) = parse_subtype(right_words[index]) {
+            subtypes.push(subtype);
+        }
+        index += 1;
+    }
 
     Ok((supertypes, card_types, subtypes))
 }
@@ -952,6 +967,15 @@ mod migrated_shape_tests {
     }
 
     #[test]
+    fn value_comparison_accepts_authored_is_exactly_surface() {
+        let tokens = lex("is exactly 20");
+        let (operator, remaining) = parse_value_comparison_tokens(&tokens)
+            .expect("is exactly should be an equality comparison");
+        assert_eq!(operator, ValueComparisonOperator::Equal);
+        assert_eq!(parser_token_word_refs(remaining), vec!["20"]);
+    }
+
+    #[test]
     fn parses_players_who_control_more_filter_shape() {
         let parsed = parse_players_who_control_more_than_you_value_lexed(&lex(
             "the number of players who control more lands than you",
@@ -1001,6 +1025,13 @@ mod migrated_shape_tests {
             )),
             Some(Value::MaxCardsInHand(PlayerFilter::Opponent))
         );
+    }
+
+    #[test]
+    fn type_line_keeps_time_lord_distinct_from_doctor() {
+        let parsed = parse_type_line_rewrite("Legendary Creature — Time Lord Doctor")
+            .expect("Time Lord type line should parse");
+        assert_eq!(parsed.subtypes, vec![Subtype::TimeLord, Subtype::Doctor]);
     }
 
     #[test]

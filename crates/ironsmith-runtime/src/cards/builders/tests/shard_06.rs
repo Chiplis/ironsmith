@@ -62,6 +62,27 @@ pub(super) fn parse_conditional_spell_cost_if_it_targets_compiles_target_filter(
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn lullmages_domination_keeps_the_correlated_target_controller_threshold() {
+    let def = parse_oracle_card_definition("Lullmage's Domination");
+    assert_eq!(
+        canonical_compiled_lines(&def),
+        vec![
+            "This spell costs {3} less to cast if it targets a creature whose controller has eight or more cards in their graveyard.".to_string(),
+            "Gain control of target creature with mana value X.".to_string(),
+        ]
+    );
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("TargetsObjectWhoseControllerHasCardsInGraveyardOrMore")
+            && debug.contains("count: 8")
+            && debug.contains("Creature"),
+        "the cost reduction must retain target/controller/graveyard correlation: {debug}"
+    );
+    assert!(!debug.contains("owner: Some(IteratedPlayer)"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_conditional_spell_cost_if_you_ve_cast_instant_or_sorcery_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Storm Condition Probe")
         .card_types(vec![CardType::Creature])
@@ -404,14 +425,14 @@ pub(super) fn test_parse_assign_damage_as_unblocked_with_enchanted_creature_cont
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn test_parse_first_spell_cost_modifier_marker_errors() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "First Spell Cost Probe")
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "First Spell Cost Probe")
         .card_types(vec![CardType::Enchantment])
         .parse_text("The first creature spell you cast each turn costs {2} less to cast.")
-        .expect_err("first-spell cost marker should fail parsing");
-    let message = format!("{err:?}").to_ascii_lowercase();
+        .expect("first-spell cost modifier should parse");
+    let message = format!("{def:#?}");
     assert!(
-        message.contains("unsupported first-spell cost modifier mechanic"),
-        "expected explicit unsupported first-spell marker error, got {message}"
+        message.contains("first_spell_cast_each_turn: true"),
+        "expected typed first-spell filter, got {message}"
     );
 }
 
@@ -2600,6 +2621,58 @@ pub(super) fn test_parse_lesser_mana_value_adds_tagged_lt_constraint() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn triggering_object_lesser_mana_search_keeps_authored_shorthand() {
+    let oracle = "Choose target creature. When that creature dies this turn, search your library for a creature card with lesser mana value, put it onto the battlefield tapped, then shuffle.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Delayed Search Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("parse delayed lesser-mana-value search");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![oracle.to_string()]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn damage_reflexive_qualified_any_target_keeps_player_domain_and_surface() {
+    let oracle = "Trample\nWhenever a Dinosaur you control is dealt damage, it deals that much damage to any target that isn't a Dinosaur.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wrathful Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("parse reflexive damage with a qualified any target");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![
+            "Trample".to_string(),
+            oracle.lines().nth(1).unwrap().to_string()
+        ]
+    );
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("ObjectOrPlayer"), "{debug}");
+    assert!(debug.contains("Dinosaur"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn saga_chapter_intervening_if_stays_after_the_chapter_dash() {
+    let oracle = "III — If you control a creature with power 4 or greater, draw two cards.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Conditional Saga Variant")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Saga])
+        .parse_text(oracle)
+        .expect("parse conditional saga chapter");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![oracle.to_string()]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn test_parse_this_or_another_creature_dies_is_not_this_dies_only() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Blood Artist Variant")
         .card_types(vec![CardType::Creature])
@@ -2694,11 +2767,10 @@ pub(super) fn test_compile_this_or_another_ally_enters_team_buff_surface() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn test_parse_equal_or_lesser_mana_value_adds_tagged_lte_constraint() {
+    let oracle = "Return target permanent card in an opponent's graveyard to the battlefield under their control. When that permanent enters, return up to one target permanent card with equal or lesser mana value from your graveyard to the battlefield.";
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Jailbreak Variant")
         .card_types(vec![CardType::Sorcery])
-        .parse_text(
-            "Return target permanent card in an opponent's graveyard to the battlefield under their control. When that permanent enters, return up to one target permanent card with equal or lesser mana value from your graveyard to the battlefield.",
-        )
+        .parse_text(oracle)
         .expect("parse equal-or-lesser mana value tagged comparison");
 
     let debug = format!("{:#?}", def);
@@ -2706,6 +2778,7 @@ pub(super) fn test_parse_equal_or_lesser_mana_value_adds_tagged_lte_constraint()
         debug.contains("ManaValueLteTagged"),
         "expected equal-or-lesser mana value relation against tagged object, got {debug}"
     );
+    assert_eq!(unprocessed_compiled_lines(&def).join("\n"), oracle);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

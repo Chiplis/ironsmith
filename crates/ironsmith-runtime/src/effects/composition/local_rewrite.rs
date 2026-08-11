@@ -43,6 +43,7 @@ fn resolve_zone_replacements(
                     replacement.optional,
                     replacement.choice_description.clone(),
                     replacement.counters.clone(),
+                    replacement.linked_exile_follow_up,
                 ),
             )
         })

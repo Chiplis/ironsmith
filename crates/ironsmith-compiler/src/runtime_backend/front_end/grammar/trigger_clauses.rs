@@ -121,6 +121,7 @@ pub(crate) struct NamedAbilityTail {
 pub(crate) struct AbilityOfObjectTail {
     pub(crate) filter: Range<usize>,
     pub(crate) non_mana_only: bool,
+    pub(crate) chosen_type_reference: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -673,8 +674,21 @@ pub(crate) fn parse_ability_of_object_tail(
     let ability = parse_trigger_clause_atom_word(&words, TriggerClauseAtom::Ability)?;
     let of = parse_atom_word_from(&words, ability + 1, "of")?;
     let first = view.token_index_after_words(of + 1)?;
-    let end = parse_atom_word_from(&words, of + 1, "that")
-        .and_then(|that| view.token_start_indices().get(that).copied())
+    let that = parse_atom_word_from(&words, of + 1, "that");
+    let chosen_type_reference = that.is_some_and(|that| {
+        that > of + 1
+            && words.get(that.saturating_sub(1)).copied() == Some("of")
+            && words.get(that + 1).copied() == Some("type")
+    });
+    let end_word = that.map(|that| {
+        if chosen_type_reference {
+            that.saturating_sub(1)
+        } else {
+            that
+        }
+    });
+    let end = end_word
+        .and_then(|word| view.token_start_indices().get(word).copied())
         .unwrap_or(tokens.len());
     let filter = trim_comma_range(tokens, first..end);
     if filter.start >= filter.end {
@@ -683,5 +697,6 @@ pub(crate) fn parse_ability_of_object_tail(
     Some(AbilityOfObjectTail {
         filter,
         non_mana_only: parse_trigger_clause_atom_word(&words, TriggerClauseAtom::Mana).is_some(),
+        chosen_type_reference,
     })
 }

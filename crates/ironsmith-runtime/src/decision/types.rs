@@ -146,6 +146,8 @@ pub struct TargetRequirement {
     /// Legal target groups for constraints that apply to the selected set.
     /// If empty, any combination of legal targets is allowed.
     pub legal_target_sets: Vec<Vec<Target>>,
+    /// Resolved restriction on the selected target set as a whole.
+    pub aggregate_constraint: Option<crate::targeting::ResolvedTargetAggregateConstraint>,
     /// Description of what's being targeted.
     pub description: String,
     /// Minimum number of targets to choose (default 1).
@@ -168,6 +170,7 @@ impl TargetRequirement {
             chooser: None,
             legal_targets,
             legal_target_sets: Vec::new(),
+            aggregate_constraint: None,
             description,
             min_targets: 1,
             max_targets: Some(1),
@@ -184,6 +187,7 @@ impl TargetRequirement {
             chooser: None,
             legal_targets,
             legal_target_sets: Vec::new(),
+            aggregate_constraint: None,
             description,
             min_targets: 0,
             max_targets: None,
@@ -206,6 +210,7 @@ impl TargetRequirement {
             chooser: None,
             legal_targets,
             legal_target_sets: Vec::new(),
+            aggregate_constraint: None,
             description,
             min_targets: min,
             max_targets: max,
@@ -276,52 +281,6 @@ pub struct ReplacementOption {
     pub source: ObjectId,
     /// Description of what this replacement does.
     pub description: String,
-}
-
-/// An option for paying mana.
-#[derive(Debug, Clone)]
-pub struct ManaPaymentOption {
-    /// Index of this option.
-    pub index: usize,
-    /// Description of this payment method.
-    pub description: String,
-}
-
-/// An option for paying a single mana pip.
-///
-/// This is used in the pip-by-pip payment flow, where each pip in a mana cost
-/// is paid individually with explicit player choice.
-#[derive(Debug, Clone)]
-pub struct ManaPipPaymentOption {
-    /// Index of this option.
-    pub index: usize,
-    /// Description of this payment method.
-    pub description: String,
-    /// The type of payment action.
-    pub action: ManaPipPaymentAction,
-}
-
-/// The action to take when paying a mana pip.
-#[derive(Debug, Clone)]
-pub enum ManaPipPaymentAction {
-    /// Use mana already in the pool.
-    UseFromPool(crate::mana::ManaSymbol),
-    /// Activate a mana ability on a permanent.
-    ActivateManaAbility {
-        /// The permanent with the mana ability.
-        source_id: ObjectId,
-        /// Index of the ability on that permanent.
-        ability_index: usize,
-    },
-    /// Pay life (for Phyrexian mana).
-    PayLife(u32),
-    /// Pay this pip using a non-mana alternative (e.g., Convoke/Improvise).
-    PayViaAlternative {
-        /// The permanent used to pay the pip.
-        permanent_id: ObjectId,
-        /// Which alternative payment effect is being used.
-        effect: AlternativePaymentEffect,
-    },
 }
 
 /// Pip-level alternative payment effect.

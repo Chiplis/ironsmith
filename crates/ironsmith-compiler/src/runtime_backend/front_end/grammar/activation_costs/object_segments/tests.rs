@@ -34,6 +34,16 @@ fn sacrifice_segments_preserve_source_and_choice_shapes() {
     assert!(count.is_dynamic_x());
     assert_eq!(filter.subtypes, [crate::types::Subtype::Goat]);
 
+    let prism = lex_line("sacrifice a Prism token", 0).unwrap();
+    let ActivationCostSegmentCst::SacrificeChosen { count, filter } =
+        parse_sacrifice_segment_tokens(&prism, |_| None).unwrap()
+    else {
+        panic!("expected a typed Prism-token sacrifice cost");
+    };
+    assert_eq!(count, ChoiceCount::exactly(1));
+    assert_eq!(filter.subtypes, [crate::types::Subtype::Prism]);
+    assert!(filter.token);
+
     let all = lex_line("sacrifice all lands", 0).unwrap();
     assert_eq!(
         parse_sacrifice_segment_tokens(&all, |_| None).unwrap(),

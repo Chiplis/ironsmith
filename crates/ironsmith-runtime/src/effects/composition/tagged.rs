@@ -55,6 +55,20 @@ fn apply_outcome_tags(
     outcome: &EffectOutcome,
     runtime: TaggedRuntimeState,
 ) {
+    let drawn_snapshots = outcome
+        .events_of_type::<crate::events::CardsDrawnEvent>()
+        .flat_map(|event| event.cards.iter().copied())
+        .filter_map(|object_id| {
+            game.object(object_id)
+                .map(|object| ObjectSnapshot::from_object(object, game))
+        })
+        .collect::<Vec<_>>();
+    if !drawn_snapshots.is_empty() {
+        ctx.set_tagged_objects(effect.tag.clone(), drawn_snapshots.clone());
+        if effect.tag.as_str() != "__it__" && effect.tag.as_str() != "__copied_stack_object__" {
+            ctx.set_tagged_objects(TagKey::from("__it__"), drawn_snapshots);
+        }
+    }
     for damage in outcome.events_of_type::<DamageEvent>() {
         if damage.amount == 0 {
             continue;
@@ -752,5 +766,38 @@ mod tests {
         assert_eq!(tagged[1].name, "Bob Target");
         assert_eq!(tagged[1].stable_id, bob_stable_id);
         assert_eq!(tagged[1].zone, Zone::Graveyard);
+    }
+
+    #[test]
+    fn tagged_draw_outcome_captures_the_exact_drawn_card() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card_id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(901), "Drawn Four Drop")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        game.add_object(Object::from_card(card_id, &card, alice, Zone::Hand));
+
+        let effect = TaggedEffect::new("drawn", Effect::draw(1));
+        let outcome = crate::effect::EffectOutcome::count(1).with_events(vec![
+            crate::triggers::TriggerEvent::new(
+                crate::events::CardsDrawnEvent::single(alice, card_id, false),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        ]);
+        let mut context = ExecutionContext::new_default(game.new_object_id(), alice);
+        apply_outcome_tags(
+            &effect,
+            &mut game,
+            &mut context,
+            &outcome,
+            TaggedRuntimeState::default(),
+        );
+
+        let tagged = context.get_tagged("drawn").expect("drawn card tag");
+        assert_eq!(tagged.object_id, card_id);
+        assert_eq!(tagged.name, "Drawn Four Drop");
+        assert_eq!(tagged.zone, Zone::Hand);
     }
 }

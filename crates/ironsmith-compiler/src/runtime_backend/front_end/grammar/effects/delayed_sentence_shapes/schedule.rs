@@ -13,6 +13,7 @@ pub(crate) enum DelayedScheduleStep {
     UntapStep,
     Upkeep,
     DrawStep,
+    FirstMainPhase,
     MainPhase,
     EndStep,
 }
@@ -49,6 +50,7 @@ fn delayed_schedule_player<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> 
 fn delayed_schedule_step<'a>(input: &mut LexStream<'a>) -> WResult<DelayedScheduleStep> {
     alt((
         semantic_phrase(&["draw", "step"]).value(DelayedScheduleStep::DrawStep),
+        semantic_phrase(&["first", "main", "phase"]).value(DelayedScheduleStep::FirstMainPhase),
         semantic_phrase(&["main", "phase"]).value(DelayedScheduleStep::MainPhase),
         semantic_phrase(&["end", "step"]).value(DelayedScheduleStep::EndStep),
         (semantic_kw("upkeep"), opt(semantic_kw("step"))).value(DelayedScheduleStep::Upkeep),
@@ -207,6 +209,12 @@ mod tests {
             LexedClause::new(main_phase.effect_tokens).word_refs(),
             ["add", "c"]
         );
+
+        let first_main_phase = tokens("At the beginning of your next first main phase, add {C}.");
+        let first_main_phase = parse_delayed_schedule_sentence_shape(&first_main_phase).unwrap();
+        assert_eq!(first_main_phase.step, DelayedScheduleStep::FirstMainPhase);
+        assert_eq!(first_main_phase.player, PlayerAst::You);
+        assert!(!first_main_phase.start_next_turn);
 
         let recurring = tokens("At the beginning of your upkeep, draw a card.");
         assert!(parse_delayed_schedule_sentence_shape(&recurring).is_none());

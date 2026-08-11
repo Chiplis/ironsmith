@@ -62,7 +62,9 @@ pub(crate) enum KeywordMechanicShape<'a> {
         direction: PhaseDirectionShape,
         subject: PhaseSubjectShape<'a>,
     },
-    OpenAttraction,
+    OpenAttraction {
+        reminder: bool,
+    },
     Behold {
         subtype: Subtype,
         count: u32,
@@ -323,9 +325,23 @@ fn parse_open_attraction<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechan
         primitives::phrase(&["opens", "an", "attraction"]),
     ))
     .parse_next(input)?;
-    tokens_before(input, 0, primitives::sentence_end())?;
+    let trailing = tokens_before(input, 0, primitives::sentence_end())?;
     primitives::sentence_end().parse_next(input)?;
-    Ok(KeywordMechanicShape::OpenAttraction)
+    let reminder = crate::runtime_backend::lexer::parser_token_word_refs(trailing).as_slice()
+        == [
+            "put",
+            "the",
+            "top",
+            "card",
+            "of",
+            "your",
+            "attraction",
+            "deck",
+            "onto",
+            "the",
+            "battlefield",
+        ];
+    Ok(KeywordMechanicShape::OpenAttraction { reminder })
 }
 
 fn article<'a>(input: &mut LexStream<'a>) -> WResult<()> {

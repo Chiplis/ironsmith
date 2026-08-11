@@ -725,9 +725,7 @@ mod tests {
                 // 0=pass, 1=cast Doom Blade
                 "1", // Cast Doom Blade (priority action)
                 "0", // Target Grizzly Bears for Doom Blade
-                // Pip-by-pip mana payment: activate both Swamps.
-                "0", // Tap first Swamp
-                "0", // Tap second Swamp
+                "1", // Confirm the authoritative whole-cost mana plan
                 // Blood Artist trigger goes on stack after Doom Blade resolves
                 "1", // Target Player 2 (Bob) for Blood Artist trigger (auto-passes handle resolution)
             ],

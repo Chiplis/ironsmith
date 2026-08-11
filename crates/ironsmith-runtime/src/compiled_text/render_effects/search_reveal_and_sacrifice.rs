@@ -537,6 +537,7 @@ pub(super) fn describe_choose_x_permanents_create_x_copies(effects: &[&Effect]) 
         || !copy.added_subtypes.is_empty()
         || !copy.removed_supertypes.is_empty()
         || copy.set_base_power_toughness.is_some()
+        || copy.set_base_power_toughness_value.is_some()
         || copy.set_colors.is_some()
         || copy.set_card_types.is_some()
         || copy.set_subtypes.is_some()
@@ -582,6 +583,33 @@ pub(super) fn describe_counter_artifact_ability_destroy_source(
     let ChooseSpec::Object(destroy_filter) = destroy.spec.base() else {
         return None;
     };
+    if let [first, second] = counter_filter.any_of.as_slice()
+        && ((first.stack_kind == Some(StackObjectKind::Spell)
+            && second.stack_kind == Some(StackObjectKind::Ability))
+            || (first.stack_kind == Some(StackObjectKind::Ability)
+                && second.stack_kind == Some(StackObjectKind::Spell)))
+        && [first, second].iter().all(|branch| {
+            branch.zone == Some(Zone::Stack)
+                && branch.controller == Some(PlayerFilter::Opponent)
+                && branch.targets_player.is_none()
+                && branch.targets_only_player.is_none()
+                && branch.targets_only_object.is_none()
+                && branch.targets_object.as_deref().is_some_and(|land| {
+                    land.zone == Some(Zone::Battlefield)
+                        && land.card_types.as_slice() == [CardType::Land]
+                        && land.controller == Some(PlayerFilter::You)
+                })
+        })
+        && conditional.if_false.is_empty()
+        && describe_condition(&conditional.condition)
+            == "a permanent's ability is countered this way"
+        && describe_effect(destroy_effect).trim_end_matches('.') == "Destroy that permanent"
+    {
+        return Some(
+            "Counter target spell or ability an opponent controls that targets a land you control. If a permanent's ability is countered this way, destroy that permanent"
+                .to_string(),
+        );
+    }
     if counter_filter.stack_kind != Some(StackObjectKind::ActivatedAbility)
         || counter_filter.card_types != vec![CardType::Artifact]
         || counter_filter.zone != Some(Zone::Stack)
@@ -1152,7 +1180,8 @@ pub(super) fn describe_each_player_choose_type_return_from_graveyard_to_hand(
         return None;
     };
     let choose_type = choose_effect.downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()?;
-    if choose_type.chooser != PlayerFilter::IteratedPlayer
+    if choose_type.family != crate::types::SubtypeFamily::Creature
+        || choose_type.chooser != PlayerFilter::IteratedPlayer
         || !choose_type.excluded_subtypes.is_empty()
     {
         return None;
@@ -1183,12 +1212,12 @@ pub(super) fn describe_each_player_choose_type_return_from_graveyard_to_hand(
 
 #[derive(Clone, Copy)]
 pub(crate) struct SacrificeView<'a> {
-    pub(super) filter: &'a ObjectFilter,
-    pub(super) count: &'a Value,
-    pub(super) player: &'a PlayerFilter,
+    pub(crate) filter: &'a ObjectFilter,
+    pub(crate) count: &'a Value,
+    pub(crate) player: &'a PlayerFilter,
 }
 
-pub(super) fn sacrifice_view(effect: &Effect) -> Option<SacrificeView<'_>> {
+pub(in crate::compiled_text) fn sacrifice_view(effect: &Effect) -> Option<SacrificeView<'_>> {
     if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
         return Some(SacrificeView {
             filter: &sacrifice.filter,
@@ -2675,19 +2704,103 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
             " with mana value less than or equal to {}",
             describe_value(limit)
         ),
+        Some(crate::filter::Comparison::EqualExpr(value)) => {
+            format!(" with mana value {}", describe_value(value))
+        }
         None => String::new(),
         _ => return None,
     };
-    let free_cast_text = if cast.without_paying_mana_cost {
-        " without paying its mana cost"
+    let payment_text = if let Some(additional) = cast.additional_mana_cost.as_ref() {
+        format!(
+            " by paying {} in addition to its other costs",
+            additional.to_oracle()
+        )
+    } else if cast.without_paying_mana_cost {
+        " without paying its mana cost".to_string()
     } else {
-        ""
+        String::new()
+    };
+    let mana_spend_text = match cast.mana_spend_mode {
+        ironsmith_core::value_model::ManaSpendMode::Normal => "",
+        ironsmith_core::value_model::ManaSpendMode::AnyType => {
+            ", and mana of any type can be spent to cast that spell"
+        }
+        _ => return None,
     };
 
     let card_types = describe_graveyard_cast_card_types(&choose.filter.card_types)?;
     Some(format!(
-        "You may cast target {card_types} card{mana_value_text} from {graveyard_text}{free_cast_text}. If that spell would be put into {graveyard_text}, exile it instead"
+        "You may cast target {card_types} card{mana_value_text} from {graveyard_text}{payment_text}{mana_spend_text}. If that spell would be put into {graveyard_text}, exile it instead"
     ))
+}
+
+/// Reconstruct the target declaration that a reflexive trigger stores in its
+/// `choices` rather than its effect list, then reuse the strict graveyard-cast
+/// and linked one-shot replacement renderer.
+pub(super) fn describe_reflexive_targeted_graveyard_cast_with_replacement(
+    reflexive: &crate::effects::ReflexiveTriggerEffect,
+) -> Option<String> {
+    if reflexive.predicate != crate::effect::EffectPredicate::Happened {
+        return None;
+    }
+    let [choice] = reflexive.choices.as_slice() else {
+        return None;
+    };
+    let body = if let [effect] = reflexive.effects.as_slice()
+        && let Some(sequence) = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        sequence.effects.as_slice()
+    } else {
+        reflexive.effects.as_slice()
+    };
+    let (declared_target, may_effect, replacement_effect) = match body {
+        [may_effect, replacement_effect] => (None, may_effect, replacement_effect),
+        [target_effect, may_effect, replacement_effect] => {
+            (Some(target_effect), may_effect, replacement_effect)
+        }
+        _ => return None,
+    };
+    let may_with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = may_with_id
+        .effect
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    let [cast_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let cast = structural_unwrap_render_wrappers(cast_effect)
+        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+
+    // Reflexive-trigger `choices` are target declarations by construction.
+    // Older lowering stores only that declaration; the public multi-sentence
+    // route can also retain a redundant tagged TargetOnly member. Accept only
+    // when both declarations are identical and use the same cast source tag.
+    let synthesized_target;
+    let target = if let Some(target) = declared_target {
+        let tagged = target.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let target_only = tagged
+            .effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        if tagged.tag != cast.tag || &target_only.target != choice {
+            return None;
+        }
+        target
+    } else {
+        synthesized_target = Effect::new(crate::effects::TargetOnlyEffect::new(
+            if choice.is_target() {
+                choice.clone()
+            } else {
+                ChooseSpec::target(choice.clone())
+            },
+        ))
+        .tag(cast.tag.clone());
+        &synthesized_target
+    };
+    describe_targeted_graveyard_cast_with_gated_replacement(&[
+        target,
+        may_effect,
+        replacement_effect,
+    ])
 }
 
 fn describe_duration_scoped_targeted_graveyard_cast_replacement(
@@ -2711,6 +2824,10 @@ fn describe_duration_scoped_targeted_graveyard_cast_replacement(
     let card_types = std::mem::take(&mut plain_filter.card_types);
     let mana_value = plain_filter.mana_value.take();
     let colors = plain_filter.colors.take();
+    // These flags preserve the authored shared terminal noun in the target
+    // declaration; they do not narrow the executable card domain.
+    plain_filter.set_explicit_card_noun(false);
+    plain_filter.set_explicit_card_type_noun(None);
     if zone != Some(Zone::Graveyard) || plain_filter != ObjectFilter::default() {
         return None;
     }
@@ -2773,6 +2890,9 @@ fn describe_duration_scoped_targeted_graveyard_cast_replacement(
             " with mana value less than or equal to {}",
             describe_value(&limit)
         ),
+        Some(crate::filter::Comparison::EqualExpr(value)) => {
+            format!(" with mana value {}", describe_value(&value))
+        }
         None => String::new(),
         _ => return None,
     };
@@ -2882,7 +3002,15 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
     };
     let replacement = structural_unwrap_render_wrappers(replacement_effect)
         .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()?;
-    if replacement.filter != ObjectFilter::tagged(cast_spell_tag.clone()).in_zone(Zone::Stack)
+    let linked_stack_object = ObjectFilter::tagged(cast_spell_tag.clone()).in_zone(Zone::Stack);
+    let mut linked_spell = ObjectFilter::spell();
+    linked_spell
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: cast_spell_tag.clone(),
+            relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        });
+    if (replacement.filter != linked_stack_object && replacement.filter != linked_spell)
         || replacement.from_zone != Some(Zone::Stack)
         || replacement.to_zone != Some(Zone::Graveyard)
         || replacement.replacement_zone != Zone::Exile
@@ -2902,13 +3030,28 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
             " with mana value less than or equal to {}",
             describe_value(&limit)
         ),
+        Some(crate::filter::Comparison::EqualExpr(value)) => {
+            format!(" with mana value {}", describe_value(&value))
+        }
         None => String::new(),
         _ => return None,
     };
-    let free_cast_text = if cast.without_paying_mana_cost {
-        " without paying its mana cost"
+    let payment_text = if let Some(additional) = cast.additional_mana_cost.as_ref() {
+        format!(
+            " by paying {} in addition to its other costs",
+            additional.to_oracle()
+        )
+    } else if cast.without_paying_mana_cost {
+        " without paying its mana cost".to_string()
     } else {
-        ""
+        String::new()
+    };
+    let mana_spend_text = match cast.mana_spend_mode {
+        ironsmith_core::value_model::ManaSpendMode::Normal => "",
+        ironsmith_core::value_model::ManaSpendMode::AnyType => {
+            ", and mana of any type can be spent to cast that spell"
+        }
+        _ => return None,
     };
     let color_text = colors
         .map(describe_filter_color_alternatives)
@@ -2916,7 +3059,7 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
         .map(|colors| format!("{colors} "))
         .unwrap_or_default();
     Some(format!(
-        "You may cast target {color_text}{card_types_text} card{mana_value_text} from {graveyard_text}{free_cast_text}. If that spell would be put into {graveyard_text}, exile it instead"
+        "You may cast target {color_text}{card_types_text} card{mana_value_text} from {graveyard_text}{payment_text}{mana_spend_text}. If that spell would be put into {graveyard_text}, exile it instead"
     ))
 }
 
@@ -3257,7 +3400,12 @@ pub(super) fn describe_attack_block_if_able_grant(
     duration: &Until,
     subject: &str,
 ) -> Option<String> {
-    if duration != &Until::EndOfTurn || abilities.is_empty() {
+    let scope = match duration {
+        Until::EndOfTurn => "this turn",
+        Until::EndOfCombat => "this combat",
+        _ => return None,
+    };
+    if abilities.is_empty() {
         return None;
     }
 
@@ -3272,9 +3420,9 @@ pub(super) fn describe_attack_block_if_able_grant(
     }
 
     match (has_must_attack, has_must_block) {
-        (true, true) => Some(format!("{subject} attacks or blocks this turn if able")),
-        (true, false) => Some(format!("{subject} attacks this turn if able")),
-        (false, true) => Some(format!("{subject} blocks this turn if able")),
+        (true, true) => Some(format!("{subject} attacks or blocks {scope} if able")),
+        (true, false) => Some(format!("{subject} attacks {scope} if able")),
+        (false, true) => Some(format!("{subject} blocks {scope} if able")),
         (false, false) => None,
     }
 }
@@ -3885,18 +4033,30 @@ pub(super) fn describe_destroy_land_then_controller_reveals_until_land_graveyard
     Some("Destroy target land. Its controller reveals cards from the top of their library until they reveal a land card, then puts those cards into their graveyard".to_string())
 }
 
-pub(super) fn value_is_total_power_of_tagged_exiled_cards(value: &Value, tag: &TagKey) -> bool {
-    let Value::TotalPower(filter) = value.unhinted() else {
-        return false;
-    };
-    filter.zone == Some(Zone::Exile)
-        && filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == *tag
-                && matches!(
-                    constraint.relation,
-                    crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                )
-        })
+pub(super) fn value_is_total_power_of_tagged_exiled_cards(
+    value: &Value,
+    tag: &TagKey,
+    exile_effect_id: Option<crate::effect::EffectId>,
+) -> bool {
+    match value.unhinted() {
+        Value::TotalPower(filter) => {
+            filter.zone == Some(Zone::Exile)
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag == *tag
+                        && matches!(
+                            constraint.relation,
+                            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        )
+                })
+        }
+        Value::PriorEffectMetric { effect_id, query } => {
+            exile_effect_id == Some(*effect_id)
+                && query.source == crate::effect::EffectMetricSource::AffectedObjects
+                && query.metric == crate::effect::EffectMetric::TotalPower
+                && query.action == Some(crate::effect::PriorEffectAction::Exiled)
+        }
+        _ => false,
+    }
 }
 
 pub(super) fn is_zero_zero_blue_zombie_token(create: &crate::effects::CreateTokenEffect) -> bool {
@@ -3956,7 +4116,13 @@ pub(super) fn describe_each_player_mill_exile_milled_creatures_create_power_toke
         return None;
     }
 
-    let exile = exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let (exile_effect_id, exile_inner): (Option<crate::effect::EffectId>, &Effect) =
+        if let Some(with_id) = exile_effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            (Some(with_id.id), with_id.effect.as_ref())
+        } else {
+            (None, exile_effect)
+        };
+    let exile = exile_inner.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if exile.zone != Zone::Exile
         || !matches!(exile.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
     {
@@ -3975,8 +4141,12 @@ pub(super) fn describe_each_player_mill_exile_milled_creatures_create_power_toke
 
     let set_pt = set_pt_effect.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()?;
     if !matches!(set_pt.target.base(), ChooseSpec::Tagged(tag) if tag == created_tag)
-        || !value_is_total_power_of_tagged_exiled_cards(&set_pt.power, &choose.tag)
-        || !value_is_total_power_of_tagged_exiled_cards(&set_pt.toughness, &choose.tag)
+        || !value_is_total_power_of_tagged_exiled_cards(&set_pt.power, &choose.tag, exile_effect_id)
+        || !value_is_total_power_of_tagged_exiled_cards(
+            &set_pt.toughness,
+            &choose.tag,
+            exile_effect_id,
+        )
     {
         return None;
     }
@@ -4296,6 +4466,11 @@ pub(super) fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'st
         PlayerFilter::Opponent => Some("Each opponent"),
         PlayerFilter::NotYou => Some("Each other player"),
         PlayerFilter::You => Some("You"),
+        PlayerFilter::AttackedBySourceThisTurn => {
+            Some("Each player this creature attacked this turn")
+        }
+        PlayerFilter::WasDealtDamageBySourceThisGame { .. } => None,
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => None,
         PlayerFilter::Excluding { base, excluded }
             if matches!(base.as_ref(), PlayerFilter::Any)
                 && matches!(excluded.as_ref(), PlayerFilter::Opponent) =>
@@ -4307,6 +4482,16 @@ pub(super) fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'st
                 && matches!(excluded.as_ref(), PlayerFilter::ControllerOf(_)) =>
         {
             Some("Each player other than its controller")
+        }
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(base.as_ref(), PlayerFilter::Any)
+                && matches!(
+                    excluded.as_ref(),
+                    PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(tag))
+                        if tag.as_str() == "triggering"
+                ) =>
+        {
+            Some("Each other player")
         }
         PlayerFilter::Excluding { base, excluded }
             if matches!(base.as_ref(), PlayerFilter::Any)

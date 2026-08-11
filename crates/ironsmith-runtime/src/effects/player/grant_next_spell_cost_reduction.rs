@@ -17,7 +17,7 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let players =
             resolve_player_filter_to_list(game, &self.player, &ctx.filter_context(game), ctx)?;
-        if self.applies_to_all_matching_this_turn {
+        if self.generic_reduction.is_some() {
             let amount = self
                 .generic_reduction
                 .as_ref()
@@ -28,12 +28,18 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
             for player in players {
                 let mut filter = self.filter.clone();
                 lock_target_player_filters_for_player(&mut filter, player);
-                game.add_temporary_matching_spell_cost_reduction_until(
+                game.add_temporary_generic_spell_cost_reduction_until(
                     player,
                     ctx.source,
                     ctx.controller,
                     filter,
                     crate::effect::Value::Fixed(amount),
+                    if self.applies_to_all_matching_this_turn {
+                        u32::MAX
+                    } else {
+                        1
+                    },
+                    self.applies_to_all_matching_this_turn,
                     self.duration.clone(),
                 );
             }
@@ -78,6 +84,9 @@ fn lock_target_player_filters_for_player(
     if let Some(entered_controller) = &mut filter.entered_battlefield_controller {
         lock_target_player_filter(entered_controller, player);
     }
+    if let Some(constraint) = filter.counters_put_on_this_turn.as_mut() {
+        lock_target_player_filter(&mut constraint.source_controller, player);
+    }
     if let Some(attached_to_player) = &mut filter.attached_to_player {
         lock_target_player_filter(attached_to_player, player);
     }
@@ -96,6 +105,7 @@ fn lock_target_player_filter(filter: &mut crate::target::PlayerFilter, player: P
         }
         crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | crate::target::PlayerFilter::HasMoreLifeThanYou { base }
+        | crate::target::PlayerFilter::LostLifeThisTurn { base }
         | crate::target::PlayerFilter::MaxSpeed { base, .. } => {
             lock_target_player_filter(base, player);
         }

@@ -212,9 +212,11 @@ enum ManabrewPromptBinding {
         objects: HashMap<String, ObjectId>,
         secondary_zone_index: usize,
     },
-    Payment {
-        actions: HashMap<String, usize>,
-        pay_index: Option<usize>,
+    AuthoritativePayment {
+        plan_id: String,
+        request_hash: String,
+        actions: HashMap<String, ManaPaymentCommand>,
+        can_confirm_manually: bool,
     },
 }
 
@@ -282,10 +284,76 @@ struct DispatchPerfMetrics {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct ManaPoolView {
+    white: u32,
+    blue: u32,
+    black: u32,
+    red: u32,
+    green: u32,
+    colorless: u32,
+}
+
+impl From<&ironsmith::player::ManaPool> for ManaPoolView {
+    fn from(pool: &ironsmith::player::ManaPool) -> Self {
+        Self {
+            white: pool.white,
+            blue: pool.blue,
+            black: pool.black,
+            red: pool.red,
+            green: pool.green,
+            colorless: pool.colorless,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct PlannedManaSourceView {
+    source_id: String,
+    source_name: String,
+    payment_kind: String,
+    ability_index: usize,
+    color_restriction: Vec<String>,
+    expected_mana: ManaPoolView,
+    undo_safe: bool,
+    required: bool,
+    preserved: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct PlannedPipAllocationView {
+    pip_id: u32,
+    printed_index: usize,
+    payment_kind: String,
+    source_id: Option<String>,
+    symbol: Option<String>,
+    life: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AvailableManaSourceView {
+    source_id: String,
+    source_name: String,
+    payment_kinds: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct ManaPaymentView {
+    plan_id: String,
+    request_hash: String,
     source_name: String,
     pips: Vec<Vec<String>>,
-    current_pip_index: usize,
+    planned_sources: Vec<PlannedManaSourceView>,
+    available_sources: Vec<AvailableManaSourceView>,
+    allocations: Vec<PlannedPipAllocationView>,
+    pool_before: ManaPoolView,
+    pool_after_activations: ManaPoolView,
+    pool_after_payment: ManaPoolView,
+    life_to_pay: u32,
+    warnings: Vec<String>,
+    required_source_ids: Vec<String>,
+    excluded_source_ids: Vec<String>,
+    preserved_source_ids: Vec<String>,
+    prefer_life: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -522,7 +590,10 @@ fn mana_payment_view_from_pending_cast(
     game: &GameState,
     pending: &ironsmith::game_loop::PendingCast,
 ) -> Option<ManaPaymentView> {
-    if !matches!(pending.stage, CastStage::PayingMana) {
+    if !matches!(
+        pending.stage,
+        CastStage::PayingMana | CastStage::PayingAssistMana
+    ) {
         return None;
     }
 
@@ -541,23 +612,60 @@ fn mana_payment_view_from_pending_cast(
         return None;
     }
 
-    let current_pip_index = pips.len().saturating_sub(pending.remaining_mana_pips.len());
+    let payment = pending.pending_mana_payment.as_ref()?;
     let source_name = game
         .object(pending.spell_id)
         .map(|obj| obj.name.to_string())
         .unwrap_or_else(|| "spell".to_string());
 
     Some(ManaPaymentView {
+        plan_id: payment.plan.id.to_string(),
+        request_hash: payment.plan.request_hash.to_string(),
         source_name,
         pips: pips
             .into_iter()
             .map(|pip| pip.iter().map(mana_symbol_display_code).collect())
             .collect(),
-        current_pip_index,
+        planned_sources: planned_mana_source_views(game, payment),
+        available_sources: available_mana_source_views(game, payment),
+        allocations: planned_pip_allocation_views(payment),
+        pool_before: (&payment.plan.pool_before).into(),
+        pool_after_activations: (&payment.plan.expected_pool_after_activations).into(),
+        pool_after_payment: (&payment.plan.expected_pool_after_payment).into(),
+        life_to_pay: payment.plan.life_to_pay,
+        warnings: payment
+            .plan
+            .warnings
+            .iter()
+            .map(|warning| format!("{warning:?}"))
+            .collect(),
+        required_source_ids: payment
+            .request
+            .preferences
+            .required_sources
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect(),
+        excluded_source_ids: payment
+            .request
+            .preferences
+            .excluded_sources
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect(),
+        preserved_source_ids: payment
+            .request
+            .preferences
+            .preserve_sources
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect(),
+        prefer_life: payment.request.preferences.prefer_life,
     })
 }
 
 fn mana_payment_view_from_pending_activation(
+    game: &GameState,
     pending: &ironsmith::game_loop::PendingActivation,
 ) -> Option<ManaPaymentView> {
     if !matches!(pending.stage, ActivationStage::PayingMana) {
@@ -576,16 +684,273 @@ fn mana_payment_view_from_pending_activation(
         return None;
     }
 
-    let current_pip_index = pips.len().saturating_sub(pending.remaining_mana_pips.len());
-
+    let payment = pending.pending_mana_payment.as_ref()?;
     Some(ManaPaymentView {
+        plan_id: payment.plan.id.to_string(),
+        request_hash: payment.plan.request_hash.to_string(),
         source_name: pending.source_name.clone(),
         pips: pips
             .into_iter()
             .map(|pip| pip.iter().map(mana_symbol_display_code).collect())
             .collect(),
-        current_pip_index,
+        planned_sources: planned_mana_source_views(game, payment),
+        available_sources: available_mana_source_views(game, payment),
+        allocations: planned_pip_allocation_views(payment),
+        pool_before: (&payment.plan.pool_before).into(),
+        pool_after_activations: (&payment.plan.expected_pool_after_activations).into(),
+        pool_after_payment: (&payment.plan.expected_pool_after_payment).into(),
+        life_to_pay: payment.plan.life_to_pay,
+        warnings: payment
+            .plan
+            .warnings
+            .iter()
+            .map(|warning| format!("{warning:?}"))
+            .collect(),
+        required_source_ids: payment
+            .request
+            .preferences
+            .required_sources
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect(),
+        excluded_source_ids: payment
+            .request
+            .preferences
+            .excluded_sources
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect(),
+        preserved_source_ids: payment
+            .request
+            .preferences
+            .preserve_sources
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect(),
+        prefer_life: payment.request.preferences.prefer_life,
     })
+}
+
+fn mana_payment_view_from_context(
+    game: &GameState,
+    context: &ironsmith::decisions::context::ManaPaymentContext,
+) -> ManaPaymentView {
+    let payment = ironsmith::mana_payment::PendingManaPayment::new(
+        context.request.clone(),
+        context.plan.clone(),
+    );
+    let pips = ironsmith::game_loop::expand_mana_cost_to_display_pips(
+        &context.request.cost,
+        context.request.x_value as usize,
+    );
+    ManaPaymentView {
+        plan_id: context.plan.id.to_string(),
+        request_hash: context.plan.request_hash.to_string(),
+        source_name: game
+            .object(context.source)
+            .map(|object| object.name.to_string())
+            .unwrap_or_else(|| context.subject.clone()),
+        pips: pips
+            .into_iter()
+            .map(|pip| pip.iter().map(mana_symbol_display_code).collect())
+            .collect(),
+        planned_sources: planned_mana_source_views(game, &payment),
+        available_sources: available_mana_source_views(game, &payment),
+        allocations: planned_pip_allocation_views(&payment),
+        pool_before: (&context.plan.pool_before).into(),
+        pool_after_activations: (&context.plan.expected_pool_after_activations).into(),
+        pool_after_payment: (&context.plan.expected_pool_after_payment).into(),
+        life_to_pay: context.plan.life_to_pay,
+        warnings: context
+            .plan
+            .warnings
+            .iter()
+            .map(|warning| format!("{warning:?}"))
+            .collect(),
+        required_source_ids: context
+            .request
+            .preferences
+            .required_sources
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect(),
+        excluded_source_ids: context
+            .request
+            .preferences
+            .excluded_sources
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect(),
+        preserved_source_ids: context
+            .request
+            .preferences
+            .preserve_sources
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect(),
+        prefer_life: context.request.preferences.prefer_life,
+    }
+}
+
+fn planned_mana_source_views(
+    game: &GameState,
+    payment: &ironsmith::mana_payment::PendingManaPayment,
+) -> Vec<PlannedManaSourceView> {
+    let mut sources = payment
+        .plan
+        .mana_ability_steps
+        .iter()
+        .map(|step| PlannedManaSourceView {
+            source_id: step.source.0.to_string(),
+            source_name: game
+                .object(step.source)
+                .map(|object| object.name.to_string())
+                .unwrap_or_else(|| format!("Object #{}", step.source.0)),
+            payment_kind: "mana_ability".to_string(),
+            ability_index: step.ability_index,
+            color_restriction: step
+                .color_restriction
+                .as_ref()
+                .into_iter()
+                .flatten()
+                .map(|color| format!("{color:?}").to_ascii_lowercase())
+                .collect(),
+            expected_mana: (&step.expected_mana).into(),
+            undo_safe: step.undo_safe,
+            required: payment
+                .request
+                .preferences
+                .required_sources
+                .contains(&step.source)
+                || payment
+                    .request
+                    .preferences
+                    .required_activations
+                    .iter()
+                    .any(|selected| {
+                        selected.source == step.source
+                            && selected.ability_index == step.ability_index
+                            && selected.color_restriction == step.color_restriction
+                    }),
+            preserved: payment
+                .request
+                .preferences
+                .preserve_sources
+                .contains(&step.source),
+        })
+        .collect::<Vec<_>>();
+    for allocation in &payment.plan.allocations {
+        let (source, payment_kind) = match allocation.payment {
+            ironsmith::mana_payment::PlannedPipPayment::Convoke(source) => (source, "convoke"),
+            ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => (source, "improvise"),
+            _ => continue,
+        };
+        if sources
+            .iter()
+            .any(|candidate| candidate.source_id == source.0.to_string())
+        {
+            continue;
+        }
+        sources.push(PlannedManaSourceView {
+            source_id: source.0.to_string(),
+            source_name: game
+                .object(source)
+                .map(|object| object.name.to_string())
+                .unwrap_or_else(|| format!("Object #{}", source.0)),
+            payment_kind: payment_kind.to_string(),
+            ability_index: 0,
+            color_restriction: Vec::new(),
+            expected_mana: (&ironsmith::player::ManaPool::default()).into(),
+            undo_safe: false,
+            required: payment
+                .request
+                .preferences
+                .required_sources
+                .contains(&source)
+                || payment
+                    .request
+                    .preferences
+                    .required_alternatives
+                    .iter()
+                    .any(|selected| selected.source == source),
+            preserved: payment
+                .request
+                .preferences
+                .preserve_sources
+                .contains(&source),
+        });
+    }
+    sources
+}
+
+fn planned_pip_allocation_views(
+    payment: &ironsmith::mana_payment::PendingManaPayment,
+) -> Vec<PlannedPipAllocationView> {
+    payment
+        .plan
+        .allocations
+        .iter()
+        .map(|allocation| {
+            let (payment_kind, source_id, symbol, life) = match allocation.payment {
+                ironsmith::mana_payment::PlannedPipPayment::Mana(symbol) => (
+                    "mana".to_string(),
+                    None,
+                    Some(mana_symbol_display_code(&symbol)),
+                    None,
+                ),
+                ironsmith::mana_payment::PlannedPipPayment::Life(amount) => {
+                    ("life".to_string(), None, None, Some(amount))
+                }
+                ironsmith::mana_payment::PlannedPipPayment::Convoke(source) => (
+                    "convoke".to_string(),
+                    Some(source.0.to_string()),
+                    None,
+                    None,
+                ),
+                ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => (
+                    "improvise".to_string(),
+                    Some(source.0.to_string()),
+                    None,
+                    None,
+                ),
+                ironsmith::mana_payment::PlannedPipPayment::Assist { player, symbol } => (
+                    "assist".to_string(),
+                    Some(player.0.to_string()),
+                    Some(mana_symbol_display_code(&symbol)),
+                    None,
+                ),
+            };
+            PlannedPipAllocationView {
+                pip_id: allocation.pip.0,
+                printed_index: allocation.printed_index,
+                payment_kind,
+                source_id,
+                symbol,
+                life,
+            }
+        })
+        .collect()
+}
+
+fn available_mana_source_views(
+    game: &GameState,
+    payment: &ironsmith::mana_payment::PendingManaPayment,
+) -> Vec<AvailableManaSourceView> {
+    ironsmith::mana_payment::mana_payment_source_inventory(game, &payment.request)
+        .into_iter()
+        .map(|source| AvailableManaSourceView {
+            source_id: source.source.0.to_string(),
+            source_name: game
+                .object(source.source)
+                .map(|object| object.name.to_string())
+                .unwrap_or_else(|| format!("Object #{}", source.source.0)),
+            payment_kinds: source
+                .kinds
+                .into_iter()
+                .map(|kind| format!("{kind:?}").to_ascii_lowercase())
+                .collect(),
+        })
+        .collect()
 }
 
 fn merge_active_viewed_cards(
@@ -1834,6 +2199,16 @@ enum SpecialActionRef {
         source_id: u64,
         ability_index: usize,
     },
+    IgnoreSourceEffect {
+        source_id: u64,
+        ability_index: usize,
+    },
+    PayDelayedTrigger {
+        delayed_trigger_index: usize,
+    },
+    PerformRepeatableManaPaymentAction {
+        action_index: usize,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -2017,6 +2392,13 @@ enum DecisionView {
     Blockers {
         player: u8,
         blocker_options: Vec<BlockerOptionView>,
+    },
+    ManaPayment {
+        player: u8,
+        source_id: u64,
+        subject: String,
+        plan_id: String,
+        request_hash: String,
     },
 }
 
@@ -2206,6 +2588,13 @@ impl DecisionView {
         let reason = decision_reason(ctx);
 
         match ctx {
+            DecisionContext::ManaPayment(payment) => DecisionView::ManaPayment {
+                player: decision_player_for(payment.player).0,
+                source_id: payment.source.0,
+                subject: payment.subject.clone(),
+                plan_id: payment.plan.id.to_string(),
+                request_hash: payment.plan.request_hash.to_string(),
+            },
             DecisionContext::Boolean(boolean) => DecisionView::SelectOptions {
                 player: decision_player_for(boolean.player).0,
                 description: Self::text_with_visible_hidden_cards(
@@ -2835,6 +3224,157 @@ enum UiCommand {
     DeclareBlockers {
         declarations: Vec<BlockerDeclarationInput>,
     },
+    ManaPayment {
+        response: ManaPaymentCommand,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+enum ManaPaymentCommand {
+    Confirm {
+        plan_id: String,
+        request_hash: String,
+    },
+    Replan {
+        #[serde(default)]
+        required_source_ids: Vec<String>,
+        #[serde(default)]
+        required_activations: Vec<ManaPaymentActivationCommand>,
+        #[serde(default)]
+        required_alternatives: Vec<ManaPaymentAlternativeCommand>,
+        #[serde(default)]
+        excluded_source_ids: Vec<String>,
+        #[serde(default)]
+        preserved_source_ids: Vec<String>,
+        #[serde(default)]
+        prefer_life: bool,
+    },
+    Cancel,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct ManaPaymentActivationCommand {
+    source_id: String,
+    ability_index: usize,
+    #[serde(default)]
+    color_restriction: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct ManaPaymentAlternativeCommand {
+    source_id: String,
+    payment_kind: String,
+}
+
+impl ManaPaymentCommand {
+    fn into_runtime(self) -> Result<ironsmith::mana_payment::ManaPaymentResponse, JsValue> {
+        match self {
+            Self::Confirm {
+                plan_id,
+                request_hash,
+            } => Ok(ironsmith::mana_payment::ManaPaymentResponse::Confirm {
+                plan_id: plan_id
+                    .parse()
+                    .map_err(|_| JsValue::from_str("invalid mana payment plan id"))?,
+                request_hash: request_hash
+                    .parse()
+                    .map_err(|_| JsValue::from_str("invalid mana payment request hash"))?,
+            }),
+            Self::Replan {
+                required_source_ids,
+                required_activations,
+                required_alternatives,
+                excluded_source_ids,
+                preserved_source_ids,
+                prefer_life,
+            } => Ok(ironsmith::mana_payment::ManaPaymentResponse::Replan {
+                preferences: ironsmith::mana_payment::ManaPaymentPreferences {
+                    required_sources: parse_mana_payment_source_ids(
+                        required_source_ids,
+                        "required",
+                    )?,
+                    required_activations: required_activations
+                        .into_iter()
+                        .map(ManaPaymentActivationCommand::into_runtime)
+                        .collect::<Result<Vec<_>, _>>()?,
+                    required_alternatives: required_alternatives
+                        .into_iter()
+                        .map(ManaPaymentAlternativeCommand::into_runtime)
+                        .collect::<Result<Vec<_>, _>>()?,
+                    excluded_sources: parse_mana_payment_source_ids(
+                        excluded_source_ids,
+                        "excluded",
+                    )?,
+                    preserve_sources: parse_mana_payment_source_ids(
+                        preserved_source_ids,
+                        "preserved",
+                    )?,
+                    prefer_life,
+                },
+            }),
+            Self::Cancel => Ok(ironsmith::mana_payment::ManaPaymentResponse::Cancel),
+        }
+    }
+}
+
+impl ManaPaymentActivationCommand {
+    fn into_runtime(self) -> Result<ironsmith::mana_payment::RequiredManaActivation, JsValue> {
+        let source = parse_mana_payment_source_id(&self.source_id, "activation")?;
+        let color_restriction = self
+            .color_restriction
+            .map(|colors| {
+                colors
+                    .into_iter()
+                    .map(|color| {
+                        ironsmith::color::Color::from_name(&color).ok_or_else(|| {
+                            JsValue::from_str(&format!(
+                                "invalid mana payment color restriction: {color}"
+                            ))
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?;
+        Ok(ironsmith::mana_payment::RequiredManaActivation {
+            source,
+            ability_index: self.ability_index,
+            color_restriction,
+        })
+    }
+}
+
+impl ManaPaymentAlternativeCommand {
+    fn into_runtime(self) -> Result<ironsmith::mana_payment::RequiredAlternativePayment, JsValue> {
+        let source = parse_mana_payment_source_id(&self.source_id, "alternative")?;
+        let kind = match self.payment_kind.as_str() {
+            "convoke" => ironsmith::mana_payment::ManaPaymentSourceKind::Convoke,
+            "improvise" => ironsmith::mana_payment::ManaPaymentSourceKind::Improvise,
+            other => {
+                return Err(JsValue::from_str(&format!(
+                    "invalid mana payment alternative kind: {other}"
+                )));
+            }
+        };
+        Ok(ironsmith::mana_payment::RequiredAlternativePayment { source, kind })
+    }
+}
+
+fn parse_mana_payment_source_id(id: &str, preference: &str) -> Result<ObjectId, JsValue> {
+    id.parse::<u64>().map(ObjectId::from_raw).map_err(|_| {
+        JsValue::from_str(&format!(
+            "invalid {preference} mana payment source id: {id}"
+        ))
+    })
+}
+
+fn parse_mana_payment_source_ids(
+    ids: Vec<String>,
+    preference: &str,
+) -> Result<Vec<ObjectId>, JsValue> {
+    ids.into_iter()
+        .map(|id| parse_mana_payment_source_id(&id, preference))
+        .collect()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -2870,6 +3410,7 @@ enum ReplayDecisionAnswer {
     Number(u32),
     Text(String),
     Options(Vec<usize>),
+    ManaPayment(ironsmith::mana_payment::ManaPaymentResponse),
     Objects(Vec<ObjectId>),
     Order(Vec<ObjectId>),
     Distribute(Vec<(Target, u32)>),
@@ -2941,6 +3482,7 @@ fn ui_command_kind(command: &UiCommand) -> &'static str {
         UiCommand::TextChoice { .. } => "text_choice",
         UiCommand::DeclareAttackers { .. } => "declare_attackers",
         UiCommand::DeclareBlockers { .. } => "declare_blockers",
+        UiCommand::ManaPayment { .. } => "mana_payment",
     }
 }
 
@@ -3146,6 +3688,24 @@ impl DecisionMaker for WasmReplayDecisionMaker {
                     }
                 }
                 selected
+            }
+        }
+    }
+
+    fn decide_mana_payment(
+        &mut self,
+        game: &GameState,
+        ctx: &ironsmith::decisions::context::ManaPaymentContext,
+    ) -> ironsmith::mana_payment::ManaPaymentResponse {
+        match self.answers.front() {
+            Some(ReplayDecisionAnswer::ManaPayment(response)) => {
+                let response = response.clone();
+                self.answers.pop_front();
+                response
+            }
+            _ => {
+                self.capture_once_for_game(game, DecisionContext::ManaPayment(ctx.clone()));
+                ironsmith::mana_payment::ManaPaymentResponse::Cancel
             }
         }
     }

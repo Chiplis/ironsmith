@@ -145,6 +145,20 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_put_onto_battlefield_with_additional_counters_sentence
     ),
     primitive!(
+        "put-fixed-and-counter-choice",
+        65,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("put")],
+        parse_sentence_put_fixed_and_counter_choice
+    ),
+    primitive!(
+        "return-with-dynamic-entry-counters",
+        67,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("return")],
+        parse_return_with_dynamic_entry_counters_sentence
+    ),
+    primitive!(
         "put-multiple-counters-on-target",
         70,
         PreDiagnostic,
@@ -892,6 +906,51 @@ mod tests {
                 })] if card_types.as_slice() == [CardType::Creature]
             ),
             "expected explicit self negative-type clause to parse into source-scoped remove-card-types until end of turn, got {effects:?}"
+        );
+    }
+
+    #[test]
+    fn parse_sentence_implicit_become_clause_removes_one_explicit_subtype() {
+        let tokens = tokenize_line("it isn't an Equipment.", 0);
+        let effects =
+            parse_sentence_implicit_become_clause(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("parse should succeed")
+                .expect("clause should be recognized");
+
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::RemoveSubtypes {
+                            target: TargetAst::Tagged(_, _),
+                            subtypes,
+                            duration: Until::Forever,
+                        },
+                    ..
+                })] if subtypes.as_slice() == [crate::types::Subtype::Equipment]
+            ),
+            "expected the negated subtype to remain a typed removal, got {effects:#?}"
+        );
+    }
+
+    #[test]
+    fn affirmative_subtype_clause_does_not_inherit_negated_subtype_removal() {
+        let tokens = tokenize_line("it is an Equipment.", 0);
+        let effects =
+            parse_sentence_implicit_become_clause(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("parse should succeed")
+                .expect("clause should be recognized");
+
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::AddSubtypes { subtypes, .. },
+                    ..
+                })] if subtypes.as_slice() == [crate::types::Subtype::Equipment]
+            ),
+            "ordinary affirmative subtype changes must remain additions, got {effects:#?}"
         );
     }
 

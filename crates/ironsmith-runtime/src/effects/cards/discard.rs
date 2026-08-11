@@ -185,6 +185,9 @@ impl EffectExecutor for DiscardEffect {
         use crate::events::processing::execute_discard;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let resolved_count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        let one_or_more = self
+            .count
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::OneOrMoreChoice);
         let count = if self.any_number && resolved_count == 0 {
             usize::MAX
         } else {
@@ -243,10 +246,17 @@ impl EffectExecutor for DiscardEffect {
             // choice. A zero count retains the unbounded "any number" shape.
             // Both are optional choices, so neither requires the player to
             // select the maximum number of eligible cards.
-            let min_required = 0;
+            if one_or_more && hand_cards.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let min_required = usize::from(one_or_more);
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
-                "Choose any number of cards to discard".to_string(),
+                if one_or_more {
+                    "Choose one or more cards to discard".to_string()
+                } else {
+                    "Choose any number of cards to discard".to_string()
+                },
                 hand_cards.clone(),
                 min_required,
                 Some(required),
@@ -400,7 +410,14 @@ impl EffectExecutor for DiscardEffect {
             .as_ref()
             .map(|f| f.card_types.clone())
             .unwrap_or_default();
-        let type_phrase = format_discard_card_type_phrase(&card_types);
+        let mut type_phrase = format_discard_card_type_phrase(&card_types);
+        if let Some(subtype) = self
+            .card_filter
+            .as_ref()
+            .and_then(|f| f.subtypes.first().copied())
+        {
+            type_phrase = format!("{} {type_phrase}", subtype.display_name());
+        }
         let random_suffix = if self.random { " at random" } else { "" };
         Some(if count == 1 {
             format!("Discard a {type_phrase}{random_suffix}")
@@ -579,6 +596,42 @@ mod tests {
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
         assert_eq!(game.player(alice).unwrap().hand.len(), 2);
+    }
+
+    #[test]
+    fn one_or_more_discard_requires_a_nonempty_choice_when_cards_are_available() {
+        #[derive(Default)]
+        struct SelectNone;
+
+        impl crate::decision::DecisionMaker for SelectNone {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                _ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                Vec::new()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        add_card_to_hand(&mut game, "Card 1", alice);
+        add_card_to_hand(&mut game, "Card 2", alice);
+
+        let mut decisions = SelectNone;
+        let mut ctx = ExecutionContext::new(source, alice, &mut decisions);
+        let effect = DiscardEffect::new_with_filter(
+            Value::Fixed(0).with_surface_hint(ironsmith_core::ValueSurfaceHint::OneOrMoreChoice),
+            PlayerFilter::You,
+            false,
+            None,
+        )
+        .with_any_number(true);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        assert_eq!(game.player(alice).unwrap().hand.len(), 1);
     }
 
     #[test]

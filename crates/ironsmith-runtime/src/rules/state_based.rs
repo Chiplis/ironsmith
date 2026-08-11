@@ -4,6 +4,7 @@
 //! They don't use the stack and happen simultaneously.
 
 use crate::effects::permanents::attachment_can_attach_to_target;
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::AttachmentTarget;
@@ -15,6 +16,68 @@ use crate::triggers::TriggerQueue;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 use std::collections::{HashMap, HashSet};
+
+fn controlled_existing_attachment_is_preserved_by_protection_grant(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    protected: ObjectId,
+    attachment: ObjectId,
+) -> bool {
+    let attachment_subtypes = view.calculated_subtypes(attachment);
+    let attachment_is_aura_or_equipment = (view
+        .object_has_card_type(attachment, CardType::Enchantment)
+        && attachment_subtypes.contains(&Subtype::Aura))
+        || (view.object_has_card_type(attachment, CardType::Artifact)
+            && attachment_subtypes.contains(&Subtype::Equipment));
+    if !attachment_is_aura_or_equipment {
+        return false;
+    }
+    let Some(protected_object) = game.object(protected) else {
+        return false;
+    };
+
+    protected_object
+        .attachments
+        .iter()
+        .copied()
+        .any(|grant_source| {
+            if game.controller_of_id(grant_source) != game.controller_of_id(attachment) {
+                return false;
+            }
+            let Some(source) = game.object(grant_source) else {
+                return false;
+            };
+            source.abilities.iter().any(|ability| {
+                let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                    return false;
+                };
+                let Some(model) = static_ability.compiled_model() else {
+                    return false;
+                };
+                let ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant) =
+                    &model.payload
+                else {
+                    return false;
+                };
+                if !grant.protection_does_not_remove_controlled_attachments {
+                    return false;
+                }
+                let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
+                    return false;
+                };
+                if !matches!(
+                    &granted.payload,
+                    ironsmith_core::StaticAbilityPayload::Protection(
+                        ironsmith_core::ProtectionFrom::ChosenColor
+                    )
+                ) {
+                    return false;
+                }
+                game.chosen_color(grant_source)
+                    .is_some_and(|color| view.object_colors(attachment).contains(color))
+            })
+        })
+}
 
 /// A state-based action that needs to be performed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -714,7 +777,17 @@ fn check_permanent_sbas_with_view(
                 actions.push(StateBasedAction::AttachmentBecomesUnattached(obj_id));
             } else if is_aura {
                 if !attachment_can_attach_to_target(game, obj_id, attached_target)
-                    || matches!(attached_target, AttachmentTarget::Object(attached_id) if has_protection_from_source(game, attached_id, obj_id))
+                    || matches!(
+                        attached_target,
+                        AttachmentTarget::Object(attached_id)
+                            if has_protection_from_source(game, attached_id, obj_id)
+                                && !controlled_existing_attachment_is_preserved_by_protection_grant(
+                                    game,
+                                    view,
+                                    attached_id,
+                                    obj_id,
+                                )
+                    )
                 {
                     if obj.is_bestow_overlay_active() {
                         actions.push(StateBasedAction::BestowBecomesCreature(obj_id));
@@ -722,8 +795,25 @@ fn check_permanent_sbas_with_view(
                         actions.push(StateBasedAction::AuraFallsOff(obj_id));
                     }
                 }
-            } else if !attachment_can_attach_to_target(game, obj_id, attached_target) {
-                actions.push(StateBasedAction::AttachmentBecomesUnattached(obj_id));
+            } else {
+                let is_equipment = calculated_subtypes.contains(&Subtype::Equipment);
+                let protection_makes_attachment_illegal = is_equipment
+                    && matches!(
+                        attached_target,
+                        AttachmentTarget::Object(attached_id)
+                            if has_protection_from_source(game, attached_id, obj_id)
+                                && !controlled_existing_attachment_is_preserved_by_protection_grant(
+                                    game,
+                                    view,
+                                    attached_id,
+                                    obj_id,
+                                )
+                    );
+                if !attachment_can_attach_to_target(game, obj_id, attached_target)
+                    || protection_makes_attachment_illegal
+                {
+                    actions.push(StateBasedAction::AttachmentBecomesUnattached(obj_id));
+                }
             }
         }
 
@@ -965,8 +1055,7 @@ fn check_legend_rule_with_view(
     view: &crate::derived_view::DerivedGameView<'_>,
     actions: &mut Vec<StateBasedAction>,
 ) {
-    let mut exempt_controllers = HashSet::new();
-    let mut token_exempt_controllers = HashSet::new();
+    let mut controller_exemptions = Vec::new();
     for &obj_id in &game.battlefield {
         if game.is_phased_out(obj_id) {
             continue;
@@ -974,19 +1063,36 @@ fn check_legend_rule_with_view(
         if view.object_has_static_ability_id(obj_id, StaticAbilityId::LegendRuleDoesntApply) {
             return;
         }
-        if view.object_has_static_ability_id(
-            obj_id,
-            StaticAbilityId::LegendRuleDoesntApplyToController,
-        ) && let Some(object) = game.object(obj_id)
-        {
-            exempt_controllers.insert(game.controller_of(object));
-        }
-        if view.object_has_static_ability_id(
-            obj_id,
-            StaticAbilityId::LegendRuleDoesntApplyToControllerTokens,
-        ) && let Some(object) = game.object(obj_id)
-        {
-            token_exempt_controllers.insert(game.controller_of(object));
+        let Some(object) = game.object(obj_id) else {
+            continue;
+        };
+        let controller = game.controller_of(object);
+        if let Some(abilities) = view.static_abilities_rc(obj_id) {
+            for ability in abilities.iter().filter(|ability| {
+                ability.is_active(game, obj_id)
+                    && matches!(
+                        ability.id(),
+                        StaticAbilityId::LegendRuleDoesntApplyToController
+                            | StaticAbilityId::LegendRuleDoesntApplyToControllerTokens
+                    )
+            }) {
+                let fallback =
+                    if ability.id() == StaticAbilityId::LegendRuleDoesntApplyToControllerTokens {
+                        let mut filter = crate::target::ObjectFilter::permanent();
+                        filter.token = true;
+                        filter
+                    } else {
+                        crate::target::ObjectFilter::permanent()
+                    };
+                controller_exemptions.push((
+                    controller,
+                    obj_id,
+                    ability
+                        .legend_rule_exemption_filter()
+                        .cloned()
+                        .unwrap_or(fallback),
+                ));
+            }
         }
     }
 
@@ -1004,13 +1110,18 @@ fn check_legend_rule_with_view(
         let Some(chars) = view.calculated_characteristics(obj_id) else {
             continue;
         };
-        if exempt_controllers.contains(&chars.controller) {
-            continue;
-        }
-        if token_exempt_controllers.contains(&chars.controller)
-            && game
-                .object(obj_id)
-                .is_some_and(|object| object.kind == crate::object::ObjectKind::Token)
+        if controller_exemptions
+            .iter()
+            .any(|(controller, source, filter)| {
+                *controller == chars.controller
+                    && game.object(obj_id).is_some_and(|candidate| {
+                        filter.matches(
+                            candidate,
+                            &game.filter_context_for(*controller, Some(*source)),
+                            game,
+                        )
+                    })
+            })
         {
             continue;
         }
@@ -1541,7 +1652,13 @@ fn apply_single_sba_with_snapshots(
                 .planar_controller_of_face(source)
                 .or_else(|| game.planar_controller())
             {
-                let _ = game.planeswalk(controller, source);
+                let mut ctx =
+                    crate::effects::ExecutionContext::new(source, controller, decision_maker);
+                let effect = crate::effect::Effect::emit_keyword_action(
+                    crate::events::KeywordActionKind::Planeswalk,
+                    1,
+                );
+                let _ = crate::effects::execute_effect(game, &effect, &mut ctx);
             }
         }
 
@@ -1853,6 +1970,27 @@ mod tests {
         .build()
     }
 
+    fn creature_legend_rule_exemption_definition(card_id: u32) -> crate::cards::CardDefinition {
+        crate::cards::builders::CardDefinitionBuilder::new(
+            CardId::from_raw(card_id),
+            "Creature Legend Exemption",
+        )
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::static_ability(
+            StaticAbility::legend_rule_doesnt_apply_to_controller_matching(
+                crate::target::ObjectFilter::creature(),
+            ),
+        ))
+        .build()
+    }
+
+    fn legendary_artifact_definition(card_id: u32, name: &str) -> crate::cards::CardDefinition {
+        crate::cards::builders::CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+            .supertypes(vec![crate::types::Supertype::Legendary])
+            .card_types(vec![CardType::Artifact])
+            .build()
+    }
+
     fn controller_token_legend_rule_exemption_definition(
         card_id: u32,
     ) -> crate::cards::CardDefinition {
@@ -1946,6 +2084,30 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(violations, vec![(bob, "Bob Twin".to_string())]);
+    }
+
+    #[test]
+    fn creature_filtered_legend_rule_exemption_leaves_noncreatures_subject_to_the_rule() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let creature = legendary_creature_definition(417, "Creature Twin");
+        let artifact = legendary_artifact_definition(418, "Relic Twin");
+        for _ in 0..2 {
+            game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+            game.create_object_from_definition(&artifact, alice, Zone::Battlefield);
+        }
+        let exemption = creature_legend_rule_exemption_definition(419);
+        game.create_object_from_definition(&exemption, alice, Zone::Battlefield);
+
+        let violations = check_state_based_actions(&game)
+            .into_iter()
+            .filter_map(|action| match action {
+                StateBasedAction::LegendRuleViolation { name, .. } => Some(name),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(violations, vec!["Relic Twin".to_string()]);
     }
 
     #[test]

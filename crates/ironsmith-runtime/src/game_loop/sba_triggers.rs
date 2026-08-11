@@ -1164,6 +1164,7 @@ fn trigger_target_requirement_contexts(
                 description: requirement.description.clone(),
                 legal_targets: requirement.legal_targets.clone(),
                 legal_target_sets: requirement.legal_target_sets.clone(),
+                aggregate_constraint: requirement.aggregate_constraint.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
                 distinct_player_group: requirement.distinct_player_group,
@@ -1257,12 +1258,20 @@ fn target_requirements_from_explicit_choices(
                 &resolved_target_spec,
                 &legal_targets,
             );
+            let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
+                game,
+                &resolved_target_spec,
+                trigger.controller,
+                Some(trigger.source),
+                &legal_targets,
+            );
 
             TargetRequirement {
                 spec: resolved_target_spec,
                 chooser: None,
                 legal_targets,
                 legal_target_sets,
+                aggregate_constraint,
                 description: format!("target for {}", trigger.source_name),
                 min_targets: count.min,
                 max_targets: count.max,
@@ -1338,6 +1347,13 @@ fn refresh_trigger_program_target_requirements(
             );
         requirement.legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, &spec, &requirement.legal_targets);
+        requirement.aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
+            game,
+            &spec,
+            trigger.controller,
+            Some(trigger.source),
+            &requirement.legal_targets,
+        );
         requirement.spec = spec;
     }
 }

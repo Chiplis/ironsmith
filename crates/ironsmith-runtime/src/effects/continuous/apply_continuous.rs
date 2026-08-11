@@ -140,6 +140,10 @@ fn object_filter_uses_context_tag(filter: &crate::target::ObjectFilter) -> bool 
             .as_deref()
             .is_some_and(object_filter_uses_context_tag)
         || filter
+            .without_attached_object
+            .as_deref()
+            .is_some_and(object_filter_uses_context_tag)
+        || filter
             .blocked_or_was_blocked_by_this_turn
             .as_deref()
             .is_some_and(object_filter_uses_context_tag)
@@ -603,12 +607,17 @@ fn materialize_granted_entry_counter_source(
         return Modification::AddAbility(ability);
     };
     let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
-        count, ..
+        count,
+        otherwise_count,
+        ..
     } = &mut model.payload
     else {
         return Modification::AddAbility(ability);
     };
     materialize_value(count, outer_source);
+    if let Some(otherwise_count) = otherwise_count {
+        materialize_value(otherwise_count, outer_source);
+    }
     Modification::AddAbility(crate::static_abilities::StaticAbility::from_model(model))
 }
 

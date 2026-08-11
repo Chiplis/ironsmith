@@ -234,6 +234,23 @@ impl ChooseSpec {
         }
     }
 
+    /// Constraint authored for the selected target set, if any.
+    ///
+    /// The object filter still describes which individual objects are legal;
+    /// this metadata constrains the selection as a whole.
+    pub fn target_set_aggregate_constraint(&self) -> Option<&crate::ChoiceAggregateConstraint> {
+        match self {
+            Self::SurfaceHinted { spec, .. }
+            | Self::Target(spec)
+            | Self::WithCount(spec, _)
+            | Self::WithCountValue(spec, _, _) => spec.target_set_aggregate_constraint(),
+            Self::Object(filter) | Self::ObjectOrPlayer(filter, _) => {
+                filter.target_set_aggregate_constraint.as_deref()
+            }
+            _ => None,
+        }
+    }
+
     pub fn is_single(&self) -> bool {
         self.count().is_single()
     }

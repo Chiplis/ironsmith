@@ -591,6 +591,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
                 .is_some_and(|controller| active_players.contains(&controller))
         })
         .filter(|id| game.current_has_static_ability_id(*id, StaticAbilityId::Phasing))
+        .filter(|id| game.can_phase_out(*id))
         .collect::<Vec<_>>();
     let phase_in = active_players
         .iter()
@@ -1070,6 +1071,20 @@ pub fn execute_cleanup_step(game: &mut GameState) {
         .replacement_effects
         .clear_until_end_of_turn_effects();
 
+    // Prevention shields with an end-of-turn duration expire during cleanup.
+    // Keep only accumulated metrics still owned by a pending delayed trigger;
+    // this covers "the next end step" instructions created after the current
+    // turn's end-step trigger point.
+    let retained_prevention_metrics = game
+        .effect_store
+        .delayed_triggers
+        .iter()
+        .filter_map(|delayed| delayed.prevention_shield)
+        .collect::<std::collections::HashSet<_>>();
+    game.effect_store
+        .prevention_effects
+        .cleanup_end_of_turn_retaining_metrics(&retained_prevention_metrics);
+
     // Clean up expired grants (e.g., flashback from Snapcaster Mage)
     let turn_number = game.turn.turn_number;
     let battlefield = game.battlefield.clone();
@@ -1082,6 +1097,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
     game.cleanup_granted_mana_abilities_end_of_turn();
     game.cleanup_temporary_spell_cost_reductions_end_of_turn();
     game.cleanup_temporary_spell_ability_grants_end_of_turn();
+    game.cleanup_repeatable_mana_payment_actions_end_of_turn();
     game.cleanup_temporary_object_static_ability_grants_end_of_turn();
 
     // End "until end of turn" effects would happen here
@@ -1089,6 +1105,11 @@ pub fn execute_cleanup_step(game: &mut GameState) {
     game.effect_store.continuous_effects.cleanup_end_of_turn();
     game.cleanup_player_control_end_of_turn();
     game.cleanup_combat_choice_control_end_of_turn();
+
+    // Restrictions are materialized into CantEffectTracker. Rebuild it only
+    // after both direct restriction instances and continuous effects have
+    // expired so end-of-turn "can't" effects cannot remain cached.
+    game.update_cant_effects();
 
     // Normally no priority during cleanup, but if triggers/SBAs happen, there's a new cleanup
     game.turn.priority_player = None;
@@ -1341,6 +1362,83 @@ mod tests {
         assert_eq!(
             after_sba.static_ability_regens, before_sba.static_ability_regens,
             "a clean post-cleanup SBA check should reuse cached static effects"
+        );
+    }
+
+    #[test]
+    fn cleanup_expires_prevention_shields_but_retains_delayed_prevention_metrics() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let ordinary_shield = game.effect_store.prevention_effects.add_shield(
+            crate::prevention::PreventionShield::prevent_next_n(
+                source,
+                alice,
+                crate::prevention::PreventionTarget::You,
+                2,
+            ),
+        );
+        let delayed_metric = game.effect_store.prevention_effects.add_shield(
+            crate::prevention::PreventionShield::prevent_next_n(
+                source,
+                alice,
+                crate::prevention::PreventionTarget::You,
+                3,
+            ),
+        );
+        let result =
+            game.effect_store
+                .prevention_effects
+                .apply_chosen_shield(delayed_metric, 3, true, None);
+        assert_eq!(result.remaining, 0);
+        assert_eq!(
+            game.effect_store
+                .prevention_effects
+                .prevented_by_shield(delayed_metric),
+            3
+        );
+
+        crate::effects::delayed::queue_delayed_trigger(
+            &mut game,
+            crate::effects::delayed::DelayedTriggerConfig::new(
+                crate::triggers::Trigger::beginning_of_end_step(PlayerFilter::Any),
+                Vec::<crate::effect::Effect>::new(),
+                true,
+                Vec::new(),
+                alice,
+            )
+            .with_prevention_shield(Some(delayed_metric)),
+        );
+
+        execute_cleanup_step(&mut game);
+
+        assert!(
+            game.effect_store.prevention_effects.shields().is_empty(),
+            "ordinary end-of-turn prevention shields must expire during cleanup"
+        );
+        assert_eq!(
+            game.effect_store
+                .prevention_effects
+                .prevented_by_shield(ordinary_shield),
+            0,
+            "an unreferenced shield must not leave a cleanup metric behind"
+        );
+        assert_eq!(
+            game.effect_store
+                .prevention_effects
+                .prevented_by_shield(delayed_metric),
+            3,
+            "a pending delayed registration must retain its completed metric"
+        );
+
+        game.effect_store.delayed_triggers.clear();
+        execute_cleanup_step(&mut game);
+        assert_eq!(
+            game.effect_store
+                .prevention_effects
+                .prevented_by_shield(delayed_metric),
+            0,
+            "the metric must be released after its delayed registration is gone"
         );
     }
 

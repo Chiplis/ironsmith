@@ -1083,6 +1083,27 @@ pub(super) fn parse_ozox_nested_token_return_keeps_named_card_literal() {
         .parse_text("Ozox can't block.\nWhen Ozox dies, create Jumblebones, a legendary 2/1 black Skeleton creature token with \"Jumblebones can't block\" and \"When Jumblebones leaves the battlefield, return target card named Ozox, the Clattering King from your graveyard to your hand.\"")
         .expect("ozox nested token return clause should parse");
 
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join("\n"),
+        "Ozox can't block.\nWhen Ozox dies, create Jumblebones, a legendary 2/1 black Skeleton creature token with \"Jumblebones can't block\" and \"When Jumblebones leaves the battlefield, return target card named Ozox, the Clattering King from your graveyard to your hand.\""
+    );
+    let host_block_restriction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(ability) if ability.id() == StaticAbilityId::CantBlock => {
+                Some(ability)
+            }
+            _ => None,
+        })
+        .expect("expected Ozox's can't-block restriction");
+    assert!(matches!(
+        host_block_restriction.compiled_model().map(|model| &model.payload),
+        Some(ironsmith_core::StaticAbilityPayload::SelfSubjectSurface {
+            surface: ironsmith_core::SourceReferenceSurface::ShortName(name),
+        }) if name == "Ozox"
+    ));
+
     let outer_trigger = def
         .abilities
         .iter()
@@ -1096,6 +1117,34 @@ pub(super) fn parse_ozox_nested_token_return_keeps_named_card_literal() {
         .iter()
         .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
         .expect("expected token creation effect");
+
+    let [block_ability, leaves_ability] = create.token.abilities.as_slice() else {
+        panic!(
+            "expected authored Jumblebones ability pair in source order, got {:#?}",
+            create.token.abilities
+        );
+    };
+    let AbilityKind::Static(block_ability) = &block_ability.kind else {
+        panic!("first authored Jumblebones ability must be the block restriction");
+    };
+    assert_eq!(block_ability.id(), StaticAbilityId::CantBlock);
+    assert!(matches!(
+        block_ability.compiled_model().map(|model| &model.payload),
+        Some(ironsmith_core::StaticAbilityPayload::SelfSubjectSurface {
+            surface: ironsmith_core::SourceReferenceSurface::FullName(name),
+        }) if name == "Jumblebones"
+    ));
+    let AbilityKind::Triggered(leaves_ability) = &leaves_ability.kind else {
+        panic!("second authored Jumblebones ability must be the leaves trigger");
+    };
+    let leaves_trigger = leaves_ability
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+        .expect("expected typed zone-change trigger");
+    assert!(matches!(
+        leaves_trigger.this_object_surface.as_ref(),
+        Some(ironsmith_core::SourceReferenceSurface::FullName(name)) if name == "Jumblebones"
+    ));
 
     let token_trigger = create
         .token
@@ -1129,6 +1178,26 @@ pub(super) fn parse_ozox_nested_token_return_keeps_named_card_literal() {
         canonical(parsed_name),
         canonical("Ozox, the Clattering King"),
         "expected nested named filter to preserve semantic card-name identity"
+    );
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let attacker_definition = CardDefinitionBuilder::new(CardId::new(), "Attacker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let attacker =
+        game.create_object_from_definition(&attacker_definition, alice, Zone::Battlefield);
+    let jumblebones = game.create_object_from_definition(&create.token, bob, Zone::Battlefield);
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(attacker).expect("attacker exists"),
+            game.object(jumblebones).expect("Jumblebones exists"),
+            &game,
+        ),
+        "presentation metadata must preserve the executable can't-block leaf ability"
     );
 }
 
@@ -3768,6 +3837,110 @@ pub(super) fn render_choose_between_modes_as_choose_one_or_more() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn modal_common_return_suffix_specializes_each_target_mode() {
+    fn returned_card(effect: &crate::effect::Effect) -> Option<&ReturnFromGraveyardToHandEffect> {
+        if let Some(returned) = effect.downcast_ref::<ReturnFromGraveyardToHandEffect>() {
+            return Some(returned);
+        }
+        if let Some(tagged) = effect.downcast_ref::<TaggedEffect>() {
+            return returned_card(&tagged.effect);
+        }
+        if let Some(with_id) = effect.downcast_ref::<WithIdEffect>() {
+            return returned_card(&with_id.effect);
+        }
+        None
+    }
+
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Shared Suffix Modal Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose up to two. Return those cards from your graveyard to your hand.\n\
+• Target artifact card.\n\
+• Target creature card.\n\
+• Target enchantment card.\n\
+• Target land card.",
+        )
+        .expect("modal common return suffix should parse");
+
+    let modal = def
+        .spell_effect
+        .as_ref()
+        .and_then(|effects| {
+            effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        })
+        .expect("expected choose-mode effect");
+    assert_eq!(modal.common_suffix_effect_count, 1);
+    assert_eq!(modal.modes.len(), 4);
+
+    let expected_types = [
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+    ];
+    for (mode, expected_type) in modal.modes.iter().zip(expected_types) {
+        let returned = mode
+            .effects
+            .last()
+            .and_then(returned_card)
+            .expect("each target mode should own an executable return effect");
+        assert!(
+            returned.target.is_target(),
+            "mode target must remain targeted"
+        );
+        let ChooseSpec::Object(filter) = returned.target.base() else {
+            panic!("expected object target, got {:?}", returned.target);
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.card_types, vec![expected_type]);
+    }
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join("\n"),
+        "Choose up to two. Return those cards from your graveyard to your hand.\n\
+• Target artifact card.\n\
+• Target creature card.\n\
+• Target enchantment card.\n\
+• Target land card."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn any_player_mana_activation_keeps_its_typed_relative_window() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(2), "Shared Mana Window Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Remove a charge counter from this enchantment: Add {C}. Any player may activate this ability but only during their turn before the end step.",
+        )
+        .expect("any-player mana activation window should parse");
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("expected activated mana ability");
+    assert_eq!(
+        activated.timing,
+        crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
+    );
+    assert!(activated.allows_any_player_to_activate());
+    assert_eq!(activated.mana_output, Some(vec![ManaSymbol::Colorless]));
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join("\n"),
+        "Remove a charge counter from this enchantment: Add {C}. Any player may activate this ability but only during their turn before the end step."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn soul_transfer_parses_and_keeps_choose_both_instead_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soul Transfer")
         .card_types(vec![CardType::Sorcery])
@@ -4040,4 +4213,131 @@ pub(super) fn possessed_threshold_source_modifier_family_recombines() {
             "{name} should retain all three executable static siblings, got {static_ids:?}"
         );
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn break_the_ice_preserves_snow_or_colorless_capability_through_overload() {
+    fn unwrap_effect(effect: &crate::effect::Effect) -> &crate::effect::Effect {
+        if let Some(tagged) = effect.downcast_ref::<TaggedEffect>() {
+            return unwrap_effect(&tagged.effect);
+        }
+        if let Some(with_id) = effect.downcast_ref::<WithIdEffect>() {
+            return unwrap_effect(&with_id.effect);
+        }
+        effect
+    }
+
+    fn assert_filter_shape(filter: &crate::target::ObjectFilter) {
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.card_types, [CardType::Land]);
+        assert!(filter.supertypes.is_empty());
+        assert_eq!(filter.any_of.len(), 2);
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.supertypes == [Supertype::Snow] && branch.could_produce_mana.is_empty()
+        }));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.supertypes.is_empty() && branch.could_produce_mana == [ManaSymbol::Colorless]
+        }));
+    }
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Break the Ice Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Destroy target land that is snow or could produce {C}.\nOverload {4}{B}{B}")
+        .expect("typed characteristic/capability union should parse");
+
+    let normal_destroy = def
+        .spell_effect
+        .as_ref()
+        .expect("normal spell effects")
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| unwrap_effect(effect).downcast_ref::<DestroyEffect>())
+        .expect("normal cast should destroy its target");
+    let ChooseSpec::Target(target) = normal_destroy.spec.unhinted() else {
+        panic!("normal cast should remain targeted: {normal_destroy:#?}");
+    };
+    let ChooseSpec::Object(normal_filter) = target.unhinted() else {
+        panic!("normal cast should target an object: {target:#?}");
+    };
+    assert_filter_shape(normal_filter);
+
+    let overload_effects = def
+        .alternative_casts
+        .iter()
+        .find_map(|method| match method {
+            AlternativeCastingMethod::Overload { effects, .. } => Some(effects),
+            _ => None,
+        })
+        .expect("overload alternative should be compiled");
+    let overload_destroy = overload_effects
+        .iter()
+        .find_map(|effect| unwrap_effect(effect).downcast_ref::<DestroyEffect>())
+        .expect("overload cast should retain destroy effect");
+    let ChooseSpec::All(overload_filter) = overload_destroy.spec.unhinted() else {
+        panic!("overload should change target to all: {overload_destroy:#?}");
+    };
+    assert_filter_shape(overload_filter);
+
+    let you = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["You".to_string()], 20);
+    let snow_land_def = CardDefinitionBuilder::new(CardId::new(), "Snow Land Probe")
+        .supertypes(vec![Supertype::Snow])
+        .card_types(vec![CardType::Land])
+        .build();
+    let colorless_land_def = CardDefinitionBuilder::new(CardId::new(), "Colorless Land Probe")
+        .card_types(vec![CardType::Land])
+        .parse_text("{T}: Add {C}.")
+        .expect("colorless mana land should parse");
+    let snow_land = game.create_object_from_definition(&snow_land_def, you, Zone::Battlefield);
+    let colorless_land =
+        game.create_object_from_definition(&colorless_land_def, you, Zone::Battlefield);
+    let colored_land = game.create_object_from_definition(
+        &crate::cards::definitions::basic_mountain(),
+        you,
+        Zone::Battlefield,
+    );
+    let filter_context = crate::filter::FilterContext::new(you);
+    assert!(overload_filter.matches(
+        game.object(snow_land).expect("snow land"),
+        &filter_context,
+        &game
+    ));
+    assert!(overload_filter.matches(
+        game.object(colorless_land).expect("colorless land"),
+        &filter_context,
+        &game
+    ));
+    assert!(!overload_filter.matches(
+        game.object(colored_land).expect("colored-only land"),
+        &filter_context,
+        &game
+    ));
+
+    let source = game.create_object_from_definition(&def, you, Zone::Stack);
+    let mut execution_context = crate::effects::ExecutionContext::new_default(source, you);
+    for effect in overload_effects {
+        crate::effects::execute_effect(&mut game, effect, &mut execution_context)
+            .expect("overloaded destroy should resolve");
+    }
+    assert_eq!(
+        game.object(snow_land).map(|object| object.zone),
+        Some(Zone::Graveyard)
+    );
+    assert_eq!(
+        game.object(colorless_land).map(|object| object.zone),
+        Some(Zone::Graveyard)
+    );
+    assert_eq!(
+        game.object(colored_land).map(|object| object.zone),
+        Some(Zone::Battlefield)
+    );
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "Destroy target land that is snow or could produce {C}.".to_string(),
+            "Overload {4}{B}{B}.".to_string(),
+        ]
+    );
 }

@@ -7,6 +7,7 @@ pub(crate) struct BecomesTappedDuringYourTurn;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TriggerFrequencySurface {
     pub(crate) first_time_each_or_this_turn: bool,
+    pub(crate) first_time_during_each_of_your_turns: bool,
     pub(crate) becomes_crewed: bool,
     pub(crate) do_this_limit_each_turn: Option<u32>,
 }
@@ -33,6 +34,12 @@ pub(crate) fn parse_do_this_only_each_turn_limit_tokens(tokens: &[OwnedLexToken]
 }
 
 pub(crate) fn parse_trigger_frequency_tokens(tokens: &[OwnedLexToken]) -> TriggerFrequencySurface {
+    let first_time_during_each_of_your_turns = has_phrase(
+        tokens,
+        &[
+            "for", "the", "first", "time", "during", "each", "of", "your", "turns",
+        ],
+    );
     TriggerFrequencySurface {
         first_time_each_or_this_turn: has_phrase(
             tokens,
@@ -40,7 +47,8 @@ pub(crate) fn parse_trigger_frequency_tokens(tokens: &[OwnedLexToken]) -> Trigge
         ) || has_phrase(
             tokens,
             &["for", "the", "first", "time", "this", "turn"],
-        ),
+        ) || first_time_during_each_of_your_turns,
+        first_time_during_each_of_your_turns,
         becomes_crewed: has_phrase(tokens, &["becomes", "crewed"]),
         do_this_limit_each_turn: parse_do_this_only_each_turn_limit_tokens(tokens),
     }

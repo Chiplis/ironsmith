@@ -39,16 +39,18 @@ pub(super) fn cascade_replay_surfaces_adventure_choice_after_accepting_free_cast
 
     for _ in 0..32 {
         match wasm.pending_decision.as_ref() {
-            Some(DecisionContext::SelectOptions(ctx))
-                if ctx.description.starts_with("Pay mana pip") =>
-            {
-                let index = ctx
-                    .options
-                    .iter()
-                    .find(|option| option.legal)
-                    .expect("mana payment should have a legal option")
-                    .index;
-                dispatch_select_options(&mut wasm, &[index]);
+            Some(DecisionContext::ManaPayment(ctx)) => {
+                let command = serde_wasm_bindgen::to_value(&json!({
+                    "type": "mana_payment",
+                    "response": {
+                        "action": "confirm",
+                        "plan_id": ctx.plan.id.to_string(),
+                        "request_hash": ctx.plan.request_hash.to_string(),
+                    },
+                }))
+                .expect("mana payment confirmation should serialize");
+                wasm.dispatch(command)
+                    .expect("authoritative mana payment should succeed");
             }
             Some(DecisionContext::Priority(_)) => dispatch_pass_priority(&mut wasm),
             Some(DecisionContext::Boolean(ctx))

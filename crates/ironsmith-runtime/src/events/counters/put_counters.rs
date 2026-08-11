@@ -17,6 +17,10 @@ pub struct PutCountersEvent {
     pub counter_type: CounterType,
     /// Number of counters to add
     pub count: u32,
+    /// Upper bound established by a replacement that also prohibits
+    /// additional counters for this event. Later counter multipliers and
+    /// additions must respect it.
+    pub maximum_count: Option<u32>,
     /// What caused these counters to be put.
     pub cause: EventCause,
 }
@@ -33,30 +37,40 @@ impl PutCountersEvent {
             target,
             counter_type,
             count,
+            maximum_count: None,
             cause,
         }
     }
 
     /// Return a new event with doubled counter count.
     pub fn doubled(&self) -> Self {
-        Self {
-            count: self.count.saturating_mul(2),
-            ..self.clone()
-        }
+        self.with_count(self.count.saturating_mul(2))
     }
 
     /// Return a new event with additional counters.
     pub fn with_additional(&self, extra: u32) -> Self {
-        Self {
-            count: self.count.saturating_add(extra),
-            ..self.clone()
-        }
+        self.with_count(self.count.saturating_add(extra))
     }
 
     /// Return a new event with a different count.
     pub fn with_count(&self, count: u32) -> Self {
         Self {
-            count,
+            count: self
+                .maximum_count
+                .map_or(count, |maximum| count.min(maximum)),
+            ..self.clone()
+        }
+    }
+
+    /// Set this event's replacement amount and prevent later replacement
+    /// effects from increasing it beyond that amount.
+    pub fn with_count_limit(&self, count: u32, maximum: u32) -> Self {
+        let maximum = self
+            .maximum_count
+            .map_or(maximum, |existing| existing.min(maximum));
+        Self {
+            count: count.min(maximum),
+            maximum_count: Some(maximum),
             ..self.clone()
         }
     }
@@ -161,6 +175,16 @@ mod tests {
 
         let with_extra = event.with_additional(2);
         assert_eq!(with_extra.count, 5);
+    }
+
+    #[test]
+    fn count_limit_survives_later_counter_replacements() {
+        let event = effect_counters(4).with_count_limit(1, 1);
+
+        assert_eq!(event.count, 1);
+        assert_eq!(event.doubled().count, 1);
+        assert_eq!(event.with_additional(3).count, 1);
+        assert_eq!(event.with_count(9).count, 1);
     }
 
     #[test]

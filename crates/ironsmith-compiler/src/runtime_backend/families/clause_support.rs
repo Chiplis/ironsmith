@@ -152,6 +152,53 @@ fn parse_source_and_another_attack_with_trigger(
     }))
 }
 
+/// Parse an aggregate attack subject whose arms are the source and an
+/// independently filtered attacker, joined by the authored `and/or` surface.
+/// This must be a one-or-more trigger: if both arms attack in the same combat,
+/// the ability triggers once rather than once for each matching attacker.
+fn parse_source_and_or_filter_attack_with_trigger(
+    object_tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    // Use the full object-filter parser here. The trigger-subject compatibility
+    // path intentionally rejects some direct source references, while an
+    // attack-with clause needs to retain the source as one union arm.
+    let Ok(mut filter) = super::object_filters::parse_object_filter_lexed(object_tokens, false)
+    else {
+        return Ok(None);
+    };
+    // The general object-filter grammar can represent `and/or` as a surface
+    // connective on one filter. For `this creature and/or your commander`,
+    // that would produce the impossible intersection `source && commander`.
+    // Recover the two independently matching arms before lowering the
+    // aggregate attack trigger.
+    if filter.any_of.is_empty()
+        && filter.source
+        && filter.is_commander
+        && filter.union_connective() == crate::filter::ObjectFilterUnionConnective::AndOr
+    {
+        let source = filter
+            .source_surface
+            .clone()
+            .map(ObjectFilter::source_with_surface)
+            .unwrap_or_else(ObjectFilter::source);
+        let mut commander = ObjectFilter::default();
+        commander.is_commander = true;
+        commander.owner = filter.owner.clone().or(Some(PlayerFilter::You));
+        commander.controller = filter.controller.clone().or(Some(PlayerFilter::You));
+        filter = ObjectFilter::default();
+        filter.any_of = vec![source, commander];
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+    }
+    if filter.union_connective() != crate::filter::ObjectFilterUnionConnective::AndOr
+        || filter.any_of.len() != 2
+        || !filter.any_of.iter().any(|branch| branch.source)
+    {
+        return Ok(None);
+    }
+    filter.set_union_one_or_more(true);
+    Ok(Some(TriggerSpec::AttacksOneOrMore(filter)))
+}
+
 #[derive(Debug, Clone, Copy)]
 enum AttackedPlayerFilterKind {
     Any,
@@ -984,6 +1031,21 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                 let mut object_tokens = &trigger_tokens[shape.object_token_first..];
                 if player == PlayerFilter::You
                     && let Some(trigger) =
+                        parse_source_and_or_filter_attack_with_trigger(object_tokens)?
+                {
+                    let effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
+                        trigger_tokens,
+                        &tokens[split_idx + 1..],
+                    );
+                    let effects = parse_effect_sentences_lexed(&effects_tokens)?;
+                    return Ok(LineAst::Triggered {
+                        trigger,
+                        effects,
+                        max_triggers_per_turn: None,
+                    });
+                }
+                if player == PlayerFilter::You
+                    && let Some(trigger) =
                         parse_source_and_another_attack_with_trigger(object_tokens)?
                 {
                     let effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
@@ -1413,6 +1475,38 @@ mod tests {
                 .contains(&crate::types::Supertype::Legendary)
         );
         assert!(other_filter.card_types.contains(&CardType::Creature));
+        assert!(format!("{effects:#?}").contains("Draw"));
+    }
+
+    #[test]
+    fn typed_attack_with_source_and_or_commander_is_one_aggregate_trigger() {
+        let tokens = lex_line(
+            "Whenever you attack with this creature and/or your commander, draw a card.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_triggered_line_lexed(&tokens).unwrap();
+        let LineAst::Triggered {
+            trigger: TriggerSpec::AttacksOneOrMore(filter),
+            effects,
+            ..
+        } = &parsed
+        else {
+            panic!("expected source-or-commander aggregate trigger, got {parsed:#?}");
+        };
+        assert!(filter.union_is_one_or_more());
+        assert_eq!(
+            filter.union_connective(),
+            crate::filter::ObjectFilterUnionConnective::AndOr
+        );
+        assert!(filter.any_of.iter().any(|branch| branch.source));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.is_commander
+                && matches!(
+                    branch.owner.as_ref().or(branch.controller.as_ref()),
+                    Some(PlayerFilter::You)
+                )
+        }));
         assert!(format!("{effects:#?}").contains("Draw"));
     }
 

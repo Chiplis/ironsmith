@@ -317,6 +317,27 @@ pub(super) fn parse_return_converted_clause_uses_shared_return_and_convert() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn named_split_card_return_converted_matches_oracle_surface() {
+    let oracle = "More Than Meets the Eye {2}{U}{R}{W}\nAt the beginning of each end step, bolster 1.\nWhen Optimus Prime dies, return it to the battlefield converted under its owner's control.";
+    let def = CardDefinitionBuilder::new(
+        CardId::new(),
+        "Optimus Prime, Hero // Optimus Prime, Autobot Leader",
+    )
+    .supertypes(vec![Supertype::Legendary])
+    .card_types(vec![CardType::Artifact, CardType::Creature])
+    .parse_text(oracle)
+    .expect("named split-card converted return should parse through shared paths");
+
+    let compiled = canonical_compiled_lines(&def);
+    assert_eq!(
+        compiled[0].trim_end_matches('.'),
+        "More Than Meets the Eye {2}{U}{R}{W}"
+    );
+    assert_eq!(compiled[1..], oracle.lines().skip(1).collect::<Vec<_>>());
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_return_next_upkeep_clause_schedules_return_for_that_objects_owner() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Next Upkeep Return Variant")
         .card_types(vec![CardType::Creature])
@@ -3275,9 +3296,12 @@ pub(super) fn parse_invasive_surgery_oracle_strict_and_compiled_text_regression(
 pub(super) fn parse_oracle_reap_intellect_regression() {
     let def = parse_oracle_card_definition("Reap Intellect");
 
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Target opponent reveals their hand. You choose up to X nonland cards from it and exile them. For each card exiled this way, search that player's graveyard, hand, and library for any number of cards with the same name as that card and exile them. Then that player shuffles."
+    );
+    let rendered = rendered.to_ascii_lowercase();
     let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
     assert!(
         rendered.contains("target opponent reveals their hand"),
@@ -3542,26 +3566,28 @@ pub(super) fn execute_predict_with_top_card(
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_destroy_then_search_target_opponent_library_preserves_destroy_clause() {
+    let oracle = "Destroy all creatures, then search target opponent's library for up to three creature cards and put them into their graveyard. Then that player shuffles.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Life's Finale Variant")
-        .parse_text("Destroy all creatures, then search target opponent's library for up to three creature cards and put them into their graveyard. Then that player shuffles.")
+        .parse_text(oracle)
         .expect("destroy-then-search clause should parse");
 
-    let joined = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
+    let joined = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(joined, oracle);
     assert!(
-        joined.contains("destroy all creatures")
-            && joined.contains("search target opponent's library for up to three creature")
-            && joined.contains("put them into")
-            && joined.contains("graveyard")
-            && (joined.contains("then that player shuffles")
-                || joined.contains("shuffle target opponent's library")
-                || joined.contains("then shuffle their library")),
-        "expected destroy and search/put/shuffle chain, got {joined}"
-    );
-    assert!(
-        !joined.contains("destroy all creatures card in an opponent's libraries"),
+        !joined
+            .to_ascii_lowercase()
+            .contains("destroy all creatures card in an opponent's libraries"),
         "search clause should not degrade into destroy-library fallback, got {joined}"
+    );
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("DestroyEffect")
+            && debug.contains("TargetOnlyEffect")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("chooser: You")
+            && debug.contains("zone: Graveyard")
+            && debug.contains("ShuffleLibraryEffect"),
+        "expected distinct destroy, target, search-to-graveyard, and shuffle effects: {debug}"
     );
 }
 

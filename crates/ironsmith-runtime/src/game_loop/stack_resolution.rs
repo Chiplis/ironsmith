@@ -11,6 +11,7 @@ pub(super) fn active_target_assignments_for_effect(
     assignments: &[crate::game_state::TargetAssignment],
     cursor: &mut usize,
 ) -> Vec<crate::game_state::TargetAssignment> {
+    let target_profile = effect.target_selection_profile();
     let count = count_target_selection_slots_for_effect(
         effect,
         chosen_modes,
@@ -27,6 +28,21 @@ pub(super) fn active_target_assignments_for_effect(
             return vec![next.clone()];
         }
         return Vec::new();
+    }
+    if count == 0
+        && let Some(profile) = target_profile
+        && targeting::requires_target_selection(profile.spec)
+        && let Some(reused) =
+            assignments[..(*cursor).min(assignments.len())]
+                .iter()
+                .find(|assignment| {
+                    targeting::target_spec_reuses_declared_target(profile.spec, &assignment.spec)
+                })
+    {
+        // Target planning deliberately omitted this effect's duplicate
+        // requirement. Rebind execution to the same earlier assignment even
+        // when an intervening effect declared a different target.
+        return vec![reused.clone()];
     }
     let start = *cursor;
     let end = start.saturating_add(count).min(assignments.len());
@@ -58,6 +74,7 @@ fn player_filter_references_target_player(filter: &crate::target::PlayerFilter) 
         }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::LostLifeThisTurn { base }
         | PlayerFilter::MaxSpeed { base, .. } => player_filter_references_target_player(base),
         _ => false,
     }
@@ -73,8 +90,13 @@ fn object_filter_references_target_player(filter: &crate::target::ObjectFilter) 
         filter
             .attacking_player_or_planeswalker_controlled_by
             .as_ref(),
+        filter.protected_by.as_ref(),
         filter.attached_to_player.as_ref(),
         filter.entered_battlefield_controller.as_ref(),
+        filter
+            .counters_put_on_this_turn
+            .as_ref()
+            .map(|constraint| &constraint.source_controller),
     ]
     .into_iter()
     .flatten()
@@ -255,6 +277,9 @@ fn effect_references_prior_object_targets(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::FightEffect>()
         .is_some()
+        || effect
+            .downcast_ref::<crate::effects::AttachObjectsEffect>()
+            .is_some_and(|attach| attach.objects.is_target() && attach.target.is_target())
         || effect
             .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
             .is_some_and(|schedule| schedule.target_tag.is_some())
@@ -1669,6 +1694,9 @@ pub(super) fn resolve_stack_entry_full(
                             controller: entry.controller,
                             choices: vec![],
                             tagged_objects: std::collections::HashMap::new(),
+                            tagged_players: std::collections::HashMap::new(),
+                            prepayment: None,
+                            prevention_shield: None,
                         });
                 }
             } else if should_exile {

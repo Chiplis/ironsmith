@@ -541,6 +541,17 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
         return Ok(None);
     }
     let words_all = token_word_refs(tokens);
+    let iterated_filter = shape
+        .iterated_filter_tokens
+        .filter(|tokens| !tokens.is_empty())
+        .map(|tokens| {
+            let mut filter = parse_object_filter_lexed(tokens, false)?;
+            // The tagged result snapshot is already in exile. The authored
+            // noun phrase describes its characteristics, not an origin zone.
+            filter.zone = None;
+            Ok::<_, CardTextError>(filter)
+        })
+        .transpose()?;
     if shape.permanent_card_type_consult {
         let filter = ObjectFilter::permanent().shares_card_type_with_tagged(IT_TAG);
         let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
@@ -637,10 +648,66 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
         )));
     }
 
+    let effects = if let Some(filter) = iterated_filter {
+        vec![EffectAst::Conditional {
+            predicate: PredicateAst::ItMatchedLastKnown(filter),
+            if_true: effects,
+            if_false: Vec::new(),
+        }]
+    } else {
+        effects
+    };
+
     Ok(Some(vec![EffectAst::ForEachTagged {
         tag: IT_TAG.into(),
         effects,
     }]))
+}
+
+#[cfg(test)]
+mod typed_exiled_result_iterator_tests {
+    use super::*;
+    use crate::runtime_backend::model::ast::SubjectVerbEffectAst;
+
+    #[test]
+    fn creature_card_exiled_this_way_keeps_a_typed_lki_gate() {
+        let tokens = crate::runtime_backend::lex_line(
+            "For each creature card exiled this way, you gain 1 life",
+            0,
+        )
+        .expect("typed exiled-result iterator should lex");
+        let effects = parse_for_each_exiled_this_way_sentence(&tokens)
+            .expect("typed iterator should parse")
+            .expect("typed iterator should be recognized");
+        let [
+            EffectAst::ForEachTagged {
+                effects: iterated, ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one tagged-result loop: {effects:#?}");
+        };
+        let [
+            EffectAst::Conditional {
+                predicate: PredicateAst::ItMatchedLastKnown(filter),
+                if_true,
+                if_false,
+            },
+        ] = iterated.as_slice()
+        else {
+            panic!("expected a typed LKI condition inside the loop: {iterated:#?}");
+        };
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert!(filter.union_surface.explicit_card_noun());
+        assert!(if_false.is_empty());
+        assert!(matches!(
+            if_true.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GainLife { .. },
+                ..
+            })]
+        ));
+    }
 }
 
 pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
@@ -685,6 +752,24 @@ pub(crate) fn parse_for_each_destroyed_this_way_sentence(
         return Ok(None);
     }
     let words_all = token_word_refs(tokens);
+    let filter_tokens = shape.iterated_filter_tokens.ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing object type in destroyed-this-way iterator (clause: '{}')",
+            words_all.join(" ")
+        ))
+    })?;
+    if filter_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "empty object type in destroyed-this-way iterator (clause: '{}')",
+            words_all.join(" ")
+        )));
+    }
+    let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
+    // Destruction and death result sets carry the battlefield LKI snapshot;
+    // testing its authored qualifier against the object's current graveyard
+    // zone would reject every ordinary permanent.
+    filter.zone = None;
+
     let effect_tokens = shape.effect_tokens.ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing comma after 'for each ... this way' clause (clause: '{}')",
@@ -707,7 +792,11 @@ pub(crate) fn parse_for_each_destroyed_this_way_sentence(
 
     Ok(Some(vec![EffectAst::ForEachTagged {
         tag: IT_TAG.into(),
-        effects,
+        effects: vec![EffectAst::Conditional {
+            predicate: PredicateAst::ItMatchedLastKnown(filter),
+            if_true: effects,
+            if_false: Vec::new(),
+        }],
     }]))
 }
 
@@ -832,10 +921,85 @@ pub(crate) fn parse_for_each_put_into_graveyard_this_way_sentence(
         )));
     }
 
+    let effects = if let Some(filter_tokens) = shape.iterated_filter_tokens {
+        let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
+        filter.zone = None;
+        filter.set_put_into_graveyard_this_way_surface(true);
+        vec![EffectAst::Conditional {
+            predicate: PredicateAst::ItMatchedLastKnown(filter),
+            if_true: effects,
+            if_false: Vec::new(),
+        }]
+    } else {
+        effects
+    };
+
     Ok(Some(vec![EffectAst::ForEachTagged {
         tag: IT_TAG.into(),
         effects,
     }]))
+}
+
+#[cfg(test)]
+mod typed_put_into_graveyard_result_iterator_tests {
+    use super::*;
+
+    #[test]
+    fn creature_card_put_into_graveyard_this_way_keeps_a_typed_lki_gate() {
+        let tokens = crate::runtime_backend::lex_line(
+            "For each creature card put into a graveyard this way, you create a tapped 2/2 black Zombie creature token",
+            0,
+        )
+        .expect("typed graveyard-result iterator should lex");
+        let effects = parse_for_each_put_into_graveyard_this_way_sentence(&tokens)
+            .expect("typed iterator should parse")
+            .expect("typed iterator should claim the sentence");
+        let [EffectAst::ForEachTagged { effects, .. }] = effects.as_slice() else {
+            panic!("expected a tagged result iterator: {effects:#?}");
+        };
+        let [
+            EffectAst::Conditional {
+                predicate: PredicateAst::ItMatchedLastKnown(filter),
+                if_true,
+                if_false,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected a typed last-known-information gate: {effects:#?}");
+        };
+        assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+        assert!(filter.has_explicit_card_noun());
+        assert!(filter.has_put_into_graveyard_this_way_surface());
+        assert!(!if_true.is_empty());
+        assert!(if_false.is_empty());
+    }
+
+    #[test]
+    fn unqualified_card_iterator_keeps_only_an_equality_transparent_surface_gate() {
+        let tokens = crate::runtime_backend::lex_line(
+            "For each card put into a graveyard this way, you gain 1 life",
+            0,
+        )
+        .expect("ordinary result iterator should lex");
+        let effects = parse_for_each_put_into_graveyard_this_way_sentence(&tokens)
+            .expect("ordinary iterator should parse")
+            .expect("ordinary iterator should claim the sentence");
+        let [EffectAst::ForEachTagged { effects, .. }] = effects.as_slice() else {
+            panic!("expected a tagged result iterator: {effects:#?}");
+        };
+        let [
+            EffectAst::Conditional {
+                predicate: PredicateAst::ItMatchedLastKnown(filter),
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected the authored action surface on a typed LKI gate: {effects:#?}");
+        };
+        assert_eq!(filter, &ObjectFilter::default());
+        assert!(filter.has_explicit_card_noun());
+        assert!(filter.has_put_into_graveyard_this_way_surface());
+    }
 }
 
 pub(crate) fn parse_earthbend_sentence(

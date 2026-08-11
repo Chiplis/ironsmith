@@ -18,6 +18,59 @@ use ironsmith_core::TotalCostKind;
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
     activated_grammar::parse_activated_mana_effect_kind(tokens).is_some()
+        || is_choose_color_of_matching_object_mana_shape(tokens)
+}
+
+fn choose_color_of_matching_object_sentences(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    let sentences = split_lexed_sentences(tokens)
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    let [choose_sentence, add_sentence] = sentences.as_slice() else {
+        return None;
+    };
+    let choose_words = token_word_refs(choose_sentence);
+    let add_words = token_word_refs(add_sentence);
+    if !choose_words.starts_with(&["choose", "a", "color", "of"])
+        || choose_words.len() <= 4
+        || add_words != ["add", "one", "mana", "of", "that", "color"]
+    {
+        return None;
+    }
+    let filter_tokens = choose_sentence
+        .iter()
+        .filter(|token| token.as_word().is_some())
+        .skip(4)
+        .cloned()
+        .collect::<Vec<_>>();
+    Some((filter_tokens, add_sentence.to_vec()))
+}
+
+fn is_choose_color_of_matching_object_mana_shape(tokens: &[OwnedLexToken]) -> bool {
+    choose_color_of_matching_object_sentences(tokens).is_some()
+}
+
+fn parse_choose_color_of_matching_object_mana_effect(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some((filter_tokens, _)) = choose_color_of_matching_object_sentences(tokens) else {
+        return Ok(None);
+    };
+    let mut filter =
+        crate::runtime_backend::object_filters::parse_object_filter(&filter_tokens, false)?;
+    // The generic object-filter grammar expands the bare type word
+    // "permanent" into every permanent card type. This exact sentence family
+    // is selecting a color of an object already constrained to the
+    // battlefield, so retain the canonical all-permanent domain instead of a
+    // presentation-sensitive six-type expansion.
+    if filter.zone == Some(Zone::Battlefield) && filter.has_all_permanent_card_types() {
+        filter.card_types.clear();
+    }
+    Ok(Some(
+        EffectAst::subject_verb_choose_color_of_object_add_mana(PlayerAst::You, filter),
+    ))
 }
 
 fn activated_effect_is_for_each_color_among_add_mana_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -375,17 +428,49 @@ fn split_rewrite_activated_effect_text(
     finalize_rewrite_activated_effect_sentences(restrictions, sentence_tokens)
 }
 
+/// Keep a hidden looked-card partition and its linked exile permission
+/// together while lowering an activated ability.  The ordinary effect-body
+/// dispatcher supports this shape, but activated parsing has a sentence-wise
+/// fallback whose second sentence begins with the nontargeted instruction
+/// "Exile one".  Once split, that sentence can be claimed by the broad exile
+/// target parser and the selected-card tag is no longer available to the
+/// permission.  Give the already-typed three-sentence grammar first refusal
+/// at the activated boundary.
+fn parse_hidden_look_partition_activated(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens)
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty())
+        .map(crate::runtime_backend::effect_sentences::SentenceInput::from_lexed)
+        .collect::<Vec<_>>();
+    if sentences.len() != 3 {
+        return Ok(None);
+    }
+
+    crate::runtime_backend::effect_sentences::parse_look_at_top_partition_face_down_then_filtered_permission(
+        &sentences,
+        0,
+    )
+}
+
 fn parse_activated_effects_lexed(
     _effect_text: &str,
     tokens: &[OwnedLexToken],
     _line_index: usize,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_choose_color_of_matching_object_mana_effect(tokens)? {
+        return Ok(vec![effect]);
+    }
     if activated_effect_is_for_each_color_among_add_mana_lexed(tokens) {
         return Ok(vec![
             crate::runtime_backend::activation_helpers::parse_add_mana(tokens, None)?,
         ]);
     }
     if let Some(effects) = parse_each_player_and_their_creatures_damage_sentence(tokens) {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_hidden_look_partition_activated(tokens)? {
         return Ok(effects);
     }
     if let Ok(effects) = parse_effect_sentences_preserving_source_boundaries(tokens) {
@@ -475,6 +560,15 @@ pub(crate) fn parse_activated_line(
     presentation: Option<PresentationLabel>,
     chosen_option: Option<ChosenOptionContext>,
 ) -> Result<ParsedActivatedLine, CardTextError> {
+    // Labeled/public activation parsing first produces the generic cost CST.
+    // Reconcile the exact zone-movement payment from its retained cost tokens
+    // before that CST's broad `put ... cards` interpretation can survive as a
+    // counter-placement cost. The grammar is strict about count, source zone,
+    // ownership scope, and library destination.
+    let cost = crate::runtime_backend::families::activation_and_restrictions::parse_single_graveyard_bottom_library_payment(
+        &cost_parse_tokens,
+    )?
+    .unwrap_or(cost);
     parse_activated_line_impl(
         &RewriteActivatedLine {
             functional_zones: activated_grammar::parse_activated_functional_zones_tokens(
@@ -794,4 +888,101 @@ fn infer_rewrite_activated_functional_zones(
     line: &RewriteActivatedLine,
 ) -> Result<Vec<Zone>, CardTextError> {
     Ok(line.functional_zones.clone())
+}
+
+#[cfg(test)]
+mod choose_color_of_object_tests {
+    use super::*;
+
+    #[test]
+    fn chooses_a_color_from_the_filtered_objects_instead_of_an_object() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Choose a color of a permanent you control. Add one mana of that color.",
+            0,
+        )
+        .expect("dynamic color-choice sentence should lex");
+        let effects = parse_activated_effects_lexed("", &tokens, 0)
+            .expect("dynamic color-choice sentence should parse");
+        let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
+            panic!("expected one typed mana effect, got {effects:#?}");
+        };
+        let SubjectVerbActionAst::AddOneManaAnyColorAmong {
+            filter,
+            choose_color_of_object_surface,
+        } = &subject_verb.action
+        else {
+            panic!("expected a restricted color-choice effect, got {effects:#?}");
+        };
+        assert!(*choose_color_of_object_surface);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
+    }
+
+    #[test]
+    fn chooses_a_color_of_a_typed_permanent_without_erasing_that_type() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Choose a color of an artifact you control. Add one mana of that color.",
+            0,
+        )
+        .expect("typed color-choice sentence should lex");
+        let effects = parse_activated_effects_lexed("", &tokens, 0)
+            .expect("typed color-choice sentence should parse");
+        let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
+            panic!("expected one typed mana effect, got {effects:#?}");
+        };
+        let SubjectVerbActionAst::AddOneManaAnyColorAmong { filter, .. } = &subject_verb.action
+        else {
+            panic!("expected a restricted color-choice effect, got {effects:#?}");
+        };
+        assert_eq!(filter.card_types, [CardType::Artifact]);
+    }
+
+    #[test]
+    fn unrelated_choose_object_then_chosen_color_is_not_reinterpreted() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Choose a permanent you control. Add one mana of the chosen color.",
+            0,
+        )
+        .expect("near-miss sentence should lex");
+        assert!(!is_choose_color_of_matching_object_mana_shape(&tokens));
+    }
+}
+
+#[cfg(test)]
+mod hidden_look_partition_activated_tests {
+    use super::*;
+
+    fn parse(text: &str) -> Option<Vec<EffectAst>> {
+        let tokens = crate::runtime_backend::lex_line(text, 0).expect("activated body should lex");
+        parse_hidden_look_partition_activated(&tokens).expect("typed activated partition parser")
+    }
+
+    #[test]
+    fn activated_body_keeps_one_hidden_exiled_card_and_its_permission_linked() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Look at the top three cards of your library. Exile one face down and put the rest on the bottom of your library in any order. For as long as it remains exiled, you may cast it if it's a creature spell.",
+            0,
+        )
+        .expect("activated body should lex");
+        let effects = parse_activated_effects_lexed("", &tokens, 0)
+            .expect("activated route should keep the exact hidden looked-card partition");
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+        assert!(
+            debug.contains("GrantPlayTaggedForAsLongAsExiled"),
+            "{debug}"
+        );
+        assert!(debug.contains("Creature"), "{debug}");
+    }
+
+    #[test]
+    fn unrelated_exile_one_sentence_is_not_claimed() {
+        assert!(
+            parse(
+                "Look at the top three cards of your library. Exile one face up and put the rest on the bottom of your library in any order. Draw a card."
+            )
+            .is_none()
+        );
+    }
 }

@@ -86,6 +86,41 @@ fn parse_attached_combat_restriction_and_loses_all_abilities_line(
     ]))
 }
 
+pub(crate) fn parse_attached_conditional_loses_all_abilities_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(comma_idx) = tokens.iter().position(|token| token.kind == TokenKind::Comma) else {
+        return Ok(None);
+    };
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !words.starts_with(&["as", "long", "as", "enchanted"])
+        && !words.starts_with(&["as", "long", "as", "equipped"])
+    {
+        return Ok(None);
+    }
+    let tail_words = crate::runtime_backend::token_word_refs(&tokens[comma_idx + 1..]);
+    if tail_words != ["it", "loses", "all", "abilities"] {
+        return Ok(None);
+    }
+    let condition_tokens = trim_edge_punctuation(&tokens[3..comma_idx]);
+    let condition = parse_static_condition_clause(&condition_tokens)?;
+    if !matches!(condition, crate::ConditionExpr::AttachedToSourceMatches(_)) {
+        return Ok(None);
+    }
+    let subject_words = crate::runtime_backend::token_word_refs(&condition_tokens);
+    let subject = subject_words
+        .get(..2)
+        .map(|words| words.join(" "))
+        .unwrap_or_else(|| "attached permanent".to_string());
+    Ok(Some(vec![StaticAbilityAst::AttachedStaticAbilityGrant {
+        ability: Box::new(StaticAbilityAst::Static(
+            StaticAbility::remove_all_abilities(ObjectFilter::source()),
+        )),
+        display: format!("{subject} loses all abilities"),
+        condition: Some(condition),
+    }]))
+}
+
 /// Carry an explicit attached-object subject into a following `It ...`
 /// sentence before ordinary sentence splitting. The reconstructed token slice
 /// is routed through the same typed attached-object parsers as an explicit
@@ -195,6 +230,7 @@ fn parse_attached_keyword_action_grants(
                 action,
                 display,
                 condition: condition.clone(),
+                protection_does_not_remove_controlled_attachments: false,
             });
         }
     }
@@ -607,6 +643,47 @@ pub(crate) fn parse_enchanted_creature_has_line(
     };
     let clause_text = crate::runtime_backend::lexer::render_token_slice(tokens);
     let subject = has.subject.display();
+    const PROTECTION_ATTACHMENT_EXCEPTION: &[&str] = &[
+        "this",
+        "effect",
+        "doesn't",
+        "remove",
+        "auras",
+        "and",
+        "equipment",
+        "you",
+        "control",
+        "that",
+        "are",
+        "already",
+        "attached",
+        "to",
+        "it",
+    ];
+    const PROTECTION_ATTACHMENT_EXCEPTION_ASCII: &[&str] = &[
+        "this",
+        "effect",
+        "doesnt",
+        "remove",
+        "auras",
+        "and",
+        "equipment",
+        "you",
+        "control",
+        "that",
+        "are",
+        "already",
+        "attached",
+        "to",
+        "it",
+    ];
+    let line_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
+    let protection_attachment_exception = line_words
+        .windows(PROTECTION_ATTACHMENT_EXCEPTION.len())
+        .any(|window| {
+            window == PROTECTION_ATTACHMENT_EXCEPTION
+                || window == PROTECTION_ATTACHMENT_EXCEPTION_ASCII
+        });
 
     let mut ability_tokens = trim_edge_punctuation(has.ability_tokens);
     if ability_tokens.is_empty() {
@@ -697,10 +774,20 @@ pub(crate) fn parse_enchanted_creature_has_line(
             "{subject} has {}",
             action.display_text().to_ascii_lowercase()
         );
+        let preserves_controlled_attachments = protection_attachment_exception
+            && matches!(action, KeywordAction::ProtectionFromChosenColor);
+        let ability_text = if preserves_controlled_attachments {
+            format!(
+                "{ability_text}. This effect doesn't remove Auras and Equipment you control that are already attached to it"
+            )
+        } else {
+            ability_text
+        };
         out.push(StaticAbilityAst::AttachedKeywordActionGrant {
             action,
             display: ability_text,
             condition: condition.clone(),
+            protection_does_not_remove_controlled_attachments: preserves_controlled_attachments,
         });
     }
 
@@ -1086,38 +1173,16 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
                 return Ok(None);
             };
             reject_unimplemented_keyword_actions(&actions, &line_text)?;
-            let removed = actions
-                .into_iter()
-                .filter_map(|action| keyword_action_to_static_ability(action))
-                .collect::<Vec<_>>();
-            if removed.is_empty() {
+            if actions.is_empty()
+                || actions
+                    .iter()
+                    .any(|action| !action.lowers_to_static_ability())
+            {
                 return Ok(None);
             }
             let mut out = vec![anthem.into()];
-            for ability in removed {
-                out.push(match &clause.subject {
-                    AnthemSubjectAst::Source => match &clause.condition {
-                        Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
-                            ability: Box::new(StaticAbilityAst::RemoveStaticAbility {
-                                filter: ObjectFilter::source(),
-                                ability: Box::new(StaticAbilityAst::Static(ability)),
-                            }),
-                            condition: condition.clone(),
-                        },
-                        None => StaticAbilityAst::RemoveStaticAbility {
-                            filter: ObjectFilter::source(),
-                            ability: Box::new(StaticAbilityAst::Static(ability)),
-                        },
-                    },
-                    AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
-                        filter: filter.clone(),
-                        ability: Box::new(StaticAbilityAst::RemoveStaticAbility {
-                            filter: ObjectFilter::source(),
-                            ability: Box::new(StaticAbilityAst::Static(ability)),
-                        }),
-                        condition: clause.condition.clone(),
-                    },
-                });
+            for action in actions {
+                out.push(remove_keyword_action_for_anthem_subject(&clause, action));
             }
             return Ok(Some(out));
         }
@@ -1232,6 +1297,7 @@ pub(crate) fn parse_attached_type_transform_line(
                     ),
                     action,
                     condition: None,
+                    protection_does_not_remove_controlled_attachments: false,
                 });
             }
         } else if let Some((power, toughness, with_preserve_other_types)) =
@@ -1348,13 +1414,15 @@ pub(crate) fn lower_remove_counter_prevention_spec(
             counters_per_removed: follow_up.counters_per_removed,
         }
     });
-    let ability = StaticAbilityAst::Static(
+    let ability = StaticAbilityAst::Static(if spec.one_damage_per_counter {
+        StaticAbility::prevent_one_damage_to_self_per_removed_counter(spec.counter_type)
+    } else {
         StaticAbility::prevent_damage_to_self_remove_counter_with_follow_up(
             spec.counter_type,
             amount,
             follow_up,
-        ),
-    );
+        )
+    });
     Ok(if let Some(condition_tokens) = spec.condition_tokens {
         StaticAbilityAst::ConditionalStaticAbility {
             ability: Box::new(ability),
@@ -1621,6 +1689,7 @@ pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
         toughness: AnthemValue::Fixed(toughness),
         condition: None,
         count_uses_where_x: false,
+        additional_surface: false,
         set_quantifier_surface: None,
     };
     out.push(build_anthem_static_ability(&anthem_clause).into());
@@ -1649,6 +1718,31 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
     let clause = parse_anthem_clause(tokens, shape.get_token, shape.and_token)?;
     let anthem = build_anthem_static_ability(&clause);
     let ability_tokens = trim_edge_punctuation(shape.ability_tokens);
+
+    if let anthem_grant_grammar::ContinuingSegmentShape::Lose {
+        ability_tokens: loss_tokens,
+    } = anthem_grant_grammar::parse_continuing_segment_shape(&ability_tokens)
+    {
+        let loss_tokens = trim_edge_punctuation(loss_tokens);
+        let Some(actions) = parse_ability_line(&loss_tokens) else {
+            return Ok(None);
+        };
+        reject_unimplemented_keyword_actions(&actions, &line_text)?;
+        if actions.is_empty()
+            || actions
+                .iter()
+                .any(|action| !action.lowers_to_static_ability())
+        {
+            return Ok(None);
+        }
+        let mut out = vec![anthem.into()];
+        out.extend(
+            actions
+                .into_iter()
+                .map(|action| remove_keyword_action_for_anthem_subject(&clause, action)),
+        );
+        return Ok(Some(out));
+    }
 
     if let Some(actions) = parse_ability_line(&ability_tokens) {
         reject_unimplemented_keyword_actions(&actions, &line_text)?;

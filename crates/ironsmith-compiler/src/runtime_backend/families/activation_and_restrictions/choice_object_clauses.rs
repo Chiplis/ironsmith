@@ -181,6 +181,7 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
         // to the iterated player.
         ChoiceClauseActor::Implicit => PlayerAst::Implicit,
         ChoiceClauseActor::You => PlayerAst::You,
+        ChoiceClauseActor::Opponent => PlayerAst::Opponent,
     };
 
     if references_it

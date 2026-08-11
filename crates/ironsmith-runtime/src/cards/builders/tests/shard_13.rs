@@ -26,6 +26,599 @@ use super::*;
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn volo_keeps_both_shared_creature_type_comparison_domains() {
+    let oracle = "Whenever you cast a creature spell that doesn't share a creature type with a creature you control or a creature card in your graveyard, copy that spell.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Volo Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Volo's shared-creature-type trigger should parse");
+
+    assert_eq!(compiled_text_lines(&def), vec![oracle]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn syr_carah_keeps_source_and_spell_damage_subjects_distinct() {
+    let trigger = "Whenever Syr Carah or an instant or sorcery spell you control deals damage to a player, exile the top card of your library. You may play that card this turn.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Syr Carah, the Bold")
+        .card_types(vec![CardType::Creature])
+        .parse_text(trigger)
+        .expect("Syr Carah's source-or-spell damage trigger should parse");
+
+    assert_eq!(compiled_text_lines(&def), vec![trigger]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn price_of_betrayal_keeps_permanent_types_and_opponent_target_arm() {
+    let oracle =
+        "Remove up to five counters from target artifact, creature, planeswalker, or opponent.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Price of Betrayal")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("Price of Betrayal's mixed target union should parse");
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        vec!["Remove up to 5 counters from target artifact, creature, planeswalker, or opponent."]
+    );
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("RemoveUpToAnyCountersEffect")
+            && debug.contains("ObjectOrPlayer")
+            && debug.contains("Artifact")
+            && debug.contains("Creature")
+            && debug.contains("Planeswalker")
+            && debug.contains("Opponent"),
+        "Price of Betrayal must compile all four target domains: {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn endless_detour_keeps_all_three_target_zones() {
+    let oracle = "The owner of target spell, nonland permanent, or card in a graveyard puts it on their choice of the top or bottom of their library.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Endless Detour")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("Endless Detour's heterogeneous target union should parse");
+
+    assert_eq!(compiled_text_lines(&def), vec![oracle]);
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("MoveToLibraryTopOrBottomChoiceEffect")
+            && debug.contains("any_of")
+            && debug.contains("Stack")
+            && debug.contains("Battlefield")
+            && debug.contains("Graveyard")
+            && debug.contains("excluded_card_types: [")
+            && debug.contains("Land"),
+        "Endless Detour must compile three independently zoned target arms: {debug}"
+    );
+
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Endless Detour should have a spell program");
+    for domain in ["spell", "permanent", "graveyard card"] {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+        let target_definition = match domain {
+            "spell" => CardDefinitionBuilder::new(CardId::from_raw(13_801), "Detoured Spell")
+                .card_types(vec![CardType::Instant])
+                .build(),
+            "permanent" => {
+                CardDefinitionBuilder::new(CardId::from_raw(13_802), "Detoured Permanent")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(2, 2))
+                    .build()
+            }
+            "graveyard card" => {
+                CardDefinitionBuilder::new(CardId::from_raw(13_803), "Detoured Graveyard Land")
+                    .card_types(vec![CardType::Land])
+                    .build()
+            }
+            _ => unreachable!(),
+        };
+        let origin = match domain {
+            "spell" => Zone::Stack,
+            "permanent" => Zone::Battlefield,
+            "graveyard card" => Zone::Graveyard,
+            _ => unreachable!(),
+        };
+        let target = game.create_object_from_definition(&target_definition, bob, origin);
+        if domain == "spell" {
+            game.push_to_stack(crate::game_state::StackEntry::new(target, bob));
+        }
+
+        let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+        for effect in program.flattened_default_effects() {
+            crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap_or_else(|error| {
+                panic!("Endless Detour should move its {domain}: {error:?}")
+            });
+        }
+
+        let moved = game
+            .current_object_id_after_zone_change(target)
+            .unwrap_or_else(|| panic!("the {domain} should remain trackable after moving"));
+        assert_eq!(
+            game.object(moved).map(|object| object.zone),
+            Some(Zone::Library),
+            "the {domain} must move to its owner's library"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn zack_fair_resolves_etb_sacrifice_counters_indestructible_and_equipment() {
+    let oracle = "Zack Fair enters with a +1/+1 counter on it.\n{1}, Sacrifice Zack Fair: Target creature you control gains indestructible until end of turn. Put Zack Fair's counters on that creature and attach an Equipment that was attached to Zack Fair to that creature.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(13_901), "Zack Fair")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(0, 1))
+        .parse_text(oracle)
+        .expect("Zack Fair should parse without a lossy fallback");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Zack Fair should have its sacrifice activated ability");
+    assert!(
+        activated
+            .mana_cost
+            .costs()
+            .iter()
+            .any(crate::costs::Cost::is_sacrifice_self),
+        "Zack Fair's activation must sacrifice its source as a cost"
+    );
+
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let zack_in_hand = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let zack = game
+        .move_object_with_etb_processing(zack_in_hand, Zone::Battlefield)
+        .expect("Zack Fair should enter the battlefield")
+        .new_id;
+    assert_eq!(
+        game.counter_count(zack, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Zack Fair's own ETB replacement must add its +1/+1 counter"
+    );
+    game.object_mut(zack)
+        .expect("Zack Fair should exist")
+        .add_counters(crate::object::CounterType::Lifelink, 1);
+
+    let target_def = CardDefinitionBuilder::new(CardId::from_raw(13_902), "Zack Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target = game.create_object_from_definition(&target_def, alice, Zone::Battlefield);
+    let equipment_def = CardDefinitionBuilder::new(CardId::from_raw(13_903), "Zack Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let first_equipment =
+        game.create_object_from_definition(&equipment_def, alice, Zone::Battlefield);
+    let second_equipment =
+        game.create_object_from_definition(&equipment_def, alice, Zone::Battlefield);
+    for equipment in [first_equipment, second_equipment] {
+        assert!(
+            crate::effects::permanents::attach_battlefield_object_to_target(
+                &mut game,
+                equipment,
+                crate::object::AttachmentTarget::Object(zack),
+            ),
+            "test Equipment should attach to Zack before activation"
+        );
+    }
+
+    let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(zack).expect("Zack Fair should exist"),
+        &game,
+    );
+    let sacrifice_cost = activated
+        .mana_cost
+        .costs()
+        .iter()
+        .find(|cost| cost.is_sacrifice_self())
+        .expect("Zack Fair should expose its source-sacrifice cost");
+    let mut cost_dm = crate::decision::AutoPassDecisionMaker;
+    let mut cost_ctx = crate::costs::CostContext::new(zack, alice, &mut cost_dm);
+    sacrifice_cost
+        .pay(&mut game, &mut cost_ctx)
+        .expect("Zack Fair's sacrifice cost should be payable");
+    assert!(
+        !game.battlefield.contains(&zack),
+        "paying the activation cost must remove Zack from the battlefield"
+    );
+
+    let entry = crate::game_state::StackEntry::ability(zack, alice, activated.effects.clone())
+        .with_targets(vec![crate::game_state::Target::Object(target)])
+        .with_source_snapshot(source_snapshot);
+    game.push_to_stack(entry);
+    let mut resolution_dm = crate::decision::SelectFirstDecisionMaker;
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut resolution_dm)
+        .expect("Zack Fair's ability should resolve from source LKI");
+
+    assert_eq!(
+        game.counter_count(target, crate::object::CounterType::PlusOnePlusOne),
+        1
+    );
+    assert_eq!(
+        game.counter_count(target, crate::object::CounterType::Lifelink),
+        1,
+        "all counter types from Zack's last known state must transfer"
+    );
+    assert!(
+        game.object_has_static_ability_id(target, StaticAbilityId::Indestructible),
+        "the target creature should gain indestructible until end of turn"
+    );
+    let attached_to_target = [first_equipment, second_equipment]
+        .into_iter()
+        .filter(|equipment| {
+            game.object(*equipment)
+                .and_then(|object| object.attached_to)
+                == Some(crate::object::AttachmentTarget::Object(target))
+        })
+        .count();
+    assert_eq!(
+        attached_to_target, 1,
+        "the ability must attach exactly one Equipment formerly attached to Zack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Default)]
+struct CultRandomModeDecisionMaker {
+    option_prompts: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for CultRandomModeDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        self.option_prompts += 1;
+        ctx.options
+            .iter()
+            .find(|option| option.legal)
+            .map(|option| vec![option.index])
+            .unwrap_or_default()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn cult_of_skaro_parser_backed_random_mode_uses_rng_without_prompting() {
+    let oracle = "Whenever Cult of Skaro attacks, choose one at random —\n• Thay — Put a +1/+1 counter on each artifact creature you control.\n• Caan — Draw two cards.\n• Sec — Create a 3/3 black Dalek artifact creature token with menace.\n• Jast — Each opponent loses 4 life.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(13_904), "Cult of Skaro")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Dalek])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(oracle)
+        .expect("Cult of Skaro should parse without a lossy fallback");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Cult of Skaro should have its attack trigger");
+    let choose_mode = triggered
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        .expect("Cult of Skaro should lower its bullets to a modal effect");
+    assert!(
+        choose_mode.random,
+        "the parser must preserve the at-random modal marker"
+    );
+    assert_eq!(choose_mode.modes.len(), 4);
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let cult = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    for index in 0..2 {
+        let card = CardDefinitionBuilder::new(
+            CardId::from_raw(13_905 + index),
+            format!("Cult Draw Card {index}"),
+        )
+        .card_types(vec![CardType::Instant])
+        .build();
+        game.create_object_from_definition(&card, alice, Zone::Library);
+    }
+
+    let random_count_before = game.irreversible_random_count();
+    game.push_to_stack(crate::game_state::StackEntry::ability(
+        cult,
+        alice,
+        triggered.effects.clone(),
+    ));
+    let mut decisions = CultRandomModeDecisionMaker::default();
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut decisions)
+        .expect("Cult of Skaro's random mode should resolve");
+
+    assert_eq!(
+        decisions.option_prompts, 0,
+        "a random mode is selected by the game, not by a player prompt"
+    );
+    assert_eq!(
+        game.irreversible_random_count(),
+        random_count_before + 1,
+        "Cult of Skaro must consume the game's auditable RNG"
+    );
+    let made_dalek = game.battlefield.iter().copied().any(|id| {
+        game.object(id).is_some_and(|object| {
+            object.kind == crate::object::ObjectKind::Token
+                && object.name == "Dalek"
+                && game.controller_of(object) == alice
+        })
+    });
+    let resolved_outcomes = [
+        game.counter_count(cult, crate::object::CounterType::PlusOnePlusOne) == 1,
+        game.player(alice).expect("Alice exists").hand.len() == 2,
+        made_dalek,
+        game.player(bob).expect("Bob exists").life == 16,
+    ]
+    .into_iter()
+    .filter(|resolved| *resolved)
+    .count();
+    assert_eq!(
+        resolved_outcomes, 1,
+        "exactly one of Cult of Skaro's four random modes must resolve"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn jace_wielder_parser_backed_empty_library_draw_wins_instead() {
+    let oracle = "If you would draw a card while your library has no cards in it, you win the game instead.\n+1: Target player mills two cards. Draw a card.\n−8: Draw seven cards. Then if your library has no cards in it, you win the game.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(13_907), "Jace, Wielder of Mysteries")
+        .card_types(vec![CardType::Planeswalker])
+        .subtypes(vec![Subtype::Jace])
+        .loyalty(4)
+        .parse_text(oracle)
+        .expect("Jace should parse without a lossy fallback");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let jace = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut ctx = crate::effects::ExecutionContext::new_default(jace, alice);
+    DrawCardsEffect::you(1)
+        .execute(&mut game, &mut ctx)
+        .expect("Jace's empty-library draw replacement should resolve");
+
+    assert!(
+        !game
+            .player(alice)
+            .expect("Alice exists")
+            .attempted_draw_from_empty_library,
+        "the impossible draw is replaced before recording the failed-draw loss condition"
+    );
+    assert!(game.player(alice).expect("Alice exists").is_in_game());
+    assert!(
+        !game.player(bob).expect("Bob exists").is_in_game(),
+        "Jace's controller should win instead of attempting the empty-library draw"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn nettling_nuisance_parser_backed_token_stays_goaded_for_the_game() {
+    let oracle = "Flying\nWhenever one or more Faeries you control deal combat damage to a player, that player creates a 4/2 red Pirate creature token with \"This token can't block.\" The token is goaded for the rest of the game.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(13_908), "Nettling Nuisance")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Faerie, Subtype::Rogue])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(oracle)
+        .expect("Nettling Nuisance should parse without a lossy fallback");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Nettling Nuisance should have its combat-damage trigger");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let nuisance = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            nuisance,
+            crate::events::DamageTarget::Player(bob),
+            3,
+            true,
+            crate::events::cause::EventCause::combat_damage(nuisance),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.push_to_stack(
+        crate::game_state::StackEntry::ability(nuisance, alice, triggered.effects.clone())
+            .with_triggering_event(damage_event),
+    );
+    let mut decisions = crate::decision::AutoPassDecisionMaker;
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut decisions)
+        .expect("Nettling Nuisance's trigger should resolve");
+
+    let pirate = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.kind == crate::object::ObjectKind::Token
+                    && object.name == "Pirate"
+                    && game.controller_of(object) == bob
+            })
+        })
+        .expect("the damaged player should create the Pirate token");
+    let goad = game
+        .effect_store
+        .goad_effects
+        .iter()
+        .find(|effect| effect.creature == pirate && effect.goaded_by == alice)
+        .expect("the created Pirate should be goaded by Nettling Nuisance's controller");
+    assert_eq!(goad.duration, crate::effect::Until::Forever);
+    game.next_turn();
+    game.next_turn();
+    assert!(
+        game.is_goaded(pirate),
+        "the printed rest-of-game goad must survive the goading player's next turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn narset_parser_backed_attack_grants_only_noncreature_exiled_spells_free_casts() {
+    let oracle = "First strike, hexproof\nWhenever Narset attacks, exile the top four cards of your library. Until end of turn, you may cast noncreature spells from among those cards without paying their mana costs.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(13_909), "Narset, Enlightened Master")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Monk])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(oracle)
+        .expect("Narset should parse without a lossy score-path fallback");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Narset should have its attack trigger");
+
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let narset = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    for (index, name, card_types) in [
+        (0, "Narset Exiled Creature", vec![CardType::Creature]),
+        (1, "Narset Exiled Instant", vec![CardType::Instant]),
+        (2, "Narset Exiled Artifact", vec![CardType::Artifact]),
+        (3, "Narset Exiled Land", vec![CardType::Land]),
+    ] {
+        let card = CardDefinitionBuilder::new(CardId::from_raw(13_910 + index), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+            .card_types(card_types)
+            .build();
+        game.create_object_from_definition(&card, alice, Zone::Library);
+    }
+
+    game.push_to_stack(crate::game_state::StackEntry::ability(
+        narset,
+        alice,
+        triggered.effects.clone(),
+    ));
+    let mut decisions = crate::decision::SelectFirstDecisionMaker;
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut decisions)
+        .expect("Narset's attack trigger should resolve");
+    assert_eq!(game.exile.len(), 4, "Narset should exile all four cards");
+
+    let exiled = |name: &str| {
+        game.exile
+            .iter()
+            .copied()
+            .find(|id| game.object(*id).is_some_and(|object| object.name == name))
+            .unwrap_or_else(|| panic!("{name} should be in exile"))
+    };
+    let creature = exiled("Narset Exiled Creature");
+    let instant = exiled("Narset Exiled Instant");
+    let artifact = exiled("Narset Exiled Artifact");
+    let land = exiled("Narset Exiled Land");
+
+    for spell in [instant, artifact] {
+        assert!(
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                spell,
+                Zone::Exile,
+                alice
+            ),
+            "Narset should grant the noncreature spell play permission"
+        );
+        assert!(
+            !game
+                .effect_store
+                .grant_registry
+                .granted_alternative_casts_for_card(&game, spell, Zone::Exile, alice)
+                .is_empty(),
+            "Narset should grant the noncreature spell a no-mana casting method"
+        );
+    }
+    for excluded in [creature, land] {
+        assert!(
+            !game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                excluded,
+                Zone::Exile,
+                alice
+            ),
+            "Narset must not grant play permission to a creature card or land"
+        );
+        assert!(
+            game.effect_store
+                .grant_registry
+                .granted_alternative_casts_for_card(&game, excluded, Zone::Exile, alice)
+                .is_empty(),
+            "Narset must not leak its no-mana casting method to excluded cards"
+        );
+    }
+
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    for spell in [instant, artifact] {
+        assert!(
+            actions.iter().any(|action| matches!(
+                action,
+                crate::decision::LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Exile,
+                    casting_method: crate::alternative_cast::CastingMethod::PlayFrom {
+                        use_alternative: Some(_),
+                        ..
+                    },
+                } if *spell_id == spell
+            )),
+            "Narset's eligible exiled spell should be legally castable for free: {actions:?}"
+        );
+    }
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == creature
+        )) && !actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::PlayLand { land_id } if *land_id == land
+        )),
+        "Narset must not make the excluded creature or land legal: {actions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn demonic_bargain_search_followup_hides_internal_tag_reference() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Demonic Bargain Variant")
         .parse_text(
@@ -1126,6 +1719,41 @@ pub(super) fn parse_returned_object_color_subtype_static_followup_stays_in_trigg
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_your_turn_keyword_grants_preserve_during_vs_as_long_surface() {
+    let trailing = CardDefinitionBuilder::new(CardId::new(), "Trailing Turn Keyword Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature has first strike during your turn.")
+        .expect("trailing during-your-turn keyword grant should parse");
+    let trailing_debug = format!("{:?}", trailing.abilities);
+    assert!(
+        trailing_debug.contains("ActivationTiming")
+            && trailing_debug.contains("DuringYourTurn")
+            && !trailing_debug.contains("condition: YourTurn"),
+        "expected trailing during-your-turn source to preserve an activation-timing condition, got {trailing_debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&trailing).join(" "),
+        "During your turn, this creature has first strike."
+    );
+
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = crate::ids::PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&trailing, alice, Zone::Battlefield);
+    assert!(
+        game.current_has_static_ability_id(
+            source,
+            crate::static_abilities::StaticAbilityId::FirstStrike,
+        ),
+        "the conditional keyword must apply during its controller's turn"
+    );
+    game.next_turn_single_lane();
+    assert!(
+        !game.current_has_static_ability_id(
+            source,
+            crate::static_abilities::StaticAbilityId::FirstStrike,
+        ),
+        "the conditional keyword must stop applying during another player's turn"
+    );
+
     let during = CardDefinitionBuilder::new(CardId::new(), "During Turn Keyword Variant")
         .card_types(vec![CardType::Creature])
         .parse_text("During your turn, this creature has first strike.")
@@ -1272,6 +1900,49 @@ pub(super) fn parse_veiled_apparition_uses_source_gate_and_granted_upkeep_trigge
                 || rendered.contains("3/3 illusion creature"))
             && rendered.contains("flying"),
         "expected source-gated spell trigger rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn opal_titan_keeps_executable_protection_from_each_triggering_spell_color() {
+    let oracle = "When an opponent casts a creature spell, if this permanent is an enchantment, it becomes a 4/4 Giant creature with protection from each of that spell's colors.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Opal Titan")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("Opal Titan's dynamic protection animation should parse");
+
+    assert_eq!(compiled_text_lines(&def), vec![oracle]);
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Opal Titan should have a triggered ability");
+    assert!(matches!(
+        triggered.intervening_if.as_ref(),
+        Some(crate::ConditionExpr::SourceMatches(filter))
+            if filter.card_types.as_slice() == [CardType::Enchantment]
+    ));
+    let sequence = triggered.effects.segments[0]
+        .default_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::SequenceEffect>())
+        .expect("animation and five color gates should lower together");
+    assert_eq!(sequence.effects.len(), 6, "{sequence:#?}");
+    assert_eq!(
+        sequence
+            .effects
+            .iter()
+            .skip(1)
+            .filter(|effect| effect
+                .downcast_ref::<crate::effects::ConditionalEffect>()
+                .is_some())
+            .count(),
+        5,
+        "each Magic color should retain its own executable gate: {sequence:#?}"
     );
 }
 
@@ -1793,11 +2464,10 @@ pub(super) fn doomsday_keeps_the_cross_zone_partition_and_exact_surface() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_haunting_echoes_exception_and_target_library_search() {
+    let oracle = "Exile all cards from target player's graveyard other than basic land cards. For each card exiled this way, search that player's library for all cards with the same name as that card and exile them. Then that player shuffles.";
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Haunting Echoes Variant")
         .card_types(vec![CardType::Sorcery])
-        .parse_text(
-            "Exile all cards from target player's graveyard other than basic land cards. For each card exiled this way, search that player's library for all cards with the same name as that card and exile them. Then that player shuffles.",
-        )
+        .parse_text(oracle)
         .expect("Haunting Echoes text should parse");
 
     let rendered = debug_compiled_lines(&def).join(" ");
@@ -1812,6 +2482,7 @@ pub(super) fn parse_haunting_echoes_exception_and_target_library_search() {
         ),
         "expected same-name target-library search to render, got {rendered}"
     );
+    assert_eq!(canonical_compiled_lines(&def), vec![oracle.to_string()]);
 
     let program = def.spell_effect.as_ref().expect("spell effect");
     let effects = &program.segments[0].default_effects;
@@ -1874,7 +2545,36 @@ pub(super) fn parse_haunting_echoes_exception_and_target_library_search() {
     let iterated_effects = match iterated_effects {
         [sequence_effect] => sequence_effect
             .downcast_ref::<crate::effects::SequenceEffect>()
-            .map_or(iterated_effects, |sequence| sequence.effects.as_slice()),
+            .map(|sequence| sequence.effects.as_slice())
+            .or_else(|| {
+                let conditional =
+                    sequence_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+                let crate::effect::Condition::TaggedObjectMatchedLastKnown(tag, filter) =
+                    &conditional.condition
+                else {
+                    return None;
+                };
+                if !filter.has_explicit_card_noun()
+                    || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+                {
+                    return None;
+                }
+                let mut bare_card = filter.clone();
+                bare_card.set_explicit_card_noun(false);
+                if tag.as_str() != "__it__"
+                    || bare_card != ObjectFilter::default()
+                    || !conditional.if_false.is_empty()
+                {
+                    return None;
+                }
+                let [guarded_sequence] = conditional.if_true.as_slice() else {
+                    return None;
+                };
+                guarded_sequence
+                    .downcast_ref::<crate::effects::SequenceEffect>()
+                    .map(|sequence| sequence.effects.as_slice())
+            })
+            .unwrap_or(iterated_effects),
         _ => iterated_effects,
     };
     let search = iterated_effects[0]

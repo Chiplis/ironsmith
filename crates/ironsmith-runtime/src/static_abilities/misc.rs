@@ -60,6 +60,33 @@ use ironsmith_core::{DamagedBySource, TagKey, ValueSurfaceHint};
 mod replacements_and_rules;
 pub use replacements_and_rules::*;
 
+/// Counters on this object survive zone changes except when the destination
+/// is explicitly excluded by the ability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CountersRemainAcrossZoneChanges {
+    pub excluded_destinations: Vec<Zone>,
+    pub display: String,
+}
+
+impl CountersRemainAcrossZoneChanges {
+    pub fn new(excluded_destinations: Vec<Zone>, display: impl Into<String>) -> Self {
+        Self {
+            excluded_destinations,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for CountersRemainAcrossZoneChanges {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CountersRemainAcrossZoneChanges
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -333,6 +360,7 @@ fn describe_mana_source_spent_for_each_basis(
         Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
             include_source_noun,
+            ..
         } => {
             let mut source = source_filter.description();
             if *include_source_noun {
@@ -1549,6 +1577,8 @@ impl StaticAbilityKind for Bloodthirst {
             ReplacementAction::EnterWithCounters {
                 counter_type: CounterType::PlusOnePlusOne,
                 count: Value::Fixed(self.amount as i32),
+                count_condition: None,
+                otherwise_count: None,
                 added_subtypes: Vec::new(),
                 added_abilities: Vec::new(),
             },
@@ -1801,6 +1831,8 @@ impl StaticAbilityKind for EntersWithCounters {
             ReplacementAction::EnterWithCounters {
                 counter_type: self.counter_type,
                 count: self.count.clone(),
+                count_condition: None,
+                otherwise_count: None,
                 added_subtypes: Vec::new(),
                 added_abilities: Vec::new(),
             },
@@ -1966,6 +1998,8 @@ impl StaticAbilityKind for EntersWithCountersIfCondition {
             ReplacementAction::EnterWithCounters {
                 counter_type: self.counter_type,
                 count: self.count.clone(),
+                count_condition: None,
+                otherwise_count: None,
                 added_subtypes: Vec::new(),
                 added_abilities: self.added_abilities.clone(),
             },
@@ -2194,12 +2228,13 @@ impl StaticAbilityKind for ChooseColorAsBecomesAttached {
 /// "As this enters, choose a player."
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChoosePlayerAsEnters {
+    pub filter: crate::target::PlayerFilter,
     pub display: String,
 }
 
 impl ChoosePlayerAsEnters {
-    pub fn new(display: String) -> Self {
-        Self { display }
+    pub fn new(filter: crate::target::PlayerFilter, display: String) -> Self {
+        Self { filter, display }
     }
 }
 
@@ -2213,7 +2248,9 @@ impl StaticAbilityKind for ChoosePlayerAsEnters {
     }
 
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
-        Some(ChoosePlayerAsEntersSpec)
+        Some(ChoosePlayerAsEntersSpec {
+            filter: self.filter.clone(),
+        })
     }
 }
 
@@ -2920,6 +2957,7 @@ pub struct PreventDamageToSelfRemoveCounter {
     pub counter_type: CounterType,
     pub amount: Value,
     pub follow_up: Option<ironsmith_core::CounterRemovalFollowUp>,
+    pub one_damage_per_counter: bool,
 }
 
 impl PreventDamageToSelfRemoveCounter {
@@ -2936,6 +2974,16 @@ impl PreventDamageToSelfRemoveCounter {
             counter_type,
             amount: amount.into(),
             follow_up,
+            one_damage_per_counter: false,
+        }
+    }
+
+    pub fn new_one_damage_per_counter(counter_type: CounterType) -> Self {
+        Self {
+            counter_type,
+            amount: Value::EventValue(EventValueSpec::Amount),
+            follow_up: None,
+            one_damage_per_counter: true,
         }
     }
 }
@@ -2987,6 +3035,16 @@ impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
+        if self.one_damage_per_counter {
+            return Some(ReplacementEffect::with_matcher(
+                source,
+                controller,
+                crate::events::DamageToSelfMatcher::new(),
+                ReplacementAction::PreventDamageByRemovingSourceCounters {
+                    counter_type: self.counter_type,
+                },
+            ));
+        }
         let mut effects = vec![Effect::remove_counters(
             self.counter_type,
             self.amount.clone(),
@@ -3373,6 +3431,23 @@ impl StaticAbilityKind for EnterTappedForFilter {
             );
         }
 
+        let is_nonbasic_land_set = {
+            let mut normalized = filter.clone();
+            normalized.zone = None;
+            let mut expected = ObjectFilter::default();
+            expected.card_types.push(crate::types::CardType::Land);
+            expected
+                .excluded_supertypes
+                .push(crate::types::Supertype::Basic);
+            normalized == expected
+        };
+        if is_nonbasic_land_set {
+            return render_conditioned_entry_rule(
+                "Nonbasic lands enter tapped".to_string(),
+                self.condition.as_ref(),
+            );
+        }
+
         let is_simple_type_list = !filter.card_types.is_empty()
             && filter.all_card_types.is_empty()
             && filter.subtypes.is_empty()
@@ -3593,6 +3668,8 @@ pub struct EnterWithCountersForFilter {
     pub filter: ObjectFilter,
     pub counter_type: CounterType,
     pub count: Value,
+    pub count_condition: Option<crate::ConditionExpr>,
+    pub otherwise_count: Option<Value>,
     pub added_subtypes: Vec<Subtype>,
     pub condition: Option<crate::ConditionExpr>,
 }
@@ -3603,9 +3680,21 @@ impl EnterWithCountersForFilter {
             filter,
             counter_type,
             count,
+            count_condition: None,
+            otherwise_count: None,
             added_subtypes: Vec::new(),
             condition: None,
         }
+    }
+
+    pub fn with_count_if_otherwise(
+        mut self,
+        condition: crate::ConditionExpr,
+        otherwise_count: Value,
+    ) -> Self {
+        self.count_condition = Some(condition);
+        self.otherwise_count = Some(otherwise_count);
+        self
     }
 
     pub fn with_added_subtypes(mut self, subtypes: Vec<Subtype>) -> Self {
@@ -3646,6 +3735,39 @@ fn spell_cast_snow_mana_enters_with_counter_display(
     )
 }
 
+fn describe_entering_object_value_condition(condition: &Condition) -> Option<String> {
+    let Condition::ValueComparison {
+        left,
+        operator,
+        right,
+    } = condition
+    else {
+        return None;
+    };
+    let subject = match left.unhinted() {
+        Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Source) => "its mana value",
+        Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Source) => "its power",
+        Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Source) => "its toughness",
+        _ => return None,
+    };
+    let right = describe_value(right);
+    let comparison = match operator {
+        crate::effect::ValueComparisonOperator::GreaterThan => {
+            format!("is greater than {right}")
+        }
+        crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+            format!("is {right} or greater")
+        }
+        crate::effect::ValueComparisonOperator::Equal => format!("is {right}"),
+        crate::effect::ValueComparisonOperator::LessThan => format!("is less than {right}"),
+        crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+            format!("is {right} or less")
+        }
+        crate::effect::ValueComparisonOperator::NotEqual => format!("isn't {right}"),
+    };
+    Some(format!("{subject} {comparison}"))
+}
+
 impl StaticAbilityKind for EnterWithCountersForFilter {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::EnterWithCountersForFilter
@@ -3668,35 +3790,40 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
         };
 
         let counter = self.counter_type.description().into_owned();
-        let counter_clause = if self.count.has_surface_hint(ValueSurfaceHint::ForEach)
-            && let Some(for_each_clause) = describe_filtered_enters_with_counters_for_each_clause(
-                &self.count,
-                &counter,
-                object_pronoun,
-            ) {
-            for_each_clause
-        } else if let Some(where_x_value) = enters_with_counters_where_x_value(&self.count) {
-            format!(
-                "with X additional {counter} counters on {object_pronoun}, where X is {where_x_value}"
-            )
-        } else {
-            match &self.count {
-                Value::Fixed(1) => {
-                    format!("with an additional {counter} counter on {object_pronoun}")
+        let counter_clause_for = |count: &Value| {
+            if count.has_surface_hint(ValueSurfaceHint::ForEach)
+                && let Some(for_each_clause) =
+                    describe_filtered_enters_with_counters_for_each_clause(
+                        count,
+                        &counter,
+                        object_pronoun,
+                    )
+            {
+                for_each_clause
+            } else if let Some(where_x_value) = enters_with_counters_where_x_value(count) {
+                format!(
+                    "with X additional {counter} counters on {object_pronoun}, where X is {where_x_value}"
+                )
+            } else {
+                match count.unhinted() {
+                    Value::Fixed(1) => {
+                        format!("with an additional {counter} counter on {object_pronoun}")
+                    }
+                    Value::Fixed(v) => {
+                        let rendered = u32::try_from(*v)
+                            .ok()
+                            .and_then(number_word_u32)
+                            .unwrap_or_else(|| v.to_string());
+                        format!("with {rendered} additional {counter} counters on {object_pronoun}")
+                    }
+                    value => format!(
+                        "with a number of additional {counter} counters on {object_pronoun} equal to {}",
+                        describe_value(value)
+                    ),
                 }
-                Value::Fixed(v) => {
-                    let rendered = u32::try_from(*v)
-                        .ok()
-                        .and_then(number_word_u32)
-                        .unwrap_or_else(|| v.to_string());
-                    format!("with {rendered} additional {counter} counters on {object_pronoun}")
-                }
-                value => format!(
-                    "with a number of additional {counter} counters on {object_pronoun} equal to {}",
-                    describe_value(value)
-                ),
             }
         };
+        let counter_clause = counter_clause_for(&self.count);
 
         let subtype_clause = if self.added_subtypes.is_empty() {
             String::new()
@@ -3725,7 +3852,24 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
             )
         };
 
-        let text = format!("{subject} {enters} {counter_clause}{subtype_clause}");
+        let mut text = format!("{subject} {enters} {counter_clause}{subtype_clause}");
+        if let (Some(count_condition), Some(otherwise_count)) =
+            (&self.count_condition, &self.otherwise_count)
+        {
+            let condition = describe_entering_object_value_condition(count_condition)
+                .unwrap_or_else(|| {
+                    let described = super::describe_static_condition(count_condition);
+                    described
+                        .strip_prefix("as long as ")
+                        .unwrap_or(&described)
+                        .to_string()
+                });
+            let otherwise_subject = if singular_subject { "it" } else { "they" };
+            text = format!(
+                "{text} if {condition}. Otherwise, {otherwise_subject} {enters} {}",
+                counter_clause_for(otherwise_count)
+            );
+        }
         let Some(condition) = &self.condition else {
             return text;
         };
@@ -3760,6 +3904,8 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
             ReplacementAction::EnterWithCounters {
                 counter_type: self.counter_type,
                 count: self.count.clone(),
+                count_condition: self.count_condition.clone(),
+                otherwise_count: self.otherwise_count.clone(),
                 added_subtypes: self.added_subtypes.clone(),
                 added_abilities: Vec::new(),
             },
@@ -4112,6 +4258,47 @@ impl StaticAbilityKind for PlayerSkipsDrawStep {
     }
 }
 
+/// The matching player skips extra turns they would begin while this source
+/// remains active on the battlefield.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayersSkipExtraTurns {
+    pub player: PlayerFilter,
+}
+
+impl PlayersSkipExtraTurns {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+impl StaticAbilityKind for PlayersSkipExtraTurns {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PlayersSkipExtraTurns
+    }
+
+    fn display(&self) -> String {
+        match self.player {
+            PlayerFilter::Opponent => "If an opponent would begin an extra turn, that player skips that turn instead".to_string(),
+            PlayerFilter::You => {
+                "If you would begin an extra turn, skip that turn instead".to_string()
+            }
+            PlayerFilter::Any => "If a player would begin an extra turn, that player skips that turn instead".to_string(),
+            _ => "If a matching player would begin an extra turn, that player skips that turn instead".to_string(),
+        }
+    }
+
+    fn skips_extra_turn_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.player
+            .matches_player(player, &game.filter_context_for(controller, Some(source)))
+    }
+}
+
 /// The legend rule doesn't apply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LegendRuleDoesntApply;
@@ -4127,8 +4314,22 @@ impl StaticAbilityKind for LegendRuleDoesntApply {
 }
 
 /// The legend rule doesn't apply to permanents the source's controller controls.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct LegendRuleDoesntApplyToController;
+#[derive(Debug, Clone, PartialEq)]
+pub struct LegendRuleDoesntApplyToController {
+    pub filter: crate::target::ObjectFilter,
+}
+
+impl LegendRuleDoesntApplyToController {
+    pub fn new(filter: crate::target::ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl Default for LegendRuleDoesntApplyToController {
+    fn default() -> Self {
+        Self::new(crate::target::ObjectFilter::permanent())
+    }
+}
 
 impl StaticAbilityKind for LegendRuleDoesntApplyToController {
     fn id(&self) -> StaticAbilityId {
@@ -4136,7 +4337,18 @@ impl StaticAbilityKind for LegendRuleDoesntApplyToController {
     }
 
     fn display(&self) -> String {
-        "The legend rule doesn't apply to permanents you control".to_string()
+        let noun = if self.filter.token {
+            "tokens"
+        } else if self.filter.card_types == [crate::types::CardType::Creature] {
+            "creatures"
+        } else {
+            "permanents"
+        };
+        format!("The \"legend rule\" doesn't apply to {noun} you control")
+    }
+
+    fn legend_rule_exemption_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        Some(&self.filter)
     }
 }
 

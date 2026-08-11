@@ -85,6 +85,39 @@ fn parses_dynamic_pt_and_lifecycle_reminders() {
 }
 
 #[test]
+fn parses_unquoted_base_pt_from_the_exact_zone_change_group() {
+    let tokens = lex_line(
+        "with base power and toughness each equal to the total power of those creatures",
+        0,
+    )
+    .expect("dynamic base-power clause should lex");
+    let (power, toughness) = parse_token_dynamic_power_toughness_tokens(&tokens)
+        .expect("dynamic base-power clause should parse");
+    for value in [&power, &toughness] {
+        let Value::TotalPower(filter) = value else {
+            panic!("expected total-power value, got {value:#?}");
+        };
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert_eq!(filter.zone, None);
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == ironsmith_core::ZONE_CHANGE_GROUP_TAG
+        }));
+    }
+
+    let near_miss = lex_line(
+        "with base power and toughness each equal to the total power of those artifacts",
+        0,
+    )
+    .expect("near-miss base-power clause should lex");
+    assert_eq!(
+        parse_token_dynamic_power_toughness_tokens(&near_miss),
+        None,
+        "a different demonstrative subject must not claim the creature death group"
+    );
+}
+
+#[test]
 fn merges_quoted_rule_facts_without_relexing_a_definition_name() {
     let tokens = lex_line(
         "It has \"This token's power and toughness are each equal to the number of creatures you control.\"",

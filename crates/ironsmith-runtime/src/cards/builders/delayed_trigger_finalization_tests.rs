@@ -59,10 +59,10 @@ fn finalize_definition_keeps_stack_triggered_spell_abilities() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_delayed_next_draw_step_unless_payment_builds_draw_step_schedule() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Glass Asp Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Glass Asp")
             .card_types(vec![CardType::Creature])
             .parse_text(
-                "Whenever this creature deals damage to a player, that player loses 2 life at the beginning of their next draw step unless they pay {2} before that draw step.",
+                "Whenever this creature deals combat damage to a player, that player loses 2 life at the beginning of their next draw step unless they pay {2} before that step.",
             )
             .expect("delayed draw-step payment should parse");
 
@@ -70,16 +70,86 @@ fn parse_delayed_next_draw_step_unless_payment_builds_draw_step_schedule() {
     assert!(
         abilities_debug.contains("ScheduleDelayedTriggerEffect")
             && abilities_debug.contains("BeginningOfDrawStep")
-            && abilities_debug.contains("UnlessPaysEffect"),
-        "expected delayed draw-step schedule in ability debug, got {abilities_debug}"
+            && abilities_debug.contains("prepayment: Some")
+            && !abilities_debug.contains("UnlessPaysEffect"),
+        "expected a prepayable delayed draw-step schedule, got {abilities_debug}"
     );
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&def),
         vec![
-            "Whenever this creature deals damage to a player, that player loses 2 life at the beginning of their next draw step unless they pay {2} before that draw step."
+            "Whenever this creature deals combat damage to a player, that player loses 2 life at the beginning of their next draw step unless they pay {2} before that draw step."
                 .to_string(),
         ],
         "delayed draw-step structure: {abilities_debug}",
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_sabertooth_cobra_uses_a_prepayable_upkeep_registration() {
+    let oracle = "Whenever this creature deals damage to a player, that player gets a poison counter. The player gets another poison counter at the beginning of their next upkeep unless they pay {2} before that step. (A player with ten or more poison counters loses the game.)";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sabertooth Cobra")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Sabertooth Cobra should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ScheduleDelayedTriggerEffect")
+            && abilities_debug.contains("BeginningOfUpkeep")
+            && abilities_debug.contains("prepayment: Some")
+            && abilities_debug.contains("PoisonCountersEffect")
+            && !abilities_debug.contains("UnlessPaysEffect"),
+        "expected a prepayable delayed upkeep registration, got {abilities_debug}"
+    );
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![
+            "Whenever this creature deals damage to a player, that player gets a poison counter. The player gets another poison counter at the beginning of their next upkeep unless they pay {2} before that step."
+        ]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_nafs_asp_uses_a_prepayable_draw_step_registration() {
+    let oracle = "Whenever this creature deals damage to a player, that player loses 1 life at the beginning of their next draw step unless they pay {1} before that draw step.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Nafs Asp")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Nafs Asp should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ScheduleDelayedTriggerEffect")
+            && abilities_debug.contains("BeginningOfDrawStep")
+            && abilities_debug.contains("prepayment: Some")
+            && abilities_debug.contains("LoseLifeEffect")
+            && !abilities_debug.contains("UnlessPaysEffect"),
+        "expected a prepayable delayed draw-step registration, got {abilities_debug}"
+    );
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![oracle]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn delayed_unless_payment_without_before_wording_stays_on_the_delayed_resolution() {
+    let oracle = "Whenever this creature deals damage to a player, that player loses 1 life at the beginning of their next draw step unless they pay {1}.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Delayed Payment Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("ordinary delayed unless-payment should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ScheduleDelayedTriggerEffect")
+            && abilities_debug.contains("BeginningOfDrawStep")
+            && abilities_debug.contains("prepayment: None")
+            && abilities_debug.contains("UnlessPaysEffect"),
+        "payment without explicit before-step wording must stay in the delayed effect, got {abilities_debug}"
     );
 }
 
@@ -98,8 +168,9 @@ fn parse_delayed_next_upkeep_unless_payment_keeps_payment_player_choice() {
         spell_debug.contains("ScheduleDelayedTriggerEffect")
             && spell_debug.contains("BeginningOfUpkeep")
             && spell_debug.contains("TargetPlayerOrControllerOfTarget")
-            && spell_debug.contains("UnlessPaysEffect"),
-        "expected delayed upkeep schedule in spell debug, got {spell_debug}"
+            && spell_debug.contains("prepayment: Some")
+            && !spell_debug.contains("UnlessPaysEffect"),
+        "expected prepayable delayed upkeep schedule in spell debug, got {spell_debug}"
     );
     assert_eq!(
         crate::compiled_text::canonical_compiled_lines(&def).join(" "),

@@ -299,4 +299,69 @@ mod tests {
 
         assert_eq!(dm.chooser, Some(alice));
     }
+
+    #[test]
+    fn heterogeneous_zone_union_moves_each_legal_domain_to_owners_library() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let spell_card = CardBuilder::new(CardId::from_raw(10), "Detoured Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let graveyard_card = CardBuilder::new(CardId::from_raw(11), "Detoured Graveyard Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let permanent = game.create_object_from_card(
+            &test_card(12, "Detoured Permanent"),
+            bob,
+            Zone::Battlefield,
+        );
+        let spell = game.create_object_from_card(&spell_card, bob, Zone::Stack);
+        game.push_to_stack(crate::game_state::StackEntry::new(spell, bob));
+        let graveyard_land = game.create_object_from_card(&graveyard_card, bob, Zone::Graveyard);
+        let existing_library_card =
+            game.create_object_from_card(&test_card(13, "Existing Top"), bob, Zone::Library);
+
+        let target_filter = crate::target::ObjectFilter {
+            any_of: vec![
+                crate::target::ObjectFilter::spell(),
+                crate::target::ObjectFilter::nonland_permanent(),
+                crate::target::ObjectFilter::default().in_zone(Zone::Graveyard),
+            ],
+            ..crate::target::ObjectFilter::default()
+        };
+        let target_spec = ChooseSpec::target(ChooseSpec::Object(target_filter));
+        let effect = MoveToLibraryTopOrBottomChoiceEffect::new(target_spec);
+        let source = game.new_object_id();
+        let mut dm = BottomChoiceDm { chooser: None };
+
+        let mut moved = Vec::new();
+        for target in [spell, permanent, graveyard_land] {
+            let outcome = {
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm)
+                    .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+                effect
+                    .execute(&mut game, &mut ctx)
+                    .expect("each Endless Detour target domain should resolve")
+            };
+            let moved_id = outcome
+                .objects()
+                .and_then(|objects| objects.first())
+                .copied()
+                .expect("the targeted object should move to its owner's library");
+            moved.push(moved_id);
+            assert_eq!(dm.chooser, Some(bob));
+            assert_eq!(game.players[1].library.first().copied(), Some(moved_id));
+        }
+
+        assert!(moved.iter().all(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.zone == Zone::Library)
+        }));
+        assert_eq!(
+            game.players[1].library.last().copied(),
+            Some(existing_library_card)
+        );
+    }
 }

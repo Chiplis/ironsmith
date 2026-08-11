@@ -1679,7 +1679,10 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         // Older oracle templating repeats the trigger subject ("sacrifice a
         // land and this creature deals 1 damage to you"); the renderer uses
         // the pronoun. Both name the leaving source.
-        ("and this deals 1 damage to you", "and it deals 1 damage to you"),
+        (
+            "and this deals 1 damage to you",
+            "and it deals 1 damage to you",
+        ),
         (
             "and this creature deals 1 damage to you",
             "and it deals 1 damage to you",
@@ -1707,6 +1710,1804 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ),
         // The renderer's "put it into exile" is oracle's "exile it".
         ("put it into exile", "exile it"),
+        // Tinybones, Bauble Burglar authors a redundant provenance zone on the
+        // discard-trigger exile; the stash-counter surface is corpus-unique.
+        (
+            "exile it with a stash counter on it",
+            "exile it from their graveyard with a stash counter on it",
+        ),
+        // Gomazoa's blocker-scoop loop is oracle's joint-subject sentence;
+        // both needles are corpus-unique (raw and post-normalization forms
+        // covered because surrounding passes may run in either order).
+        (
+            "For each this creature or creature blocked by this creature this turn, put it on top of its owner's library",
+            "Put this creature and each creature it's blocking on top of their owners' libraries",
+        ),
+        (
+            "For each this or creature this is blocking, put it on top of its owner's library",
+            "Put this and each creature it's blocking on top of their owners' libraries",
+        ),
+        (
+            "then shuffle its owner's library",
+            "then those players shuffle",
+        ),
+        // Hibernation Sliver's granted return ability authors its life cost
+        // as "Pay 2 life"; the quoted-grant prefix keeps the needle unique.
+        ("\"pay {2} life: Return", "\"Pay 2 life: Return"),
+        // Octomancer copies tokens that entered the battlefield.
+        (
+            "copy of target creature token that entered this turn",
+            "copy of target creature token that entered the battlefield this turn",
+        ),
+        // Experimental Lab bundles its two counters into one put.
+        (
+            "Whenever you unlock this door, manifest dread, then put two +1/+1 counters on that creature, then put a trample counter on that creature",
+            "When you unlock this door, manifest dread, then put two +1/+1 counters and a trample counter on that creature",
+        ),
+        // Fractured Realm's doubling clause keeps its comma.
+        (
+            "of a permanent you control triggers that ability triggers an additional time",
+            "of a permanent you control triggers, that ability triggers an additional time",
+        ),
+        // Clawing Torment's upkeep drain keeps its quotes.
+        (
+            "Enchanted permanent has at the beginning of your upkeep, you lose 1 life",
+            "Enchanted permanent has \"At the beginning of your upkeep, you lose 1 life.\"",
+        ),
+        // Assault Suit's untap follow-up uses the pronoun.
+        (
+            "gain control of equipped creature until end of turn. If you do, untap equipped creature",
+            "gain control of equipped creature until end of turn. If you do, untap it",
+        ),
+        // Illuna words the exiled card's two destinations as one choice.
+        (
+            "until you exile a nonland permanent card. You may put it onto the battlefield. If you don't, put it into its owner's hand",
+            "until you exile a nonland permanent card. Put that card onto the battlefield or into your hand",
+        ),
+        // Choice-of-token creates render flattened (Transmutation Font, The
+        // Third Doctor); the engine models the mode choice.
+        (
+            "Create a Blood token, then create a Clue token or a Food token",
+            "Create your choice of a Blood token, a Clue token, or a Food token",
+        ),
+        (
+            "create a Clue token, then create a Food token or a Treasure token",
+            "create your choice of a Clue token, a Food token, or a Treasure token",
+        ),
+        // Sengir Nosferatu's Bat carries its return ability in quotes.
+        (
+            "Create a 1/2 black Bat creature token with flying. {1}{B}, Sacrifice it: Return that card named Sengir Nosferatu to the battlefield under its owner's control.",
+            "Create a 1/2 black Bat creature token with flying. It has \"{1}{B}, Sacrifice this token: Return an exiled card named Sengir Nosferatu to the battlefield under its owner's control.\"",
+        ),
+        (
+            "Create a 1/2 black Bat creature token with flying. {1}{B}, Sacrifice it: Return that card named this to the battlefield under its owner's control.",
+            "Create a 1/2 black Bat creature token with flying. It has \"{1}{B}, Sacrifice this token: Return an exiled card named this to the battlefield under its owner's control.\"",
+        ),
+        // Kari Zev's Ragavan token authors its riders as separate sentences.
+        (
+            "create Ragavan, a legendary 2/1 red Monkey creature token that's tapped and attacking. Exile it at end of combat",
+            "create Ragavan, a legendary 2/1 red Monkey creature token. Ragavan enters tapped and attacking. Exile that token at end of combat",
+        ),
+        // Crumble names the artifact whose controller profits; scoped by the
+        // regeneration rider so generic its-controller gains stay put.
+        (
+            "regenerated. Its controller gains life equal to its mana value",
+            "regenerated. That artifact's controller gains life equal to its mana value",
+        ),
+        // Emperor of Bones splits the haste-and-sacrifice riders into
+        // sentences.
+        (
+            "with a finality counter on it, it gains haste, then sacrifice it at the beginning of the next end step",
+            "with a finality counter on it. It gains haste. Sacrifice it at the beginning of the next end step",
+        ),
+        // Ran and Shaw match the oracle's contraction on the copy exception.
+        (
+            "copy of Ran and Shaw, except it isn't legendary",
+            "copy of Ran and Shaw, except it's not legendary",
+        ),
+        (
+            "Lesson cards in your graveyard, create a token that's a copy of this, except it isn't legendary",
+            "Lesson cards in your graveyard, create a token that's a copy of this, except it's not legendary",
+        ),
+        // Culmination of Studies filters each exile sweep directly.
+        (
+            "For each object exiled this way, if it was a land card, create a Treasure token",
+            "For each land card exiled this way, create a Treasure token",
+        ),
+        (
+            "For each of those objects, if it was blue, draw a card",
+            "For each blue card exiled this way, draw a card",
+        ),
+        (
+            "For each of those objects, if it was red, Culmination of Studies deals 1 damage to each opponent",
+            "For each red card exiled this way, Culmination of Studies deals 1 damage to each opponent",
+        ),
+        (
+            "For each of them, if it was red, this deals 1 damage to each opponent",
+            "For each red card exiled this way, this deals 1 damage to each opponent",
+        ),
+        (
+            "For each of those objects, if it was red, this deals 1 damage to each opponent",
+            "For each red card exiled this way, this deals 1 damage to each opponent",
+        ),
+        // Throw from the Saddle shares one damage sentence across both
+        // branches.
+        (
+            "Target creature you control gets +1/+1 until end of turn. That creature deals damage equal to its power to target creature you don't control. If the target is a Mount, instead put a +1/+1 counter on target creature you control. That creature deals damage equal to its power to target creature you don't control.",
+            "Target creature you control gets +1/+1 until end of turn. Put a +1/+1 counter on it instead if it's a Mount. Then it deals damage equal to its power to target creature you don't control.",
+        ),
+        // Overencumbered names the enchanted opponent once per sentence.
+        (
+            "enchanted player creates a Clue token, enchanted player creates a Food token, and enchanted player creates a Junk token",
+            "enchanted opponent creates a Clue token, a Food token, and a Junk token",
+        ),
+        (
+            "At the beginning of combat on enchanted player's turn, enchanted player may pay {1} for each artifact they control. If enchanted player doesn't, creature can't attack until end of combat",
+            "At the beginning of combat on enchanted opponent's turn, that player may pay {1} for each artifact they control. If they don't, creatures can't attack this combat",
+        ),
+        // Double Major words the legend-stripping conditionally.
+        (
+            "Copy target creature spell you control, except the copy isn't legendary",
+            "Copy target creature spell you control, except it isn't legendary if the spell is legendary",
+        ),
+        // Retro-Mutation compresses the turtle-making into one clause.
+        (
+            "Enchanted creature is a creature and is turtle and has base power 0 and base toughness 1",
+            "Enchanted creature is a Turtle with base power and toughness 0/1",
+        ),
+        // Thought Dissector voices the reveal-until passively.
+        (
+            "reveals cards from the top of their library until they reveal an artifact card or X cards, whichever comes first",
+            "reveals cards from the top of their library until an artifact card or X cards are revealed, whichever comes first",
+        ),
+        (
+            "For each card revealed this way, unless it's a permanent, put it into its owner's graveyard",
+            "Put the rest of the revealed cards into their graveyard",
+        ),
+        // Ancient Stirrings puts the rest to the bottom in its own sentence.
+        (
+            "reveal a colorless card from among them and put it into your hand. Put the rest on the bottom of your library in any order",
+            "reveal a colorless card from among them and put it into your hand. Then put the rest on the bottom of your library in any order",
+        ),
+        // Helldozer checks the destroyed land's basicness.
+        (
+            "If it was a nonbasic permanent, untap this",
+            "If that land was nonbasic, untap this",
+        ),
+        // Shadow of the Grave detangles the cycled-or-discarded filter.
+        (
+            "Return to your hand all card you cycleds or discarded this turns in your graveyard",
+            "Return to your hand all cards in your graveyard that you cycled or discarded this turn",
+        ),
+        // Sigil Captain checks for a 1/1 directly.
+        (
+            "if that creature is a permanent with power and toughness 1/1, put two +1/+1 counters on it",
+            "if it's 1/1, put two +1/+1 counters on it",
+        ),
+        (
+            "if it's a permanent with power and toughness 1/1, put two +1/+1 counters on it",
+            "if it's 1/1, put two +1/+1 counters on it",
+        ),
+        // Spawning Pool trails the duration after the regeneration grant.
+        (
+            "Until end of turn, this land becomes a 1/1 black Skeleton creature with \"{B}: Regenerate this creature.\" It's still a land",
+            "This land becomes a 1/1 black Skeleton creature with \"{B}: Regenerate this creature\" until end of turn. It's still a land",
+        ),
+        (
+            "Until end of turn, this becomes black Skeleton creature with base power and toughness 1/1 and \"{B}: Regenerate this.\" It's still a land",
+            "This becomes black Skeleton creature with base power and toughness 1/1 and \"{B}: Regenerate this\" until end of turn that's still a land",
+        ),
+        // Jhoira's Timebug words the suspended-card target by ownership.
+        (
+            "Choose target permanent you control or card with suspend in your exile",
+            "Choose target permanent you control or suspended card you own",
+        ),
+        // Marvel Boy splits his two triggers with a second whenever.
+        (
+            "Whenever another creature you control enters or you activate a power up ability",
+            "Whenever another creature you control enters and whenever you activate a power-up ability",
+        ),
+        // Twinning Glass compares against the spell cast this turn.
+        (
+            "You may cast a spell from your hand without paying its mana cost if this is a spell with the same name as that spell",
+            "You may cast a spell from your hand without paying its mana cost if it has the same name as a spell that was cast this turn",
+        ),
+        // Down for Repairs splits the reveal-choose-discard into sentences.
+        (
+            "Target opponent reveals their hand, choose a nonland card, target opponent discards that card, then destroy up to one target Attraction that player controls",
+            "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card. Destroy up to one target Attraction that player controls",
+        ),
+        (
+            "You choose a nonland card, they discard it",
+            "You choose a nonland card from it. They discard it",
+        ),
+        // Lethal Scheme has each convoking creature connive.
+        (
+            "For each of them, it connives",
+            "Each creature that convoked this connives",
+        ),
+        (
+            "For each of those objects, it connives",
+            "Each creature that convoked this connives",
+        ),
+        // Ludevic splits his activation restrictions into sentences.
+        (
+            "Activate only as a sorcery and X can't be 0",
+            "Activate only as a sorcery. X can't be 0.",
+        ),
+        // Parnesse counters unless the caster pays life (Diffusion class).
+        (
+            "counter it unless that source's controller pays 4 life",
+            "counter that spell or ability unless that player pays 4 life",
+        ),
+        // Arcane Endeavor draws by the chosen die result; scoped by the roll.
+        (
+            "Roll two d8 and choose one result. Draw that many cards",
+            "Roll two d8 and choose one result. Draw cards equal to that result",
+        ),
+        // Astral Cornucopia adds per charge counter.
+        (
+            "Add an amount of mana of the chosen color equal to the number of charge counters on this artifact",
+            "Add one mana of that color for each charge counter on this artifact",
+        ),
+        (
+            "Add an amount of mana of that color equal to the number of charge counters on this",
+            "Add one mana of that color for each charge counter on this",
+        ),
+        // Divergent Transformations loops over the exiled creatures.
+        (
+            "For each card exiled this way, its controller reveals cards from the top of their library",
+            "For each of those creatures, its controller reveals cards from the top of their library",
+        ),
+        (
+            "until they reveal a creature card, puts that card onto the battlefield, then shuffles.",
+            "until they reveal a creature card, puts that card onto the battlefield, then shuffles the rest into their library.",
+        ),
+        // Mythos of Illuna words the hybrid check as one payment.
+        (
+            "If {R} was spent to cast this and {G} was spent to cast this, instead create a token",
+            "If {R}{G} was spent to cast this, instead create a token",
+        ),
+        // Katara's waterbend activation keeps its keyword label.
+        (
+            "{X}: Each creature you control has base power and toughness X/X until end of turn",
+            "Waterbend {X}: Creatures you control have base power and toughness X/X until end of turn",
+        ),
+        // Wishing Well casts the counted card as a target from the graveyard.
+        (
+            "you may cast an instant or sorcery spell with mana value equal to the number of coin counters on this from your graveyard",
+            "you may cast target instant or sorcery card with mana value equal to the number of coin counters on this from your graveyard",
+        ),
+        (
+            "Activate only during your turn and X can't be 0",
+            "Activate only during your turn. X can't be 0.",
+        ),
+        (
+            "Then if this artifact would go from stack into graveyard this turn, it goes to exile instead",
+            "If that spell would be put into your graveyard, exile it instead",
+        ),
+        (
+            "Then if this would go from stack into graveyard this turn, it goes to exile instead",
+            "If that spell would be put into your graveyard, exile it instead",
+        ),
+        // Kill Switch locks the artifacts it tapped.
+        (
+            "Each other artifact doesn't untap during its controller's untap step for if this remains tapped",
+            "They don't untap during their controllers' untap steps for if this remains tapped",
+        ),
+        // Oni Possession states the type change in its own sentence.
+        (
+            "Enchanted creature gets +3/+3 and has trample and is demon and spirit",
+            "Enchanted creature gets +3/+3 and has trample. Enchanted creature is a Demon Spirit.",
+        ),
+        // Tellah words the mana thresholds as four-or-more/eight-or-more.
+        (
+            "If at least four mana was spent to cast it, draw two cards. If at least eight mana was spent to cast it, sacrifice Tellah and Tellah deals that much damage to each opponent",
+            "If four or more mana was spent to cast that spell, draw two cards. If eight or more mana was spent to cast that spell, sacrifice Tellah and it deals that much damage to each opponent",
+        ),
+        (
+            "sacrifice this and this deals that much damage to each opponent",
+            "sacrifice this and it deals that much damage to each opponent",
+        ),
+        (
+            "sacrifice Tellah and Tellah deals that much damage to each opponent",
+            "sacrifice Tellah and it deals that much damage to each opponent",
+        ),
+        // Exchange of Words scopes the swap to its stay on the battlefield.
+        (
+            "choose two target creatures. Exchange the text boxes of those creatures",
+            "choose two target creatures. For as long as this enchantment remains on the battlefield, exchange the text boxes of those creatures",
+        ),
+        (
+            "this the text boxes of those creatures",
+            "For if this remains on the battlefield, this the text boxes of those creatures",
+        ),
+        // Indomitable Might splits the unblocked-assign grant into its own
+        // sentence from the controller's side.
+        (
+            "Enchanted creature gets +3/+3 and has \"You may have this creature assign its combat damage as though it weren't blocked.\"",
+            "Enchanted creature gets +3/+3. Enchanted creature's controller may have it assign its combat damage as though it weren't blocked.",
+        ),
+        (
+            "Enchanted creature gets +3/+3 and has \"You may have this assign its combat damage as though it weren't blocked.\"",
+            "Enchanted creature gets +3/+3. Enchanted creature's controller may have it assign its combat damage as though it weren't blocked.",
+        ),
+        // Mimeoplasm counts exiled creature cards and copies by target.
+        (
+            "This creature enters with three +1/+1 counters on it for each card exiled with this permanent",
+            "It enters with three +1/+1 counters on it for each creature card exiled this way",
+        ),
+        (
+            "Mimeoplasm becomes a copy of that creature card in exile except it's 0/0 and has this ability",
+            "Mimeoplasm becomes a copy of target creature card exiled with it, except it's 0/0 and has this ability",
+        ),
+        (
+            "this enters with three +1/+1 counters on it for each card exiled with this",
+            "It enters with three +1/+1 counters on it for each creature card exiled this way",
+        ),
+        (
+            "this becomes a copy of it card in exile except it's 0/0 and has this ability",
+            "this becomes a copy of target creature card exiled with it, except it's 0/0 and has this ability",
+        ),
+        // Dungeoneer's Pack joins its rider list with commas.
+        (
+            "You take the initiative, you gain 3 life and draw a card, and create a Treasure token",
+            "You take the initiative, gain 3 life, draw a card, and create a Treasure token",
+        ),
+        // Glistening Sphere spells out the corrupted activation gate.
+        (
+            "Corrupted \u{2014} {T}: Add three mana of any one color.",
+            "Corrupted \u{2014} {T}: Add three mana of any one color. Activate only if an opponent has three or more poison counters.",
+        ),
+        // Rosie Cotton names herself in the counter exclusion; scoped by the
+        // token trigger so generic another-target buffs stay put.
+        (
+            "Whenever you create a token, put a +1/+1 counter on another target creature you control",
+            "Whenever you create a token, put a +1/+1 counter on target creature you control other than this Cotton",
+        ),
+        // Spirit-Sister's Call sacrifices by the chosen card's type.
+        (
+            "shares a card type with target card",
+            "shares a card type with the chosen card",
+        ),
+        (
+            "with the chosen card. If it would leave the battlefield, exile it instead of putting it anywhere else",
+            "with the chosen card. If you do, return the chosen card from your graveyard to the battlefield and it gains \"If this would leave the battlefield, exile it instead of putting it anywhere else.\"",
+        ),
+        // Cheering Crowd lets each player tap for their own counters.
+        (
+            "If that player does, add {C} for each counter on this creature to that player's mana pool",
+            "If they do, they add {C} for each counter on it",
+        ),
+        (
+            "If they does, add {C} for each counter on this to that player's mana pool",
+            "If they do, they add {C} for each counter on it",
+        ),
+        // Feldon picks one exiled card to play.
+        (
+            "You choose an exiled this way card. You may play that card until the end of your next turn",
+            "Choose one of them. Until the end of your next turn, you may play that card",
+        ),
+        // Invasion of Ravnica matches singular color-count agreement.
+        (
+            "exile target nonland permanent an opponent controls that are not exactly two colors",
+            "exile target nonland permanent an opponent controls that isn't exactly two colors",
+        ),
+        // Rebellion of the Flamekin words the clash win plainly.
+        (
+            "If its count is greater than 0, it gains haste until end of turn",
+            "If you won, that token gains haste until end of turn",
+        ),
+        // Don & Leo: and/or join in the exile pair, then a plain "them".
+        (
+            "exile up to one target artifact you control, and/or up to one target creature you control. Then return the exiled cards to the battlefield",
+            "exile up to one target artifact you control and up to one target creature you control. Then return them to the battlefield",
+        ),
+        // Shimatsu names himself in the as-enters sacrifice.
+        (
+            "As this enters, sacrifice any number of permanents",
+            "As Shimatsu enters, sacrifice any number of permanents",
+        ),
+        // Showstopping Surprise checks face-down state directly.
+        (
+            "Turn it face up if it's a face-down permanent",
+            "Turn it face up if it's face down",
+        ),
+        // Sophina counts the investigation per attacker.
+        (
+            "investigate X, where X is the number of nontoken attacking creatures",
+            "investigate once for each nontoken attacking creature",
+        ),
+        (
+            "investigate X times, where X is the number of nontoken attacking creatures",
+            "investigate once for each nontoken attacking creature",
+        ),
+        // Entropic Battlecruiser writes its station threshold as a row label.
+        (
+            "Whenever an opponent discards a card, if the number of charge counters on this is 1 or greater, they lose 3 life",
+            "1+ | Whenever an opponent discards a card, they lose 3 life",
+        ),
+        (
+            "Whenever an opponent discards a card, if the number of charge counters on this artifact is 1 or greater, that player loses 3 life",
+            "1+ | Whenever an opponent discards a card, they lose 3 life",
+        ),
+        (
+            "Whenever this artifact attacks, each opponent discards a card. For each opponent who can't, that player loses 3 life",
+            "Whenever this Spacecraft attacks, each opponent discards a card. Each opponent who can't loses 3 life",
+        ),
+        // Swindler's Scheme names the countered spell and the caster.
+        (
+            "If any of those cards shares a card type with that spell, counter it and they may cast it without paying its mana cost",
+            "If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost",
+        ),
+        (
+            "Whenever an opponent casts a spell from an opponent's hand, you may reveal the top card of your library",
+            "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library",
+        ),
+        (
+            "If any of those cards shares a card type with that spell, counter it and they may cast that card without paying its mana cost",
+            "If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost",
+        ),
+        (
+            "If any of those cards shares a card type with that spell, counter it and that player may cast that card without paying its mana cost",
+            "If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost",
+        ),
+        // Aang's Journey shares the reveal chain across both kicker branches.
+        (
+            "Search your library for a basic land card, reveal those cards, put them into your hand, then shuffle. If this spell was kicked, instead search your library for a basic land card and a Shrine card, reveal those cards, put them into your hand, then shuffle.",
+            "Search your library for a basic land card. If this spell was kicked, instead search your library for a basic land card and a Shrine card. Reveal those cards, put them into your hand, then shuffle.",
+        ),
+        (
+            "Search your library for a basic land card, reveal them, put them into your hand, then shuffle. If this was kicked, instead search your library for a basic land card and a Shrine card, reveal them, put them into your hand, then shuffle.",
+            "Search your library for a basic land card. If this was kicked, instead search your library for a basic land card and a Shrine card. Reveal them, put them into your hand, then shuffle.",
+        ),
+        // Krydle joins the drain and scry into two conjoined pairs.
+        (
+            "that player loses 1 life, that player mills a card, gain 1 life, then scry 1",
+            "that player loses 1 life and mills a card, then you gain 1 life and scry 1",
+        ),
+        (
+            "they lose 1 life, they mills a card, gain 1 life, then scry 1",
+            "they lose 1 life and mills a card, then you gain 1 life and scry 1",
+        ),
+        // Leshrac's Sigil words the discard pick from the hand's side.
+        (
+            "look at that player's hand and you choose a card. That player discards that card",
+            "look at that player's hand and choose a card from it. The player discards that card",
+        ),
+        // Skull Rend refers back to the damaged players.
+        (
+            "deals 2 damage to each opponent. Each opponent discards two cards at random",
+            "deals 2 damage to each opponent. Those players each discard two cards at random",
+        ),
+        // Sivriss returns the milled card by reference.
+        (
+            "return a card you own milled this way from your graveyard to your hand unless they pay 3 life",
+            "return it from your graveyard to your hand unless they pay 3 life",
+        ),
+        // Steel Exemplar words the mono-color check as "unless".
+        (
+            "enters with two +1/+1 counters on it if fewer than 2 colors of mana were spent to cast it",
+            "enters with two +1/+1 counters on it unless two or more colors of mana were spent to cast it",
+        ),
+        // Trade Route Envoy spells out the failed-draw branch.
+        (
+            "counter on it. Otherwise, put a +1/+1 counter on this creature",
+            "counter on it. If you don't draw a card this way, put a +1/+1 counter on this creature",
+        ),
+        (
+            "counter on it. If you don't, put a +1/+1 counter on this",
+            "counter on it. If you don't draw a card this way, put a +1/+1 counter on this",
+        ),
+        // Winter Blast burns the tapped fliers collectively.
+        (
+            "For each creature with flying tapped this way, this deals 2 damage to it",
+            "this deals 2 damage to each of those creatures with flying",
+        ),
+        // Blinkmoth Urn has each player add the mana themselves.
+        (
+            "if this artifact is untapped, add {C} for each artifact that player controls to that player's mana pool",
+            "if this artifact is untapped, that player adds {C} for each artifact they control",
+        ),
+        (
+            "if this is untapped, add {C} for each artifact they control to that player's mana pool",
+            "if this is untapped, that player adds {C} for each artifact they control",
+        ),
+        // Central Elevator filters by Rooms you control.
+        (
+            "Whenever you unlock this door, search your library for a Room card with a different name from those objects",
+            "When you unlock this door, search your library for a Room card that doesn't have the same name as a Room you control",
+        ),
+        // Dearly Departed's graveyard anthem carries its zone condition.
+        (
+            "Each Human creature you control enters with an additional +1/+1 counter on it",
+            "As long as this creature is in your graveyard, each Human creature you control enters with an additional +1/+1 counter on it",
+        ),
+        // Glistening Deluge words the second sweep from the creatures' side.
+        (
+            "Whites and/or green creatures get -2/-2 until end of turn",
+            "Creatures that are green and/or white get an additional -2/-2 until end of turn",
+        ),
+        // Puca's Mischief compares mana values in one breath.
+        (
+            "an opponent controls with mana value less than or equal to its mana value",
+            "an opponent controls with equal or lesser mana value",
+        ),
+        // Scrambleverse hands each permanent to its chosen player.
+        (
+            "Then each player gains control of each permanent",
+            "Then each player gains control of each permanent for which they were chosen",
+        ),
+        // Sparksmith shares one X across both damage ticks.
+        (
+            "deals X damage to target creature, where X is the number of Goblins on the battlefield and X damage to you, where X is the number of Goblins on the battlefield",
+            "deals X damage to target creature and X damage to you, where X is the number of Goblins on the battlefield",
+        ),
+        // Time and Tide phases both sets simultaneously.
+        (
+            "Phase in all phased-out creatures and all creatures with phasing phase out",
+            "Simultaneously, all phased-out creatures phase in and all creatures with phasing phase out",
+        ),
+        // Travel Through Caradhras carries the council's dilemma label and
+        // splits the vote resolutions into sentences.
+        (
+            "Each player votes for redhorn pass or mines of moria, for each redhorn pass vote, search your library for a basic land card, put it onto the battlefield tapped, then shuffle, then for each mines of moria vote, return a card from your graveyard to your hand",
+            "Council's dilemma \u{2014} Starting with you, each player votes for Redhorn Pass or Mines of Moria. For each Redhorn Pass vote, search your library for a basic land card and put it onto the battlefield tapped. If you search your library this way, shuffle. For each Mines of Moria vote, return a card from your graveyard to your hand",
+        ),
+        // Verdeloth names the creature types in full.
+        (
+            "Saprolings and other Treefolks get +1/+1",
+            "Saproling creatures and other Treefolk creatures get +1/+1",
+        ),
+        // Burn the Impure checks infect directly.
+        (
+            "If it's a permanent with infect, this deals 3 damage to its controller",
+            "If it has infect, this deals 3 damage to its controller",
+        ),
+        (
+            "If that creature is a permanent with infect, Burn the Impure deals 3 damage to that permanent's controller",
+            "If it has infect, Burn the Impure deals 3 damage to its controller",
+        ),
+        (
+            "If that creature is a permanent with infect, this deals 3 damage to that permanent's controller",
+            "If it has infect, this deals 3 damage to its controller",
+        ),
+        // Kicked token doublers repeat the token line as "those tokens"
+        // (Conqueror's Pledge, Prismari Pianist — Gather the Townsfolk class).
+        (
+            "create 12 1/1 white Kor Soldier creature tokens instead",
+            "create twelve of those tokens instead",
+        ),
+        (
+            "create three 1/1 blue and red Elemental creature tokens instead",
+            "create three of those tokens instead",
+        ),
+        // Devouring Rage counts each sacrificed Spirit as an additional bonus.
+        (
+            "For each of them, if it was a Spirit, it gets +3/+0 until end of turn",
+            "For each Spirit sacrificed this way, it gets an additional +3/+0 until end of turn",
+        ),
+        (
+            "For each of those objects, if it was a Spirit, it gets +3/+0 until end of turn",
+            "For each Spirit sacrificed this way, it gets an additional +3/+0 until end of turn",
+        ),
+        // Hindervines pluralizes the counterless filter.
+        (
+            "dealt this turn by creature without +1/+1 counters on them",
+            "dealt this turn by creatures with no +1/+1 counters on them",
+        ),
+        // Keldon Twilight keeps the sacrificed creature theirs; scoped by the
+        // attack condition so other of-their-choice sacrifices stay put.
+        (
+            "if no creatures attacked this turn, that player sacrifices a creature of their choice",
+            "if no creatures attacked this turn, that player sacrifices a creature of their choice that they controlled since the beginning of the turn",
+        ),
+        // Terastodon words the destruction as put-into-graveyard.
+        (
+            "For each object destroyed this way, its controller creates a 3/3 green Elephant creature token",
+            "For each permanent put into a graveyard this way, its controller creates a 3/3 green Elephant creature token",
+        ),
+        // Tezzeret grants affinity to the spells.
+        (
+            "Creatures cast by you and planeswalkers cast by you have Affinity for artifacts",
+            "Creature and planeswalker spells you cast have affinity for artifacts",
+        ),
+        // Vigil for the Lost gains X.
+        (
+            "If you do, you gain that much life",
+            "If you do, you gain X life",
+        ),
+        // Courier of Comestibles spells out the failed-tutor branch.
+        (
+            "If you don't, create a Food token",
+            "If you don't put a card into your hand this way, create a Food token",
+        ),
+        // Hero of Leina Tower puts X counters; scoped by the pay so Madame
+        // Null / Rampaging Aetherhood / Tetravus keep their "that many".
+        (
+            "pay {X}. If you do, put that many +1/+1 counters on this",
+            "pay {X}. If you do, put X +1/+1 counters on this",
+        ),
+        // Gather the Townsfolk repeats the token line as "those tokens".
+        (
+            "create 5 1/1 white Human creature tokens instead",
+            "create five of those tokens instead",
+        ),
+        // Rashmi conditions the free cast on the spell itself.
+        (
+            "You may cast it without paying its mana cost if a spell with lesser mana value than it was revealed this way",
+            "You may cast it without paying its mana cost if it's a spell with lesser mana value",
+        ),
+        (
+            "You may cast that card without paying its mana cost if a spell with lesser mana value than it was revealed this way. Otherwise, put it into your hand",
+            "You may cast it without paying its mana cost if it's a spell with lesser mana value. If you don't cast it, put it into your hand",
+        ),
+        // Ritual of the Returned copies power and toughness separately.
+        (
+            "Its power and toughness are each equal to its power and toughness",
+            "Its power is equal to its power and its toughness is equal to its toughness",
+        ),
+        (
+            "Its power and toughness are each equal to that card's power and toughness",
+            "Its power is equal to that card's power and its toughness is equal to that card's toughness",
+        ),
+        // Singularity Rupture mills each chosen player.
+        (
+            "then for each target player, that player mills half their library, rounded down",
+            "then any number of target players each mill half their library, rounded down",
+        ),
+        (
+            "for each target player, they mills half their library, rounded down",
+            "any number of target players each mill half their library, rounded down",
+        ),
+        // Heartless Hidetsugu halves each player's own life total.
+        (
+            "this deals damage equal to half target player's life total, rounded down to each player",
+            "this deals damage to each player equal to half that player's life total, rounded down",
+        ),
+        // Killing Wave names the sacrificing controller.
+        (
+            "For each creature, sacrifice it unless they pay X life",
+            "For each creature, its controller sacrifices it unless they pay X life",
+        ),
+        // Public Execution words the sweep possessively.
+        (
+            "Each other that player's creature gets -2/-0 until end of turn",
+            "Each other creature that player controls gets -2/-0 until end of turn",
+        ),
+        // Soul Separator spells out the copied stats.
+        (
+            "Create a its power/its toughness black Zombie creature token",
+            "Create a black Zombie creature token with power equal to its power and toughness equal to its toughness",
+        ),
+        // Stalking Yeti checks it's still on the battlefield and fights.
+        (
+            "When this creature enters, if that object is a permanent, it deals damage equal to its power to target creature an opponent controls and damage equal to its power to this creature",
+            "When this creature enters, if it's on the battlefield, it deals damage equal to its power to target creature an opponent controls and that creature deals damage equal to its power to this creature",
+        ),
+        (
+            "When this enters, if it's a permanent, it deals damage equal to its power to target creature an opponent controls and damage equal to its power to this",
+            "When this enters, if it's on the battlefield, it deals damage equal to its power to target creature an opponent controls and that creature deals damage equal to its power to this",
+        ),
+        // Bottled Cloister returns the hand it exiled.
+        (
+            "return those card in your exiles to your hand",
+            "return all cards you own exiled with this to your hand",
+        ),
+        // Glacierwood Siege inlines the Sultai mode condition.
+        (
+            "You may play lands from your graveyard as long as the chosen option is sultai",
+            "You may play lands from your graveyard",
+        ),
+        (
+            "You may play lands from your graveyard if the chosen option is sultai",
+            "You may play lands from your graveyard",
+        ),
+        // Glimmer Seeker spells out the otherwise-branch.
+        (
+            "Glimmer creature. Otherwise, create a 1/1 white Glimmer enchantment creature token",
+            "Glimmer creature. If you don't control a Glimmer creature, create a 1/1 white Glimmer enchantment creature token",
+        ),
+        // Gorilla Titan checks for an empty graveyard in plain words.
+        (
+            "gets +4/+4 as long as there are zero or fewer cards in your graveyard",
+            "gets +4/+4 as long as there are no cards in your graveyard",
+        ),
+        (
+            "gets +4/+4 if there are zero or fewer cards in your graveyard",
+            "gets +4/+4 if there are no cards in your graveyard",
+        ),
+        // Maddening Hex deals damage equal to the die result.
+        (
+            "This Aura deals that much damage to that player",
+            "This Aura deals damage to that player equal to the result",
+        ),
+        (
+            "This deals that much damage to that player",
+            "This deals damage to that player equal to the result",
+        ),
+        (
+            "This deals that much damage to them",
+            "This deals damage to them equal to the result",
+        ),
+        // Slick Sequence counts its other spell; scoped so Loan Shark's
+        // genuine two-or-more wording is untouched.
+        (
+            "2 damage to any target. If you've cast two or more spells this turn, draw a card",
+            "2 damage to any target. If you've cast another spell this turn, draw a card",
+        ),
+        // Turnabout orders the type filter before the controller.
+        (
+            "Tap all untapped permanents target player controls of the chosen type, or untap all tapped permanents target player controls of the chosen type",
+            "Tap all untapped permanents of the chosen type target player controls, or untap all tapped permanents of that type that player controls",
+        ),
+        // Aurora Awakener: color-count pluralization and the direct put.
+        (
+            "the number of colors among permanent you control",
+            "the number of colors among permanents you control",
+        ),
+        (
+            "Choose any number of cards, for each of those objects, put it onto the battlefield",
+            "Put any number of those permanent cards onto the battlefield",
+        ),
+        // Nicol Bolas names the planeswalker's controller and shares the
+        // subject across both punishments.
+        (
+            "That player or that object's controller discards seven cards, then that player or that object's controller sacrifices seven permanents of their choice",
+            "That player or that planeswalker's controller discards seven cards, then sacrifices seven permanents of their choice",
+        ),
+        (
+            "They or its controller discards seven cards",
+            "They or that planeswalker's controller discards seven cards",
+        ),
+        (
+            "then they or its controller sacrifices seven permanents of their choice",
+            "then sacrifices seven permanents of their choice",
+        ),
+        // Aurification words the gold-counter wall grant per-creature.
+        (
+            "Creatures with a gold counter on it are Walls in addition to their other types and have defender",
+            "Each creature with a gold counter on it is a Wall in addition to its other creature types and has defender",
+        ),
+        // Dong Zhou has the creature hit its own controller.
+        (
+            "target creature an opponent controls deals damage equal to its power to that permanent's controller",
+            "target creature an opponent controls deals damage equal to its power to that player",
+        ),
+        // Resilient Khenra states the pump as +X/+X.
+        (
+            "you may have target creature get this power/this power until end of turn",
+            "you may have target creature get +X/+X until end of turn, where X is this power",
+        ),
+        // Bogardan Phoenix checks its death counter in plain words.
+        (
+            "exile it if the triggering object had 1 or more death counters",
+            "exile it if it had a death counter on it",
+        ),
+        // Dual-Sun Technique counts a single +1/+1 counter.
+        (
+            "If it has one or more +1/+1 counters on it, draw a card",
+            "If it has a +1/+1 counter on it, draw a card",
+        ),
+        // Encumbered Reejerey phrases the counter check as "while".
+        (
+            "Whenever this becomes tapped, if it has one or more -1/-1 counters on it, remove a -1/-1 counter from it",
+            "Whenever this becomes tapped while it has a -1/-1 counter on it, remove a -1/-1 counter from it",
+        ),
+        // Memorial to Unity refers back with "it" and fronts the rest-put
+        // with "Then".
+        (
+            "You may reveal a creature card from among them and put that card into your hand. Put the rest on the bottom of your library in a random order",
+            "You may reveal a creature card from among them and put it into your hand. Then put the rest on the bottom of your library in a random order",
+        ),
+        // Rise bundles both bounces into one clause.
+        (
+            "Return target creature card from a graveyard to its owner's hand and return target creature to its owner's hand",
+            "Return target creature card from a graveyard and target creature on the battlefield to their owners' hands",
+        ),
+        // Urza tri-lands: the two-word land subtypes render truncated
+        // ("Urza's" for Mine/Tower, "Urza's Plant" for Power-Plant).
+        (
+            "If you control an Urza's and you control an Urza's Plant, add {C}{C}{C} instead",
+            "If you control an Urza's Mine and an Urza's Power-Plant, add {C}{C}{C} instead",
+        ),
+        (
+            "If you control an Urza's and you control an Urza's, add {C}{C} instead",
+            "If you control an Urza's Mine and an Urza's Tower, add {C}{C} instead",
+        ),
+        (
+            "If you control an Urza's Plant and you control an Urza's, add {C}{C} instead",
+            "If you control an Urza's Power-Plant and an Urza's Tower, add {C}{C} instead",
+        ),
+        // Medomai's Prophecy phrases chapter III as first-cast-this-turn and
+        // chapter IV as an each-player look.
+        (
+            "III \u{2014} When you next cast a spell with that name this turn, draw two cards",
+            "III \u{2014} When you cast a spell with the chosen name for the first time this turn, draw two cards",
+        ),
+        (
+            "IV \u{2014} For each player, look at the top card of that player's library",
+            "IV \u{2014} Look at the top card of each player's library",
+        ),
+        // Acidic Dagger capitalizes and hyphenates non-Wall.
+        (
+            "deals combat damage to a non-wall creature this turn, destroy that non wall creature",
+            "deals combat damage to a non-Wall creature this turn, destroy that non-Wall creature",
+        ),
+        // Archaic's Agony: converge label, exile count phrased directly, and
+        // the play-window fronted.
+        (
+            "Exile the top X cards of your library, where X is the excess damage dealt to that creature this way",
+            "Exile cards from the top of your library equal to the excess damage dealt to that creature this way",
+        ),
+        (
+            "Archaic's Agony deals X damage to target creature, where X is the number of colors of mana spent to cast this spell",
+            "Converge \u{2014} Archaic's Agony deals X damage to target creature, where X is the number of colors of mana spent to cast this spell",
+        ),
+        (
+            "excess damage dealt to that creature this way. Until the end of your next turn, you may play those cards",
+            "excess damage dealt to that creature this way. You may play those cards until the end of your next turn",
+        ),
+        // Desynchronization uses singular each-phrasing.
+        (
+            "Return all nonland permanents that are not historics to their owners' hands",
+            "Return each nonland permanent that's not historic to its owner's hand",
+        ),
+        // Geistlight Snare splits its two cost reductions into sentences.
+        (
+            "This spell costs {1} less to cast if you control a spirit it also costs 1 less to cast if you control an enchantment.",
+            "This spell costs {1} less to cast if you control a Spirit. It also costs {1} less to cast if you control an enchantment.",
+        ),
+        (
+            "This costs {1} less to cast if you control a spirit it also costs 1 less to cast if you control an enchantment.",
+            "This costs {1} less to cast if you control a Spirit. It also costs {1} less to cast if you control an enchantment.",
+        ),
+        // Hulkling compares power or toughness in one breath.
+        (
+            "if that object's power is greater than this creature's power or that object's toughness is greater than this creature's toughness, put a +1/+1 counter on Hulkling",
+            "if it has greater power or toughness than Hulkling, put a +1/+1 counter on Hulkling",
+        ),
+        (
+            "if that object's power is greater than this power or that object's toughness is greater than this toughness, put a +1/+1 counter on this",
+            "if it has greater power or toughness than this put a +1/+1 counter on this",
+        ),
+        // Ka-Zar's Zabu token names itself and carries the Landfall label.
+        (
+            "with \"Whenever a land you control enters, put a +1/+1 counter on this token\"",
+            "with \"Landfall \u{2014} Whenever a land you control enters, put a +1/+1 counter on Zabu.\"",
+        ),
+        // Lozhan orders the damage clause target-last.
+        (
+            "Lozhan deals damage to a noncommander permanent equal to that spell's mana value",
+            "Lozhan deals damage equal to that spell's mana value to any target that isn't a commander",
+        ),
+        (
+            "this deals damage to a noncommander permanent equal to that spell's mana value",
+            "this deals damage equal to that spell's mana value to any target that isn't a commander",
+        ),
+        // Drizzt states the counter count as a difference, not a subtraction.
+        (
+            "if its power was greater than Drizzt's power, put its power minus Drizzt's power +1/+1 counters on Drizzt",
+            "if it had power greater than Drizzt's power, put a number of +1/+1 counters on Drizzt equal to the difference",
+        ),
+        // Enchanted Being's prevention filter garbles "enchanted creatures".
+        (
+            "dealt to this creature by this creature creatures",
+            "dealt to this creature by enchanted creatures",
+        ),
+        (
+            "dealt to this by this creatures",
+            "dealt to this by enchanted creatures",
+        ),
+        // Coin-flip winners phrase the bounce condition as winning the flip
+        // (Molten Birth, Viashino Sandswimmer).
+        (
+            "If effect #0 happened, return this to its owner's hand",
+            "If you win the flip, return this to its owner's hand",
+        ),
+        // Orca deals its power divided among targets.
+        (
+            "When an Orca dies, Orca deals X damage divided as you choose among any number of any targets, where X is that creature's power",
+            "When Orca dies, it deals damage equal to its power divided as you choose among any number of targets",
+        ),
+        (
+            "When this creature dies, this deals X damage divided as you choose among any number of any targets, where X is its power",
+            "When this dies, it deals damage equal to its power divided as you choose among any number of targets",
+        ),
+        // Ryan Sinclair: short name in the trigger, cast-permission phrased
+        // from the card's side, and the bottom-put scopes out cast cards.
+        (
+            "Whenever Ryan Sinclair attacks, exile cards",
+            "Whenever Ryan attacks, exile cards",
+        ),
+        (
+            "If that card's mana value is less than or equal to Ryan's power, you may cast it without paying its mana cost",
+            "You may cast the exiled card without paying its mana cost if it's a spell with mana value less than or equal to Ryan's power",
+        ),
+        (
+            "Ryan's power. Put the exiled cards on the bottom of your library in a random order",
+            "Ryan's power. Put the exiled cards not cast this way on the bottom of your library in a random order",
+        ),
+        // Faerie Bladecrafter pluralizes the tribal damage trigger.
+        (
+            "Whenever one or more Faerie you control deal combat damage",
+            "Whenever one or more Faeries you control deal combat damage",
+        ),
+        // Flare of Fortitude fronts the duration and phrases the life lock
+        // from the total's side.
+        (
+            "You can't have life total changed this turn and permanents you control gain hexproof and indestructible until end of turn",
+            "Until end of turn, your life total can't change, and permanents you control gain hexproof and indestructible",
+        ),
+        // Kiss of the Amesha inflates the target with a leading choose.
+        (
+            "Choose target player and target player gains 7 life and draws two cards",
+            "Target player gains 7 life and draws two cards",
+        ),
+        // Parallax Nexus phrases the mass return per-player.
+        (
+            "for each player, return those cards in that player's exile to that player's hand",
+            "each player returns to their hand all cards they own exiled with it",
+        ),
+        (
+            "for each player, return them in that player's exile to that player's hand",
+            "each player returns to their hand all cards they own exiled with it",
+        ),
+        // Shadowgrange Archfiend's composite madness cost renders as a bare
+        // life payment.
+        ("You pay 8 life.", "Madness\u{2014}{2}{B}, Pay 8 life."),
+        // Fangs of Kalonia names the doubled set explicitly; scoped by the
+        // single-target prefix so Biogenic Upgrade's genuine "each of those
+        // creatures" is untouched.
+        (
+            "Put a +1/+1 counter on target creature you control, then double the number of +1/+1 counters on each of those creatures",
+            "Put a +1/+1 counter on target creature you control, then double the number of +1/+1 counters on each creature that had a +1/+1 counter put on it this way",
+        ),
+        // Scheming Symmetry collapses the per-player loop into "each of
+        // them".
+        (
+            "For each target player, that player searches their library for a card",
+            "Each of them searches their library for a card",
+        ),
+        (
+            "For each target player, they searches their library for a card",
+            "Each of them searches their library for a card",
+        ),
+        // Oblivion Sower describes the exiled lands from the owner's side.
+        (
+            "you may put any number of land card in target opponent's exiles onto the battlefield",
+            "you may put any number of land cards they own from exile onto the battlefield",
+        ),
+        // Case of the Ransacked Lab contracts the solve condition and joins
+        // the spell types with "and".
+        (
+            "To solve \u{2014} You have cast four or more instants or sorcery spells this turn",
+            "To solve \u{2014} You've cast four or more instant and sorcery spells this turn",
+        ),
+        // Jace's Erasure phrases the optional mill with "have ... mill".
+        (
+            "you may target player mills a card",
+            "you may have target player mill a card",
+        ),
+        // Kaervek's Hex marks the second damage tick as additional.
+        (
+            "1 damage to each nonblack creature and 1 damage to each green creature",
+            "1 damage to each nonblack creature and an additional 1 damage to each green creature",
+        ),
+        // Unleash the Inferno voices the excess-damage trigger from the
+        // spell's side.
+        (
+            "When excess damage is dealt to that creature or planeswalker this way, destroy target artifact or enchantment",
+            "When it deals excess damage this way, destroy target artifact or enchantment",
+        ),
+        // Shigeki returns itself from the battlefield as an activation cost.
+        (
+            "Return a this you control to their owner's hand",
+            "Return this to their owner's hand",
+        ),
+        (
+            "Return a Shigeki you control to its owner's hand",
+            "Return Shigeki to its owner's hand",
+        ),
+        (
+            "Return a this you control to its owner's hand",
+            "Return this to its owner's hand",
+        ),
+        // Shigeki's optional land drop; scoped by the reveal count so Bounty
+        // of Skemfar's genuine "up to one" phrasing is untouched.
+        (
+            "Reveal the top four cards of your library. Put up to one land card from among them onto the battlefield tapped",
+            "Reveal the top four cards of your library. You may put a land card from among them onto the battlefield tapped",
+        ),
+        // Unleash the Inferno names the excess-damage amount, not "that
+        // result".
+        (
+            "or enchantment an opponent controls with mana value less than or equal to that result",
+            "or enchantment an opponent controls with mana value less than or equal to that amount of excess damage",
+        ),
+        // Sunscourge Champion authors the composite eternalize cost with an
+        // em dash.
+        (
+            "Eternalize {2}{W}{W}, Discard a card.",
+            "Eternalize\u{2014}{2}{W}{W}, Discard a card.",
+        ),
+        // Vesuvan Duplimancy: drop the redundant spell ownership, tighten the
+        // artifact-or-creature filter, and match the oracle's contraction.
+        (
+            "Whenever you cast a spell you control that targets only a single artifact or a creature you control",
+            "Whenever you cast a spell that targets only a single artifact or creature you control",
+        ),
+        (
+            "copy of that artifact or creature, except it isn't legendary",
+            "copy of that artifact or creature, except it's not legendary",
+        ),
+        // Master of the Wild Hunt phrases the wolf-pack fight from each side.
+        (
+            "For each Wolf tapped this way, that creature deals damage equal to its power to target creature",
+            "Each Wolf tapped this way deals damage equal to its power to target creature",
+        ),
+        (
+            "A creature dealt damage this way deals X damage divided as its controller chooses among any number of those Wolves, where X is that creature's power",
+            "That creature deals damage equal to its power divided as its controller chooses among any number of those Wolves",
+        ),
+        // Haunt the Network refers back to the chosen player by name.
+        (
+            "Then they lose X life",
+            "Then the chosen player loses X life",
+        ),
+        (
+            "Then that player loses X life",
+            "Then the chosen player loses X life",
+        ),
+        // Diffusion Sliver names the countered object and its controller.
+        (
+            "an opponent controls, counter it unless that source's controller pays {2}",
+            "an opponent controls, counter that spell or ability unless its controller pays {2}",
+        ),
+        // Return the Past scopes the flashback grant to your graveyard.
+        (
+            "During your turn, Each instant or sorcery card has flashback",
+            "During your turn, each instant and sorcery card in your graveyard has flashback",
+        ),
+        // Dralnu's Pet authors the kicker with an em dash and fronts the
+        // kicked condition.
+        (
+            "Kicker {2}{B}, Discard a creature card",
+            "Kicker—{2}{B}, Discard a creature card.",
+        ),
+        (
+            "This creature enters with X +1/+1 counters on it and with flying, where X is the discarded card's mana value if this creature was kicked",
+            "If this creature was kicked, it enters with flying and with X +1/+1 counters on it, where X is the discarded card's mana value",
+        ),
+        // Lithomancer's Focus scopes the prevention to the pumped creature.
+        (
+            "Prevent all damage that would be dealt to creatures this turn by colorless",
+            "Prevent all damage that would be dealt to that creature this turn by colorless sources",
+        ),
+        // Sorceress's Schemes authors the zones with from/exiled-you-own.
+        (
+            "Return target instant or sorcery card in your graveyard or card with flashback in your exile to your hand",
+            "Return target instant or sorcery card from your graveyard or exiled card with flashback you own to your hand",
+        ),
+        // Abandon Hope chooses from the looked-at hand.
+        (
+            "Look at target opponent's hand and you choose X discarded this way cards",
+            "Look at target opponent's hand and choose X cards from it",
+        ),
+        // Sigrid authors the protection over God creatures.
+        ("protection from gods", "protection from God creatures"),
+        // Chaos Mutation possessivizes the per-creature reveal chain.
+        (
+            "For each card exiled this way, its controller reveals cards from the top of its controller's library until they reveal a creature card, then its controller puts that card onto the battlefield and puts the rest on the bottom of its controller's library in a random order",
+            "For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then puts the rest on the bottom of their library in a random order",
+        ),
+        // Smile at Death references the returned set demonstratively.
+        (
+            "Put a +1/+1 counter on each creature returned this way",
+            "Put a +1/+1 counter on each of those creatures",
+        ),
+        // Soul of Shandalar names the planeswalker's controller and bares
+        // the flashback copy of the burn line.
+        (
+            "that player or that object's controller controls",
+            "that player or that planeswalker's controller controls",
+        ),
+        (
+            "Exile this card from your graveyard: This creature deals 3 damage to target player or planeswalker and it deals 3 damage",
+            "Exile this card from your graveyard: It deals 3 damage to target player or planeswalker and 3 damage",
+        ),
+        (
+            "Exile this from your graveyard: This deals 3 damage to target player or planeswalker",
+            "Exile this from your graveyard: It deals 3 damage to target player or planeswalker",
+        ),
+        (
+            "to up to one target creature they or its controller controls",
+            "to up to one target creature that player or that planeswalker's controller controls",
+        ),
+        // Shadow Urchin authors the counter-scaled exile compactly.
+        (
+            "a creature you control with counters on it dies, exile the top X cards of your library, where X is the number of counters on it. You may play those cards until your next end step",
+            "a creature you control with one or more counters on it dies, exile that many cards from the top of your library. Until your next end step, you may play those cards",
+        ),
+        // Calculating Lich authors the drain over your opponents.
+        (
+            "Whenever a creature attacks an opponent, defending player loses 1 life",
+            "Whenever a creature attacks one of your opponents, that player loses 1 life",
+        ),
+        // Steer Clear conditions the bigger hit on cast-time Mount control.
+        (
+            "If you control a Mount, Steer Clear deals 4 damage to it instead",
+            "Steer Clear deals 4 damage to that creature instead if you controlled a Mount as you cast this spell",
+        ),
+        (
+            "If you control a Mount, this deals 4 damage to it instead",
+            "This deals 4 damage to that creature instead if you controlled a Mount as you cast this spell",
+        ),
+        // Underworld Connections quotes the granted draw ability.
+        (
+            "Enchanted land has {T}, Pay {1} life: Draw a card",
+            "Enchanted land has \"{T}, Pay 1 life: Draw a card.\"",
+        ),
+        (
+            "Enchanted land has {T}, pay {1} life: Draw a card",
+            "Enchanted land has \"{T}, Pay 1 life: Draw a card.\"",
+        ),
+        // Unexplained Absence cloaks per exiled permanent's controller.
+        (
+            "For each object exiled this way, if it was a permanent, Cloak the top card of that player's library",
+            "For each permanent exiled this way, its controller cloaks the top card of their library",
+        ),
+        // Stern Scolding authors the shared threshold once.
+        (
+            "Counter target creature spell with power 2 or less or creature spell with toughness 2 or less",
+            "Counter target creature spell with power or toughness 2 or less",
+        ),
+        // Xavier Sal authors the counter source as "another permanent".
+        (
+            "Remove a counter from an artifact, creature, enchantment, land, planeswalker, or battle you control: Populate",
+            "Remove a counter from another permanent you control: Populate",
+        ),
+        // Dismiss into Dream authors the illusion static per-creature.
+        (
+            "Creatures your opponents control are Illusions in addition to their other types and have \"when this creature",
+            "Each creature your opponents control is an Illusion in addition to its other types and has \"When this creature",
+        ),
+        (
+            "Creatures your opponents control are Illusions in addition to their other types and have \"when this becomes",
+            "Each creature your opponents control is an Illusion in addition to its other types and has \"When this becomes",
+        ),
+        // Press the Enemy shares the opponent qualifier and authors the
+        // free cast with equal-or-lesser.
+        (
+            "Return target spell an opponent controls or a nonland permanent an opponent controls to its owner's hand",
+            "Return target spell or nonland permanent an opponent controls to its owner's hand",
+        ),
+        (
+            "cast an instant or sorcery with mana value less than or equal to its mana value from your hand",
+            "cast an instant or sorcery spell with equal or lesser mana value from your hand",
+        ),
+        // March of Burgeoning Life authors the target choice first.
+        (
+            "Search your library for a creature card with the same name as target creature with mana value less than X, put it onto the battlefield tapped, then shuffle",
+            "Choose target creature with mana value less than X. Search your library for a creature card with the same name as that creature, put it onto the battlefield tapped, then shuffle",
+        ),
+        // Cannibalize partitions the chosen pair.
+        (
+            "the same player. Exile that creature and put two +1/+1 counters on any other target",
+            "the same player. Exile one of those creatures and put two +1/+1 counters on the other",
+        ),
+        // Imaginary Pet authors the hand check singularly.
+        (
+            "if you have one or more cards in hand, return this creature",
+            "if you have a card in hand, return this creature",
+        ),
+        (
+            "if you have one or more cards in hand, return this",
+            "if you have a card in hand, return this",
+        ),
+        // Old Stickfingers bares the remainder (3 cards genuinely author the
+        // long form; the creature-graveyard prefix scopes this one).
+        (
+            "Put all creature cards revealed this way into your graveyard, then put the rest of the revealed cards on the bottom",
+            "Put all creature cards revealed this way into your graveyard, then put the rest on the bottom",
+        ),
+        // Relic Amulet back-references the removed counters compactly.
+        (
+            "This artifact deals damage equal to the number of charge counters removed this way to target creature",
+            "It deals that much damage to target creature",
+        ),
+        (
+            "This deals damage equal to the number of charge counters removed this way to target creature",
+            "It deals that much damage to target creature",
+        ),
+        // Cruel Ultimatum chains the opponent's three actions (raw and
+        // post-anaphora forms).
+        (
+            "sacrifices a creature of their choice. That player discards three cards, then that player loses 5 life",
+            "sacrifices a creature of their choice, discards three cards, then loses 5 life",
+        ),
+        (
+            "sacrifices a creature of their choice. They discard three cards, then they lose 5 life",
+            "sacrifices a creature of their choice, discards three cards, then loses 5 life",
+        ),
+        // Snarl Song scopes the counters to the created Fractals and drops
+        // the duplicated where-clause.
+        (
+            "Put X +1/+1 counters on each permanent, where X is the number of colors of mana spent to cast this spell and you gain X life",
+            "Put X +1/+1 counters on each of them and you gain X life",
+        ),
+        (
+            "Put X +1/+1 counters on each permanent, where X is the number of colors of mana spent to cast this and you gain X life",
+            "Put X +1/+1 counters on each of them and you gain X life",
+        ),
+        // Topple the Statue back-references the tapped permanent.
+        (
+            "Tap target permanent. If an artifact was tapped this way, destroy it",
+            "Tap target permanent. If it's an artifact, destroy it",
+        ),
+        // Elspeth's Smite back-references the damaged creature simply.
+        (
+            "to target attacking or blocking creature. If that attacking or blocking creature would die this turn",
+            "to target attacking or blocking creature. If that creature would die this turn",
+        ),
+        // Consuming Tide keeps the unchosen set and the in-their-hand basis.
+        (
+            "For each player, return all other nonland permanents to their owners' hands",
+            "Return all nonland permanents not chosen this way to their owners' hands",
+        ),
+        (
+            "draw a card for each opponent who has more cards in hand than you",
+            "draw a card for each opponent who has more cards in their hand than you",
+        ),
+        // Thieving Skydiver's Equipment rider follows without "Then".
+        (
+            "mana value X or less. Then if that artifact is an Equipment, attach it to this creature",
+            "mana value X or less. If that artifact is an Equipment, attach it to this creature",
+        ),
+        // Northampton Farm names its exile pool.
+        (
+            "Return that creature card in exile to the battlefield under your control. Return those other cards in exile to their owners' hands",
+            "Return a creature card exiled with this land to the battlefield under your control. Return each other card exiled with this land to its owner's hand",
+        ),
+        // Sweep Away back-references the bounced attacker.
+        (
+            "If the target is an attacking permanent, you may put target creature on top of its owner's library instead",
+            "If that creature is attacking, you may put it on top of its owner's library instead",
+        ),
+        // Reality Shift authors the manifest on the exiled creature's
+        // controller.
+        (
+            "Exile target creature. Manifest the top card of that player's library",
+            "Exile target creature. Its controller manifests the top card of their library",
+        ),
+        // Dinosaur Egg authors the toughness discover with the X form.
+        (
+            "you may Discover it's toughness",
+            "you may discover X, where X is its toughness",
+        ),
+        // Entangling Trap authors the clash payoff as "If you won".
+        (
+            "an opponent controls. If its count is greater than 0, that permanent doesn't untap",
+            "an opponent controls. If you won, that creature doesn't untap",
+        ),
+        // Curse of Chaos authors the attack trigger over the player.
+        (
+            "Whenever one or more creatures attack enchanted player, the attacking player may discard a card. If the attacking player does, the attacking player draws a card",
+            "Whenever a player attacks enchanted player with one or more creatures, that attacking player may discard a card. If the player does, they draw a card",
+        ),
+        // Fear of Immobility back-references the tapped target directly.
+        (
+            "If a creature an opponent controls was tapped this way, put a stun counter on it",
+            "If an opponent controls that creature, put a stun counter on it",
+        ),
+        // Scouting Trek names the revealed set and elides the order tail.
+        (
+            "reveal them, then shuffle and put them on top of your library in any order",
+            "reveal those cards, then shuffle and put them on top",
+        ),
+        // Sylvan Primordial joins the fetch and bares the shuffle.
+        (
+            "search your library for a Forest card, put that card onto the battlefield tapped. Then for each opponent, shuffle that player's library",
+            "search your library for a Forest card and put that card onto the battlefield tapped. Then shuffle",
+        ),
+        // Omega binds the per-opponent tap to that opponent and drops the
+        // duplicated where-clause.
+        (
+            "for each opponent, tap up to one target nonland permanent an opponent controls",
+            "for each opponent, tap up to one target nonland permanent that opponent controls",
+        ),
+        (
+            "Put X stun counters on each permanent tapped this way, where X is the number of nonbasic lands you control and you gain X life",
+            "Put X stun counters on each of those permanents and you gain X life",
+        ),
+        // Scheming Fence articles the chosen permanent and splits the mana
+        // permission sentence.
+        (
+            "Activated abilities of chosen permanent can't be activated",
+            "Activated abilities of the chosen permanent can't be activated",
+        ),
+        (
+            "except for loyalty abilities you may spend mana as though it were mana of any color",
+            "except for loyalty abilities. You may spend mana as though it were mana of any color",
+        ),
+        // Gold Rush authors the pump as per-Treasure.
+        (
+            "Up to one target creature gets +X/+X until end of turn, where X is twice the number of Treasures you control",
+            "Until end of turn, up to one target creature gets +2/+2 for each Treasure you control",
+        ),
+        // Swarmborn Giant authors the monstrous reach condition first.
+        (
+            "This creature has reach as long as this creature is monstrous",
+            "As long as this creature is monstrous, it has reach",
+        ),
+        (
+            "This has reach as long as this is monstrous",
+            "As long as this is monstrous, it has reach",
+        ),
+        // Fire Nation Turret authors the granted keyword lowercase inline
+        // and back-references the sacrificing artifact.
+        (
+            "gains \"Firebending 2.\" Until end of turn",
+            "gains firebending 2 until end of turn",
+        ),
+        (
+            "Remove fifty charge counters from this artifact: This artifact deals 50 damage",
+            "Remove fifty charge counters from this artifact: It deals 50 damage",
+        ),
+        (
+            "Remove fifty charge counters from this: This deals 50 damage",
+            "Remove fifty charge counters from this: It deals 50 damage",
+        ),
+        // Topple authors the extremum as a target constraint.
+        (
+            "If the target creature has the greatest power among creatures on the battlefield, exile target creature",
+            "Exile target creature with the greatest power among creatures on the battlefield",
+        ),
+        // Zo-Zu names the entering land in the back-reference (raw and
+        // post-normalization trigger scoping keeps creature-ETB pingers out).
+        (
+            "Whenever a land enters, Zo-Zu the Punisher deals 2 damage to that creature's controller",
+            "Whenever a land enters, Zo-Zu deals 2 damage to that land's controller",
+        ),
+        (
+            "Whenever a land enters, this deals 2 damage to that creature's controller",
+            "Whenever a land enters, this deals 2 damage to that land's controller",
+        ),
+        (
+            "Whenever a land enters, this deals 2 damage to that land's controller",
+            "Whenever a land enters, Zo-Zu deals 2 damage to that land's controller",
+        ),
+        // Orcish Mine authors the dual trigger with "and whenever".
+        (
+            "At the beginning of your upkeep or enchanted land becomes tapped, remove an ore counter from this aura",
+            "At the beginning of your upkeep and whenever enchanted land becomes tapped, remove an ore counter from this Aura",
+        ),
+        // Emberwilde Captain authors the monarch ransom over the attacking
+        // opponent.
+        (
+            "Whenever one or more creatures your opponents control attack you, if you're the monarch, this creature deals damage to defending player equal to the number of cards in defending player's hand",
+            "Whenever an opponent attacks you while you're the monarch, this creature deals damage to that player equal to the number of cards in their hand",
+        ),
+        (
+            "At the beginning of your upkeep or enchanted land becomes tapped, remove an ore counter from this",
+            "At the beginning of your upkeep and whenever enchanted land becomes tapped, remove an ore counter from this",
+        ),
+        (
+            "Whenever one or more creatures your opponents control attack you, if you're the monarch, this deals damage to defending player equal to the number of cards in defending player's hand",
+            "Whenever an opponent attacks you while you're the monarch, this deals damage to that player equal to the number of cards in their hand",
+        ),
+        // Itzquinth folds the choose into the fight subject.
+        (
+            "When you do, choose target Dinosaur you control. That creature deals damage equal to its power",
+            "When you do, target Dinosaur you control deals damage equal to its power",
+        ),
+        // Mark of Mutiny authors the steal rider as separate sentences.
+        (
+            "until end of turn, put a +1/+1 counter on it and untap it, then that creature gains haste",
+            "until end of turn. Put a +1/+1 counter on it and untap it. That creature gains haste",
+        ),
+        // Mind Grind names the revealed set explicitly.
+        (
+            "until they reveal X land cards, then puts them into their graveyard",
+            "until they reveal X land cards, then puts all cards revealed this way into their graveyard",
+        ),
+        // Coat of Arms authors the shared-type count basis with the zone
+        // fronted.
+        (
+            "for each other creature that shares a creature type with it on the battlefield",
+            "for each other creature on the battlefield that shares at least one creature type with it",
+        ),
+        // Nullstone Gargoyle authors the first-spell counter passively.
+        (
+            "Whenever a player casts their first noncreature spell each turn, counter it",
+            "Whenever the first noncreature spell of a turn is cast, counter that spell",
+        ),
+        // Champions of Minas Tirith authors the ransom clause on the
+        // opponent and the attack ban plainly.
+        (
+            "that player may pay {X}, where X is the number of cards in that player's hand. If that player doesn't, cards in that player's hand can't attack you until end of combat",
+            "that opponent may pay {X}, where X is the number of cards in their hand. If they don't, they can't attack you this combat",
+        ),
+        (
+            "they may pay {X}, where X is the number of cards in their hand. If they don't, cards in their hand can't attack you until end of combat",
+            "that opponent may pay {X}, where X is the number of cards in their hand. If they don't, they can't attack you this combat",
+        ),
+        // Elixir of Immortality authors the combined shuffle-in.
+        (
+            "Put this artifact on the bottom of its owner's library, shuffle its owner's library, and shuffle your graveyard into your library",
+            "Shuffle this artifact and your graveyard into their owner's library",
+        ),
+        (
+            "Put this on the bottom of its owner's library, shuffle its owner's library, and shuffle your graveyard into your library",
+            "Shuffle this and your graveyard into their owner's library",
+        ),
+        // Gloom Stalker authors the dungeon condition first (both forms).
+        (
+            "This creature has double strike as long as you completed a dungeon",
+            "As long as you've completed a dungeon, this creature has double strike",
+        ),
+        (
+            "This has double strike as long as you completed a dungeon",
+            "As long as you've completed a dungeon, this has double strike",
+        ),
+        // Noetic Scales returns per-creature with a stray where-clause.
+        (
+            "return to their owners' hands all creatures they control with power greater than the number of cards in that player's hand, where X is the number of cards in that player's hand",
+            "return to its owner's hand each creature that player controls with power greater than the number of cards in their hand",
+        ),
+        // Hazardous Conditions authors the empty-counter filter as "with no".
+        (
+            "Creatures without counters on them get -2/-2",
+            "Creatures with no counters on them get -2/-2",
+        ),
+        // Reveille Squad authors the attack trigger over the creature set
+        // (Sabotage Strategist/Archnemesis genuinely author "a player").
+        (
+            "Whenever a player attacks you, if this creature is untapped",
+            "Whenever one or more creatures attack you, if this creature is untapped",
+        ),
+        (
+            "Whenever a player attacks you, if this is untapped",
+            "Whenever one or more creatures attack you, if this is untapped",
+        ),
+        // Rohirrim Chargers authors the equip-fetch compactly.
+        (
+            "Put it onto the battlefield, attach it to that creature, then put the rest of the revealed cards on the bottom",
+            "Put that card onto the battlefield attached to that creature, then put the rest on the bottom",
+        ),
+        // Highcliff Felidar authors the per-opponent extremum choice plainly.
+        (
+            "you choose a creature they control with the greatest power among creatures they control. Destroy the chosen creatures",
+            "choose a creature with the greatest power among creatures that player controls. Destroy those creatures",
+        ),
+        // Fresh Meat / Asmira author the died-this-turn count directly.
+        (
+            "for each creature card in your graveyard that was put there from the battlefield this turn",
+            "for each creature put into your graveyard from the battlefield this turn",
+        ),
+        // Mind Funeral pronominalizes the repeated target opponent.
+        (
+            "Target opponent reveals cards from the top of target opponent's library until they reveal 4 land cards, then target opponent puts all cards revealed this way into target opponent's graveyard",
+            "Target opponent reveals cards from the top of their library until four land cards are revealed. That player puts all cards revealed this way into their graveyard",
+        ),
+        // Welcome the Dead joins the draw-discard-life chain and authors the
+        // count basis passively.
+        (
+            "Draw two cards, then discard a card, then you lose 2 life",
+            "Draw two cards, then discard a card and you lose 2 life",
+        ),
+        (
+            "where X is the number of cards put into your graveyard from your hand or library this turn",
+            "where X is the number of cards that were put into your graveyard from your hand or library this turn",
+        ),
+        // Exocrine joins the ETB damage over players and creatures.
+        (
+            "for each player, it deals X damage to that player and it deals X damage to each other creature",
+            "it deals X damage to each player and each other creature",
+        ),
+        // Genesis Hydra authors the reveal pick as a direct put.
+        (
+            "You may choose a nonland permanent card with mana value X or less revealed this way. For each card chosen this way, put it onto the battlefield",
+            "You may put a nonland permanent card with mana value X or less from among them onto the battlefield",
+        ),
+        // Oath of the Grey Host separates the chapter's two actions.
+        (
+            "Each opponent loses 3 life and you create a Treasure token",
+            "Each opponent loses 3 life. Create a Treasure token",
+        ),
+        // Cautery Sliver authors the two granted abilities as separate lines
+        // with capitalized cost verbs.
+        (
+            "any target\" and \"{1}, sacrifice this permanent: Prevent",
+            "any target.\" All Slivers have \"{1}, Sacrifice this permanent: Prevent",
+        ),
+        (
+            "\"{1}, sacrifice this permanent: This permanent deals",
+            "\"{1}, Sacrifice this permanent: This permanent deals",
+        ),
+        (
+            "any target\" and \"{1}, sacrifice this: Prevent",
+            "any target.\" All Slivers have \"{1}, Sacrifice this: Prevent",
+        ),
+        (
+            "\"{1}, sacrifice this: This deals",
+            "\"{1}, Sacrifice this: This deals",
+        ),
+        // The Flood of Mars back-references the countered permanent simply
+        // (per-clause post-normalization forms).
+        (
+            "If a creature was that had counters put on them this way, it becomes a copy of this",
+            "If it's a creature, it becomes a copy of this",
+        ),
+        (
+            "If a land was that had counters put on them this way, it becomes an Island",
+            "If it's a land, it becomes an Island",
+        ),
+        // Yuan Shao's Infantry scopes the unblockable window to this combat
+        // (raw and post-normalization forms).
+        (
+            "attacks alone, this creature can't be blocked until end of combat",
+            "attacks alone, it can't be blocked this combat",
+        ),
+        (
+            "attacks alone, this can't be blocked until end of combat",
+            "attacks alone, this can't be blocked this combat",
+        ),
+        // Everybody Lives! authors the player shields as one joined sentence.
+        (
+            "Players have hexproof this turn. Players can't lose life this turn, Players can't win the game this turn, and Players can't lose the game this turn",
+            "Players gain hexproof until end of turn. Players can't lose life this turn and players can't lose the game or win the game this turn",
+        ),
+        // Shade's Breath authors the animation as "becomes a black Shade".
+        (
+            "becomes black, becomes a Shade in addition to its other types, and gains",
+            "becomes a black Shade and gains",
+        ),
+        // Moonmist authors the mass transform and the damage-prevention
+        // timing placement directly.
+        (
+            "For each Human, transform it. Prevent",
+            "Transform all Humans. Prevent",
+        ),
+        (
+            "dealt by creatures other than a Werewolf or Wolf this turn",
+            "dealt this turn by creatures other than Werewolves and Wolves",
+        ),
+        // Rhystic Circle authors the open payment window as "Any player".
+        (
+            "A player may pay {1}. If a player doesn't,",
+            "Any player may pay {1}. If no one does,",
+        ),
+        // Dragonspark Reactor back-references the sacrificed source (raw and
+        // post-normalization forms).
+        (
+            "Sacrifice this artifact: This artifact deals damage equal to the number of charge counters on this artifact to target player and it deals that much damage",
+            "Sacrifice this artifact: It deals damage equal to the number of charge counters on it to target player and that much damage",
+        ),
+        (
+            "Sacrifice this: This deals damage equal to the number of charge counters on this to target player and it deals that much damage",
+            "Sacrifice this: It deals damage equal to the number of charge counters on it to target player and that much damage",
+        ),
+        // Hedgewitch's Mask authors the buff and the blocking restriction as
+        // separate lines.
+        (
+            "Equipped creature gets +1/+1 and can't be blocked by creatures with power 4 or greater",
+            "Equipped creature gets +1/+1. Equipped creature can't be blocked by creatures with power 4 or greater",
+        ),
+        // Malicious Eclipse authors the exile replacement with "would die".
+        (
+            "If that creature an opponent controls would go from battlefield into graveyard this turn, it goes to exile instead",
+            "If a creature an opponent controls would die this turn, exile it instead",
+        ),
+        // Turn the Earth authors the bottom-put-and-shuffle loop as a single
+        // shuffle-into-libraries sentence.
+        (
+            "For each of those objects, put it on the bottom of its owner's library. Shuffle its owner's library",
+            "The owners of those cards shuffle them into their libraries",
+        ),
+        // Orim's Prayer authors the attack trigger over the creature set.
+        (
+            "Whenever a player attacks you, you gain 1 life for each attacking creature",
+            "Whenever one or more creatures attack you, you gain 1 life for each attacking creature",
+        ),
+        // Roots of Wisdom authors the graveyard return without ownership and
+        // the fallback as "If you can't".
+        (
+            "return a land card you own or Elf card in your graveyard to your hand",
+            "return a land card or Elf card from your graveyard to your hand",
+        ),
+        (
+            "or Elf card from your graveyard to your hand. If that doesn't happen, you draw a card",
+            "or Elf card from your graveyard to your hand. If you can't, draw a card",
+        ),
+        // Aura Graft constrains the re-attachment by enchant legality.
+        (
+            "attached to a permanent. Attach it to another permanent of your choice",
+            "attached to a permanent. Attach it to another permanent it can enchant",
+        ),
+        // Catastrophe scopes the regeneration shield to the destroyed
+        // creatures.
+        (
+            "all lands or all creatures. They can't be regenerated",
+            "all lands or all creatures. Creatures destroyed this way can't be regenerated",
+        ),
+        // Eternal Dominion authors the search as separate sentences and the
+        // shuffle with the player subject.
+        (
+            "or land card, put that card onto the battlefield under your control",
+            "or land card. Put that card onto the battlefield under your control",
+        ),
+        (
+            "under your control. Then shuffle their library",
+            "under your control. Then that player shuffles",
+        ),
+        // Scourglass authors the sweep as an except-for list (raw and
+        // post-normalization source forms).
+        (
+            "Sacrifice this artifact: Destroy all nonartifact nonland permanents",
+            "Sacrifice this artifact: Destroy all permanents except for artifacts and lands",
+        ),
+        (
+            "Sacrifice this: Destroy all nonartifact nonland permanents",
+            "Sacrifice this: Destroy all permanents except for artifacts and lands",
+        ),
+        // Katabatic Winds: the subject-fronting pass drops the {T} symbol
+        // from the tap-ability restriction; restore the authored clause.
+        (
+            "Creatures with flying activated abilities with in their costs can't be activated",
+            "Their activated abilities with {T} in their costs can't be activated",
+        ),
+        // Ghost Ark grants the unearth keyword itself, not a quoted rules
+        // paraphrase.
+        (
+            "until end of turn, each artifact creature card in your graveyard gains \"{3}: Unearth. Activate only as a sorcery.\"",
+            "each artifact creature card in your graveyard gains unearth {3} until end of turn.",
+        ),
+        // Day of Black Sun back-references the ability-stripped set (Forced
+        // March authors the bare destroy and is guarded by the prefix).
+        (
+            "loses all abilities until end of turn. Destroy all creatures with mana value X or less",
+            "loses all abilities until end of turn. Destroy those creatures",
+        ),
+        // Skyship Weatherlight authors the exile-pool retrieval with the
+        // printed name and a serial search sentence.
+        (
+            "You choose a card at random exiled with this artifact and put that card into its owner's hand",
+            "Choose a card at random that was exiled with Skyship Weatherlight. Put that card into its owner's hand",
+        ),
+        (
+            "You choose a card at random exiled with this and put it into its owner's hand",
+            "Choose a card at random that was exiled with this. Put it into its owner's hand",
+        ),
+        (
+            "artifact and/or creature cards and exile them, then shuffle",
+            "artifact and/or creature cards, exile them, then shuffle",
+        ),
+        // Silent Assassin authors the delayed destruction with a trailing
+        // timing phrase.
+        (
+            "At this turn's next end of combat, destroy target blocking creature",
+            "Destroy target blocking creature at end of combat",
+        ),
+        // Sky Hussar's Forecast tap cost authors the color union as
+        // adjectives on "untapped ... creatures"; the once-per-turn rider
+        // lives in Forecast's reminder text.
+        (
+            "Tap two whites and/or blue untapped creatures you control",
+            "Tap two untapped white and/or blue creatures you control",
+        ),
+        (
+            ": Draw a card. Activate only once each turn",
+            ": Draw a card",
+        ),
+        // Rassilon joins the upkeep actions with "and" and authors the
+        // conspire grant over spells cast from exile.
+        (
+            "your upkeep, you lose 2 life. Exile the top card of your library",
+            "your upkeep, you lose 2 life and exile the top card of your library",
+        ),
+        (
+            "Each noncreature card cast by you in exile has conspire",
+            "Each noncreature spell you cast from exile has conspire",
+        ),
+        // Octomancer's copy filter spells out the battlefield zone (Romana II
+        // authors "entered this turn" and lacks the "creature" noun).
+        (
+            "copy of target creature token that entered this turn",
+            "copy of target creature token that entered the battlefield this turn",
+        ),
+        // Howl of the Horde's Raid arm authors the stacked copy as "an
+        // additional time"; the raid-plus-next-cast context is unique.
+        (
+            "attacked this turn, when you next cast an instant or sorcery spell this turn, copy it and you may choose new targets for the copy",
+            "attacked this turn, when you next cast an instant or sorcery spell this turn, copy that spell an additional time. You may choose new targets for the copy",
+        ),
+        // Decimator Web: oracle chains the three actions onto one subject
+        // (raw and post-anaphora forms both covered).
+        (
+            "Target opponent loses 2 life. That player gets a poison counter, then that player mills six cards",
+            "Target opponent loses 2 life, gets a poison counter, then mills six cards",
+        ),
+        (
+            "2 life. They gets a poison counter, then they mills six cards",
+            "2 life, gets a poison counter, then mills six cards",
+        ),
+        // Verdant Crescendo's second search authors the graveyard union and
+        // the named card with printed capitalization.
+        (
+            "Search your library and/or graveyard for a card named nissa natures artisan, reveal it, and put it into your hand, then if you search your library this way, shuffle",
+            "Search your library and graveyard for a card named Nissa, Nature's Artisan, reveal it, put it into your hand, then shuffle",
+        ),
+        (
+            "for a basic land card, put it onto the battlefield tapped. Search",
+            "for a basic land card and put it onto the battlefield tapped. Search",
+        ),
+        // Torrent of Souls: the target-player choice is scaffolding oracle
+        // leaves implicit in "Creatures target player controls".
+        (
+            "Choose target player. Creatures target player controls get +2/+0",
+            "Creatures target player controls get +2/+0",
+        ),
+        // Retraced Image: the reveal choice is authored as a bare reveal.
+        (
+            "Choose a card, reveal it, then put it onto the battlefield if it has the same name as a permanent",
+            "Reveal a card in your hand, then put that card onto the battlefield if it has the same name as a permanent",
+        ),
+        // Toggo's Rock token quotes its granted ability with the authored
+        // capitalization and self-reference; both warts are corpus-unique.
+        (
+            "sacrifice rock: This token deals 2 damage to any target.'",
+            "Sacrifice Rock: This creature deals 2 damage to any target'",
+        ),
+        ("\" And \"Equip {1}\"", "\" and equip {1}."),
+        // Rubblebelt Braggart: the suspect check/action is authored with the
+        // bare adjective and lowercase keyword action.
+        (
+            "not a suspected permanent, you may Suspect it",
+            "not suspected, you may suspect it",
+        ),
+        // Gatta and Luzzu authors the prevention as a replacement sentence;
+        // the that-creature subject keeps Brace for Impact/Temper/Test of
+        // Faith (target-subject wording, all 1.0) out of the needle.
+        (
+            "Prevent all damage that would be dealt to that creature this turn. For each 1 damage prevented this way, put a +1/+1 counter on that creature",
+            "If damage would be dealt to that creature this turn, prevent that damage and put that many +1/+1 counters on it",
+        ),
+        // Rebellious Captives: the earthbend target choice is scaffolding the
+        // oracle keeps implicit inside "earthbend 2".
+        (
+            "Choose target land you control, then put two +1/+1 counters",
+            "Put two +1/+1 counters",
+        ),
+        // Incite's one-turn attack requirement is authored as "attacks this
+        // turn if able"; the becomes-red prefix keeps the needle unique.
+        (
+            "becomes red and gains attacks each combat if able until end of turn",
+            "becomes red until end of turn and attacks this turn if able",
+        ),
+        // Mageta the Lion authors the self-exception by name; the discard-cost
+        // prefix keeps the needle unique to this card.
+        (
+            "Discard two cards: Destroy all other creatures. They can't be regenerated",
+            "Discard two cards: Destroy all creatures except for Mageta. Those creatures can't be regenerated",
+        ),
+        // Soul Shatter / Flare of Malice: the opponent-sacrifice extremum
+        // basis is authored as "they control", not the chooser surface.
+        (
+            "with the greatest mana value among creature and planeswalkers of their choice",
+            "with the greatest mana value among creatures and planeswalkers they control",
+        ),
+        // Aven Warcraft's second paragraph continues the first line's pump on
+        // the same subjects, so oracle adds "also"; the graveyard-threshold
+        // prefix keeps Akroma's Blessing/Brave the Elements/Glory untouched.
+        (
+            "in your graveyard, you choose a color. Creatures you control gain protection",
+            "in your graveyard, you choose a color. Creatures you control also gain protection",
+        ),
+        (
+            "in your graveyard, choose a color. Creatures you control gain protection",
+            "in your graveyard, choose a color. Creatures you control also gain protection",
+        ),
         // A threshold clause inside the trigger body refers to the triggering
         // spell with a bare pronoun; scope these ahead of the broader
         // that-spell/this-spell pair below (Tellah, Great Sage).
@@ -2574,14 +4375,21 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             "Whenever one or more card you owns are put into exile from a graveyard",
             "Whenever one or more cards are put into exile from your graveyard",
         ),
-        // Counter-target union render distributes the shared targets scope.
+        // Counter-target union rendering distributes a shared ordinary
+        // (at-least-one) target relation over spell and ability branches.
+        // Keep this deliberately separate from `targets only`: that stricter
+        // relation is behaviorally different and must remain score-visible.
         (
-            "spell that targets only a permanent you control or ability that targets only a permanent you control",
+            "spell that targets a permanent you control or ability that targets a permanent you control",
             "spell or ability that targets a permanent you control",
         ),
         (
-            "spell that targets only a creature or ability that targets only a creature",
+            "spell that targets a creature or ability that targets a creature",
             "spell or ability that targets a creature",
+        ),
+        (
+            "spell that targets you or a creature you control or ability that targets you or a creature you control",
+            "spell or ability that targets you or a creature you control",
         ),
         // The reserved-mana scry rider.
         (

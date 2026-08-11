@@ -33,6 +33,9 @@ pub fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextE
         [first, printed, set] if first == "first" && printed == "printed" && set == "set" => {
             Some(MetadataKind::FirstPrintedSet)
         }
+        [attraction, lights] if attraction == "attraction" && lights == "lights" => {
+            Some(MetadataKind::AttractionLights)
+        }
         [pt] if pt == "power/toughness" => Some(MetadataKind::PowerToughness),
         [power, toughness] if power == "power" && toughness == "toughness" => {
             Some(MetadataKind::PowerToughness)
@@ -47,6 +50,7 @@ pub fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextE
         Some(MetadataKind::ManaCost) => MetadataLine::ManaCost(value),
         Some(MetadataKind::TypeLine) => MetadataLine::TypeLine(value),
         Some(MetadataKind::FirstPrintedSet) => MetadataLine::FirstPrintedSet(value),
+        Some(MetadataKind::AttractionLights) => MetadataLine::AttractionLights(value),
         Some(MetadataKind::PowerToughness) => MetadataLine::PowerToughness(value),
         Some(MetadataKind::Loyalty) => MetadataLine::Loyalty(value),
         Some(MetadataKind::Defense) => MetadataLine::Defense(value),
@@ -90,6 +94,7 @@ enum MetadataKind {
     ManaCost,
     TypeLine,
     FirstPrintedSet,
+    AttractionLights,
     PowerToughness,
     Loyalty,
     Defense,

@@ -142,6 +142,41 @@ fn ordinary_graveyard_exile_remains_a_choice_from_the_zone() {
 }
 
 #[test]
+fn singular_opponent_source_excluding_choice_keeps_choose_then_exile_surface() {
+    let tag = TagKey::from("chosen_0");
+    let mut filter = ObjectFilter::permanent();
+    filter.controller = Some(PlayerFilter::You);
+    filter.other = true;
+    filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+        "this creature".to_string(),
+    ));
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        filter.clone(),
+        ChoiceCount::exactly(1),
+        PlayerFilter::Opponent,
+        tag.clone(),
+    );
+    let exile = crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(tag.clone()));
+
+    assert_eq!(
+        describe_choose_then_exile(&choose, &exile).as_deref(),
+        Some("an opponent chooses a permanent you control other than this creature and exiles it")
+    );
+
+    let ordinary_you_choose = crate::effects::ChooseObjectsEffect::new(
+        filter,
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        tag,
+    );
+    assert_ne!(
+        describe_choose_then_exile(&ordinary_you_choose, &exile).as_deref(),
+        Some("an opponent chooses a permanent you control other than this creature and exiles it"),
+        "ordinary chooser/action pairs must not inherit the opponent-choice surface"
+    );
+}
+
+#[test]
 fn untap_preserves_an_authored_plural_pronoun_reference() {
     let mut affected = ObjectFilter::default().in_zone(Zone::Battlefield);
     affected.set_plural_pronoun_reference_surface(true);

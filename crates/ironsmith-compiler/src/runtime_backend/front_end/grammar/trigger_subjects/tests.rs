@@ -25,6 +25,14 @@ fn typed_trigger_shapes_find_connectors_and_spell_activity() {
             other_word: 3,
         })
     );
+    assert_eq!(
+        parse_source_or_filter_shape(&["this", "or", "an", "instant", "or", "sorcery", "spell",]),
+        Some(SourceOrFilterShape {
+            source_word_end: 1,
+            connector_word: 1,
+            filter_word: 2,
+        })
+    );
     let tokens = lex_line("you cast or copy a spell", 0).unwrap();
     let facts = parse_spell_activity_verb_facts(&tokens);
     assert_eq!(facts.cast, Some(1));

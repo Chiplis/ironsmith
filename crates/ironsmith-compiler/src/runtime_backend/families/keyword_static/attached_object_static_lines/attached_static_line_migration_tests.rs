@@ -43,6 +43,49 @@ fn typed_attached_restriction_shapes_preserve_static_semantics() {
 }
 
 #[test]
+fn attached_color_condition_keeps_ability_loss_on_the_attached_creature() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "As long as enchanted creature is red, it loses all abilities.",
+        0,
+    )
+    .expect("lex attachment-relative ability loss");
+    let abilities = parse_static_ability_ast_line_lexed(&tokens)
+        .expect("parse attachment-relative ability loss")
+        .expect("attachment-relative ability loss should be recognized");
+    let [
+        StaticAbilityAst::AttachedStaticAbilityGrant {
+            ability,
+            condition: Some(crate::ConditionExpr::AttachedToSourceMatches(filter)),
+            ..
+        },
+    ] = abilities.as_slice()
+    else {
+        panic!("expected one conditional attached grant: {abilities:#?}");
+    };
+    assert_eq!(filter.colors, Some(crate::color::ColorSet::RED));
+    assert!(
+        matches!(
+            ability.as_ref(),
+            StaticAbilityAst::Static(ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter
+        ),
+        "the typed consequent must remove abilities from the attached object: {ability:#?}"
+    );
+
+    let global = crate::runtime_backend::lexer::lex_line(
+        "As long as you control a red creature, red creatures lose all abilities.",
+        0,
+    )
+    .expect("lex global near miss");
+    assert!(
+        parse_attached_conditional_loses_all_abilities_line(&global)
+            .expect("parse global near miss")
+            .is_none(),
+        "a controller condition must not be rewritten as an attachment condition"
+    );
+}
+
+#[test]
 fn attached_subject_carries_into_pronoun_loss_and_grant_sentence() {
     let tokens = crate::runtime_backend::lexer::lex_line(
         "Enchanted creature can't attack or block. It loses all abilities and has \"{1}: Draw a card.\"",
@@ -112,6 +155,59 @@ fn attached_keyword_and_goaded_clause_keeps_both_continuous_abilities() {
             .unwrap()
             .is_none(),
         "an ordinary keyword grant must remain owned by the general attached-grant rule"
+    );
+}
+
+#[test]
+fn attached_keyword_grant_and_loss_dispatches_before_subject_filter_loss() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Enchanted creature has defender and loses flying.",
+        0,
+    )
+    .unwrap();
+    let routed = parse_static_ability_ast_line_lexed(&tokens)
+        .unwrap()
+        .expect("attached grant-and-loss clause should be claimed");
+    let [
+        StaticAbilityAst::GrantKeywordAction {
+            filter: grant_filter,
+            action: KeywordAction::Defender,
+            condition: None,
+        },
+        StaticAbilityAst::RemoveKeywordAction {
+            filter: loss_filter,
+            action: KeywordAction::Flying,
+            mode: ironsmith_core::AbilityLossMode::Lose,
+        },
+    ] = routed.as_slice()
+    else {
+        panic!("expected typed defender grant plus flying loss: {routed:#?}");
+    };
+    assert_eq!(grant_filter, loss_filter);
+    assert!(
+        grant_filter.static_abilities.is_empty(),
+        "the granted keyword must not become an affected-object prerequisite: {grant_filter:#?}"
+    );
+
+    let filtered = crate::runtime_backend::lexer::lex_line(
+        "Enchanted creature with defender loses flying.",
+        0,
+    )
+    .unwrap();
+    let routed = parse_static_ability_ast_line_lexed(&filtered)
+        .unwrap()
+        .expect("ordinary qualified loss should remain supported");
+    assert_eq!(
+        routed.len(),
+        1,
+        "qualified loss is not a grant: {routed:#?}"
+    );
+    let StaticAbilityAst::RemoveKeywordAction { filter, .. } = &routed[0] else {
+        panic!("expected one qualified keyword loss: {routed:#?}");
+    };
+    assert_eq!(
+        filter.static_abilities,
+        [crate::static_abilities::StaticAbilityId::Defender]
     );
 }
 

@@ -1,4 +1,10 @@
 {
+    if let Some(compact) = describe_put_counters_then_conditional_animation(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_target_same_name_graveyard_may_cast(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_target_player_draw_exile_then_copy_result(effects) {
         return compact;
     }
@@ -141,6 +147,9 @@
     if let Some(compact) = describe_attached_to_source_sacrifice_sequence(&raw_effects) {
         return compact;
     }
+    if let Some(compact) = describe_attached_target_controller_sacrifice(&raw_effects) {
+        return compact;
+    }
     if let Some(compact) = describe_tagged_token_copy_then_sacrifice(&raw_effects) {
         return compact;
     }
@@ -271,6 +280,9 @@
         return compact;
     }
     if let Some(compact) = describe_moved_object_haste_delayed_cleanup(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_pump_all_then_change_all_subtypes_same_filter(effects) {
         return compact;
     }
     if let Some(compact) = describe_pump_all_then_grant_same_filter(effects) {
@@ -422,6 +434,17 @@
     }
     if let [first, second] = effects
         && let Some(compact) = describe_destroy_then_temporary_cant_attack_block(first, second)
+    {
+        return compact;
+    }
+    if let [destroy_effect, target_effect, search_effect, shuffle_effect] = effects
+        && let Some(compact) =
+            describe_destroy_then_target_opponent_search_to_graveyard_then_shuffle(
+                destroy_effect,
+                target_effect,
+                search_effect,
+                shuffle_effect,
+            )
     {
         return compact;
     }
@@ -750,9 +773,24 @@
     {
         return compact;
     }
+    if let [target_effect, draw_effect, lose_effect] = raw_effects.as_slice()
+        && let Some(target_only) = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && target_only.target == ChooseSpec::target_player()
+        && let Some(draw) = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()
+        && let Some(lose) = lose_effect.downcast_ref::<crate::effects::LoseLifeEffect>()
+        && let Value::Count(counted) = draw.count.unhinted()
+        && counted.owner.as_ref() == Some(&PlayerFilter::target_player())
+        && let Some(compact) = describe_draw_then_lose_life(draw, lose)
+    {
+        // The target is authored inside the shared where-X basis rather than
+        // as an action subject. Its TargetOnly effect remains executable, but
+        // the compact sentence must not print a synthetic "choose" prelude.
+        return compact;
+    }
     if let [choose_effect, draw_effect, target_effect, lose_effect] = raw_effects.as_slice()
         && let Some(choose) =
             choose_effect.downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()
+        && choose.family == crate::types::SubtypeFamily::Creature
         && choose.chooser == PlayerFilter::You
         && choose.excluded_subtypes.is_empty()
         && let Some(draw) = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()

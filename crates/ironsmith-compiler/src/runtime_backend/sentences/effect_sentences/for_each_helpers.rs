@@ -8,7 +8,7 @@ use crate::effect::{Until, Value};
 use crate::target::{ObjectFilter, ObjectRef, PlayerFilter};
 use ironsmith_core::ValueSurfaceHint;
 
-use super::super::effect_ast_traversal::for_each_nested_effects_mut;
+use super::super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
 use super::super::grammar::effects::for_each_shapes::{
     self, ForEachParticipantScope, ManaClauseShape, ModifierTailAction, OpponentSpecialShape,
     RelativeControlClauseShape, WhoClauseShape,
@@ -59,6 +59,43 @@ pub(crate) fn parse_for_each_object_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
     let mut filter = parse_object_filter(filter_tokens, false)?;
+    let words = crate::runtime_backend::token_word_refs(filter_tokens);
+    // Quantified subjects use the older family-level object-filter parser,
+    // so they do not pass through the grammar filter finalizer that normally
+    // restores this exact coordinated Stack domain. Reassert only the
+    // grammar-proven terminal noun phrase here; ordinary spell filters must
+    // retain their mana-cost predicate and Spell-only domain.
+    if words
+        .windows(3)
+        .any(|window| matches!(window, ["spell" | "spells", "and", "ability" | "abilities"]))
+    {
+        filter.zone = Some(crate::zone::Zone::Stack);
+        filter.stack_kind = Some(crate::filter::StackObjectKind::SpellOrAbility);
+        filter.has_mana_cost = false;
+        filter.set_conjunctive_set_surface(true);
+    }
+    let owner_index = words.windows(2).position(|window| window == ["you", "own"]);
+    let zone_index = words.iter().position(|word| {
+        matches!(
+            *word,
+            "battlefield" | "graveyard" | "hand" | "library" | "exile" | "command"
+        )
+    });
+    if owner_index
+        .zip(zone_index)
+        .is_some_and(|(owner, zone)| owner < zone)
+    {
+        filter.set_owner_before_zone_surface(true);
+    }
+    let counter_index = words
+        .iter()
+        .rposition(|word| matches!(*word, "counter" | "counters"));
+    if zone_index
+        .zip(counter_index)
+        .is_some_and(|(zone, counter)| zone < counter)
+    {
+        filter.set_counter_requirement_after_zone_surface(true);
+    }
     if filter_tokens
         .first()
         .is_some_and(|token| token.is_word("those"))
@@ -523,6 +560,43 @@ fn player_filter(scope: ForEachParticipantScope) -> Option<PlayerFilter> {
     }
 }
 
+/// In `each other player may copy that spell`, "other" is relative to the
+/// player who controls the referenced spell, not necessarily the ability's
+/// controller. Keep ordinary `each other player` clauses controller-relative,
+/// but anchor this typed stack-copy shape to the triggering stack object.
+fn reanchor_other_player_copy_filter(filter: PlayerFilter, effects: &[EffectAst]) -> PlayerFilter {
+    if filter != PlayerFilter::NotYou || !effects.iter().any(effect_copies_triggering_stack_object)
+    {
+        return filter;
+    }
+    PlayerFilter::excluding(
+        PlayerFilter::Any,
+        PlayerFilter::AliasedControllerOf(ObjectRef::tagged("triggering")),
+    )
+}
+
+fn effect_copies_triggering_stack_object(effect: &EffectAst) -> bool {
+    if matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CopySpell {
+                target: TargetAst::Tagged(tag, _),
+                ..
+            },
+            ..
+        }) if tag.as_str() == "triggering"
+    ) {
+        return true;
+    }
+    let mut found = false;
+    for_each_nested_effects(effect, true, |nested| {
+        if !found {
+            found = nested.iter().any(effect_copies_triggering_stack_object);
+        }
+    });
+    found
+}
+
 fn wrap_opponents(filter: &PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
     if *filter == PlayerFilter::Opponent {
         EffectAst::ForEachOpponent { effects }
@@ -980,6 +1054,18 @@ pub(crate) fn parse_for_each_player_clause(
         return Ok(Some(wrap_players(&iteration_filter, vec![conditional])));
     }
 
+    if iteration_filter == PlayerFilter::Any
+        && let Some(source_attacked) =
+            for_each_shapes::parse_source_attacked_player_clause_shape(outer.inner_tokens)
+    {
+        let normalized = prepend_that_player_subject(source_attacked.effect_tokens);
+        let effects = parse_maybe_effects(&normalized, false, true)?;
+        return Ok(Some(EffectAst::ForEachPlayersFiltered {
+            filter: PlayerFilter::AttackedBySourceThisTurn,
+            effects,
+        }));
+    }
+
     if let Some(who) = for_each_shapes::parse_who_clause_shape(outer.inner_tokens) {
         match who {
             WhoClauseShape::TappedLandForMana { effect_tokens } => {
@@ -1086,6 +1172,7 @@ pub(crate) fn parse_for_each_player_clause(
         );
         stabilize_standalone_participant_choice_tag(&mut effects, outer.inner_tokens);
     }
+    let iteration_filter = reanchor_other_player_copy_filter(iteration_filter, &effects);
     Ok(Some(wrap_players(&iteration_filter, effects)))
 }
 
@@ -1331,6 +1418,46 @@ mod participant_choice_ownership_tests {
     }
 
     #[test]
+    fn source_attacked_player_subject_keeps_runtime_filter() {
+        let tokens = lex_line(
+            "Each player this creature attacked this turn loses the game.",
+            0,
+        )
+        .expect("source-relative player clause should lex");
+        let effect = parse_for_each_player_clause(&tokens)
+            .expect("source-relative player clause should parse")
+            .expect("source-relative player clause should match");
+        let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
+            panic!("expected filtered player iteration, got {effect:#?}");
+        };
+        assert_eq!(filter, PlayerFilter::AttackedBySourceThisTurn);
+        assert!(format!("{effects:#?}").contains("LoseGame"), "{effects:#?}");
+    }
+
+    #[test]
+    fn other_players_copying_triggering_spell_exclude_its_controller() {
+        let tokens = lex_line(
+            "Each other player may copy that spell and may choose new targets for the copy they control.",
+            0,
+        )
+        .expect("triggering-spell fanout should lex");
+        let effect = parse_for_each_player_clause(&tokens)
+            .expect("triggering-spell fanout should parse")
+            .expect("triggering-spell fanout should match");
+        let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
+            panic!("expected filtered player iteration, got {effect:#?}");
+        };
+        assert_eq!(
+            filter,
+            PlayerFilter::excluding(
+                PlayerFilter::Any,
+                PlayerFilter::AliasedControllerOf(ObjectRef::tagged("triggering")),
+            )
+        );
+        assert!(matches!(effects.as_slice(), [EffectAst::May { .. }]));
+    }
+
+    #[test]
     fn standalone_participant_choices_use_an_aggregate_tag_but_nested_choices_remain_local() {
         let standalone = parsed_debug("Each player chooses a creature they control.");
         assert!(
@@ -1362,6 +1489,59 @@ mod participant_choice_ownership_tests {
         let ordinary =
             parse_for_each_object_filter(&ordinary_tokens).expect("ordinary filter should parse");
         assert_eq!(ordinary.set_quantifier_surface(), None);
+    }
+
+    #[test]
+    fn for_each_object_filter_preserves_owned_exile_counter_scope() {
+        let tokens = lex_line(
+            "creature card you own in exile with a memory counter on it",
+            0,
+        )
+        .expect("owned exile filter should lex");
+        let filter =
+            parse_for_each_object_filter(&tokens).expect("owned exile filter should parse");
+
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Exile));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+        assert_eq!(
+            filter.with_counter,
+            Some(crate::filter::CounterConstraint::Typed(
+                crate::object::CounterType::Named("memory")
+            ))
+        );
+        assert!(filter.has_owner_before_zone_surface());
+        assert!(filter.has_counter_requirement_after_zone_surface());
+        assert_eq!(
+            filter.description(),
+            "a creature card you own in exile with a memory counter on it"
+        );
+    }
+
+    #[test]
+    fn for_each_object_filter_restores_only_the_exact_coordinated_stack_domain() {
+        let coordinated = lex_line("spell and ability your opponents control", 0)
+            .expect("coordinated Stack filter should lex");
+        let coordinated = parse_for_each_object_filter(&coordinated)
+            .expect("coordinated Stack filter should parse");
+        assert_eq!(coordinated.zone, Some(crate::zone::Zone::Stack));
+        assert_eq!(
+            coordinated.stack_kind,
+            Some(crate::filter::StackObjectKind::SpellOrAbility)
+        );
+        assert!(!coordinated.has_mana_cost);
+        assert!(coordinated.has_conjunctive_set_surface());
+
+        let ordinary =
+            lex_line("spell your opponents control", 0).expect("ordinary spell filter should lex");
+        let ordinary =
+            parse_for_each_object_filter(&ordinary).expect("ordinary spell filter should parse");
+        assert_eq!(
+            ordinary.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell)
+        );
+        assert!(ordinary.has_mana_cost);
+        assert!(!ordinary.has_conjunctive_set_surface());
     }
 
     #[test]

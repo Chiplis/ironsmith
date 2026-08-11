@@ -69,6 +69,46 @@ fn typed_comma_then_reveal_choose_discard_ignores_implicit_target_scaffolding() 
 }
 
 #[test]
+fn typed_comma_then_reveal_choose_discard_rejects_a_different_result_tag() {
+    let target = ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any));
+    let player = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any));
+    let chosen = TagKey::from("chosen_hand_card");
+    let look = Effect::new(crate::effects::LookAtHandEffect::reveal(target.clone()));
+    let mut choice_filter = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .owned_by(player.clone());
+    choice_filter.set_explicit_card_noun(true);
+    choice_filter.excluded_card_types.push(CardType::Land);
+    let choose = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            choice_filter,
+            ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            chosen,
+        )
+        .in_zone(Zone::Hand),
+    );
+    let discard = Effect::new(crate::effects::DiscardEffect::new_with_filter(
+        Value::Fixed(1),
+        player,
+        false,
+        Some(ObjectFilter::tagged("different_hand_card").in_zone(Zone::Hand)),
+    ));
+    let sequence = Effect::new(crate::effects::SequenceEffect::comma_then(vec![
+        Effect::new(crate::effects::TargetOnlyEffect::new(target)),
+        look,
+        choose,
+        discard,
+    ]));
+
+    let rendered = describe_effect(&sequence);
+    assert!(
+        !rendered.contains(", then that player discards that card"),
+        "the compact surface must require the discard to consume the actual chosen result set: {rendered}"
+    );
+}
+
+#[test]
 fn typed_comma_then_keeps_dynamic_token_pt_before_delayed_cleanup() {
     let token = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Horror")
         .token()

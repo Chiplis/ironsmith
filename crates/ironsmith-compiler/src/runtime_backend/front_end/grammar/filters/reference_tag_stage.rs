@@ -1,4 +1,4 @@
-use super::super::super::lexer::parser_token_word_refs;
+use super::super::super::lexer::{parser_token_word_positions, parser_token_word_refs};
 use super::reference_tag_word_facts::{
     parse_last_word_choice_before, parse_phrase_anywhere, parse_phrase_at_head,
     parse_phrase_choice_anywhere, parse_phrase_choice_at_head, parse_phrase_choice_whole,
@@ -12,14 +12,42 @@ use crate::types::SubtypeFamily;
 const TARGET_OR_TARGETS_WORDS: &[&str] = &["target", "targets"];
 const THAT_WORD: &str = "that";
 
+pub(crate) fn compound_filter_subtype_prefix_word_len(words: &[&str]) -> Option<usize> {
+    if words.get(..2) == Some(&["time", "lord"]) {
+        return Some(2);
+    }
+    if parse_subtype_flexible(*words.first()?).is_some() {
+        return Some(1);
+    }
+    if let Some(next) = words.get(1) {
+        let compound = format!("{}-{next}", words[0]);
+        if parse_subtype_flexible(&compound).is_some() {
+            return Some(2);
+        }
+    }
+    super::super::leaf::classify_token_definition_subtype(*words.first()?)?;
+    words
+        .get(1)
+        .and_then(|next| parse_subtype_flexible(next))
+        .map(|_| 1)
+}
+
 fn parse_compound_filter_subtype(words: &[&str], idx: usize) -> Option<Subtype> {
-    parse_subtype_flexible(*words.get(idx)?).or_else(|| {
-        let subtype = super::super::leaf::classify_token_definition_subtype(*words.get(idx)?)?;
-        words
-            .get(idx + 1)
-            .and_then(|next| parse_subtype_flexible(next))
-            .map(|_| subtype)
-    })
+    if words.get(idx..idx + 2) == Some(&["time", "lord"]) {
+        return Some(Subtype::TimeLord);
+    }
+    parse_subtype_flexible(*words.get(idx)?)
+        .or_else(|| {
+            let compound = format!("{}-{}", words.get(idx)?, words.get(idx + 1)?);
+            parse_subtype_flexible(&compound)
+        })
+        .or_else(|| {
+            let subtype = super::super::leaf::classify_token_definition_subtype(*words.get(idx)?)?;
+            words
+                .get(idx + 1)
+                .and_then(|next| parse_subtype_flexible(next))
+                .map(|_| subtype)
+        })
 }
 const ONLY_WORD: &str = "only";
 const SINGLE_WORD: &str = "single";
@@ -37,6 +65,12 @@ const CHOSEN_OBJECT_EXCLUSION_PHRASES: &[&[&str]] = &[
     &["other", "than", "chosen", "permanent"],
     &["other", "than", "the", "chosen", "object"],
     &["other", "than", "chosen", "object"],
+    &["and", "the", "chosen", "creature"],
+    &["and", "chosen", "creature"],
+    &["and", "the", "chosen", "permanent"],
+    &["and", "chosen", "permanent"],
+    &["and", "the", "chosen", "object"],
+    &["and", "chosen", "object"],
 ];
 const SELF_REFERENCE_WORDS: &[&str] = &["this", "it", "them"];
 const OBJECT_REFERENCE_NOUN_WORDS: &[&str] = &[
@@ -101,6 +135,11 @@ const POWER_GREATER_THAN_TOUGHNESS_PHRASES: &[&[&str]] = &[
     &["power", "greater", "than", "their", "toughness"],
     &["toughness", "less", "than", "its", "power"],
     &["toughness", "less", "than", "their", "power"],
+];
+const POWER_TOUGHNESS_NOT_EQUAL_PHRASES: &[&[&str]] = &[
+    &["power", "and", "toughness", "aren't", "equal"],
+    &["power", "and", "toughness", "arent", "equal"],
+    &["power", "and", "toughness", "are", "not", "equal"],
 ];
 const ATTACHMENT_TAGGED_TAIL_PREFIXES: &[&[&str]] = &[
     &["it"],
@@ -482,6 +521,7 @@ fn clear_redundant_power_toughness_axis_filter(
                 filter.toughness = None;
             }
         }
+        crate::filter::PowerToughnessRelation::NotEqual => {}
     }
 }
 const BASE_WORD: &str = "base";
@@ -502,6 +542,12 @@ const ACTIVATED_OR_TRIGGERED_ABILITY_PHRASES: &[&[&str]] = &[
     &["triggered", "or", "activated", "ability"],
     &["triggered", "or", "activated", "abilities"],
     &["triggered", "and", "activated", "abilities"],
+];
+const SPELL_AND_ABILITY_PHRASES: &[&[&str]] = &[
+    &["spell", "and", "ability"],
+    &["spell", "and", "abilities"],
+    &["spells", "and", "ability"],
+    &["spells", "and", "abilities"],
 ];
 const TEXT_NEGATION_WORDS: &[&str] = &["not", "isnt", "isn't", "arent", "aren't"];
 const LEGENDARY_OR_PREFIX: &[&str] = &["legendary", "or"];
@@ -538,6 +584,18 @@ const EXCLUDED_CHOSEN_TYPE_PHRASES: &[&[&str]] = &[
     &["that", "isnt", "of", "chosen", "type"],
     &["that", "isn't", "of", "chosen", "type"],
     &["that", "is", "not", "of", "chosen", "type"],
+];
+const EXCLUDED_TYPE_CHOSEN_THIS_WAY_PHRASES: &[&[&str]] = &[
+    &["that", "arent", "of", "a", "type", "chosen", "this", "way"],
+    &["that", "aren't", "of", "a", "type", "chosen", "this", "way"],
+    &[
+        "that", "are", "not", "of", "a", "type", "chosen", "this", "way",
+    ],
+    &["that", "isnt", "of", "a", "type", "chosen", "this", "way"],
+    &["that", "isn't", "of", "a", "type", "chosen", "this", "way"],
+    &[
+        "that", "is", "not", "of", "a", "type", "chosen", "this", "way",
+    ],
 ];
 
 fn contains_explicit_card_noun(
@@ -949,6 +1007,7 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint_lexed(
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     let mut filter = parse_object_filter_lexed(tokens, other)?;
+    apply_supertype_or_mana_capability_union(&mut filter, tokens);
     super::counter_constraints::preserve_filter_counter_constraint_surface_tokens(
         &mut filter,
         tokens,
@@ -974,6 +1033,60 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint_lexed(
     remove_explicitly_excluded_positive_subtypes(&mut filter);
 
     Ok(filter)
+}
+
+/// Preserve a shared object domain around `supertype OR mana capability`.
+///
+/// The permissive characteristic scan correctly recognizes the supertype in
+/// "land that is snow or could produce {C}", but it cannot represent the
+/// second arm without this typed capability predicate and would otherwise
+/// silently narrow the legal set to snow lands.
+pub(crate) fn apply_supertype_or_mana_capability_union(
+    filter: &mut ObjectFilter,
+    tokens: &[OwnedLexToken],
+) {
+    if !filter.any_of.is_empty() {
+        return;
+    }
+
+    let words = parser_token_word_positions(tokens);
+    for (word_idx, window) in words.windows(7).enumerate() {
+        if window[0].1 != "that"
+            || !matches!(window[1].1, "is" | "are")
+            || window[3].1 != "or"
+            || window[4].1 != "could"
+            || window[5].1 != "produce"
+            || word_idx + window.len() != words.len()
+        {
+            continue;
+        }
+        let Some(supertype) = parse_supertype_word(window[2].1) else {
+            continue;
+        };
+        let Ok(mana_symbol) = parse_mana_symbol(tokens[window[6].0].parser_text()) else {
+            continue;
+        };
+        let Some(supertype_idx) = filter
+            .supertypes
+            .iter()
+            .position(|candidate| *candidate == supertype)
+        else {
+            continue;
+        };
+
+        filter.supertypes.remove(supertype_idx);
+        filter.any_of = vec![
+            ObjectFilter {
+                supertypes: vec![supertype],
+                ..ObjectFilter::default()
+            },
+            ObjectFilter {
+                could_produce_mana: vec![mana_symbol],
+                ..ObjectFilter::default()
+            },
+        ];
+        return;
+    }
 }
 
 fn apply_chosen_type_domain(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
@@ -1019,8 +1132,38 @@ pub(super) fn parse_object_filter_inner(
     strict: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     let (tokens, vote_winners_only) = trim_vote_winner_suffix(tokens);
+    let trailing_couldnt_attack_exception = tokens.len() >= 6
+        && tokens[tokens.len() - 6].is_word("except")
+        && tokens[tokens.len() - 5].is_word("for")
+        && (tokens[tokens.len() - 4].is_word("creature")
+            || tokens[tokens.len() - 4].is_word("creatures"))
+        && tokens[tokens.len() - 3].is_word("that")
+        && (tokens[tokens.len() - 2].is_word("couldn't")
+            || tokens[tokens.len() - 2].is_word("couldnt"))
+        && tokens[tokens.len() - 1].is_word("attack");
+    let tokens = if trailing_couldnt_attack_exception {
+        &tokens[..tokens.len() - 6]
+    } else {
+        tokens.as_slice()
+    };
+    // A terminal arity phrase can qualify the stack object without naming a
+    // target class: "an instant or sorcery spell with a single target". The
+    // relation parser below only sees `that target(s) ...`, so retain this
+    // independent grammar fact before parsing the ordinary spell domain.
+    let trailing_single_target = tokens.len() >= 4
+        && tokens[tokens.len() - 4].is_word("with")
+        && tokens[tokens.len() - 3].is_word("a")
+        && tokens[tokens.len() - 2].is_word("single")
+        && (tokens[tokens.len() - 1].is_word("target")
+            || tokens[tokens.len() - 1].is_word("targets"));
+    let tokens = if trailing_single_target {
+        &tokens[..tokens.len() - 4]
+    } else {
+        tokens
+    };
     let chosen_type_reference = parse_chosen_type_reference_tokens(&tokens);
     let mut filter = ObjectFilter::default();
+    filter.could_have_attacked_this_turn = trailing_couldnt_attack_exception;
     if other {
         filter.other = true;
     }
@@ -1028,7 +1171,7 @@ pub(super) fn parse_object_filter_inner(
     let mut target_player: Option<PlayerFilter> = None;
     let mut target_object: Option<ObjectFilter> = None;
     let mut targets_only = false;
-    let mut target_count: Option<crate::effect::ChoiceCount> = None;
+    let mut target_count = trailing_single_target.then_some(crate::effect::ChoiceCount::exactly(1));
     let mut base_tokens: Vec<OwnedLexToken> = tokens.to_vec();
     let mut targets_idx: Option<usize> = None;
     for (idx, token) in tokens.iter().enumerate() {
@@ -1150,12 +1293,33 @@ pub(super) fn parse_object_filter_inner(
             if target_filter_tokens.is_empty() {
                 return Ok((None, None, only, count));
             }
-            Ok((
-                None,
-                Some(parse_object_filter_permissive(target_filter_tokens, false)?),
-                only,
-                count,
-            ))
+            let source_exclusion_surface =
+                target_filter_tokens
+                    .windows(2)
+                    .enumerate()
+                    .find_map(|(index, prefix)| {
+                        (prefix[0].is_word("other") && prefix[1].is_word("than"))
+                            .then(|| {
+                                source_reference_tail_prefix(&target_filter_tokens[index + 2..])
+                            })
+                            .flatten()
+                            .and_then(|(consumed, surface)| {
+                                (consumed == target_filter_tokens.len() - index - 2)
+                                    .then_some(surface)
+                            })
+                    });
+            let mut target_filter = parse_object_filter_permissive(target_filter_tokens, false)?;
+            // The relation parser peels `that targets only a single ...`
+            // away from the stack-spell filter before the ordinary source
+            // exclusion stage is finalized. Recover the exact proper-name or
+            // typed-source tail on the nested target filter: this remains the
+            // executable source-identity predicate (`other`), while the
+            // authored alias is presentation provenance only.
+            if let Some(surface) = source_exclusion_surface {
+                target_filter.other = true;
+                target_filter.source_surface = Some(surface);
+            }
+            Ok((None, Some(target_filter), only, count))
         };
 
         if let Some(or_token_idx) = token_index_for_word(target_tokens, OR_WORD) {
@@ -1266,7 +1430,13 @@ pub(super) fn parse_object_filter_inner(
     // "noncreature creature").
     let base_words = parser_token_word_refs(&base_tokens);
     if let Some(exclusion) =
-        parse_phrase_choice_anywhere(&base_words, CHOSEN_OBJECT_EXCLUSION_PHRASES)
+        parse_phrase_choice_anywhere(&base_words, CHOSEN_OBJECT_EXCLUSION_PHRASES).filter(
+            |exclusion| {
+                exclusion.phrase.first() != Some(&"and")
+                    || parse_phrase_anywhere(&base_words[..exclusion.span.start], OTHER_THAN_PREFIX)
+                        .is_some()
+            },
+        )
     {
         let start = token_index_after_word_prefix(&base_tokens, exclusion.span.start)
             .unwrap_or(base_tokens.len());
@@ -1275,15 +1445,18 @@ pub(super) fn parse_object_filter_inner(
         if start < end {
             let chosen_kind = exclusion.phrase.last().copied().unwrap_or("object");
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
-            // `source_surface` is inert unless `source`/`other` is set, so it
-            // can carry the explicit chosen-object wording through lowering
-            // without changing the runtime filter.
-            filter.source_surface = Some(crate::target::SourceReferenceSurface::FullName(format!(
-                "the chosen {chosen_kind}"
-            )));
+            // For a direct `other than the chosen ...` exclusion this inert
+            // surface preserves the chosen noun. In the coordinated
+            // `other than <source> and the chosen ...` form, leave the slot
+            // available for the independently parsed source identity.
+            if exclusion.phrase.first() == Some(&"other") {
+                filter.source_surface = Some(crate::target::SourceReferenceSurface::FullName(
+                    format!("the chosen {chosen_kind}"),
+                ));
+            }
             base_tokens.drain(start..end);
         }
     }
@@ -1489,7 +1662,12 @@ pub(super) fn parse_object_filter_inner(
     // branches above intentionally return early, but a qualified shape needs
     // to continue through the ordinary relation parser below.
     let ability_words = non_article_parser_word_refs(&base_tokens);
-    if parse_phrase_choice_anywhere(&ability_words, ACTIVATED_OR_TRIGGERED_ABILITY_PHRASES)
+    if parse_phrase_choice_anywhere(&ability_words, SPELL_AND_ABILITY_PHRASES).is_some() {
+        filter.zone = Some(Zone::Stack);
+        filter.stack_kind = Some(crate::filter::StackObjectKind::SpellOrAbility);
+        filter.has_mana_cost = false;
+        filter.set_conjunctive_set_surface(true);
+    } else if parse_phrase_choice_anywhere(&ability_words, ACTIVATED_OR_TRIGGERED_ABILITY_PHRASES)
         .is_some()
     {
         let mut triggered = ObjectFilter::ability();
@@ -1523,6 +1701,7 @@ pub(super) fn parse_object_filter_inner(
     }
 
     try_apply_distinct_powers_clause(&mut filter, &mut all_words);
+    try_apply_distinct_mana_values_clause(&mut filter, &mut all_words);
     try_apply_distinct_creature_types_clause(&mut filter, &mut all_words);
     try_apply_no_shared_creature_type_with_your_creatures_or_graveyard_clause(
         &mut filter,
@@ -1542,6 +1721,15 @@ pub(super) fn parse_object_filter_inner(
     // "that were put there from the battlefield this turn" means the card entered
     // a graveyard from the battlefield this turn.
     try_apply_put_there_from_battlefield_this_turn_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    );
+
+    // "put there from their library this turn" is object-specific zone-change
+    // history. Consume it before the ordinary zone parser can turn the
+    // referenced library into a second current-zone union arm.
+    try_apply_put_there_from_their_library_this_turn_clause(
         &mut filter,
         &mut all_words,
         &mut segment_tokens,
@@ -1606,6 +1794,11 @@ pub(super) fn parse_object_filter_inner(
     );
 
     try_apply_drawn_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
+
+    try_apply_counters_put_on_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
+
+    try_apply_ability_activated_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
+    try_apply_not_enchanted_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
     // Preserve damage history in ordinary object selectors such as "target
     // creature that was dealt damage this turn". This is a runtime legality
@@ -1875,6 +2068,12 @@ pub(super) fn parse_object_filter_inner(
                 continue;
             }
             if let Some(consumed) =
+                try_apply_neither_owned_nor_controlled_clause(&mut filter, slice)
+            {
+                idx += consumed;
+                continue;
+            }
+            if let Some(consumed) =
                 try_apply_joint_owner_controller_clause(&mut filter, slice, &pronoun_player_filter)
             {
                 idx += consumed.max(1);
@@ -2062,6 +2261,9 @@ pub(super) fn parse_object_filter_inner(
             if idx > 1 {
                 let owner_pair = (all_words[idx - 2], all_words[idx - 1]);
                 match owner_pair {
+                    ("defending", "player") | ("defending", "players") => {
+                        filter.owner = Some(PlayerFilter::Defending);
+                    }
                     ("target", "player") | ("target", "players") => {
                         filter.owner = Some(PlayerFilter::target_player());
                     }
@@ -2179,6 +2381,8 @@ pub(super) fn parse_object_filter_inner(
                     POWER_GREATER_THAN_TOUGHNESS_PHRASES,
                 )
                 .is_some())
+            || parse_phrase_choice_at_head(&all_words[idx..], POWER_TOUGHNESS_NOT_EQUAL_PHRASES)
+                .is_some()
         {
             idx += 1;
             continue;
@@ -2228,6 +2432,10 @@ pub(super) fn parse_object_filter_inner(
         let relation = crate::filter::PowerToughnessRelation::PowerGreaterThanToughness;
         filter.power_toughness_relation = Some(relation);
         clear_redundant_power_toughness_axis_filter(&mut filter, relation);
+    } else if parse_phrase_choice_anywhere(&clause_words, POWER_TOUGHNESS_NOT_EQUAL_PHRASES)
+        .is_some()
+    {
+        filter.power_toughness_relation = Some(crate::filter::PowerToughnessRelation::NotEqual);
     }
 
     let mut saw_permanent = false;
@@ -2408,6 +2616,13 @@ pub(super) fn parse_object_filter_inner(
                     .map(|fact| fact.span.end.saturating_sub(2))
             })
             .collect();
+    if EXCLUDED_TYPE_CHOSEN_THIS_WAY_PHRASES
+        .iter()
+        .any(|phrase| parse_phrase_anywhere(&all_words, phrase).is_some())
+    {
+        filter.excluded_any_chosen_creature_type = true;
+        filter.set_chosen_type_this_way_surface(true);
+    }
 
     if parse_phrase_anywhere(
         &non_article_parser_word_refs(&segment_tokens),
@@ -2416,6 +2631,22 @@ pub(super) fn parse_object_filter_inner(
     .is_some()
     {
         filter.attacked_this_turn = true;
+    }
+
+    let blocked_this_turn_word_indices = all_words
+        .windows(3)
+        .enumerate()
+        .filter_map(|(idx, window)| {
+            (window == ["blocked", "this", "turn"]
+                && !idx
+                    .checked_sub(1)
+                    .and_then(|previous| all_words.get(previous))
+                    .is_some_and(|word| matches!(*word, "was" | "became" | "is")))
+            .then_some(idx)
+        })
+        .collect::<std::collections::HashSet<_>>();
+    if !blocked_this_turn_word_indices.is_empty() {
+        filter.blocked_this_turn = true;
     }
 
     for negated_phrase in [
@@ -2460,6 +2691,15 @@ pub(super) fn parse_object_filter_inner(
                     .get(idx + 1)
                     .is_some_and(|next| *next == COLOR_WORD) =>
             {
+                filter.chosen_color = true;
+            }
+            word if word == THAT_WORD
+                && all_words
+                    .get(idx + 1)
+                    .is_some_and(|next| *next == COLOR_WORD) =>
+            {
+                // A demonstrative color after a color choice ("creatures of
+                // that color") refers to the source program's chosen color.
                 filter.chosen_color = true;
             }
             word if word == CHOSEN_WORD
@@ -2511,7 +2751,9 @@ pub(super) fn parse_object_filter_inner(
             }
             "blocking" if !is_negated_word => filter.blocking = true,
             "nonblocking" => filter.nonblocking = true,
-            "blocked" if !is_negated_word => filter.blocked = true,
+            "blocked" if !is_negated_word && !set_has(&blocked_this_turn_word_indices, &idx) => {
+                filter.blocked = true;
+            }
             "unblocked" if !is_negated_word => filter.unblocked = true,
             "commander" | "commanders" => {
                 let prev = idx.checked_sub(1).and_then(|i| all_words.get(i)).copied();
@@ -2627,6 +2869,13 @@ pub(super) fn parse_object_filter_inner(
             push_unique(&mut filter.subtypes, subtype);
             saw_subtype = true;
         }
+    }
+    if all_words_with_articles
+        .windows(2)
+        .any(|window| window == ["attacking", "alone"])
+    {
+        filter.attacking = true;
+        filter.attacking_alone = true;
     }
     // In “shares a creature type with each creature tapped this way”, tapped
     // qualifies the cost objects on the right-hand side, not the candidate
@@ -3036,19 +3285,26 @@ pub(super) fn parse_object_filter_inner(
         && slice_has(&filter.supertypes, &Supertype::Legendary)
         && slice_has(&filter.subtypes, &or_subtype)
     {
-        let mut legendary_branch = filter.clone();
-        legendary_branch.any_of.clear();
-        legendary_branch
-            .subtypes
-            .retain(|subtype| *subtype != or_subtype);
-
-        let mut subtype_branch = filter.clone();
-        subtype_branch.any_of.clear();
-        subtype_branch
+        // The zone, owner, target count, and other trailing qualifiers scope
+        // the complete disjunction. Keep them on the outer filter rather than
+        // cloning them into the two selector arms; reference consumers (for
+        // example a subsequent graveyard-card copy) must be able to observe
+        // that the selected object itself is in that shared domain.
+        let mut disjunction = filter.clone();
+        disjunction
             .supertypes
             .retain(|supertype| *supertype != Supertype::Legendary);
-
-        let mut disjunction = ObjectFilter::default();
+        disjunction
+            .subtypes
+            .retain(|subtype| *subtype != or_subtype);
+        let legendary_branch = ObjectFilter {
+            supertypes: vec![Supertype::Legendary],
+            ..ObjectFilter::default()
+        };
+        let subtype_branch = ObjectFilter {
+            subtypes: vec![or_subtype],
+            ..ObjectFilter::default()
+        };
         disjunction.any_of = vec![legendary_branch, subtype_branch];
         filter = disjunction;
     }
@@ -3183,6 +3439,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.tapped
         || filter.untapped
         || filter.attacking
+        || filter.attacking_alone
         || filter
             .attacking_player_or_planeswalker_controlled_by
             .is_some()
@@ -3253,6 +3510,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.tapped
         || filter.untapped
         || filter.attacking
+        || filter.attacking_alone
         || filter
             .attacking_player_or_planeswalker_controlled_by
             .is_some()
@@ -3298,6 +3556,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.chosen_color
         || filter.chosen_creature_type
         || filter.excluded_chosen_creature_type
+        || filter.excluded_any_chosen_creature_type
         || filter.colors.is_some()
         || !filter.tagged_constraints.is_empty()
         || filter.targets_player.is_some()
@@ -3310,9 +3569,9 @@ pub(super) fn parse_object_filter_inner(
         )));
     }
 
-    preserve_relative_characteristic_list_surface(&mut filter, tokens.as_slice());
-    preserve_branch_scoped_comparison_union(&mut filter, tokens.as_slice());
-    lift_shared_trailing_mana_value_from_type_union(&mut filter, tokens.as_slice());
+    preserve_relative_characteristic_list_surface(&mut filter, tokens);
+    preserve_branch_scoped_comparison_union(&mut filter, tokens);
+    lift_shared_trailing_mana_value_from_type_union(&mut filter, tokens);
 
     if vote_winners_only {
         filter = filter.match_tagged(
@@ -3348,8 +3607,19 @@ pub(super) fn parse_object_filter_inner(
     // unconsumed compound content (e.g. "for each card in your hand AND EACH
     // foretold card you own in exile" where the second clause was silently
     // absorbed into the first filter).
+    // This exact coordinated stack domain can be partially rewritten by
+    // later noun/reference stages (most visibly back to Spell with a mana
+    // cost). Reassert only the grammar-proven final domain after every stage
+    // has run so public quantified clauses retain both members.
+    let final_words = non_article_parser_word_refs(tokens);
+    if parse_phrase_choice_anywhere(&final_words, SPELL_AND_ABILITY_PHRASES).is_some() {
+        filter.zone = Some(Zone::Stack);
+        filter.stack_kind = Some(crate::filter::StackObjectKind::SpellOrAbility);
+        filter.has_mana_cost = false;
+        filter.set_conjunctive_set_surface(true);
+    }
+
     if strict {
-        let tokens = tokens.as_slice();
         let input_words = non_article_parser_word_refs(tokens);
         let all_words = input_words.as_slice();
 
@@ -3987,23 +4257,30 @@ fn parse_permanent_or_suspended_card_arm(
         words
     };
 
-    match words.first().copied() {
+    let leading_nonland = words.first() == Some(&"nonland");
+    let noun_words = if leading_nonland { &words[1..] } else { words };
+
+    match noun_words.first().copied() {
         Some("permanent" | "permanents") => {
             let mut filter = ObjectFilter::permanent();
+            if leading_nonland {
+                filter.excluded_card_types.push(CardType::Land);
+            }
             filter.other = arm_other;
-            consume_permanent_or_suspended_card_tail(words, 1, &mut filter, true, true)?;
+            consume_permanent_or_suspended_card_tail(noun_words, 1, &mut filter, true, true)?;
             Some((PermanentOrSuspendedCardArm::Permanent, filter))
         }
-        Some("suspended") => {
-            let card_word = words.get(1).copied()?;
+        Some("suspended") if !leading_nonland => {
+            let card_word = noun_words.get(1).copied()?;
             if !matches!(card_word, "card" | "cards") {
                 return None;
             }
             let mut filter = ObjectFilter::default()
                 .in_zone(Zone::Exile)
-                .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend);
+                .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
+                .with_counter_type(crate::object::CounterType::Time);
             filter.other = arm_other;
-            consume_permanent_or_suspended_card_tail(words, 2, &mut filter, false, true)?;
+            consume_permanent_or_suspended_card_tail(noun_words, 2, &mut filter, false, true)?;
             Some((PermanentOrSuspendedCardArm::SuspendedCard, filter))
         }
         _ => None,
@@ -4066,6 +4343,25 @@ fn try_apply_distinct_powers_clause(filter: &mut ObjectFilter, all_words: &mut V
         };
         let idx = fact.span.start;
         filter.distinct_powers = true;
+        all_words.drain(idx..idx + phrase.len());
+        return true;
+    }
+    false
+}
+
+fn try_apply_distinct_mana_values_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    for phrase in [
+        ["with", "different", "mana", "values"].as_slice(),
+        ["that", "have", "different", "mana", "values"].as_slice(),
+    ] {
+        let Some(fact) = parse_phrase_anywhere(all_words, phrase) else {
+            continue;
+        };
+        let idx = fact.span.start;
+        filter.distinct_mana_values = true;
         all_words.drain(idx..idx + phrase.len());
         return true;
     }
@@ -4210,12 +4506,34 @@ fn try_apply_shared_creature_type_with_source_clause(
 mod shared_characteristic_relation_tests {
     use super::*;
     use crate::runtime_backend::lex_line;
+    use crate::static_abilities::StaticAbilityId;
     use crate::target::ObjectCharacteristicRelationKind;
 
     fn parse_filter(text: &str) -> ObjectFilter {
         let tokens = lex_line(text, 0).expect("filter text should lex");
         parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
             .expect("filter text should parse")
+    }
+
+    #[test]
+    fn spell_filter_preserves_authored_convoke_ability_requirement() {
+        let filter = parse_filter("a spell that has convoke");
+
+        assert_eq!(filter.static_abilities, [StaticAbilityId::Convoke]);
+        assert!(filter.ability_markers.is_empty(), "{filter:#?}");
+    }
+
+    #[test]
+    fn qualified_spell_and_ability_set_keeps_the_complete_stack_domain() {
+        let filter = parse_filter("each spell and ability your opponents control");
+
+        assert_eq!(filter.zone, Some(Zone::Stack));
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::SpellOrAbility)
+        );
+        assert!(!filter.has_mana_cost, "{filter:#?}");
+        assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
     }
 
     #[test]
@@ -4236,6 +4554,30 @@ mod shared_characteristic_relation_tests {
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert_eq!(filter.zone, Some(Zone::Exile));
         assert_eq!(filter.description(), "a foretold card you own in exile");
+    }
+
+    #[test]
+    fn graveyard_cards_with_different_mana_values_keep_selection_constraint() {
+        let filter = parse_filter("cards with different mana values from your graveyard");
+
+        assert!(filter.distinct_mana_values, "{filter:#?}");
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert!(
+            filter.description().contains("with different mana values"),
+            "{}",
+            filter.description()
+        );
+    }
+
+    #[test]
+    fn set_quantifier_before_pt_literal_keeps_the_exact_characteristics() {
+        let filter = parse_filter("each 1/1 creature you control");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.power, Some(crate::filter::Comparison::Equal(1)));
+        assert_eq!(filter.toughness, Some(crate::filter::Comparison::Equal(1)));
     }
 
     #[test]
@@ -4292,6 +4634,39 @@ mod shared_characteristic_relation_tests {
     }
 
     #[test]
+    fn attacking_your_opponents_keeps_the_opponent_destination_union() {
+        let filter =
+            parse_filter("creatures attacking your opponents and/or planeswalkers they control");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.controller, None);
+        assert!(filter.attacking);
+        assert_eq!(
+            filter.attacking_player_or_planeswalker_controlled_by,
+            Some(PlayerFilter::Opponent)
+        );
+        assert!(!filter.attacking_player_only);
+        assert_eq!(
+            filter.description(),
+            "creatures attacking your opponents and/or planeswalkers they control"
+        );
+    }
+
+    #[test]
+    fn attacking_alone_is_an_executable_post_noun_state() {
+        let filter = parse_filter("creature that's attacking alone");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.attacking);
+        assert!(filter.attacking_alone);
+        assert_eq!(filter.description(), "creature that's attacking alone");
+
+        let ordinary = parse_filter("attacking creature");
+        assert!(ordinary.attacking);
+        assert!(!ordinary.attacking_alone);
+    }
+
+    #[test]
     fn attacking_last_chosen_player_keeps_persistent_player_relation() {
         let filter = parse_filter("creature attacking the last chosen player");
 
@@ -4305,11 +4680,44 @@ mod shared_characteristic_relation_tests {
     }
 
     #[test]
+    fn source_and_chosen_object_exclusions_keep_both_identities() {
+        let filter = parse_filter("creatures other than this creature and the chosen creature");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.other, "the source exclusion must remain executable");
+        assert!(matches!(
+            filter.source_surface.as_ref(),
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(noun))
+                if noun == "this creature"
+        ));
+        assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
+        assert_eq!(
+            filter.tagged_constraints[0],
+            TaggedObjectConstraint {
+                tag: TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            }
+        );
+    }
+
+    #[test]
     fn compound_ambiguous_subtype_phrase_keeps_both_subtypes() {
         let filter = parse_filter("all Sand Warriors");
 
         assert!(filter.subtypes.is_empty(), "{filter:#?}");
         assert_eq!(filter.all_subtypes, vec![Subtype::Sand, Subtype::Warrior]);
+    }
+
+    #[test]
+    fn attachment_host_noun_does_not_narrow_the_attachment_filter() {
+        let filter = parse_filter("Equipment attached to that creature");
+
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
+        assert_eq!(filter.subtypes, vec![Subtype::Equipment], "{filter:#?}");
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject
+        }));
     }
 
     #[test]
@@ -4360,6 +4768,17 @@ mod shared_characteristic_relation_tests {
             filter.description(),
             "creature that blocked or was blocked by a Zombie you control this turn"
         );
+    }
+
+    #[test]
+    fn active_voice_blocked_this_turn_is_history_not_current_combat_state() {
+        let filter = parse_filter("target creature that blocked this turn");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.blocked_this_turn, "{filter:#?}");
+        assert!(!filter.blocked, "{filter:#?}");
+        assert!(!filter.blocking, "{filter:#?}");
+        assert_eq!(filter.description(), "creature that blocked this turn");
     }
 
     #[test]
@@ -4480,5 +4899,38 @@ mod shared_characteristic_relation_tests {
             .expect("enchanted-by clause should create a nested attachment filter");
         assert_eq!(aura.subtypes, vec![Subtype::Aura]);
         assert_eq!(aura.controller, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn activated_this_turn_is_a_branch_local_executable_object_history_fact() {
+        let filter = parse_filter("planeswalker that was activated this turn or tapped creature");
+
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.card_types == [CardType::Planeswalker] && branch.ability_activated_this_turn
+        }));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.card_types == [CardType::Creature]
+                && branch.tapped
+                && !branch.ability_activated_this_turn
+        }));
+        assert_eq!(
+            filter.description(),
+            "planeswalker that was activated this turn or tapped creature"
+        );
+    }
+
+    #[test]
+    fn not_enchanted_is_the_negative_aura_attachment_predicate() {
+        let filter = parse_filter("creatures that aren't enchanted");
+
+        assert_eq!(filter.card_types, [CardType::Creature], "{filter:#?}");
+        let aura = filter
+            .without_attached_object
+            .as_deref()
+            .expect("negative enchanted state should retain a typed attachment filter");
+        assert_eq!(aura.card_types, [CardType::Enchantment]);
+        assert_eq!(aura.subtypes, [Subtype::Aura]);
+        assert_eq!(filter.description(), "creature that isn't enchanted");
     }
 }

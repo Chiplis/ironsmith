@@ -29,6 +29,10 @@ const DURING_OPPONENTS_TURN_PREFIXES: &[&[&str]] = &[
     &["activate", "only", "during", "an", "opponents", "turn"],
     &["activate", "only", "during", "opponents", "turn"],
 ];
+const ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP: &[&str] = &[
+    "any", "player", "may", "activate", "this", "ability", "but", "only", "during", "their",
+    "turn", "before", "the", "end", "step",
+];
 const THIS_ABILITY_TRIGGERS_ONLY_PREFIXES: &[&[&str]] = &[
     &["this", "ability", "triggers", "only"],
     &["do", "this", "only"],
@@ -78,6 +82,9 @@ struct ControlledCreaturePowerShape<'a> {
 pub(crate) fn parse_activate_only_timing_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationTiming> {
+    if matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP) {
+        return Some(ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep);
+    }
     let marker = parse_activate_only_timing_marker(tokens);
     if matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_SORCERY_PREFIXES) {
         return Some(ActivationTiming::SorcerySpeed);
@@ -107,6 +114,7 @@ pub(crate) fn parse_activate_only_timing_lexed(
 
 pub(crate) fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_RESTRICTION_PREFIXES)
+        || matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP)
 }
 
 pub(crate) fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -148,6 +156,9 @@ pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
 
 pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
     if let Some(condition) = parse_repeated_or_if_activation_condition(tokens) {
+        return Some(condition);
+    }
+    if let Some(condition) = parse_once_each_turn_and_if_activation_condition(tokens) {
         return Some(condition);
     }
     if let Some(condition) = parse_combined_once_and_timing_condition(tokens) {
@@ -199,17 +210,25 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         });
     }
     if let Some(condition_tokens) = parse_activate_only_if_tail_tokens(tokens)
-        && let Ok(crate::cards::builders::PredicateAst::SourceHasCounterAtLeast {
-            counter_type,
-            count,
-            surface,
-        }) = super::super::filters::parse_predicate(condition_tokens)
+        && let Ok(predicate) = super::super::filters::parse_predicate(condition_tokens)
     {
-        return Some(ConditionExpr::SourceHasCounterAtLeast {
-            counter_type,
-            count,
-            surface,
-        });
+        match predicate {
+            crate::cards::builders::PredicateAst::SourceHasCounterAtLeast {
+                counter_type,
+                count,
+                surface,
+            } => {
+                return Some(ConditionExpr::SourceHasCounterAtLeast {
+                    counter_type,
+                    count,
+                    surface,
+                });
+            }
+            crate::cards::builders::PredicateAst::SourceMatches(filter) => {
+                return Some(ConditionExpr::SourceMatches(filter));
+            }
+            _ => {}
+        }
     }
     let control_tokens = parse_activate_only_if_you_control_tail_tokens(tokens)?;
     if let Some(control_condition) =
@@ -284,6 +303,40 @@ fn parse_repeated_or_if_activation_condition(tokens: &[OwnedLexToken]) -> Option
     let right = parse_activation_condition_lexed(&prefixed_right)?;
 
     Some(ConditionExpr::Or(Box::new(left), Box::new(right)))
+}
+
+fn parse_once_each_turn_and_if_activation_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<ConditionExpr> {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let split = phrase_offset_words(&words, &["and", "only", "if"])?;
+    if split == 0 || split + 3 >= words.len() {
+        return None;
+    }
+    let left = words.get(..split)?;
+    if !matches!(
+        left,
+        ["activate", "only", "once", "each", "turn"]
+            | [
+                "activate", "this", "ability", "only", "once", "each", "turn"
+            ]
+    ) {
+        return None;
+    }
+
+    let right_tokens = token_slice_for_words(tokens, &view, split + 3, words.len())?;
+    let mut prefixed_right = vec![
+        OwnedLexToken::synthetic_word("activate"),
+        OwnedLexToken::synthetic_word("only"),
+        OwnedLexToken::synthetic_word("if"),
+    ];
+    prefixed_right.extend_from_slice(right_tokens);
+    let right = parse_activation_condition_lexed(&prefixed_right)?;
+    Some(ConditionExpr::And(
+        Box::new(ConditionExpr::MaxActivationsPerTurn(1)),
+        Box::new(right),
+    ))
 }
 
 fn parse_source_entered_this_turn_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
@@ -377,9 +430,10 @@ fn parse_graveyard_condition_shape(
 
 fn parse_graveyard_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
     let parsed = parse_graveyard_condition_shape(tokens)?;
+    let descriptor_words = TokenWordView::new(parsed.descriptor_tokens).word_refs();
     let mut card_types = Vec::new();
     let mut subtypes = Vec::new();
-    for word in TokenWordView::new(parsed.descriptor_tokens).word_refs() {
+    for word in &descriptor_words {
         if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
             crate::slice_primitives::push_unique(&mut card_types, card_type);
         }
@@ -388,7 +442,18 @@ fn parse_graveyard_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> 
         }
     }
     if card_types.is_empty() && subtypes.is_empty() {
-        return None;
+        let (count, used) =
+            leaf::parse_leaf_number_prefix_words(&descriptor_words)?.into_fixed()?;
+        if descriptor_words.get(used..) != Some(&["or", "more", "cards"][..]) {
+            return None;
+        }
+        return Some(ConditionExpr::PlayerHasAtLeast {
+            player: PlayerFilter::You,
+            filter: ObjectFilter::default()
+                .in_zone(crate::zone::Zone::Graveyard)
+                .owned_by(PlayerFilter::You),
+            count,
+        });
     }
     Some(ConditionExpr::CardInYourGraveyard {
         card_types,
@@ -709,6 +774,12 @@ mod tests {
                 ..
             })
         ));
+        assert_eq!(
+            parse_activation_condition_lexed(&lex(
+                "Activate only if this permanent is a creature."
+            )),
+            Some(ConditionExpr::SourceMatches(ObjectFilter::creature()))
+        );
     }
 
     #[test]
@@ -727,6 +798,38 @@ mod tests {
         assert_eq!(
             parse_activation_condition_lexed(&lex("Activate only once each turn.")),
             Some(ConditionExpr::MaxActivationsPerTurn(1))
+        );
+    }
+
+    #[test]
+    fn combined_once_and_owned_graveyard_threshold_keeps_both_constraints() {
+        let parsed = parse_activation_condition_lexed(&lex(
+            "Activate only once each turn and only if there are seven or more cards in your graveyard.",
+        ))
+        .expect("combined frequency and graveyard threshold should parse");
+        let ConditionExpr::And(frequency, threshold) = parsed else {
+            panic!("expected a typed conjunction: {parsed:#?}");
+        };
+        assert_eq!(*frequency, ConditionExpr::MaxActivationsPerTurn(1));
+        let ConditionExpr::PlayerHasAtLeast {
+            player,
+            filter,
+            count,
+        } = *threshold
+        else {
+            panic!("expected an owned-graveyard cardinality condition: {threshold:#?}");
+        };
+        assert_eq!(player, PlayerFilter::You);
+        assert_eq!(count, 7);
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+
+        assert!(
+            parse_activation_condition_lexed(&lex(
+                "Activate only once each turn and only if there are seven cards in a graveyard.",
+            ))
+            .is_none(),
+            "the owned-graveyard threshold must not claim a different zone-owner surface"
         );
     }
 

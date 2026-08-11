@@ -35,6 +35,7 @@ mod types;
 use attack_block::*;
 #[allow(unused_imports)]
 use io::*;
+pub(crate) use legal_actions::activation_timing_allows;
 #[allow(unused_imports)]
 use legal_actions::*;
 pub(crate) use mana::can_pay_mana_cost_with_available_sources;

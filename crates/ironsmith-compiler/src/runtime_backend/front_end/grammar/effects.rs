@@ -1,7 +1,9 @@
 use super::super::activation_and_restrictions::{
     normalize_cant_words, parse_cant_restriction_clause, parse_cant_restrictions,
 };
-use super::super::grammar::structure::{IfClausePredicateSpec, split_if_clause_lexed};
+use super::super::grammar::structure::{
+    IfClausePredicateSpec, split_if_clause_lexed, split_leading_result_prefix_lexed,
+};
 use super::super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs,
     render_token_slice, split_lexed_sentences, token_slice_all_are_kind, token_slice_at_is,
@@ -28,7 +30,9 @@ use crate::cards::builders::{
 };
 use crate::effect::SearchSelectionMode;
 use crate::static_abilities::StaticAbilityId;
-use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::target::{
+    ObjectFilter, ObjectRef, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
+};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use ironsmith_core::Value;
@@ -589,14 +593,19 @@ pub(crate) fn prepare_cant_sentence_restriction_clause_lexed(
             "restriction clause missing body".to_string(),
         ));
     }
-    if clause_tokens
-        .first()
-        .is_some_and(|token| token_is_any_word(token, &["if", "when", "whenever"]))
+    if split_leading_result_prefix_lexed(&clause_tokens).is_some()
+        || clause_tokens
+            .first()
+            .is_some_and(|token| token_is_any_word(token, &["when", "whenever"]))
     {
-        // A leading result/trigger intro owns the sentence ("When you discard
-        // a creature card this way, target creature you control can't be
-        // blocked this turn." — Evie Frye); the bare restriction rule must
-        // not reinterpret the intro words as a subject filter.
+        // A leading result/trigger intro owns the sentence ("If the player
+        // doesn't, creatures they control can't attack you this turn" or
+        // "When you discard a creature card this way, target creature you
+        // control can't be blocked this turn"). The bare restriction rule
+        // must not reinterpret the intro words as a subject filter. A leading
+        // state condition which is not an IfResult stays here: conditional
+        // restrictions ("If you have no cards in hand, this spell can't be
+        // countered..." — Demonfire) are this rule's own shape.
         return Ok(None);
     }
 
@@ -1076,6 +1085,31 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
     if let Some((_, source_tokens)) =
         primitives::strip_lexed_prefix_phrases(&core_tokens, PREVENT_DAMAGE_BY_PREFIXES)
     {
+        // A target-relative source set must retain both identity arms. Parsing
+        // this as an ordinary object filter makes "that creature" resolve to
+        // the most recent collected set and silently drops the spell target.
+        if parser_token_word_refs(source_tokens)
+            == [
+                "that", "creature", "and", "each", "creature", "blocking", "it",
+            ]
+        {
+            let mut target_creature = ObjectFilter::creature();
+            target_creature.is_target_object = true;
+
+            let mut blockers = ObjectFilter::creature();
+            blockers.blocking = true;
+            blockers.in_combat_with = Some(ObjectRef::Target);
+
+            let mut source_filter = ObjectFilter::default();
+            source_filter.any_of = vec![target_creature, blockers];
+            source_filter.set_conjunctive_set_surface(true);
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+                    source_filter,
+                    crate::effect::Until::EndOfTurn,
+                ),
+            ));
+        }
         if let Some((source_filter, excluded_target)) =
             parse_prevent_damage_source_excluding_target(source_tokens)?
         {
@@ -1422,6 +1456,25 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = token_word_refs(tokens);
+    if words
+        == [
+            "this", "creature", "cant", "be", "blocked", "this", "combat",
+        ]
+        || words
+            == [
+                "this", "creature", "can't", "be", "blocked", "this", "combat",
+            ]
+    {
+        return Ok(Some(vec![EffectAst::subject_verb_cant(
+            crate::effect::Restriction::be_blocked(ObjectFilter::source_with_surface(
+                crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this creature".to_string(),
+                ),
+            )),
+            crate::effect::Until::EndOfCombat,
+            None,
+        )]));
+    }
     if words.get(..3).is_some_and(|prefix| {
         matches!(
             prefix,
@@ -1619,11 +1672,13 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 PlayerAst::That,
                 SearchSelectionMode::Exact,
                 false,
+                None,
                 true,
                 ChoiceCount::exactly(1),
                 None,
                 Some(Value::Fixed(1)),
                 crate::effect::SearchResultReferenceSurface::ThatCard,
+                false,
                 false,
                 false,
             )],
@@ -1895,6 +1950,34 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             reveal,
             TagKey::from("search_library_slots_progress"),
         )]
+    } else if !effect_routing.battlefield_entry_counters.is_empty() {
+        vec![
+            EffectAst::subject_verb_search_library(
+                filter,
+                destination,
+                chooser,
+                player,
+                search_mode,
+                reveal,
+                effect_routing.reveal_reference_surface,
+                shuffle,
+                count,
+                count_value.clone(),
+                library_position_from_top,
+                effect_routing.result_reference_surface,
+                effect_routing.search_top_in_any_order_surface,
+                destination == Zone::Battlefield && effect_routing.has_tapped_modifier,
+                effect_routing.enters_under_your_control,
+            )
+            .with_search_zones(
+                search_zones_override
+                    .clone()
+                    .unwrap_or_else(|| vec![Zone::Library]),
+            )
+            .with_search_battlefield_entry_counters(
+                effect_routing.battlefield_entry_counters.clone(),
+            ),
+        ]
     } else if let Some(iterated_filter) = iterated_subject_filter.clone()
         && has_explicit_destination
         && named_filters.is_none()
@@ -2194,21 +2277,28 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     } else {
         let battlefield_tapped =
             destination == Zone::Battlefield && effect_routing.has_tapped_modifier;
-        vec![EffectAst::subject_verb_search_library(
-            filter,
-            destination,
-            chooser,
-            player,
-            search_mode,
-            reveal,
-            shuffle,
-            count,
-            count_value.clone(),
-            library_position_from_top,
-            effect_routing.result_reference_surface,
-            battlefield_tapped,
-            effect_routing.enters_under_your_control,
-        )]
+        vec![
+            EffectAst::subject_verb_search_library(
+                filter,
+                destination,
+                chooser,
+                player,
+                search_mode,
+                reveal,
+                effect_routing.reveal_reference_surface,
+                shuffle,
+                count,
+                count_value.clone(),
+                library_position_from_top,
+                effect_routing.result_reference_surface,
+                effect_routing.search_top_in_any_order_surface,
+                battlefield_tapped,
+                effect_routing.enters_under_your_control,
+            )
+            .with_search_battlefield_entry_counters(
+                effect_routing.battlefield_entry_counters.clone(),
+            ),
+        ]
     };
 
     if let Some(discard_followup) = discard_before_shuffle_followup {

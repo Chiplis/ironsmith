@@ -182,4 +182,11 @@ fn classifies_document_effect_and_static_preference_shapes() {
 
     let filter_tail = lex_line("red, blue, or green permanents", 0).expect("lex");
     assert!(parse_filter_list_continuation(&filter_tail).is_some());
+
+    let keyword_tail =
+        lex_line("double strike, vigilance, or haste, transform this", 0).expect("lex");
+    assert!(parse_filter_list_continuation(&keyword_tail).is_some());
+
+    let final_keyword_tail = lex_line("or haste, transform this", 0).expect("lex");
+    assert!(parse_filter_list_continuation(&final_keyword_tail).is_some());
 }

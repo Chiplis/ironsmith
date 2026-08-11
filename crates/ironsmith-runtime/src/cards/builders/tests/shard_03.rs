@@ -23,6 +23,7 @@ use super::shard_21::*;
 use super::shard_22::*;
 use super::shard_23::*;
 use super::*;
+use crate::object::ObjectKind;
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
@@ -1148,29 +1149,127 @@ pub(super) fn ink_treader_nephilim_merges_targeting_condition_into_spell_trigger
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn radiate_parses_chosen_spell_reference_to_multi_copy_primitive() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Radiate")
-        .card_types(vec![CardType::Instant])
-        .parse_text(
-            "Choose target instant or sorcery spell that targets only a single permanent or player. Copy that spell for each other permanent or player the spell could target. Each copy targets a different one of those permanents and players.",
-        )
-        .expect("Radiate should parse");
+    fn nested_copy_for_each(
+        effect: &crate::effect::Effect,
+    ) -> Option<crate::effects::CopySpellForEachTargetEffect> {
+        if let Some(copy) = effect.downcast_ref::<crate::effects::CopySpellForEachTargetEffect>() {
+            return Some(copy.clone());
+        }
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = nested_copy_for_each(child);
+            }
+        });
+        found
+    }
 
-    let debug = format!("{:#?}", def.spell_effect);
-    assert!(
-        debug.contains("TargetOnlyEffect") && debug.contains("CopySpellForEachTargetEffect"),
-        "expected Radiate to choose a stack object and use copy-for-each target assignment, got {debug}"
+    let def = parse_oracle_card_definition("Radiate");
+    let oracle = oracle_text_by_name()["Radiate"].clone();
+    assert_eq!(canonical_compiled_lines(&def), vec![oracle]);
+
+    let program = def.spell_effect.as_ref().expect("Radiate spell program");
+    let copy = program
+        .flattened_default_effects()
+        .iter()
+        .find_map(nested_copy_for_each)
+        .expect("typed copy-for-each-target effect");
+    assert!(matches!(
+        &copy.target,
+        ChooseSpec::Tagged(tag) if tag.as_str() == "targeted_0"
+    ));
+    assert_eq!(copy.object_filter, Some(ObjectFilter::permanent()));
+    assert_eq!(copy.player_filter, Some(PlayerFilter::Any));
+    assert!(copy.exclude_current_targets);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn radiate_copies_the_declared_stack_spell_for_each_other_legal_target() {
+    use std::collections::HashSet;
+
+    use crate::effects::{ExecutionContext, ResolvedTarget};
+    use crate::game_state::{StackEntry, Target, TargetAssignment};
+
+    let definition = parse_oracle_card_definition("Radiate");
+    let program = definition
+        .spell_effect
+        .as_ref()
+        .expect("Radiate spell program");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature = |name: &str| {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    };
+    let original_target =
+        game.create_object_from_definition(&creature("Original target"), bob, Zone::Battlefield);
+    let other_permanent =
+        game.create_object_from_definition(&creature("Other permanent"), bob, Zone::Battlefield);
+
+    let original_card = CardBuilder::new(CardId::new(), "Any-target probe")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let original_spell = game.create_object_from_card(&original_card, bob, Zone::Stack);
+    game.object_mut(original_spell)
+        .expect("probe spell exists")
+        .spell_effect = Some(
+        crate::resolution::ResolutionProgram::from_effects(vec![crate::effect::Effect::new(
+            crate::effects::TargetOnlyEffect::new(ChooseSpec::AnyTarget),
+        )])
+        .into(),
     );
-    assert!(
-        debug.contains("Tagged(") && debug.contains("targeted_0"),
-        "expected Radiate's 'that spell' to reference the chosen target spell, got {debug}"
+    game.push_to_stack(
+        StackEntry::new(original_spell, bob).with_targets(vec![Target::Object(original_target)]),
     );
-    assert!(
-        debug.contains("player_filter: Some")
-            && debug.contains("Any")
-            && debug.contains("zone: Some")
-            && debug.contains("Battlefield"),
-        "expected Radiate candidates to include permanents and players, got {debug}"
+
+    let radiate = game.create_object_from_definition(&definition, alice, Zone::Stack);
+    let declared_spec = program
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.0.get_target_spec().cloned())
+        .expect("Radiate declared stack target");
+    let assignment = TargetAssignment {
+        spec: declared_spec,
+        range: 0..1,
+    };
+    let mut context = ExecutionContext::new_default(radiate, alice)
+        .with_targets(vec![ResolvedTarget::Object(original_spell)])
+        .with_target_assignments(vec![assignment.clone()]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut context,
+        alice,
+        radiate,
+        program,
+        None,
+        &[assignment],
+    )
+    .expect("Radiate should copy the declared stack spell");
+
+    let copy_targets = game
+        .stack
+        .iter()
+        .filter(|entry| entry.object_id != original_spell)
+        .filter_map(|entry| {
+            game.object(entry.object_id)
+                .is_some_and(|object| object.kind == ObjectKind::SpellCopy)
+                .then(|| entry.targets.first().copied())
+                .flatten()
+        })
+        .collect::<HashSet<_>>();
+    assert_eq!(
+        copy_targets,
+        HashSet::from([
+            Target::Object(other_permanent),
+            Target::Player(alice),
+            Target::Player(bob),
+        ])
     );
+    assert!(!copy_targets.contains(&Target::Object(original_target)));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -1819,6 +1918,73 @@ pub(super) fn test_plumb_style_additional_cost_trigger_copies_for_each_payment()
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn fork_copy_exception_colors_the_created_spell_copy_not_the_source() {
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::game_state::StackEntry;
+    use crate::object::ObjectKind;
+    use crate::tests::test_helpers::setup_two_player_game;
+
+    let oracle = "Copy target instant or sorcery spell, except that the copy is red. You may choose new targets for the copy.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Fork Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("Fork's typed copy exception should parse");
+
+    assert_eq!(compiled_text_lines(&def), vec![oracle]);
+    let program = def.spell_effect.as_ref().expect("Fork has a spell effect");
+    assert!(
+        format!("{program:#?}").contains("CopySpellEffect")
+            && format!("{program:#?}").contains("SetColors"),
+        "the copy action and red exception must both survive lowering: {program:#?}"
+    );
+
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let original_card = CardBuilder::new(CardId::new(), "Blue Stack Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let original = game.create_object_from_card(&original_card, bob, Zone::Stack);
+    game.stack.push(StackEntry::new(original, bob));
+    let fork = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let mut ctx = ExecutionContext::new_default(fork, alice);
+    ctx.targets = vec![ResolvedTarget::Object(original)];
+    for effect in &program.segments[0].default_effects {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Fork's copy and characteristic exception should resolve");
+    }
+
+    let copy = game
+        .stack
+        .iter()
+        .filter_map(|entry| game.object(entry.object_id))
+        .find(|object| object.kind == ObjectKind::SpellCopy && object.name == "Blue Stack Probe")
+        .expect("Fork should create one copy of the targeted spell");
+    assert_eq!(
+        game.current_colors(copy.id),
+        Some(crate::color::ColorSet::RED),
+        "the created spell copy must be red"
+    );
+    assert_eq!(
+        game.current_colors(original),
+        Some(crate::color::ColorSet::BLUE),
+        "the original targeted spell must keep its own color"
+    );
+    assert_eq!(
+        game.current_colors(fork),
+        Some(crate::color::ColorSet::RED),
+        "the resolving source is naturally red but must not be the copy exception's target"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn test_parse_additional_cost_tap_two_untapped_creatures_and_or_lands() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Fear of Exposure")
         .card_types(vec![CardType::Sorcery])
@@ -2212,9 +2378,25 @@ pub(super) fn test_parse_trigger_this_blocks_filtered_creature() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("whenever this creature blocks creature with flying"),
+        joined.contains("whenever this creature blocks a creature with flying"),
         "expected trigger to include blocked-object filter, got {joined}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn alaborn_zealot_destroys_the_blocker_and_exact_blocked_attacker() {
+    let oracle = "When this creature blocks a creature, destroy both creatures.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Alaborn Zealot")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+        .parse_text(oracle)
+        .expect("Alaborn Zealot should parse");
+
+    assert_eq!(compiled_text_lines(&def).join("\n"), oracle);
+    let debug = format!("{:#?}", def.abilities[0]);
+    assert!(debug.contains("TagTriggeringAttackerEffect"), "{debug}");
+    assert_eq!(debug.matches("DestroyEffect").count(), 2, "{debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -2294,6 +2476,81 @@ pub(super) fn test_parse_trigger_opponent_discards_card() {
     assert!(
         joined.contains("whenever an opponent discards a card"),
         "expected discard trigger wording in compiled text, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn tergrid_discarded_permanent_trigger_matches_hand_lki_only_for_an_opponent() {
+    let oracle = "Menace\nWhenever an opponent sacrifices a nontoken permanent or discards a permanent card, you may put that card from a graveyard onto the battlefield under your control.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(23_360), "Tergrid, God of Fright")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::God])
+        .power_toughness(PowerToughness::fixed(4, 5))
+        .parse_text(oracle)
+        .expect("Tergrid should parse without a lossy fallback");
+    let debug = format!("{:#?}", def.abilities);
+    let discard_branch = debug
+        .split("YouDiscardCardTrigger")
+        .nth(1)
+        .expect("Tergrid should have a discard trigger branch");
+    let discard_filter = discard_branch
+        .split("cause_controller")
+        .next()
+        .expect("discard trigger filter debug");
+    assert!(
+        discard_filter.contains("zone: None") && !discard_filter.contains("Battlefield"),
+        "the discard branch must use event-time hand LKI without a battlefield requirement: {debug}"
+    );
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let permanent_def = CardDefinitionBuilder::new(CardId::from_raw(23_361), "Discarded Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let permanent = game.create_object_from_definition(&permanent_def, bob, Zone::Hand);
+    let permanent_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(permanent).expect("discarded permanent"),
+        &game,
+    );
+    let opponent_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::CardDiscardedEvent::new(bob, permanent)
+            .with_snapshot(permanent_snapshot.clone()),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        crate::triggers::check_triggers(&game, &opponent_event).len(),
+        1,
+        "an opponent discarding a permanent card from hand must trigger Tergrid"
+    );
+
+    let controller_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::CardDiscardedEvent::new(alice, permanent).with_snapshot(permanent_snapshot),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &controller_event).is_empty(),
+        "Tergrid must not trigger for its controller's discard"
+    );
+
+    let instant_def = CardDefinitionBuilder::new(CardId::from_raw(23_362), "Discarded Trick")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let instant = game.create_object_from_definition(&instant_def, bob, Zone::Hand);
+    let instant_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(instant).expect("discarded instant"),
+        &game,
+    );
+    let nonpermanent_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::CardDiscardedEvent::new(bob, instant).with_snapshot(instant_snapshot),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &nonpermanent_event).is_empty(),
+        "discarding a nonpermanent card must not trigger Tergrid"
     );
 }
 

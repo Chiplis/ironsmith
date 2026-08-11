@@ -2816,15 +2816,15 @@ fn parse_conditional_gain_control_clause_structurally() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_commander_creatures_have_granted_cost_reduction() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Acolyte of Bahamut Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Acolyte of Bahamut Variant")
             .parse_text(
                 "Commander creatures you own have \"The first Dragon spell you cast each turn costs {2} less to cast.\"",
             )
-            .expect_err("unsupported first-spell-each-turn granted cost reduction should fail");
-    let joined = format!("{err:?}").to_ascii_lowercase();
+            .expect("first-spell-each-turn granted cost reduction should parse");
+    let joined = format!("{def:#?}");
     assert!(
-        joined.contains("unsupported first-spell-each-turn cost modifier"),
-        "expected strict first-spell-each-turn rejection, got {joined}"
+        joined.contains("first_spell_cast_each_turn: true"),
+        "expected typed first-spell-each-turn filter, got {joined}"
     );
 }
 

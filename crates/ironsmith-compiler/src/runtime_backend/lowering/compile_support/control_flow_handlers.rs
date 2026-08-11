@@ -392,6 +392,8 @@ fn correlated_choice_result_predicate(
         })
     {
         IfResultPredicate::AcceptedChoice
+    } else if requested == IfResultPredicate::DidNot {
+        IfResultPredicate::DidNot
     } else {
         IfResultPredicate::Did
     }
@@ -578,6 +580,44 @@ pub(crate) fn compile_if_do_with_player_did(
         effects: player_effects,
     } = first
     {
+        let is_face_only_coin_flip = matches!(
+            player_effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::FlipCoinFaceOnly,
+                ..
+            })]
+        );
+        if is_face_only_coin_flip && predicate.is_none() {
+            // Resolve every player's physical flip first and retain the
+            // ForPlayers outcome's per-player heads/tails counts. The outer
+            // IfEffect then applies the separately authored follow-up only to
+            // matching players instead of interleaving one player's
+            // consequence before the next player's flip.
+            let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
+            let Some(first_effect) = first_effects.pop() else {
+                return Err(CardTextError::ParseError(
+                    "missing each-player coin flip antecedent".to_string(),
+                ));
+            };
+            let id = ctx.next_effect_id();
+            first_effects.push(Effect::with_id(id.0, first_effect));
+
+            let (inner_effects, inner_choices) =
+                compile_effects_in_iterated_player_context(second_effects, ctx, None)?;
+            for choice in inner_choices {
+                push_choice(&mut choices, choice);
+            }
+            first_effects.push(Effect::new(
+                crate::effects::IfEffect::if_then(
+                    id,
+                    effect_predicate_from_if_result(result_predicate.clone()),
+                    inner_effects,
+                )
+                .with_per_player_result(true),
+            ));
+            return Ok(Some((first_effects, choices)));
+        }
+
         if let Some(predicate) = predicate {
             let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
             let followup = EffectAst::ForEachPlayer {
@@ -1084,7 +1124,12 @@ pub(crate) fn compile_effects_in_iterated_player_context(
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let saved_frame = ctx.lowering_frame();
     let mut iterated_frame = saved_frame.clone();
-    iterated_frame.last_effect_id = None;
+    if !effects
+        .iter()
+        .any(effect_references_typed_removed_counter_metric)
+    {
+        iterated_frame.last_effect_id = None;
+    }
     if tagged_object.is_some() {
         // A tagged-object loop establishes `__it__`, but it does not replace
         // an outer player antecedent with an artificial iterated player.
@@ -1125,7 +1170,12 @@ pub(crate) fn compile_effects_in_iterated_object_context(
     // Iterating objects establishes `__it__`, not an iterated player. Preserve
     // an outer player iteration when one exists; otherwise contextual
     // `that player` filters continue to resolve to the saved antecedent.
-    iterated_frame.last_effect_id = None;
+    if !effects
+        .iter()
+        .any(effect_references_typed_removed_counter_metric)
+    {
+        iterated_frame.last_effect_id = None;
+    }
     iterated_frame.last_object_tag = Some(IT_TAG.to_string());
     iterated_frame.last_it_choice_is_set = false;
     iterated_frame.iterated_object = true;
@@ -1307,6 +1357,8 @@ fn vote_option_ast_uses_iterated_player_in_scope(
                     | EffectAst::ForEachOpponentDid { .. }
                     | EffectAst::ForEachPlayerDid { .. }
                     | EffectAst::ForEachTaggedPlayer { .. }
+                    | EffectAst::ForEachTagged { .. }
+                    | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. }
                     | EffectAst::AnyPlayerMay { .. }
             );
         for_each_nested_effects(effect, true, |nested| {
@@ -1655,6 +1707,16 @@ pub(crate) fn collect_targeted_player_specs_from_player_filter(
             collect_targeted_player_specs_from_player_filter(base, specs);
             collect_targeted_player_specs_from_player_filter(excluded, specs);
         }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+            collect_targeted_player_specs_from_player_filter(base, specs);
+        }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            collect_targeted_player_specs_from_player_filter(base, specs);
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
+            collect_targeted_player_specs_from_player_filter(base, specs);
+            collect_targeted_player_specs_from_filter(sources, specs);
+        }
         _ => {}
     }
 }
@@ -1702,6 +1764,55 @@ pub(crate) fn target_context_prelude_for_filter(
 #[cfg(test)]
 mod typed_search_predicate_tests {
     use super::*;
+
+    #[test]
+    fn removed_counter_metric_survives_runtime_player_and_object_fanout_lowering() {
+        let counter_type = crate::object::CounterType::PlusOnePlusOne;
+        let removed_count = || {
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::Removed)
+                .with_counter_type(Some(counter_type)),
+            )
+        };
+        let removal = EffectAst::subject_verb_remove_up_to_any_counters(
+            Value::CountersOnSource(counter_type),
+            TargetAst::Source(None),
+            Some(counter_type),
+            false,
+        );
+        let mut controlled_creature = ObjectFilter::creature().in_zone(Zone::Battlefield);
+        controlled_creature.controller = Some(PlayerFilter::IteratedPlayer);
+        let fanout = EffectAst::ForEachPlayer {
+            effects: vec![
+                EffectAst::subject_verb_damage(
+                    removed_count(),
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                ),
+                EffectAst::subject_verb_damage_each(removed_count(), controlled_creature),
+            ],
+        };
+
+        let compiled =
+            crate::runtime_backend::compile_support::compile_statement_effects(&[removal, fanout])
+                .expect("removed count should lower across both fanout frames");
+        let debug = format!("{compiled:#?}");
+
+        assert_eq!(
+            debug.matches("amount: PriorEffectMetric").count(),
+            2,
+            "{debug}"
+        );
+        assert_eq!(debug.matches("action: Some(\n").count(), 2, "{debug}");
+        assert_eq!(debug.matches("Removed,\n").count(), 2, "{debug}");
+        assert!(
+            !debug.contains("amount: EffectValue"),
+            "fanout damage must not bind to an inner recipient: {debug}"
+        );
+    }
 
     #[test]
     fn searched_action_only_surface_uses_zone_sensitive_search_predicate() {
@@ -1770,6 +1881,54 @@ mod typed_search_predicate_tests {
             .as_if_effect()
             .expect("the coin-flip outcome should gate the follow-up");
         assert_eq!(followup.condition, flip_with_id.id);
+    }
+
+    #[test]
+    fn each_player_face_result_uses_outer_player_counts_before_followup() {
+        let effects = vec![
+            EffectAst::ForEachPlayer {
+                effects: vec![EffectAst::subject_verb_flip_coin_face_only(PlayerAst::That)],
+            },
+            EffectAst::ForEachPlayerDid {
+                effects: vec![EffectAst::subject_verb(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::That,
+                    SubjectVerbActionAst::Draw {
+                        count: Value::Fixed(1),
+                    },
+                )],
+                predicate: None,
+                result_predicate: IfResultPredicate::DidNot,
+            },
+        ];
+
+        let compiled = crate::runtime_backend::compile_support::compile_statement_effects(&effects)
+            .expect("each-player coin-face correlation should lower");
+        let [flip_result, followup] = compiled.as_slice() else {
+            panic!("expected one shared flip result and one correlated follow-up: {compiled:#?}");
+        };
+        let flip_result = flip_result
+            .as_with_id()
+            .expect("complete each-player flip must carry the result ID");
+        let flip_players = flip_result
+            .effect
+            .downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
+            .expect("flip result should contain the player loop");
+        let [flip] = flip_players.effects.as_slice() else {
+            panic!("expected one flip per player: {flip_players:#?}");
+        };
+        assert!(
+            flip.downcast_ref::<crate::effects::FlipCoinEffect>()
+                .is_some_and(|flip| flip.kind == ironsmith_core::CoinFlipKind::FaceOnly)
+        );
+
+        let followup = followup
+            .as_if_effect()
+            .expect("player-count result must gate the follow-up");
+        assert_eq!(followup.condition, flip_result.id);
+        assert_eq!(followup.predicate, EffectPredicate::DidNotHappen);
+        assert!(followup.per_player_result);
+        assert!(format!("{:#?}", followup.then).contains("IteratedPlayer"));
     }
 
     #[test]

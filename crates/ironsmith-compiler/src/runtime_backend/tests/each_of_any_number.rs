@@ -87,6 +87,58 @@ fn repeated_counter_placements_preserve_each_any_number_target_cardinality() {
 }
 
 #[test]
+fn repeated_each_counter_placements_apply_to_both_complete_sets() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Set Counter Walker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(4)
+        .parse_text(
+            "−2: Put a +1/+1 counter on each creature you control and a loyalty counter on each other planeswalker you control.",
+        )
+        .expect("the paired each-set counter placements should parse");
+    let activated = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("the loyalty line should produce an activated ability");
+    let effects = activated.effects.flattened_default_effects();
+    let sequence = effects
+        .iter()
+        .find_map(|effect| super::find_nested_effect::<crate::effects::SequenceEffect>(effect))
+        .expect("the paired each-set placements should remain a typed sequence");
+    let fanouts = sequence
+        .effects
+        .iter()
+        .filter_map(|effect| super::find_nested_effect::<crate::effects::ForEachObject>(effect))
+        .collect::<Vec<_>>();
+
+    assert_eq!(fanouts.len(), 2, "{:#?}", activated.effects);
+    assert_eq!(fanouts[0].filter.card_types, vec![CardType::Creature]);
+    assert_eq!(
+        fanouts[0].filter.controller,
+        Some(crate::target::PlayerFilter::You)
+    );
+    assert!(!fanouts[0].filter.other);
+    assert_eq!(fanouts[1].filter.card_types, vec![CardType::Planeswalker]);
+    assert_eq!(
+        fanouts[1].filter.controller,
+        Some(crate::target::PlayerFilter::You)
+    );
+    assert!(fanouts[1].filter.other);
+    assert!(
+        fanouts.iter().all(|fanout| {
+            fanout.effects.iter().any(|effect| {
+                super::find_nested_effect::<crate::effects::PutCountersEffect>(effect)
+                    .is_some_and(|put| matches!(&put.target, crate::target::ChooseSpec::Iterated))
+            })
+        }),
+        "each placement must iterate its complete filtered set: {fanouts:#?}"
+    );
+}
+
+#[test]
 fn typed_counter_removed_followup_counts_counter_actions_not_permanents() {
     let definition = CardDefinitionBuilder::new(CardId::new(), "Garnet, Princess of Alexandria")
         .card_types(vec![CardType::Creature])
@@ -234,4 +286,103 @@ fn twice_x_create_count_remains_dynamic_and_outside_token_name() {
     assert_eq!(create.count.unhinted(), &crate::effect::Value::XTimes(2));
     assert_eq!(create.token.card.name, "Pest");
     assert_ne!(create.token.card.name, "X");
+}
+
+#[test]
+fn counted_sacrifice_reflexive_keeps_typed_gate_and_one_shared_count() {
+    fn referenced_effect_id(value: &crate::effect::Value) -> Option<crate::effect::EffectId> {
+        match value.unhinted() {
+            crate::effect::Value::EffectValue(id)
+            | crate::effect::Value::EffectValueOffset(id, _) => Some(*id),
+            crate::effect::Value::EffectMetric { effect_id, .. }
+            | crate::effect::Value::EffectMetricOffset { effect_id, .. } => Some(*effect_id),
+            _ => None,
+        }
+    }
+
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Counted Sacrifice Reflexive")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature attacks, sacrifice any number of artifacts. \
+             When you sacrifice one or more artifacts this way, tap up to that many target creatures and draw that many cards.",
+        )
+        .expect("the counted sacrifice reflexive trigger should parse");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("the attacks line should produce a triggered ability");
+    let effects = triggered.effects.flattened_default_effects();
+
+    let choose = effects
+        .iter()
+        .find_map(|effect| super::find_nested_effect::<crate::effects::ChooseObjectsEffect>(effect))
+        .expect("the ability should choose the artifacts to sacrifice");
+    assert_eq!(choose.count, ChoiceCount::any_number());
+    assert_eq!(choose.filter.card_types, vec![CardType::Artifact]);
+
+    let (sacrifice_id, sacrifice) = effects
+        .iter()
+        .find_map(|effect| {
+            let with_id = effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+            let sacrifice = super::find_nested_effect::<crate::effects::SacrificePlayerEffect>(
+                &with_id.effect,
+            )?;
+            Some((with_id.id, sacrifice))
+        })
+        .expect("the selected artifacts should be sacrificed by an identified effect");
+    assert_eq!(sacrifice.player, crate::target::PlayerFilter::You);
+    assert!(
+        sacrifice
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag == choose.tag),
+        "the sacrifice must consume exactly the chosen artifact set: {sacrifice:#?}"
+    );
+
+    let reflexive = effects
+        .iter()
+        .find_map(|effect| {
+            super::find_nested_effect::<crate::effects::ReflexiveTriggerEffect>(effect)
+        })
+        .expect("the this-way clause should lower as a reflexive trigger");
+    assert_eq!(reflexive.condition, sacrifice_id);
+    let crate::effect::EffectPredicate::PriorEffectResult(surface) = &reflexive.predicate else {
+        panic!("the reflexive gate must retain its typed sacrifice predicate");
+    };
+    assert_eq!(
+        surface.action,
+        ironsmith_core::PriorEffectAction::Sacrificed
+    );
+    assert_eq!(surface.actor, ironsmith_core::PriorEffectResultActor::You);
+    assert_eq!(
+        surface.quantifier,
+        ironsmith_core::PriorEffectResultQuantifier::OneOrMore
+    );
+    assert_eq!(surface.filter.card_types, vec![CardType::Artifact]);
+
+    let tap = reflexive
+        .effects
+        .iter()
+        .find_map(|effect| super::find_nested_effect::<crate::effects::TapEffect>(effect))
+        .expect("the reflexive branch should tap creatures");
+    let tap_count = tap
+        .target
+        .count_value()
+        .and_then(referenced_effect_id)
+        .expect("the tap target count should reference the sacrifice result");
+    let draw = reflexive
+        .effects
+        .iter()
+        .find_map(|effect| super::find_nested_effect::<crate::effects::DrawCardsEffect>(effect))
+        .expect("the reflexive branch should draw cards");
+    let draw_count = referenced_effect_id(&draw.count)
+        .expect("the draw count should reference the sacrifice result");
+
+    assert_eq!(tap_count, sacrifice_id);
+    assert_eq!(draw_count, sacrifice_id);
 }

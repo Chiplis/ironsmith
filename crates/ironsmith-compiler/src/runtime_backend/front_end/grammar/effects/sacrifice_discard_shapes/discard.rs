@@ -145,6 +145,12 @@ pub(crate) enum DiscardUnlessShape<'a> {
 }
 
 fn discard_value_from_choice_count(count: crate::effect::ChoiceCount) -> Option<(Value, bool)> {
+    if count.min == 1 && count.max.is_none() {
+        return Some((
+            Value::Fixed(0).with_surface_hint(ValueSurfaceHint::OneOrMoreChoice),
+            true,
+        ));
+    }
     if count.is_any_number() {
         return Some((Value::Fixed(0), true));
     }
@@ -397,6 +403,22 @@ mod tests {
         };
         assert_eq!(cards.count, Value::Fixed(2));
         assert!(cards.any_number);
+    }
+
+    #[test]
+    fn discard_clause_preserves_one_or_more_as_nonzero_unbounded_choice() {
+        let tokens = lex_line("one or more land cards", 0).unwrap();
+        let shape = parse_discard_clause_shape(&tokens).unwrap();
+        let DiscardClauseShape::Cards(cards) = shape else {
+            panic!("expected counted cards shape");
+        };
+        assert!(cards.any_number);
+        assert!(
+            cards
+                .count
+                .has_surface_hint(ValueSurfaceHint::OneOrMoreChoice)
+        );
+        assert_eq!(parser_token_word_refs(cards.qualifier_tokens), vec!["land"]);
     }
 
     #[test]

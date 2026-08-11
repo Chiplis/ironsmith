@@ -14,11 +14,9 @@ fn elder_spawn_keeps_the_sacrificed_source_as_the_damage_source() {
     let debug = format!("{definition:#?}");
     let compact_debug = debug.split_whitespace().collect::<String>();
     let sacrifice_uses_source = compact_debug.contains("SacrificeTargetEffect{target:Source")
-        || compact_debug
-            .contains("SacrificeTargetEffect{target:SurfaceHinted{spec:Source");
+        || compact_debug.contains("SacrificeTargetEffect{target:SurfaceHinted{spec:Source");
     let damage_uses_source = compact_debug.contains("ExecuteWithSourceEffect{source:Source")
-        || compact_debug
-            .contains("ExecuteWithSourceEffect{source:SurfaceHinted{spec:Source");
+        || compact_debug.contains("ExecuteWithSourceEffect{source:SurfaceHinted{spec:Source");
     assert!(
         compact_debug.contains("UnlessPaysEffect")
             && sacrifice_uses_source

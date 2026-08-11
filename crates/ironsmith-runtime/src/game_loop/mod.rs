@@ -19,10 +19,10 @@ use crate::cost::OptionalCostsPaid;
 use crate::costs::CostContext;
 use crate::decision::{
     AlternativePaymentEffect, AttackerDeclaration, BlockerDeclaration, DecisionMaker, GameProgress,
-    GameResult, KeywordPaymentContribution, LegalAction, ManaPaymentOption, ManaPipPaymentAction,
-    ManaPipPaymentOption, OptionalCostOption, ReplacementOption, ResponseError, TargetRequirement,
-    can_activate_ability_with_restrictions, compute_commander_actions, compute_legal_actions,
-    compute_legal_attackers, compute_legal_blockers, compute_potential_mana,
+    GameResult, KeywordPaymentContribution, LegalAction, OptionalCostOption, ReplacementOption,
+    ResponseError, TargetRequirement, can_activate_ability_with_restrictions,
+    compute_commander_actions, compute_legal_actions, compute_legal_attackers,
+    compute_legal_blockers, compute_potential_mana,
 };
 use crate::effect::Effect;
 use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
@@ -65,6 +65,7 @@ use crate::turn::{
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
+mod attractions;
 #[cfg(all(test, feature = "engine-integration-tests"))]
 mod choose_player_tests;
 mod combat_damage;
@@ -98,10 +99,12 @@ use self::targeting::*;
 use self::turn_execution::*;
 use self::types::*;
 
+pub use self::attractions::*;
 pub use self::combat_damage::*;
 pub use self::combat_decisions::*;
 pub use self::priority_apply::apply_priority_response_with_dm;
 pub use self::priority_apply::{PriorityActionPerfMetrics, last_priority_action_perf};
+pub(crate) use self::priority_cast::cast_spell_from_resolving_effect_with_context;
 pub use self::priority_core::*;
 pub use self::priority_core::{PriorityAdvancePerfMetrics, last_priority_advance_perf};
 pub use self::priority_mana::run_priority_loop_with;
@@ -128,6 +131,7 @@ pub use self::priority_mana::{
 };
 pub use self::targeting::drain_pending_trigger_events;
 pub(crate) use self::targeting::{
+    CoordinatedTargetState, count_target_selection_slots_for_coordinated_child,
     count_target_selection_slots_for_isolated_effect,
     extract_target_requirements_for_effect_with_state,
     extract_target_requirements_from_program_with_modes, spell_has_legal_targets_with_mode_preview,

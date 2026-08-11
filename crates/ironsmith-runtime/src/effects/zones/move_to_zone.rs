@@ -986,6 +986,38 @@ mod tests {
     }
 
     #[test]
+    fn counted_source_linked_move_chooses_only_one_matching_exiled_card() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source =
+            create_named_creature_in_zone(&mut game, alice, "Linked Source", Zone::Battlefield);
+        let first = create_named_creature_in_zone(&mut game, alice, "First Linked", Zone::Exile);
+        let second = create_named_creature_in_zone(&mut game, alice, "Second Linked", Zone::Exile);
+        game.add_exiled_with_source_link(source, first);
+        game.add_exiled_with_source_link(source, second);
+
+        let target =
+            ChooseSpec::Object(ObjectFilter::tagged(SOURCE_EXILED_TAG).in_zone(Zone::Exile))
+                .with_count(crate::effect::ChoiceCount::exactly(1));
+        let mut decision_maker = ChooseLastOptionDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
+        MoveToZoneEffect::new(target, Zone::Hand, false)
+            .execute(&mut game, &mut ctx)
+            .expect("one linked exiled card should move");
+
+        let exiled_names = game
+            .zone_ids(Zone::Exile)
+            .filter_map(|id| game.object(id).map(|object| object.name.to_string()))
+            .collect::<Vec<_>>();
+        let hand_names = game
+            .zone_ids(Zone::Hand)
+            .filter_map(|id| game.object(id).map(|object| object.name.to_string()))
+            .collect::<Vec<_>>();
+        assert_eq!(exiled_names, vec!["First Linked".to_string()]);
+        assert!(hand_names.contains(&"Second Linked".to_string()));
+    }
+
+    #[test]
     fn batch_move_applies_each_conditional_entry_counter_to_matching_objects() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

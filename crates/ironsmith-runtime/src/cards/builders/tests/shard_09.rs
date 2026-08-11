@@ -26,6 +26,54 @@ use super::*;
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn clone_shell_keeps_the_complete_hidden_looked_card_partition() {
+    let oracle = "Imprint — When this creature enters, look at the top four cards of your library, exile one face down, then put the rest on the bottom of your library in any order.\nWhen this creature dies, turn the exiled card face up. If it's a creature card, put it onto the battlefield under your control.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Clone Shell")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .parse_text(oracle)
+        .expect("Clone Shell should retain its hidden-card partition");
+
+    assert_eq!(compiled_text_lines(&def).join("\n"), oracle);
+    let debug = format!("{:#?}", def.abilities[0]);
+    assert!(debug.contains("LookAtTopCardsEffect"), "{debug}");
+    assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(debug.contains("ExileEffect"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "{debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn mindclaw_shaman_keeps_optional_choice_in_the_revealed_opponents_hand() {
+    let oracle = "When this creature enters, target opponent reveals their hand. You may cast an instant or sorcery spell from among those cards without paying its mana cost.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mindclaw Shaman")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Mindclaw Shaman should retain its revealed-hand cast choice");
+
+    assert_eq!(compiled_text_lines(&def).join("\n"), oracle);
+    let debug = format!("{:#?}", def.abilities[0]);
+    assert!(debug.contains("LookAtHandEffect"), "{debug}");
+    assert!(debug.contains("reveal: true"), "{debug}");
+    assert!(debug.contains("MayEffect"), "{debug}");
+    assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(
+        debug.contains("zone: Some(\n") && debug.contains("Hand"),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("AliasedTarget") && debug.contains("Opponent"),
+        "{debug}"
+    );
+    assert!(debug.contains(crate::tag::REVEALED_THIS_WAY_TAG), "{debug}");
+    assert!(debug.contains("CastTaggedEffect"), "{debug}");
+    assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_persecute_discards_all_cards_of_chosen_color() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Persecute Variant")
         .card_types(vec![CardType::Sorcery])
@@ -1180,6 +1228,40 @@ pub(super) fn parse_omniscience_static_free_cast_permission() {
     assert!(
         has_free_cast_grant,
         "expected a hand free-cast grant in parsed Omniscience ability"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn aura_flash_permission_keeps_the_executable_enchant_restriction() {
+    let oracle = "You may cast Aura spells with enchant creature as though they had flash.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(47_269), "Aura Timing Shaman")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("qualified Aura flash permission should parse");
+
+    assert_eq!(compiled_text_lines(&def), [oracle]);
+    let grant = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            static_ability.grant_spec()
+        })
+        .expect("parsed permission should retain a typed grant");
+    assert_eq!(grant.filter.subtypes, [Subtype::Aura]);
+    assert_eq!(grant.filter.ability_markers, ["enchant creature"]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn spawning_pool_keeps_a_trailing_animation_duration_after_its_quoted_ability() {
+    let def = parse_oracle_card_definition("Spawning Pool");
+    assert_eq!(
+        compiled_text_lines(&def).join("\n"),
+        "This land enters tapped.\n{T}: Add {B}.\n{1}{B}: This land becomes a 1/1 black Skeleton creature with \"{B}: Regenerate this creature\" until end of turn. It's still a land."
     );
 }
 

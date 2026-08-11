@@ -1066,6 +1066,42 @@ pub(super) fn describe_effect_list_compacts_source_exile_with_all_source_counter
 }
 
 #[test]
+pub(super) fn describe_effect_list_compacts_typed_exile_with_linked_counters() {
+    let source = ChooseSpec::Source.with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ThisPermanentType("this creature".to_string()),
+        ),
+    );
+    let exile = Effect::new(crate::effects::ExileEffect::with_spec(source.clone()));
+    let counters = Effect::new(crate::effects::PutCountersEffect::new(
+        CounterType::Named("memory"),
+        1,
+        source,
+    ));
+
+    assert_eq!(
+        describe_effect_list(&[exile.clone(), counters.clone()]),
+        "Exile this creature with a memory counter on it"
+    );
+
+    let wrong_object = Effect::new(crate::effects::PutCountersEffect::new(
+        CounterType::Named("memory"),
+        1,
+        ChooseSpec::Tagged(TagKey::from("another_object")),
+    ));
+    assert_ne!(
+        describe_effect_list(&[exile.clone(), wrong_object.clone()]),
+        "Exile this creature with a memory counter on it"
+    );
+    assert!(describe_source_exile_with_counters_pair(&exile, &wrong_object).is_none());
+
+    let face_down = Effect::new(
+        crate::effects::ExileEffect::with_spec(ChooseSpec::Source).with_face_down(true),
+    );
+    assert!(describe_source_exile_with_counters_pair(&face_down, &counters).is_none());
+}
+
+#[test]
 pub(super) fn describe_effect_list_compacts_linked_same_source_damage() {
     let source = ChooseSpec::Source.with_surface_hint(
         crate::target::ChooseSpecSurfaceHint::SourceReference(
@@ -1249,6 +1285,20 @@ pub(super) fn describe_effect_list_compacts_attached_creature_sacrifice_then_tok
     assert_eq!(
         describe_effect_list(&[tag_attached, sacrifice, create]),
         "enchanted creature's controller sacrifices it and you create 2/2 black Zombie creature token named Walker"
+    );
+}
+
+#[test]
+pub(super) fn describe_effect_list_preserves_attached_permanent_sacrifice_actor() {
+    let tag = TagKey::from("enchanted");
+    let tag_attached = Effect::new(crate::effects::TagAttachedToSourceEffect::new(tag.clone()));
+    let sacrifice = Effect::new(crate::effects::SacrificeTargetEffect::new(
+        ChooseSpec::Tagged(tag),
+    ));
+
+    assert_eq!(
+        describe_effect_list(&[tag_attached, sacrifice]),
+        "enchanted permanent's controller sacrifices it"
     );
 }
 
@@ -1856,6 +1906,28 @@ pub(super) fn describe_source_exiled_cards_return_to_hand_uses_exiled_cards() {
         describe_effect_list(&effects),
         "Return the exiled cards to their owners' hands"
     );
+}
+
+#[test]
+pub(super) fn plural_move_surface_does_not_pluralize_exiled_cards_twice() {
+    let mut exiled_filter = ObjectFilter::default().in_zone(Zone::Exile);
+    exiled_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let move_set = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::All(exiled_filter),
+        Zone::Battlefield,
+        false,
+    )
+    .with_target_plural_surface()
+    .under_owner_control();
+
+    let text = describe_effect(&Effect::new(move_set));
+    assert!(text.contains("the exiled cards"), "{text}");
+    assert!(!text.contains("cardss"), "{text}");
 }
 
 #[test]
@@ -3027,6 +3099,45 @@ pub(super) fn hand_pipeline_preserves_independent_negated_control_followup() {
     assert_eq!(
         describe_effect_list(&effects),
         "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card. If you don't control a Faerie, exile a card from your hand"
+    );
+}
+
+#[test]
+pub(super) fn linked_reveal_choose_discard_prefix_preserves_independent_followup_sentence() {
+    let owner = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent));
+    let (look, choose, discard) = chosen_hand_discard_effects(
+        crate::effects::LookAtHandEffect::reveal(ChooseSpec::target_opponent()),
+        owner.clone(),
+        true,
+    );
+    let attraction = ObjectFilter::default()
+        .with_subtype(Subtype::Attraction)
+        .controlled_by(owner)
+        .in_zone(Zone::Battlefield);
+    let destroy = Effect::destroy(
+        ChooseSpec::target(ChooseSpec::Object(attraction)).with_count(ChoiceCount::up_to(1)),
+    );
+    let effects = vec![look, choose, discard, destroy];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card. Destroy up to one target Attraction that player controls"
+    );
+
+    let unrelated_discard = Effect::new(crate::effects::DiscardEffect::new(
+        Value::Fixed(1),
+        PlayerFilter::target_opponent(),
+        false,
+    ));
+    let near_miss = vec![
+        effects[0].clone(),
+        effects[1].clone(),
+        unrelated_discard,
+        effects[3].clone(),
+    ];
+    assert_ne!(
+        describe_effect_list(&near_miss),
+        describe_effect_list(&effects)
     );
 }
 

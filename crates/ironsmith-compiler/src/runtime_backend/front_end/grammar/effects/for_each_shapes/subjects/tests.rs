@@ -93,6 +93,56 @@ fn captures_object_filter_and_effect_around_comma() {
 }
 
 #[test]
+fn in_exile_zone_noun_remains_inside_for_each_object_filter() {
+    for leading in ["", "Then "] {
+        let tokens = lex_line(
+            &format!(
+                "{leading}For each creature card you own in exile with a memory counter on it, create a tapped and attacking token that's a copy of it."
+            ),
+            0,
+        )
+        .unwrap();
+        let shape = parse_for_each_object_effect_shape(&tokens).unwrap();
+        assert_eq!(
+            TokenWordView::new(shape.filter_tokens).to_word_refs(),
+            [
+                "creature", "card", "you", "own", "in", "exile", "with", "a", "memory", "counter",
+                "on", "it"
+            ]
+        );
+        assert_eq!(
+            TokenWordView::new(shape.effect_tokens).to_word_refs(),
+            [
+                "create",
+                "a",
+                "tapped",
+                "and",
+                "attacking",
+                "token",
+                "thats",
+                "a",
+                "copy",
+                "of",
+                "it"
+            ]
+        );
+    }
+}
+
+#[test]
+fn genuine_exile_action_still_rejects_for_each_object_subject() {
+    let tokens = lex_line("for each creature card you own exile it", 0).unwrap();
+    assert!(parse_for_each_object_subject_shape(&tokens).is_none());
+
+    let tokens = lex_line(
+        "for each creature card you own in exile destroy a permanent",
+        0,
+    )
+    .unwrap();
+    assert!(parse_for_each_object_subject_shape(&tokens).is_none());
+}
+
+#[test]
 fn rejects_effect_clause_before_where_x_as_an_iterated_subject() {
     let tokens = lex_line(
         "Each non-Vampire creature gets -X/-X until end of turn, where X is the number of creatures you control.",

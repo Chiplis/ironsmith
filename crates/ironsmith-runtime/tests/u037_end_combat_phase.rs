@@ -192,6 +192,9 @@ fn u037_scheduler_skips_end_combat_triggers_and_defers_procedure_triggers() {
         controller: alice,
         choices: Vec::new(),
         tagged_objects: std::collections::HashMap::new(),
+        tagged_players: std::collections::HashMap::new(),
+        prepayment: None,
+        prevention_shield: None,
     });
     assert_eq!(game.calculated_power(attacker), Some(5));
     assert!(game.combat_damage_assignment_is_suppressed(attacker));

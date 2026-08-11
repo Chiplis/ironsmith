@@ -1,5 +1,114 @@
 use super::*;
 
+pub(super) fn describe_delayed_exile_referenced_controller_graveyard(
+    schedule: &crate::effects::ScheduleDelayedTriggerEffect,
+) -> Option<String> {
+    if !schedule.one_shot
+        || !schedule.until_end_of_turn
+        || schedule.start_next_turn
+        || schedule.until_end_of_combat
+        || schedule.target_tag.is_none()
+        || schedule.target_filter.is_some()
+        || schedule.controller != PlayerFilter::You
+    {
+        return None;
+    }
+    let dies = schedule
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()?;
+    if !dies.this_object
+        || dies.from != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+        || dies.to != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Graveyard)
+        || dies.object_filter.card_types.as_slice() != [CardType::Creature]
+    {
+        return None;
+    }
+    let [effect] = schedule.effects.flattened_default_effects() else {
+        return None;
+    };
+    let exile =
+        structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ExileEffect>()?;
+    let ChooseSpec::All(filter) = exile.spec.base() else {
+        return None;
+    };
+    let Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(owner_tag))) =
+        &filter.owner
+    else {
+        return None;
+    };
+    if owner_tag.as_str() != "triggering" {
+        return None;
+    }
+    let mut residual = filter.clone();
+    residual.zone = None;
+    residual.owner = None;
+    if residual != ObjectFilter::default() {
+        return None;
+    }
+    Some("When that creature dies this turn, exile its controller's graveyard".to_string())
+}
+
+/// Render a one-shot end-step instruction whose condition was authored after
+/// the action. The timing belongs between the action and its trailing `if`:
+/// "Sacrifice it at the beginning of the next end step if ...".
+pub(super) fn describe_delayed_trailing_if_next_end_step(
+    schedule: &crate::effects::ScheduleDelayedTriggerEffect,
+) -> Option<String> {
+    if !schedule.one_shot
+        || schedule.start_next_turn
+        || schedule.until_end_of_turn
+        || schedule.until_end_of_combat
+        || schedule.duration != ironsmith_core::DelayedTriggerDuration::Forever
+        || schedule.prepayment.is_some()
+        || !schedule
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>()
+            .is_some_and(|end_step| end_step.player == PlayerFilter::Any)
+    {
+        return None;
+    }
+
+    let delayed = schedule.effects.flattened_default_effects();
+    let [conditional_effect] = delayed else {
+        return None;
+    };
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if conditional.surface != ironsmith_core::ConditionalSurface::TrailingIf
+        || !conditional.if_false.is_empty()
+        || conditional.if_true.len() != 1
+    {
+        return None;
+    }
+
+    let action = describe_effect_clause_list(&conditional.if_true)
+        .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
+    if action.is_empty() || action.contains(". ") {
+        return None;
+    }
+
+    let condition = match &conditional.condition {
+        Condition::TaggedObjectMatches(_, filter) | Condition::TargetMatches(filter) => {
+            let mut residual = filter.clone();
+            residual.mana_value = None;
+            if residual == ObjectFilter::default() {
+                let description = filter.description();
+                description
+                    .split_once("with mana value ")
+                    .map(|(_, comparison)| format!("it has mana value {comparison}"))
+                    .unwrap_or_else(|| describe_condition(&conditional.condition))
+            } else {
+                describe_condition(&conditional.condition)
+            }
+        }
+        _ => describe_condition(&conditional.condition),
+    };
+
+    Some(format!(
+        "{} at the beginning of the next end step if {condition}",
+        capitalize_first(&action)
+    ))
+}
+
 pub(super) fn describe_collection_scoped_each_upkeep_return(
     schedule: &crate::effects::ScheduleDelayedTriggerEffect,
 ) -> Option<String> {
@@ -547,6 +656,231 @@ fn token_copy_reference_text(
     }
 }
 
+fn describe_target_creature_and_blockers_combat_prevention(
+    source: &ChooseSpec,
+    until: &Until,
+) -> Option<&'static str> {
+    if !matches!(until, Until::EndOfTurn) {
+        return None;
+    }
+    let ChooseSpec::All(filter) = source.base() else {
+        return None;
+    };
+    let mut target_creature = ObjectFilter::creature();
+    target_creature.is_target_object = true;
+    let mut blockers = ObjectFilter::creature();
+    blockers.blocking = true;
+    blockers.in_combat_with = Some(crate::filter::ObjectRef::Target);
+    let mut expected = ObjectFilter::default();
+    expected.any_of = vec![target_creature, blockers];
+    expected.set_conjunctive_set_surface(true);
+    (filter == &expected).then_some(
+        "Prevent all combat damage that would be dealt this turn by that creature and each creature blocking it",
+    )
+}
+
+/// Render an optional single-card deployment whose following sentence carries
+/// entry-state and temporary-ability modifiers for that exact moved object.
+/// The distinct choice and moved-result tags are both required: this keeps a
+/// coincidentally adjacent grant from being folded into the optional action.
+fn describe_may_single_hand_move_with_entry_grant(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    if !matches!(may.decider, None | Some(PlayerFilter::You))
+        || may.fallback != crate::decision::FallbackStrategy::Decline
+    {
+        return None;
+    }
+    let [choose_effect, move_effect, grant_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let moved_tag = effect_outer_tag(move_effect)?;
+    let move_to_zone = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose.count != crate::effect::ChoiceCount::exactly(1)
+        || choose.count_value.is_some()
+        || choose.aggregate_constraint.is_some()
+        || choose_search_zones(choose)? != [Zone::Hand]
+        || !move_to_battlefield_uses_chosen_tag(move_to_zone, choose.tag.as_str())
+        || move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.to_top
+        || move_to_zone.library_order.is_some()
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
+        || move_to_zone.controller_surface_explicit
+        || !move_to_zone.enters_with_counters.is_empty()
+        || !move_to_zone.enters_tapped
+        || !move_to_zone.enters_attacking
+        || move_to_zone.attack_target_mode.is_some()
+        || move_to_zone.enters_face_down
+        || move_to_zone.enters_transformed
+        || move_to_zone.transfer_exiled_with_source_links
+    {
+        return None;
+    }
+    let grant = structural_unwrap_render_wrappers(grant_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if grant.until != Until::EndOfTurn
+        || grant.condition.is_some()
+        || !grant.additional_modifications.is_empty()
+        || !grant.runtime_modifications.is_empty()
+        || grant.source_type.is_some()
+        || grant.source_reference_surface.is_some()
+        || grant.set_quantifier_surface.is_some()
+        || grant.type_retention_surface.is_some()
+        || grant.animation_pt_surface.is_some()
+        || grant.animation_duration_surface.is_some()
+        || grant.lock_filter_at_resolution
+        || grant.resolve_set_pt_values_at_resolution
+        || grant.require_creature_target
+        || !apply_continuous_targets_tag(grant, moved_tag)
+    {
+        return None;
+    }
+    let Some(crate::continuous::Modification::AddAbility(ability)) = &grant.modification else {
+        return None;
+    };
+    if !ability.is_keyword() {
+        return None;
+    }
+
+    let mut unmodified_move = move_to_zone.clone();
+    unmodified_move.enters_tapped = false;
+    unmodified_move.enters_attacking = false;
+    let base = describe_choose_then_move_to_battlefield(choose, &unmodified_move)?;
+    let base = base
+        .strip_prefix("you ")
+        .or_else(|| base.strip_prefix("You "))?;
+    let ability = lowercase_first(ability.display().trim().trim_end_matches('.'));
+    Some(format!(
+        "You may {base}. It enters tapped and attacking and gains {ability} until end of turn"
+    ))
+}
+
+/// Render an optional exact choice from the controller's hand or graveyard
+/// whose counters are authored as part of that same battlefield entry.
+fn describe_may_put_from_hand_or_graveyard_with_entry_counters(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    if !matches!(may.decider, None | Some(PlayerFilter::You))
+        || may.fallback != crate::decision::FallbackStrategy::Decline
+    {
+        return None;
+    }
+    let [choose_effect, move_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let move_to_zone = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if choose.is_search
+        || choose.reveal
+        || choose.chooser != PlayerFilter::You
+        || choose.count != crate::effect::ChoiceCount::exactly(1)
+        || choose.count_value.is_some()
+        || choose.aggregate_constraint.is_some()
+        || choose.zone != Some(Zone::Hand)
+        || choose.additional_zones.as_slice() != [Zone::Graveyard]
+        || choose.filter.zone.is_some()
+        || choose.filter.owner != Some(PlayerFilter::You)
+        || !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.to_top
+        || move_to_zone.library_order.is_some()
+        || move_to_zone.verb_surface != ironsmith_core::MoveToZoneVerbSurface::Put
+        || move_to_zone.actor_surface != Some(PlayerFilter::You)
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
+        || move_to_zone.controller_surface_explicit
+        || move_to_zone.enters_with_counters.is_empty()
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.attack_target_mode.is_some()
+        || move_to_zone.enters_face_down
+        || move_to_zone.enters_transformed
+        || move_to_zone.transfer_exiled_with_source_links
+    {
+        return None;
+    }
+    let mut filter = choose.filter.clone();
+    filter.owner = None;
+    filter.zone = None;
+    let selection = with_indefinite_article(&filter.description());
+    Some(
+        super::player_and_zone_effects::append_battlefield_entry_counter_surface(
+            format!("You may put {selection} onto the battlefield from your hand or graveyard"),
+            &move_to_zone.enters_with_counters,
+        ),
+    )
+}
+
+#[cfg(test)]
+mod moved_object_entry_grant_render_tests {
+    use super::*;
+
+    fn procedure(moved_tag: &str, grant_tag: &str, attacking: bool) -> crate::effects::MayEffect {
+        let mut filter = ObjectFilter::creature();
+        filter.zone = Some(Zone::Hand);
+        filter.owner = Some(PlayerFilter::You);
+        filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(3));
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            filter,
+            crate::effect::ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            "chosen",
+        )
+        .in_zone(Zone::Hand);
+        let mut move_to_zone = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::tagged("chosen"),
+            Zone::Battlefield,
+            false,
+        )
+        .tapped();
+        if attacking {
+            move_to_zone = move_to_zone.attacking();
+        }
+        let grant = crate::effects::ApplyContinuousEffect::with_spec(
+            ChooseSpec::tagged(grant_tag),
+            crate::continuous::Modification::AddAbility(
+                crate::static_abilities::StaticAbility::indestructible(),
+            ),
+            Until::EndOfTurn,
+        );
+        crate::effects::MayEffect::new(vec![
+            Effect::new(choose),
+            Effect::new(move_to_zone).tag(moved_tag),
+            Effect::new(grant),
+        ])
+    }
+
+    #[test]
+    fn exact_linked_optional_move_renders_authored_entry_followup() {
+        let may = procedure("moved", "moved", true);
+        assert_eq!(
+            describe_may_single_hand_move_with_entry_grant(&may),
+            Some(
+                "You may put a creature card with mana value 3 or less from your hand onto the battlefield. It enters tapped and attacking and gains indestructible until end of turn"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn entry_followup_requires_attacking_and_exact_moved_result_tag() {
+        assert!(
+            describe_may_single_hand_move_with_entry_grant(&procedure("moved", "different", true))
+                .is_none()
+        );
+        assert!(
+            describe_may_single_hand_move_with_entry_grant(&procedure("moved", "moved", false))
+                .is_none()
+        );
+    }
+}
+
 pub(crate) fn describe_effect_impl(effect: &Effect) -> String {
     include!("effect_impl/early.rs");
     include!("effect_impl/late.rs")
@@ -600,6 +934,9 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::OncePerTurn => Some("Activate only once each turn"),
         ActivationTiming::DuringYourTurn => Some("Activate only during your turn"),
         ActivationTiming::DuringOpponentsTurn => Some("Activate only during an opponent's turn"),
+        ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => Some(
+            "Any player may activate this ability but only during their turn before the end step",
+        ),
         ActivationTiming::DuringSourceOwnersUpkeep => {
             Some("Activate only during this card's owner's upkeep")
         }
@@ -1537,6 +1874,13 @@ pub(super) fn describe_ward_blight_keyword(cost: &crate::cost::TotalCost) -> Opt
 }
 
 pub(super) fn describe_structured_ward_cost(cost: &crate::cost::TotalCost) -> String {
+    // Waterbend's expanded tap branches are the executable payment model;
+    // the authored keyword is the public cost surface.
+    if let ironsmith_core::TotalCostKind::OneOf(branches) = cost.kind()
+        && let Some(generic) = super::costs_and_triggers::waterbend_generic_from_branches(branches)
+    {
+        return format!("Waterbend {{{generic}}}.");
+    }
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => {
             let parts = describe_cost_component_parts(costs);
@@ -1555,6 +1899,16 @@ pub(super) fn describe_structured_ward_cost(cost: &crate::cost::TotalCost) -> St
 }
 
 pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
+    if matches!(
+        &ability.kind,
+        AbilityKind::Static(static_ability)
+            if static_ability.id() == crate::static_abilities::StaticAbilityId::Flanking
+    ) {
+        return Some(
+            "Flanking (Whenever a creature without flanking blocks this creature, the blocking creature gets -1/-1 until end of turn.)"
+                .to_string(),
+        );
+    }
     if let AbilityKind::Triggered(triggered) = &ability.kind
         && triggered.intervening_if.is_none()
         && triggered.presentation_label.is_none()
@@ -1566,6 +1920,34 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         )
     {
         return Some("Haunt".to_string());
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && triggered.intervening_if.is_none()
+        && triggered.presentation_label.is_none()
+        && triggered.choices.is_empty()
+        && triggered
+            .trigger
+            .downcast_ref::<crate::triggers::ThisAttacksWithGreaterPowerTrigger>()
+            .is_some()
+    {
+        let [put, emit] = triggered.effects.flattened_default_effects() else {
+            return None;
+        };
+        let put = put.downcast_ref::<crate::effects::PutCountersEffect>()?;
+        let emit = emit.downcast_ref::<crate::effects::EmitKeywordActionEffect>()?;
+        if put.counter_type == CounterType::PlusOnePlusOne
+            && put.amount == Value::Fixed(1)
+            && matches!(put.target, ChooseSpec::Source)
+            && put.target_count.is_none()
+            && !put.distributed
+            && emit.action == ironsmith_core::KeywordActionKind::Train
+            && emit.amount == 1
+        {
+            return Some(
+                "Training (Whenever this creature attacks with another creature with greater power, put a +1/+1 counter on this creature.)"
+                    .to_string(),
+            );
+        }
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(annihilator) = describe_annihilator_keyword(triggered)
@@ -1783,6 +2165,22 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     let AbilityKind::Static(static_ability) = &ability.kind else {
         return None;
     };
+    if static_ability.id() == crate::static_abilities::StaticAbilityId::Landwalk
+        && let Some(crate::static_abilities::LandwalkKind::Subtype { subtype, snow }) =
+            static_ability.landwalk_kind()
+        && subtype.is_basic_land_type()
+    {
+        let subtype = subtype.display_name();
+        let controlled_land = if snow {
+            with_indefinite_article(&format!("snow {subtype}"))
+        } else {
+            with_indefinite_article(&subtype)
+        };
+        return Some(format!(
+            "{} (This creature can't be blocked as long as defending player controls {controlled_land}.)",
+            static_ability.display()
+        ));
+    }
     if let Some(cost) = static_ability.ward_cost() {
         if let Some(blight) = describe_ward_blight_keyword(cost) {
             return Some(blight);
@@ -3067,7 +3465,7 @@ pub(super) fn describe_structural_amplify_keyword(
     Some(format!("Amplify {}", amplify.amount))
 }
 
-pub(super) fn describe_structural_mentor_keyword(
+pub(in crate::compiled_text) fn describe_structural_mentor_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
     if triggered.intervening_if.is_some()
@@ -3091,7 +3489,10 @@ pub(super) fn describe_structural_mentor_keyword(
     if !triggered.choices.iter().any(is_mentor_target) {
         return None;
     }
-    Some("Mentor".to_string())
+    Some(
+        "Mentor (Whenever this creature attacks, put a +1/+1 counter on target attacking creature with lesser power.)"
+            .to_string(),
+    )
 }
 
 pub(super) fn is_mentor_target(target: &ChooseSpec) -> bool {
@@ -3772,6 +4173,7 @@ pub(super) fn describe_structural_storm_keyword(
         || copy_spell.count != Value::SpellsCastBeforeThisTurn(PlayerFilter::You)
         || copy_spell.copier != PlayerFilter::You
         || !copy_spell.removed_supertypes.is_empty()
+        || copy_spell.has_characteristic_modifiers()
     {
         return None;
     }
@@ -3812,6 +4214,7 @@ pub(super) fn describe_structural_gravestorm_keyword(
             ))
         || copy_spell.copier != PlayerFilter::You
         || !copy_spell.removed_supertypes.is_empty()
+        || copy_spell.has_characteristic_modifiers()
     {
         return None;
     }
@@ -3862,6 +4265,7 @@ pub(super) fn describe_structural_demonstrate_keyword(
         || copy_you_spell.count != Value::Fixed(1)
         || copy_you_spell.copier != PlayerFilter::You
         || !copy_you_spell.removed_supertypes.is_empty()
+        || copy_you_spell.has_characteristic_modifiers()
     {
         return None;
     }
@@ -3883,6 +4287,7 @@ pub(super) fn describe_structural_demonstrate_keyword(
         || copy_opponent_spell.count != Value::Fixed(1)
         || copy_opponent_spell.copier != opponent
         || !copy_opponent_spell.removed_supertypes.is_empty()
+        || copy_opponent_spell.has_characteristic_modifiers()
     {
         return None;
     }
@@ -4419,6 +4824,26 @@ pub(super) fn remove_presentation_label_chosen_option(
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: crate::effect::Value::Fixed(4),
         } if presentation_label_matches_chosen_option(triggered, "Max speed") => None,
+        crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(found),
+        } if triggered
+            .presentation_label
+            .as_ref()
+            .and_then(|label| match label {
+                crate::ability::PresentationLabel::AbilityWord(label) => label
+                    .trim()
+                    .strip_prefix(
+                        ironsmith_core::static_ability_model::STATION_THRESHOLD_STATIC_LABEL_PREFIX,
+                    )
+                    .and_then(|threshold| threshold.parse::<i32>().ok()),
+                _ => None,
+            })
+            == Some(*found) =>
+        {
+            None
+        }
         crate::ConditionExpr::And(left, right) => match (
             remove_presentation_label_chosen_option(left, triggered),
             remove_presentation_label_chosen_option(right, triggered),

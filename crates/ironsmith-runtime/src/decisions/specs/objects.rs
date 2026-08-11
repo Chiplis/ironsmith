@@ -904,6 +904,8 @@ pub struct TargetRequirement {
     /// Legal target groups for constraints that apply to the selected set.
     /// If empty, any combination of legal targets is allowed.
     pub legal_target_sets: Vec<Vec<crate::game_state::Target>>,
+    /// Resolved restriction on the selected target set as a whole.
+    pub aggregate_constraint: Option<crate::targeting::ResolvedTargetAggregateConstraint>,
     /// Minimum number of targets to choose.
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited).
@@ -920,6 +922,7 @@ impl TargetRequirement {
             description: description.into(),
             legal_targets,
             legal_target_sets: Vec::new(),
+            aggregate_constraint: None,
             min_targets: 1,
             max_targets: Some(1),
         }
@@ -934,6 +937,7 @@ impl TargetRequirement {
             description: description.into(),
             legal_targets,
             legal_target_sets: Vec::new(),
+            aggregate_constraint: None,
             min_targets: 0,
             max_targets: None,
         }
@@ -949,6 +953,7 @@ fn runtime_requirements(
             description: req.description.clone(),
             legal_targets: req.legal_targets.clone(),
             legal_target_sets: req.legal_target_sets.clone(),
+            aggregate_constraint: req.aggregate_constraint.clone(),
             min_targets: req.min_targets,
             max_targets: req.max_targets,
             distinct_player_group: None,
@@ -1173,6 +1178,7 @@ mod tests {
                 description: "two targets".to_string(),
                 legal_targets: vec![first, second],
                 legal_target_sets: Vec::new(),
+                aggregate_constraint: None,
                 min_targets: 2,
                 max_targets: Some(2),
             }],

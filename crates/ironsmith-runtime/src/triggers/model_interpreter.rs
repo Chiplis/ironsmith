@@ -26,7 +26,11 @@ fn convert_zone_change_trigger(
     trigger: ironsmith_core::trigger_model::ZoneChangeTrigger,
 ) -> crate::triggers::Trigger {
     let mut out = crate::triggers::zone_changes::ZoneChangeTrigger::new();
-    if let Some(from_zones) = trigger.from_zones {
+    if let Some(from_excluded) = trigger.from_excluded {
+        out = out.from(crate::triggers::zone_changes::ZonePattern::AnyExcept(
+            from_excluded,
+        ));
+    } else if let Some(from_zones) = trigger.from_zones {
         if from_zones.len() == 1 {
             out = out.from(from_zones[0]);
         } else {
@@ -37,7 +41,11 @@ fn convert_zone_change_trigger(
     } else if let Some(from) = trigger.from {
         out = out.from(from);
     }
-    if let Some(to) = trigger.to {
+    if let Some(to_excluded) = trigger.to_excluded {
+        out = out.to(crate::triggers::zone_changes::ZonePattern::AnyExcept(
+            to_excluded,
+        ));
+    } else if let Some(to) = trigger.to {
         out = out.to(to);
     }
     if let Some(filter) = trigger.filter {
@@ -57,6 +65,12 @@ fn convert_zone_change_trigger(
     }
     if let Some(during_turn) = trigger.during_turn {
         out = out.during_turn(during_turn);
+    }
+    if matches!(
+        trigger.timing,
+        Some(ironsmith_core::TriggerTimingRestriction::DuringCombat)
+    ) {
+        out = out.during_combat();
     }
     if let Some(graveyard_surface) = trigger.graveyard_surface {
         out = out.graveyard_surface(graveyard_surface);
@@ -96,6 +110,12 @@ fn convert_counter_removed_from_trigger(
     trigger: ironsmith_core::trigger_model::CounterRemovedFromTrigger,
 ) -> crate::triggers::Trigger {
     let mut out = crate::triggers::CounterRemovedFromTrigger::new(trigger.filter);
+    if let Some(counter_type) = trigger.counter_type {
+        out = out.counter_type(counter_type);
+    }
+    if trigger.last {
+        out = out.last();
+    }
     if trigger.one_or_more {
         out = out.one_or_more();
     }
@@ -123,6 +143,9 @@ pub(crate) fn interpret_trigger_model(
             })
         }
         TriggerKind::ThisAttacks => crate::triggers::Trigger::this_attacks(),
+        TriggerKind::ThisAndAnotherAttackDifferentPlayers => {
+            crate::triggers::Trigger::this_and_another_attack_different_players()
+        }
         TriggerKind::ThisAttacksPlayerWhoControlsAtLeast { count, filter } => {
             crate::triggers::Trigger::this_attacks_player_who_controls_at_least(count, filter)
         }
@@ -164,6 +187,9 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::PlayersAttackedOneOrMore { player_filter } => {
             crate::triggers::Trigger::players_attacked_one_or_more(player_filter)
+        }
+        TriggerKind::PlayerAttacksOneOrMore { attacker, target } => {
+            crate::triggers::Trigger::player_attacks_one_or_more(attacker, target)
         }
         TriggerKind::AttacksOneOrMoreWithMinTotal {
             filter,
@@ -294,15 +320,41 @@ pub(crate) fn interpret_trigger_model(
             player,
             source_surface,
         ),
+        TriggerKind::DealsExactDamageToObjectOrPlayer {
+            source,
+            object,
+            player,
+            player_first,
+            amount,
+            source_surface,
+        } => crate::triggers::Trigger::deals_exact_damage_to_object_or_player_with_source_surface(
+            source,
+            object,
+            player,
+            player_first,
+            amount,
+            source_surface,
+        ),
         TriggerKind::DealsNoncombatDamageToPlayer {
             source,
             player,
             source_surface,
-        } => crate::triggers::Trigger::deals_noncombat_damage_to_player_with_source_surface(
-            source,
-            player,
-            source_surface,
-        ),
+            damaged_player_one_or_more,
+            during_turn,
+        } => {
+            let mut trigger = crate::triggers::DealsDamageTrigger::noncombat_to_player(
+                source,
+                player,
+                source_surface,
+            );
+            if damaged_player_one_or_more {
+                trigger = trigger.damaged_player_one_or_more();
+            }
+            if let Some(during_turn) = during_turn {
+                trigger = trigger.during_turn(during_turn);
+            }
+            crate::triggers::Trigger::new(trigger)
+        }
         TriggerKind::DealsCombatDamage { filter } => {
             crate::triggers::Trigger::deals_combat_damage(filter)
         }
@@ -367,8 +419,18 @@ pub(crate) fn interpret_trigger_model(
             loyalty_only,
             activation_cost_has_tap,
         ),
-        TriggerKind::AbilityTriggered { another } => {
-            if another {
+        TriggerKind::AbilityTriggered {
+            another,
+            source_filter,
+            caused_by_source_entering,
+        } => {
+            if source_filter.is_some() || caused_by_source_entering {
+                crate::triggers::Trigger::ability_triggered_qualified(
+                    another,
+                    source_filter,
+                    caused_by_source_entering,
+                )
+            } else if another {
                 crate::triggers::Trigger::another_ability_triggers()
             } else {
                 crate::triggers::Trigger::ability_triggers()
@@ -377,8 +439,12 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::IsDealtDamage {
             target,
             combat_only,
+            noncombat_only,
+            excess_only,
         } => {
-            if combat_only {
+            if excess_only && noncombat_only {
+                crate::triggers::Trigger::is_dealt_excess_noncombat_damage(target)
+            } else if combat_only {
                 crate::triggers::Trigger::is_dealt_combat_damage(target)
             } else {
                 crate::triggers::Trigger::is_dealt_damage(target)
@@ -465,6 +531,12 @@ pub(crate) fn interpret_trigger_model(
             filter,
             one_or_more_surface,
         ),
+        TriggerKind::PermanentSacrificed { filter } => {
+            crate::triggers::Trigger::permanent_sacrificed(filter)
+        }
+        TriggerKind::PermanentDestroyed { filter } => {
+            crate::triggers::Trigger::permanent_destroyed(filter)
+        }
         TriggerKind::TokensCreated {
             player,
             filter,
@@ -500,6 +572,13 @@ pub(crate) fn interpret_trigger_model(
                 )
             }
         },
+        TriggerKind::DiesCreatureDealtDamageByFilteredSourceThisTurn {
+            victim,
+            damager_filter,
+        } => crate::triggers::Trigger::creature_dealt_damage_by_filtered_source_this_turn_dies(
+            victim,
+            damager_filter,
+        ),
         TriggerKind::SpellCastQualified {
             filter,
             mana_source_filter,
@@ -522,6 +601,14 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::SpellCast { filter, caster } => {
             crate::triggers::Trigger::spell_cast(filter, caster)
         }
+        TriggerKind::SpellCastSameNameCardInZone {
+            filter,
+            caster,
+            zone,
+            owner,
+        } => crate::triggers::Trigger::spell_cast_same_name_card_in_zone(
+            filter, caster, zone, owner,
+        ),
         TriggerKind::NthSpellOfTurnCast { spell_number } => {
             crate::triggers::Trigger::nth_spell_of_turn_cast(spell_number)
         }
@@ -569,12 +656,20 @@ pub(crate) fn interpret_trigger_model(
             ironsmith_core::trigger_model::EndStepSurface::Each => {
                 crate::triggers::Trigger::beginning_of_end_step(player)
             }
+            ironsmith_core::trigger_model::EndStepSurface::Monarch => {
+                crate::triggers::Trigger::beginning_of_monarch_end_step()
+            }
         },
+        TriggerKind::BeginningOfMainPhase { player, surface } => {
+            crate::triggers::Trigger::beginning_of_main_phase_with_surface(player, surface)
+        }
         TriggerKind::BeginningOfPrecombatMainPhase { player } => {
             crate::triggers::Trigger::beginning_of_precombat_main_phase(player)
         }
-        TriggerKind::BeginningOfPostcombatMainPhase { player } => {
-            crate::triggers::Trigger::beginning_of_postcombat_main_phase(player)
+        TriggerKind::BeginningOfPostcombatMainPhase { player, surface } => {
+            crate::triggers::Trigger::beginning_of_postcombat_main_phase_with_surface(
+                player, surface,
+            )
         }
         TriggerKind::DayNightChanged => crate::triggers::Trigger::day_night_changed(),
         TriggerKind::ThisEntersBattlefield => crate::triggers::Trigger::this_enters_battlefield(),
@@ -594,6 +689,13 @@ pub(crate) fn interpret_trigger_model(
             player,
             filter,
         } => crate::triggers::Trigger::keyword_action_matching_object(action, player, filter),
+        TriggerKind::KeywordActionMatchingObjectDuringYourTurn {
+            action,
+            player,
+            filter,
+        } => crate::triggers::Trigger::keyword_action_matching_object_during_your_turn(
+            action, player, filter,
+        ),
         TriggerKind::KeywordActionMatchingTaggedObject {
             action,
             player,
@@ -622,6 +724,9 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::KeywordAction { action, player } => {
             crate::triggers::Trigger::keyword_action(action, player)
+        }
+        TriggerKind::KeywordActionDuringYourTurn { action, player } => {
+            crate::triggers::Trigger::keyword_action_during_your_turn(action, player)
         }
         TriggerKind::KeywordActionFromSource { action, player } => {
             crate::triggers::Trigger::keyword_action_from_source(action, player)
@@ -752,6 +857,16 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked => {
                 Self::this_attacks_and_isnt_blocked()
             }
+            ironsmith_core::DelayedTriggerSpec::ThisBlocksObject {
+                filter,
+                min_blocked_objects,
+            } => match min_blocked_objects {
+                Some(minimum) => Self::this_blocks_objects_with_minimum(filter, minimum as usize),
+                None => Self::this_blocks_object(filter),
+            },
+            ironsmith_core::DelayedTriggerSpec::ThisBecomesBlockedByObject(filter) => {
+                Self::this_becomes_blocked_by_object(filter)
+            }
             ironsmith_core::DelayedTriggerSpec::Attacks(filter) => Self::attacks(filter),
             ironsmith_core::DelayedTriggerSpec::AttacksAndIsntBlocked(filter) => {
                 Self::attacks_and_isnt_blocked(filter)
@@ -876,5 +991,35 @@ mod delayed_spec_tests {
             .expect("land-play delayed spec should preserve the runtime matcher");
         assert_eq!(matcher.player, PlayerFilter::You);
         assert_eq!(matcher.filter, filter);
+    }
+
+    #[test]
+    fn source_relative_block_relations_survive_delayed_spec_interpretation() {
+        let filter = ObjectFilter::creature();
+        let trigger = crate::triggers::Trigger::from_delayed_trigger_spec(
+            ironsmith_core::DelayedTriggerSpec::Either(
+                Box::new(ironsmith_core::DelayedTriggerSpec::ThisBlocksObject {
+                    filter: filter.clone(),
+                    min_blocked_objects: None,
+                }),
+                Box::new(
+                    ironsmith_core::DelayedTriggerSpec::ThisBecomesBlockedByObject(filter.clone()),
+                ),
+            ),
+        );
+        let either = trigger
+            .downcast_ref::<crate::triggers::OrTrigger>()
+            .expect("the delayed union should remain an executable Or trigger");
+        assert_eq!(either.triggers.len(), 2);
+        assert!(either.triggers.iter().any(|branch| {
+            branch
+                .downcast_ref::<crate::triggers::ThisBlocksObjectTrigger>()
+                .is_some_and(|matcher| matcher.blocked_filter == filter)
+        }));
+        assert!(either.triggers.iter().any(|branch| {
+            branch
+                .downcast_ref::<crate::triggers::ThisBecomesBlockedByObjectTrigger>()
+                .is_some_and(|matcher| matcher.blocker_filter == filter)
+        }));
     }
 }

@@ -9,6 +9,10 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// The exact new object created by a zone-change replacement before its
+/// replacement follow-up effects execute.
+pub const ZONE_REPLACEMENT_OBJECT_TAG: &str = "__zone_replacement_object__";
+
 /// Runtime tag for a card explicitly referenced later as "the exiled card".
 pub const PRIOR_EXILED_CARD_TAG: &str = "__prior_exiled_card__";
 
@@ -24,6 +28,22 @@ pub const REVEALED_THIS_WAY_TAG: &str = "__revealed_this_way__";
 /// owner") the same snapshot-backed representation as other tagged-object
 /// references without inventing a separate player-filter primitive.
 pub const SOURCE_OBJECT_TAG: &str = "__source_object__";
+
+/// Player targets captured when a delayed trigger is registered.
+///
+/// A delayed trigger may both wait for and later affect a player chosen by
+/// the resolving spell or ability. The ordinary target list is local to that
+/// resolution, so the delayed registration preserves those players under
+/// this system tag.
+pub const DELAYED_TARGET_PLAYERS_TAG: &str = "__delayed_target_players__";
+
+/// The object selected by an authored "the chosen object" choice.
+///
+/// Resolution-local reference analysis may alias this key to a concrete
+/// effect tag. When a later ability on the same source refers to the choice,
+/// runtime filter contexts populate this canonical key from persistent source
+/// memory instead.
+pub const CHOSEN_OBJECTS_TAG: &str = "__chosen_objects__";
 
 /// One source snapshot per mana unit spent to cast the current spell.
 pub const MANA_SOURCES_SPENT_TO_CAST_TAG: &str = "__mana_sources_spent_to_cast__";
@@ -45,6 +65,13 @@ pub const MANIFEST_DREAD_GRAVEYARD_TAG: &str = "__manifest_dread_graveyard__";
 
 /// The complete set of attackers captured by a group attack trigger.
 pub const ATTACKING_GROUP_TAG: &str = "__attacking_group__";
+
+/// The complete set of objects captured by a one-or-more zone-change trigger.
+///
+/// The snapshots are the matched objects' last-known information, so aggregate
+/// values in the triggered ability remain stable after those objects leave
+/// their original zone.
+pub const ZONE_CHANGE_GROUP_TAG: &str = "__zone_change_group__";
 
 /// The player who currently holds the initiative designation.
 ///

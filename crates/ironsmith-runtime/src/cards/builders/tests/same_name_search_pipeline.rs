@@ -74,6 +74,13 @@ fn targeted_library_exile_pipelines_hide_target_setup() {
 #[test]
 fn kicked_search_pipeline_has_one_shuffle_per_branch() {
     let definition = parse_oracle_card_definition("Sadistic Sacrament");
+    assert_eq!(
+        canonical_compiled_lines(&definition),
+        [
+            "Kicker {7}",
+            "Search target player's library for up to three cards, exile them, then that player shuffles. If this spell was kicked, instead search that player's library for up to fifteen cards, exile them, then that player shuffles."
+        ]
+    );
     let debug = format!("{:?}", definition.spell_effect);
     assert!(
         !debug.contains("IteratedPlayer"),
@@ -87,6 +94,69 @@ fn kicked_search_pipeline_has_one_shuffle_per_branch() {
         rendered.contains("if this spell was kicked, instead"),
         "{rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_sadistic_sacrament_search(kicked: bool) -> (usize, usize) {
+    let definition = parse_oracle_card_definition("Sadistic Sacrament");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    for index in 0..20 {
+        let library_card =
+            CardDefinitionBuilder::new(CardId::new(), format!("Searchable Library Card {index}"))
+                .card_types(vec![CardType::Sorcery])
+                .build();
+        game.create_object_from_definition(&library_card, bob, Zone::Library);
+    }
+
+    let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&definition.optional_costs);
+    if kicked {
+        paid.pay(0);
+    }
+    game.object_mut(spell)
+        .expect("Sadistic Sacrament should exist on the stack")
+        .optional_costs_paid = paid.clone();
+    let mut decisions = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell, alice, &mut decisions)
+        .with_optional_costs_paid(paid)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell,
+        definition
+            .spell_effect
+            .as_ref()
+            .expect("Sadistic Sacrament should have a resolution program"),
+        None,
+        &[],
+    )
+    .expect("the targeted search/exile/shuffle program should resolve");
+
+    let exiled = game
+        .objects_in_zone(Zone::Exile)
+        .into_iter()
+        .filter(|object| {
+            game.object(*object)
+                .is_some_and(|object| object.owner == bob)
+        })
+        .count();
+    let remaining = game
+        .player(bob)
+        .expect("target player should exist")
+        .library
+        .len();
+    (exiled, remaining)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kicked_search_replacement_executes_only_the_selected_count_branch() {
+    assert_eq!(resolve_sadistic_sacrament_search(false), (3, 17));
+    assert_eq!(resolve_sadistic_sacrament_search(true), (15, 5));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

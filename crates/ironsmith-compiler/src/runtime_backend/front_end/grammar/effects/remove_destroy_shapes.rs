@@ -136,6 +136,9 @@ pub(crate) enum DestroyClauseKind<'a> {
     },
     UnsupportedConditional,
     TargetAndAttached(DestroyTargetAndAttachedShape<'a>),
+    InlineNoRegeneration {
+        target_tokens: &'a [OwnedLexToken],
+    },
     MultiTarget,
     Blocked {
         target_tokens: Vec<OwnedLexToken>,
@@ -230,6 +233,40 @@ pub(crate) fn parse_remove_clause_shape(
         return Ok(RemoveClauseShape::FromCombat {
             target_tokens: trim_lexed_commas(target_tokens),
         });
+    }
+
+    // The article in "a number of ... counters equal to ..." introduces a
+    // dynamic amount; it is not the fixed amount one. Claim the complete
+    // equality surface before the generic value-prefix parser can consume
+    // only `a` and leave the amount expression inside the target phrase.
+    if let Some(((), after_number_of)) = primitives::parse_prefix(
+        tokens,
+        alt((
+            primitives::phrase(&["a", "number", "of"]),
+            primitives::phrase(&["the", "number", "of"]),
+        ))
+        .void(),
+    ) && let Some((counter_idx, (), after_counter)) =
+        primitives::find_prefix(after_number_of, || counter_word)
+        && let Some(((), after_equal_to)) =
+            primitives::parse_prefix(after_counter, primitives::phrase(&["equal", "to"]).void())
+        && let Some((from_idx, (), target_tokens)) =
+            primitives::find_prefix(after_equal_to, || primitives::kw("from").void())
+    {
+        let value_tokens = trim_lexed_commas(&after_equal_to[..from_idx]);
+        let target_tokens = trim_lexed_commas(target_tokens);
+        if !value_tokens.is_empty()
+            && !target_tokens.is_empty()
+            && let Some((amount, used)) = values::parse_value_prefix_lexed(value_tokens)
+            && used == value_tokens.len()
+        {
+            return Ok(RemoveClauseShape::Counters {
+                amount: amount.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
+                up_to: false,
+                counter_descriptor: trim_lexed_commas(&after_number_of[..counter_idx]),
+                destination: RemoveCounterDestination::Single { target_tokens },
+            });
+        }
     }
 
     if let Some(((), after_all)) = primitives::parse_prefix(tokens, primitives::kw("all").void())
@@ -556,7 +593,21 @@ fn parse_destroy_all_shape(tokens: &[OwnedLexToken]) -> DestroyAllShape<'_> {
     {
         let filter_tokens = trim_lexed_commas(&tokens[..except_idx]);
         let exception_tokens = trim_lexed_commas(exception_tokens);
-        if !filter_tokens.is_empty() && !exception_tokens.is_empty() {
+        let exception_words =
+            crate::runtime_backend::lexer::parser_token_word_refs(exception_tokens);
+        let attack_eligibility_exception = matches!(
+            exception_words.as_slice(),
+            [
+                "creature" | "creatures",
+                "that",
+                "couldnt" | "couldn't",
+                "attack"
+            ]
+        );
+        if !attack_eligibility_exception
+            && !filter_tokens.is_empty()
+            && !exception_tokens.is_empty()
+        {
             return DestroyAllShape::ExceptFor {
                 filter_tokens,
                 exception_tokens,
@@ -575,6 +626,19 @@ fn parse_destroy_all_shape(tokens: &[OwnedLexToken]) -> DestroyAllShape<'_> {
         primitives::split_lexed_once_before_suffix(tokens, 0, || chosen_this_way_suffix)
     {
         let mut base_tokens = trim_lexed_commas(base_tokens);
+        let base_words = crate::runtime_backend::lexer::parser_token_word_refs(base_tokens);
+        // In "creatures that aren't of a type chosen this way", `chosen this
+        // way` modifies the creature type, not the creatures themselves. Keep
+        // the complete phrase in the ordinary object filter so its typed
+        // chosen-type exclusion survives. The result-tag route below is for
+        // objects that were themselves chosen this way.
+        if base_words.ends_with(&["of", "a", "type"])
+            || base_words.ends_with(&["of", "the", "type"])
+        {
+            return DestroyAllShape::Plain {
+                filter_tokens: tokens,
+            };
+        }
         // "not chosen this way" is the complement of the accumulated chosen
         // set. Keep the negation out of the object filter and preserve it as
         // the typed tagged-set relation.
@@ -709,6 +773,25 @@ fn parse_conditional_destroy_shape(
     Some((target_tokens, trim_lexed_commas(predicate_tokens)))
 }
 
+fn parse_inline_no_regeneration_target(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let (target_tokens, ()) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
+        (
+            primitives::kw("and"),
+            primitives::kw("it"),
+            alt((
+                primitives::kw("cant").void(),
+                primitives::kw("can't").void(),
+                primitives::kw("cannot").void(),
+            )),
+            primitives::kw("be"),
+            primitives::kw("regenerated"),
+        )
+            .void()
+    })?;
+    let target_tokens = trim_lexed_commas(target_tokens);
+    (!target_tokens.is_empty()).then_some(target_tokens)
+}
+
 pub(crate) fn parse_destroy_clause_shape(tokens: &[OwnedLexToken]) -> DestroyClauseShape<'_> {
     let tokens = trim_shape_edges(tokens);
     let (core_tokens, timing) = split_destroy_timing(tokens);
@@ -765,6 +848,8 @@ pub(crate) fn parse_destroy_clause_shape(tokens: &[OwnedLexToken]) -> DestroyCla
                 predicate_tokens,
             }
         }
+    } else if let Some(target_tokens) = parse_inline_no_regeneration_target(core_tokens) {
+        DestroyClauseKind::InlineNoRegeneration { target_tokens }
     } else if let Some(shape) = parse_destroy_target_and_attached_shape(core_tokens) {
         DestroyClauseKind::TargetAndAttached(shape)
     } else if has_multi_target_tail(core_tokens) {

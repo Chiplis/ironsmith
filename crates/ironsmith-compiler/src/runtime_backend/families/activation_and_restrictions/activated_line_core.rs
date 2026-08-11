@@ -663,6 +663,15 @@ pub(crate) fn parse_named_number(word: &str) -> Option<u32> {
 }
 
 pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCost, CardTextError> {
+    // Give the grammar-proven graveyard-to-library payment first refusal.
+    // Otherwise the generic activation-cost CST interprets the leading
+    // "Put three cards" as a PutCounters cost before it can see the source
+    // and destination zones.
+    if let Some(cost) =
+        super::keyword_action_costs::parse_single_graveyard_bottom_library_payment(tokens)?
+    {
+        return Ok(cost);
+    }
     let cst = parse_activation_cost_tokens(tokens)?;
     lower_activation_cost_cst(&cst)
 }

@@ -123,6 +123,9 @@ fn convert_line(line: RewriteLineCst) -> OracleGrammarLine {
                 crate::runtime_backend::model::MetadataLine::FirstPrintedSet(value) => {
                     ("FirstPrintedSet", value)
                 }
+                crate::runtime_backend::model::MetadataLine::AttractionLights(value) => {
+                    ("AttractionLights", value)
+                }
                 crate::runtime_backend::model::MetadataLine::PowerToughness(value) => {
                     ("PowerToughness", value)
                 }

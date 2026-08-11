@@ -196,7 +196,9 @@ pub(crate) fn parse_source_keyword_tail_tokens(
         return None;
     }
     let ability_start = has_word + 1;
-    if phrase_is_present(&words[ability_start..], &["as", "long", "as"]) {
+    if phrase_is_present(&words[ability_start..], &["as", "long", "as"])
+        || phrase_is_present(&words[ability_start..], &["during", "your", "turn"])
+    {
         return None;
     }
     let view = TokenWordView::new(tokens);
@@ -294,6 +296,12 @@ mod tests {
         assert_eq!(
             parser_token_word_refs(tail.ability_tokens),
             vec!["flying", "and", "vigilance"]
+        );
+
+        let timed = lex_line("This creature has first strike during your turn.", 0).unwrap();
+        assert!(
+            parse_source_keyword_tail_tokens(&timed).is_none(),
+            "a timed source keyword must reach the typed conditional static parser"
         );
 
         let land = lex_line(

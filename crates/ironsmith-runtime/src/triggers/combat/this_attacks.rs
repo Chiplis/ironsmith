@@ -15,6 +15,54 @@ use crate::zone::Zone;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThisAttacksTrigger;
 
+/// Fires when the source and another creature attack two different players.
+///
+/// This is intentionally player-only: attacking a planeswalker controlled by
+/// a different player does not satisfy Oracle text that says "attack different
+/// players."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThisAndAnotherAttackDifferentPlayersTrigger;
+
+impl TriggerMatcher for ThisAndAnotherAttackDifferentPlayersTrigger {
+    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        if event.kind() != EventKind::CreatureAttacked {
+            return false;
+        }
+        let Some(event) = event.downcast::<CreatureAttackedEvent>() else {
+            return false;
+        };
+        if event.attacker != ctx.source_id {
+            return false;
+        }
+        let crate::events::combat::AttackEventTarget::Player(source_target) = event.target else {
+            return false;
+        };
+        let Some(combat) = ctx.game.combat.as_ref() else {
+            return false;
+        };
+        combat.attackers.iter().any(|attacker| {
+            attacker.creature != ctx.source_id
+                && matches!(
+                    attacker.target,
+                    crate::combat_state::AttackTarget::Player(other_target)
+                        if other_target != source_target
+                )
+        })
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
+    }
+
+    fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
+        event_kind == EventKind::CreatureAttacked
+    }
+
+    fn display(&self) -> String {
+        "Whenever this creature and another creature attack different players".to_string()
+    }
+}
+
 impl TriggerMatcher for ThisAttacksTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::CreatureAttacked {
@@ -131,6 +179,7 @@ fn controlled_filter_noun(filter: &ObjectFilter) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
     use crate::events::combat::AttackEventTarget;
     use crate::game_state::GameState;
     use crate::ids::{ObjectId, PlayerId};
@@ -180,5 +229,69 @@ mod tests {
     fn test_display() {
         let trigger = ThisAttacksTrigger;
         assert!(trigger.display().contains("attacks"));
+    }
+
+    #[test]
+    fn source_and_another_must_attack_two_distinct_players() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Cara".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let cara = PlayerId::from_index(2);
+        let source = ObjectId::from_raw(11);
+        let other = ObjectId::from_raw(12);
+        let trigger = ThisAndAnotherAttackDifferentPlayersTrigger;
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::new(source, AttackEventTarget::Player(bob)),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        game.combat = Some(CombatState {
+            attackers: vec![
+                AttackerInfo {
+                    creature: source,
+                    target: AttackTarget::Player(bob),
+                },
+                AttackerInfo {
+                    creature: other,
+                    target: AttackTarget::Player(cara),
+                },
+            ],
+            ..CombatState::default()
+        });
+        assert!(trigger.matches(&event, &TriggerContext::for_source(source, alice, &game)));
+
+        game.combat.as_mut().expect("combat").attackers[1].target = AttackTarget::Player(bob);
+        assert!(!trigger.matches(&event, &TriggerContext::for_source(source, alice, &game)));
+    }
+
+    #[test]
+    fn planeswalker_target_is_not_a_different_player() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = ObjectId::from_raw(11);
+        let other = ObjectId::from_raw(12);
+        let planeswalker = ObjectId::from_raw(13);
+        game.combat = Some(CombatState {
+            attackers: vec![
+                AttackerInfo {
+                    creature: source,
+                    target: AttackTarget::Player(bob),
+                },
+                AttackerInfo {
+                    creature: other,
+                    target: AttackTarget::Planeswalker(planeswalker),
+                },
+            ],
+            ..CombatState::default()
+        });
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::new(source, AttackEventTarget::Player(bob)),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            !ThisAndAnotherAttackDifferentPlayersTrigger
+                .matches(&event, &TriggerContext::for_source(source, alice, &game))
+        );
     }
 }

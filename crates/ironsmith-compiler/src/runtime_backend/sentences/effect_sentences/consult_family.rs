@@ -575,6 +575,19 @@ pub(crate) fn parse_if_you_dont_sentence(
             return Ok(Some(effects));
         }
     }
+    if let Some(prefix_len) = if_you_dont_prefix_len(tokens)
+        && tokens
+            .get(prefix_len)
+            .is_some_and(|token| !token.is_comma())
+        && !is_explicit_failed_action_verb(tokens.get(prefix_len))
+    {
+        // `parse_if_you_dont_remainder_inner` deliberately cuts after its
+        // prefix so malformed result-followups report a useful missing-comma
+        // error. Do not enter that cut for an ordinary state predicate such
+        // as "If you don't control a Faerie, ..."; the general conditional
+        // parser owns that sentence.
+        return Ok(None);
+    }
     let Some(after) = grammar::parse_all_or_none(
         tokens,
         parse_if_you_dont_remainder_inner,
@@ -591,26 +604,21 @@ pub(crate) fn parse_if_you_dont_sentence(
 }
 
 fn explicit_if_you_dont_action_remainder(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let prefix_len = if tokens.first().is_some_and(|token| token.is_word("if"))
-        && tokens.get(1).is_some_and(|token| token.is_word("you"))
-        && tokens
-            .get(2)
-            .is_some_and(|token| token.is_word("don't") || token.is_word("dont"))
-    {
-        3
-    } else if tokens.first().is_some_and(|token| token.is_word("if"))
-        && tokens.get(1).is_some_and(|token| token.is_word("you"))
-        && tokens.get(2).is_some_and(|token| token.is_word("do"))
-        && tokens.get(3).is_some_and(|token| token.is_word("not"))
-    {
-        4
-    } else {
-        return None;
-    };
+    let prefix_len = if_you_dont_prefix_len(tokens)?;
 
     // The ordinary "If you don't, ..." form is intentionally left to the
     // cut-error parser above, including its missing-comma diagnostic.
     if tokens.get(prefix_len).is_some_and(OwnedLexToken::is_comma) {
+        return None;
+    }
+
+    // This result-followup form names an action from the preceding sentence
+    // ("don't cast/draw/put ... this way").  A state predicate beginning
+    // with the same three words is an ordinary condition and must remain in
+    // the conditional grammar ("don't control a Human"), not become failure
+    // of the preceding effect. Keep this list to executable result-producing
+    // verbs rather than accepting every token before the comma.
+    if !is_explicit_failed_action_verb(tokens.get(prefix_len)) {
         return None;
     }
 
@@ -620,6 +628,36 @@ fn explicit_if_you_dont_action_remainder(tokens: &[OwnedLexToken]) -> Option<&[O
         .skip(prefix_len)
         .find_map(|(idx, token)| token.is_comma().then_some(idx))?;
     (comma > prefix_len).then(|| &tokens[comma + 1..])
+}
+
+fn if_you_dont_prefix_len(tokens: &[OwnedLexToken]) -> Option<usize> {
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && tokens.get(1).is_some_and(|token| token.is_word("you"))
+        && tokens
+            .get(2)
+            .is_some_and(|token| token.is_word("don't") || token.is_word("dont"))
+    {
+        Some(3)
+    } else if tokens.first().is_some_and(|token| token.is_word("if"))
+        && tokens.get(1).is_some_and(|token| token.is_word("you"))
+        && tokens.get(2).is_some_and(|token| token.is_word("do"))
+        && tokens.get(3).is_some_and(|token| token.is_word("not"))
+    {
+        Some(4)
+    } else {
+        None
+    }
+}
+
+fn is_explicit_failed_action_verb(token: Option<&OwnedLexToken>) -> bool {
+    token.is_some_and(|token| {
+        token.as_word().is_some_and(|word| {
+            matches!(
+                word,
+                "cast" | "copy" | "draw" | "put" | "reveal" | "sacrifice"
+            )
+        })
+    })
 }
 
 pub(crate) fn parse_if_you_cant_sentence(
@@ -646,6 +684,20 @@ mod tests {
     use super::*;
     use crate::Subtype;
     use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn ordinary_negated_control_condition_is_not_a_failed_action_followup() {
+        let tokens = lex_line(
+            "If you don't control a Human, you lose life equal to that creature's toughness.",
+            0,
+        )
+        .expect("ordinary condition should lex");
+
+        assert_eq!(
+            parse_if_you_dont_sentence(&tokens).expect("result-followup probe should not error"),
+            None
+        );
+    }
 
     #[test]
     fn active_consult_preserves_explicit_repeated_card_union() {

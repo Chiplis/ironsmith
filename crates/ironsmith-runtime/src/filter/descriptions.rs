@@ -292,11 +292,26 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
             "a player who cast one or more {} spells this turn's",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::AttackedBySourceThisTurn => {
+            "a player this creature attacked this turn's".to_string()
+        }
+        PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
+            format!("{}'s", describe_player_filter(filter))
+        }
+        PlayerFilter::LostLifeThisTurn { .. } => {
+            format!("{}'s", describe_player_filter(filter))
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+            format!("{}'s", describe_player_filter(filter))
+        }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
         PlayerFilter::HasMoreLifeThanYou { .. } => format!("{}'s", describe_player_filter(filter)),
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+            format!("{}'s", describe_player_filter(filter))
+        }
+        PlayerFilter::ControlsMost { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
         PlayerFilter::MaxSpeed { .. } => format!("{}'s", describe_player_filter(filter)),
@@ -363,6 +378,24 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::AttackedBySourceThisTurn => {
+            "player this creature attacked this turn".to_string()
+        }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
+            "{} this source has dealt damage to this game",
+            describe_player_filter(base)
+        ),
+        PlayerFilter::LostLifeThisTurn { base } => {
+            format!("{} who lost life this turn", describe_player_filter(base))
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
+            let described = filter.description();
+            described
+                .strip_prefix("a ")
+                .or_else(|| described.strip_prefix("an "))
+                .unwrap_or(&described)
+                .to_string()
+        }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = count.to_string();
             format!(
@@ -377,6 +410,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             )
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
+        PlayerFilter::ControlsMost { .. } => filter.description(),
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -416,6 +450,29 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "that player".to_string()
         }
     }
+}
+
+pub(super) fn describe_counters_put_on_this_turn_constraint(
+    constraint: &CountersPutOnThisTurnConstraint,
+) -> String {
+    let actor = match &constraint.source_controller {
+        PlayerFilter::You => "you've put".to_string(),
+        PlayerFilter::Opponent => "an opponent has put".to_string(),
+        PlayerFilter::Any => "a player has put".to_string(),
+        PlayerFilter::IteratedPlayer | PlayerFilter::AliasedTarget(_) => {
+            "that player has put".to_string()
+        }
+        player => format!("{} has put", describe_player_filter(player)),
+    };
+    let quantity = match constraint.minimum {
+        1 => "one or more".to_string(),
+        minimum => format!("{minimum} or more"),
+    };
+    let counter = constraint
+        .counter_type
+        .map(|counter_type| counter_type.description().into_owned())
+        .unwrap_or_else(|| "counter".to_string());
+    format!("that {actor} {quantity} {counter} counters on this turn")
 }
 
 #[allow(dead_code)]
@@ -534,12 +591,22 @@ pub(super) fn object_has_static_ability_id(object: &Object, ability_id: StaticAb
 }
 
 pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
+    if aura_attachment_has_ability_marker(object.aura_attach_filter.as_deref(), marker) {
+        return true;
+    }
     if marker.trim().eq_ignore_ascii_case("disturb")
         && object.alternative_casts.iter().any(|method| {
             matches!(
                 method,
                 crate::alternative_cast::AlternativeCastingMethod::Disturb { .. }
             )
+        })
+    {
+        return true;
+    }
+    if marker.trim().eq_ignore_ascii_case("freerunning")
+        && object.alternative_casts.iter().any(|method| {
+            method.is_composed_cost() && method.name().eq_ignore_ascii_case("Freerunning")
         })
     {
         return true;
@@ -618,6 +685,9 @@ pub(super) fn snapshot_has_ability_marker(
     use crate::ability::AbilityKind;
 
     let normalized_marker = marker.trim().to_ascii_lowercase();
+    if aura_attachment_has_ability_marker(snapshot.aura_attach_filter.as_ref(), marker) {
+        return true;
+    }
     if matches!(
         normalized_marker.as_str(),
         "mana ability" | "mana abilities"
@@ -645,6 +715,25 @@ pub(super) fn snapshot_has_ability_marker(
         }
         ability_text_has_marker(ability, marker)
     })
+}
+
+pub(super) fn aura_attachment_has_ability_marker(
+    attachment: Option<&crate::object::AuraAttachmentFilter>,
+    marker: &str,
+) -> bool {
+    if !marker.trim().eq_ignore_ascii_case("enchant creature") {
+        return false;
+    }
+    let Some(crate::object::AuraAttachmentFilter::Object(filter)) = attachment else {
+        return false;
+    };
+    if filter.card_types.as_slice() != [CardType::Creature] {
+        return false;
+    }
+    let mut normalized = filter.clone();
+    normalized.zone = None;
+    normalized.card_types.clear();
+    normalized == ObjectFilter::default()
 }
 
 pub(super) fn ability_is_structural_cycling(ability: &crate::ability::Ability) -> bool {
@@ -725,6 +814,14 @@ pub(super) fn ability_text_has_marker(ability: &crate::ability::Ability, marker:
     let marker = marker.trim().to_ascii_lowercase();
     if marker.is_empty() {
         return false;
+    }
+    if let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind
+        && triggered
+            .presentation_label
+            .as_ref()
+            .is_some_and(|label| label.is_keyword(&marker))
+    {
+        return true;
     }
     let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
         return false;
@@ -875,6 +972,13 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
             Value::CountScaled(filter, factor) => {
                 format!("{factor} times the number of {}", filter.description())
             }
+            Value::GreatestCount(filter) => {
+                format!("the greatest number of {}", filter.description())
+            }
+            Value::GreatestSharedCreatureTypeCount(filter) => format!(
+                "the greatest number of {} that have a creature type in common",
+                filter.description()
+            ),
             Value::LandsEnteredBattlefieldThisTurn(player) => {
                 format!(
                     "the number of lands that entered the battlefield under {:?}'s control this turn",

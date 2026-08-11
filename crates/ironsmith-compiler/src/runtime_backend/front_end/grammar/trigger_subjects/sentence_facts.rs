@@ -33,7 +33,8 @@ pub(crate) fn parse_embedded_token_rules_boundary_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<usize> {
     let words = parser_token_word_refs(tokens);
-    if !exact_word_occurs(&words, &["create"]) || !exact_word_occurs(&words, &["token"]) {
+    if !exact_word_occurs(&words, &["create", "creates"]) || !exact_word_occurs(&words, &["token"])
+    {
         return None;
     }
     let with_index = parse_trigger_word_token(tokens, &["with"])?;
@@ -77,6 +78,14 @@ mod tests {
         .unwrap();
         let boundary = parse_embedded_token_rules_boundary_tokens(&quoted).unwrap();
         assert_eq!(quoted[boundary].as_word(), Some("with"));
+
+        let quantified_actor = lex_line(
+            "Each opponent creates a 1/1 red Pirate creature token with \"This token can't block.\"",
+            0,
+        )
+        .unwrap();
+        let boundary = parse_embedded_token_rules_boundary_tokens(&quantified_actor).unwrap();
+        assert_eq!(quantified_actor[boundary].as_word(), Some("with"));
 
         let unrelated = lex_line("Target token gains flying", 0).unwrap();
         assert!(parse_embedded_token_rules_boundary_tokens(&unrelated).is_none());

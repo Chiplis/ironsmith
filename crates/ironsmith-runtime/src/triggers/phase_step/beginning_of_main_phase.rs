@@ -26,12 +26,47 @@ pub struct BeginningOfMainPhaseTrigger {
     pub player: PlayerFilter,
     /// Which main phase(s) this triggers on.
     pub phase_type: MainPhaseType,
+    /// Authored wording for triggers that subscribe to both main phases.
+    pub main_phase_surface: ironsmith_core::trigger_model::MainPhaseSurface,
+    /// Oracle presentation for postcombat-main triggers.
+    pub postcombat_surface: ironsmith_core::trigger_model::PostcombatMainPhaseSurface,
 }
 
 impl BeginningOfMainPhaseTrigger {
     /// Create a new main phase trigger for the specified player and phase type.
     pub fn new(player: PlayerFilter, phase_type: MainPhaseType) -> Self {
-        Self { player, phase_type }
+        Self {
+            player,
+            phase_type,
+            main_phase_surface: ironsmith_core::trigger_model::MainPhaseSurface::MainPhase,
+            postcombat_surface:
+                ironsmith_core::trigger_model::PostcombatMainPhaseSurface::SecondMain,
+        }
+    }
+
+    pub fn new_with_main_phase_surface(
+        player: PlayerFilter,
+        surface: ironsmith_core::trigger_model::MainPhaseSurface,
+    ) -> Self {
+        Self {
+            player,
+            phase_type: MainPhaseType::Either,
+            main_phase_surface: surface,
+            postcombat_surface:
+                ironsmith_core::trigger_model::PostcombatMainPhaseSurface::SecondMain,
+        }
+    }
+
+    pub fn new_with_postcombat_surface(
+        player: PlayerFilter,
+        surface: ironsmith_core::trigger_model::PostcombatMainPhaseSurface,
+    ) -> Self {
+        Self {
+            player,
+            phase_type: MainPhaseType::Postcombat,
+            main_phase_surface: ironsmith_core::trigger_model::MainPhaseSurface::MainPhase,
+            postcombat_surface: surface,
+        }
     }
 
     /// Create a precombat main phase trigger for your main phase.
@@ -85,6 +120,37 @@ impl TriggerMatcher for BeginningOfMainPhaseTrigger {
     }
 
     fn display(&self) -> String {
+        if self.phase_type == MainPhaseType::Either
+            && self.main_phase_surface
+                == ironsmith_core::trigger_model::MainPhaseSurface::EachOfMainPhases
+            && self.player == PlayerFilter::You
+        {
+            return "At the beginning of each of your main phases".to_string();
+        }
+        if self.phase_type == MainPhaseType::Postcombat {
+            match (&self.player, self.postcombat_surface) {
+                (
+                    PlayerFilter::You,
+                    ironsmith_core::trigger_model::PostcombatMainPhaseSurface::EachOfPostcombatMains,
+                ) => {
+                    return "At the beginning of each of your postcombat main phases".to_string();
+                }
+                (
+                    PlayerFilter::You,
+                    ironsmith_core::trigger_model::PostcombatMainPhaseSurface::PostcombatMain,
+                ) => {
+                    return "At the beginning of your postcombat main phase".to_string();
+                }
+                (
+                    PlayerFilter::Any,
+                    ironsmith_core::trigger_model::PostcombatMainPhaseSurface::PostcombatMain
+                    | ironsmith_core::trigger_model::PostcombatMainPhaseSurface::EachOfPostcombatMains,
+                ) => {
+                    return "At the beginning of each postcombat main phase".to_string();
+                }
+                _ => {}
+            }
+        }
         let phase_str = match (&self.player, self.phase_type) {
             (PlayerFilter::Any, MainPhaseType::Precombat) => "player's first main phase",
             (PlayerFilter::Any, MainPhaseType::Postcombat) => "player's second main phase",
@@ -139,6 +205,18 @@ mod tests {
     fn test_display_postcombat() {
         let trigger = BeginningOfMainPhaseTrigger::your_postcombat_main_phase();
         assert!(trigger.display().contains("second main phase"));
+    }
+
+    #[test]
+    fn typed_each_of_postcombat_surface_preserves_every_matching_phase() {
+        let trigger = BeginningOfMainPhaseTrigger::new_with_postcombat_surface(
+            PlayerFilter::You,
+            ironsmith_core::trigger_model::PostcombatMainPhaseSurface::EachOfPostcombatMains,
+        );
+        assert_eq!(
+            trigger.display(),
+            "At the beginning of each of your postcombat main phases"
+        );
     }
 
     #[test]
@@ -221,6 +299,33 @@ mod tests {
         let postcombat = TriggerEvent::new_with_provenance(
             BeginningOfPostcombatMainPhaseEvent::new(alice),
             crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&precombat, &ctx));
+        assert!(trigger.matches(&postcombat, &ctx));
+    }
+
+    #[test]
+    fn each_of_your_main_phases_keeps_surface_and_matches_both_phases() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_id = ObjectId::from_raw(1);
+        let trigger = BeginningOfMainPhaseTrigger::new_with_main_phase_surface(
+            PlayerFilter::You,
+            ironsmith_core::trigger_model::MainPhaseSurface::EachOfMainPhases,
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let precombat = TriggerEvent::new_with_provenance(
+            BeginningOfPrecombatMainPhaseEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let postcombat = TriggerEvent::new_with_provenance(
+            BeginningOfPostcombatMainPhaseEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "At the beginning of each of your main phases"
         );
         assert!(trigger.matches(&precombat, &ctx));
         assert!(trigger.matches(&postcombat, &ctx));

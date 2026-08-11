@@ -134,6 +134,7 @@ pub(super) fn typed_cipher_action_appends_resolution_effect_without_marker_abili
     );
     let effects = definition
         .spell_effect
+        .as_ref()
         .expect("Cipher spell should have a resolution program")
         .to_vec();
     assert_eq!(
@@ -145,6 +146,16 @@ pub(super) fn typed_cipher_action_appends_resolution_effect_without_marker_abili
             .count(),
         1,
         "Cipher should append exactly one typed resolution effect"
+    );
+    let segments = &definition
+        .spell_effect
+        .as_ref()
+        .expect("Cipher spell should have a resolution program")
+        .segments;
+    assert_eq!(segments.len(), 2, "Cipher should retain its source line");
+    assert!(
+        segments[1].starts_new_source_line,
+        "Cipher should begin a new authored source line"
     );
 }
 
@@ -200,6 +211,27 @@ pub(super) fn repeated_payment_reflexive_count_stays_on_the_enter_trigger() {
         !debug.contains("spell_effect: Some"),
         "the reflexive continuation must stay on the enters trigger: {debug}"
     );
+}
+
+#[test]
+pub(super) fn until_end_of_turn_instant_timing_payment_becomes_repeatable_special_action() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Repeatable Prevention Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Prevent the next X damage that would be dealt to any target this turn. Until end of turn, you may pay {1} any time you could cast an instant. If you do, prevent the next 1 damage that would be dealt to that permanent or player this turn.",
+        )
+        .expect("duration-scoped repeatable payment should parse");
+    let debug = format!("{def:#?}");
+
+    assert!(
+        debug.contains("GrantRepeatableManaPaymentActionUntilEndOfTurnEffect"),
+        "{debug}"
+    );
+    assert!(debug.contains("cost: ManaCost"), "{debug}");
+    assert!(debug.matches("PreventDamageEffect").count() >= 2, "{debug}");
+    assert!(debug.matches("target: AnyTarget").count() >= 2, "{debug}");
+    assert!(!debug.contains("MayEffect"), "{debug}");
+    assert!(!debug.contains("IfEffect"), "{debug}");
 }
 
 #[test]

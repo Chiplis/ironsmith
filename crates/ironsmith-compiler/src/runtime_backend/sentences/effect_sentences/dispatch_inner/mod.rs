@@ -29,13 +29,15 @@ use super::{
 };
 use crate::cards::builders::{
     CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction,
-    PlayerAst, ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan, TriggerSpec,
+    PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
+    TriggerSpec,
 };
-use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
+use crate::effect::{ChoiceCount, EventValueSpec, Until, Value, ValueComparisonOperator};
 use crate::object::CounterType;
 use crate::target::{
-    ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
+    ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter, TaggedObjectConstraint,
+    TaggedOpbjectRelation,
 };
 use crate::types::CardType;
 use crate::zone::Zone;

@@ -701,13 +701,19 @@ pub(super) fn living_artifact_oracle_parses_with_player_damage_trigger_and_upkee
 }
 
 #[test]
-pub(super) fn war_elemental_runtime_condition_matches_when_opponent_lost_life_this_turn() {
+pub(super) fn war_elemental_runtime_condition_matches_when_opponent_was_dealt_damage_this_turn() {
     let mut game =
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = crate::ObjectId::from_raw(77);
     let bob = crate::PlayerId::from_index(1);
     let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
-        crate::events::life::LifeLossEvent::from_effect(bob, 2),
+        crate::events::DamageEvent::with_cause(
+            source,
+            crate::events::DamageTarget::Player(bob),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
         crate::provenance::ProvNodeId::default(),
     );
     game.stage_turn_history_event(&damage_event);
@@ -715,7 +721,7 @@ pub(super) fn war_elemental_runtime_condition_matches_when_opponent_lost_life_th
     assert!(
         crate::condition_eval::evaluate_condition_cast_time(
             &game,
-            &crate::effect::Condition::OpponentLostLifeThisTurn,
+            &crate::effect::Condition::OpponentWasDealtDamageThisTurn,
             crate::PlayerId::from_index(0),
             source,
         ),
@@ -731,7 +737,7 @@ pub(super) fn war_elemental_runtime_condition_fails_when_no_opponent_lost_life_t
     assert!(
         !crate::condition_eval::evaluate_condition_cast_time(
             &game,
-            &crate::effect::Condition::OpponentLostLifeThisTurn,
+            &crate::effect::Condition::OpponentWasDealtDamageThisTurn,
             crate::PlayerId::from_index(0),
             source,
         ),
@@ -978,16 +984,356 @@ pub(super) fn bottom_score_parse_loxodon_peacekeeper_lowest_life_control_change(
         )
         .expect("Loxodon Peacekeeper should parse lowest-life controller change");
     let debug = format!("{def:#?}");
-    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def);
 
     assert!(debug.contains("ChangeControllerToPlayer"), "{debug}");
     assert!(debug.contains("LowestLifeTied"), "{debug}");
-    assert!(
-        rendered.contains("the player with the lowest life total gains control of this creature")
-            && rendered.contains("if two or more players are tied for lowest life total"),
-        "expected full lowest-life control surface, got {rendered}"
+    assert_eq!(
+        rendered,
+        vec![
+            "At the beginning of your upkeep, the player with the lowest life total gains control of this creature. If two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature."
+        ],
+        "the executable tie branch must not render a duplicate generic conditional"
+    );
+
+    let AbilityKind::Triggered(triggered) = &def.abilities[0].kind else {
+        panic!("expected upkeep trigger")
+    };
+    let [lowest_segment, tie_segment] = triggered.effects.segments.as_slice() else {
+        panic!("expected lowest-life handoff followed by tie branch")
+    };
+    let [lowest_effect] = lowest_segment.default_effects.as_slice() else {
+        panic!("expected one lowest-life control effect")
+    };
+    let lowest = lowest_effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .expect("lowest-life instruction should stay executable");
+    assert!(matches!(
+        lowest.runtime_modifications.as_slice(),
+        [
+            crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
+                PlayerFilter::LowestLifeTied
+            )
+        ]
+    ));
+
+    let [conditional_effect] = tie_segment.default_effects.as_slice() else {
+        panic!("expected one typed tie conditional")
+    };
+    let conditional = conditional_effect
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("tie sentence should be a typed conditional");
+    assert!(matches!(
+        &conditional.condition,
+        crate::effect::Condition::ValueComparison {
+            left: crate::effect::Value::CountPlayers(PlayerFilter::LowestLifeTied),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(2),
+        }
+    ));
+    let [choose_effect, tied_control_effect] = conditional.if_true.as_slice() else {
+        panic!("tie branch should choose a tied player then transfer control")
+    };
+    let choose = choose_effect
+        .downcast_ref::<crate::effects::ChoosePlayerEffect>()
+        .expect("tie branch should make the source controller choose");
+    assert_eq!(choose.chooser, PlayerFilter::You);
+    assert_eq!(choose.filter, PlayerFilter::LowestLifeTied);
+    let tied_control = tied_control_effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .expect("chosen tied player should gain control");
+    assert!(matches!(
+        tied_control.runtime_modifications.as_slice(),
+        [crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
+            PlayerFilter::TaggedPlayer(tag)
+        )] if tag.as_str() == "__it__"
+    ));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn loxodon_peacekeeper_tie_choice_controls_the_source_for_the_chosen_player() {
+    struct ChooseLastTiedPlayer;
+
+    impl crate::decision::DecisionMaker for ChooseLastTiedPlayer {
+        fn decide_options(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .rev()
+                .find(|option| option.legal)
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+    }
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Loxodon Peacekeeper")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of your upkeep, the player with the lowest life total gains control of this creature. If two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature.",
+        )
+        .expect("Loxodon Peacekeeper should parse");
+    let AbilityKind::Triggered(triggered) = &def.abilities[0].kind else {
+        panic!("expected upkeep trigger")
+    };
+    let program = triggered.effects.clone();
+
+    let mut game = crate::game_state::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.player_mut(bob).expect("Bob exists").life = 10;
+    game.player_mut(charlie).expect("Charlie exists").life = 10;
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let mut dm = ChooseLastTiedPlayer;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &program,
+        None,
+        &[],
+    )
+    .expect("lowest-life handoff should resolve");
+
+    assert_eq!(
+        game.controller_of_id(source),
+        Some(charlie),
+        "the source controller's tied-player choice must override the default first tied player"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn shiko_and_narset_unified_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Shiko and Narset, Unified")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying, vigilance\nFlurry — Whenever you cast your second spell each turn, copy that spell if it targets a permanent or player, and you may choose new targets for the copy. If you don't copy a spell this way, draw a card.",
+        )
+        .expect("Shiko and Narset should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn shiko_and_narset_keeps_conditional_copy_id_retarget_and_fallback_linked() {
+    let def = shiko_and_narset_unified_definition();
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected Flurry trigger");
+    assert_eq!(
+        crate::compiled_text::unprocessed_compiled_lines(&def),
+        vec![
+            "Flying, vigilance.".to_string(),
+            "Flurry — Whenever you cast your second spell each turn, copy that spell if it targets a permanent or player, and you may choose new targets for the copy. If you don't copy a spell this way, draw a card.".to_string(),
+        ],
+        "full Flurry resolution program:\n{:#?}",
+        triggered.effects
+    );
+
+    let [copy_segment, fallback_segment] = triggered.effects.segments.as_slice() else {
+        panic!("expected conditional copy and did-not-copy fallback segments")
+    };
+    let [tag_triggering_effect, outer_result_effect] = copy_segment.default_effects.as_slice()
+    else {
+        panic!("expected triggering-object tag plus copy conditional")
+    };
+    let trigger_tag = tag_triggering_effect
+        .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+        .expect("copy condition should inspect the triggering object");
+    assert_eq!(trigger_tag.tag.as_str(), "triggering");
+    let outer_result = outer_result_effect
+        .downcast_ref::<crate::effects::WithIdEffect>()
+        .expect("the conditional should retain the fallback result id");
+    let result_conjunction = outer_result
+        .effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("copy condition and retarget permission should remain coordinated");
+    assert_eq!(
+        result_conjunction.surface,
+        ironsmith_core::SequenceSurface::Coordinated
+    );
+    let [conditional_effect, retarget_may_effect] = result_conjunction.effects.as_slice() else {
+        panic!("expected conditional copy followed by optional retarget")
+    };
+    let conditional = conditional_effect
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("copy should retain its target-domain condition");
+    let crate::effect::Condition::TaggedObjectMatches(tag, filter) = &conditional.condition else {
+        panic!("condition should inspect the triggering spell")
+    };
+    assert_eq!(tag.as_str(), "triggering");
+    assert!(filter.targets_any_of);
+    assert_eq!(filter.targets_player, Some(PlayerFilter::Any));
+    assert!(filter.targets_object.is_some());
+
+    let [copy_effect] = conditional.if_true.as_slice() else {
+        panic!("condition should contain the copy action")
+    };
+    let tagged_copy = copy_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .expect("copy result should stay tagged");
+    assert_eq!(tagged_copy.tag.as_str(), "__copied_stack_object__");
+    let copy_with_id = tagged_copy
+        .effect
+        .downcast_ref::<crate::effects::WithIdEffect>()
+        .expect("copy should have an executable result id");
+    let copy = copy_with_id
+        .effect
+        .downcast_ref::<crate::effects::CopySpellEffect>()
+        .expect("expected typed copy effect");
+    assert!(matches!(
+        &copy.target,
+        ChooseSpec::Tagged(tag) if tag.as_str() == "triggering"
+    ));
+    assert_eq!(outer_result.id, copy_with_id.id);
+    let retarget_may = retarget_may_effect
+        .downcast_ref::<crate::effects::MayEffect>()
+        .expect("retarget should remain an explicit optional instruction");
+    assert!(matches!(retarget_may.decider, Some(PlayerFilter::You)));
+    let [retarget_effect] = retarget_may.effects.as_slice() else {
+        panic!("optional retarget should contain one typed action")
+    };
+    let tagged_retarget = retarget_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .expect("retarget result should stay tagged");
+    assert!(tagged_retarget.tag.as_str().starts_with("retargeted_"));
+    let retarget = tagged_retarget
+        .effect
+        .downcast_ref::<crate::effects::RetargetStackObjectEffect>()
+        .expect("expected typed retarget permission");
+    assert!(matches!(retarget.mode, crate::effects::RetargetMode::All));
+    assert_eq!(retarget.chooser, PlayerFilter::You);
+    assert!(!retarget.copy_reference_plural);
+    assert!(matches!(
+        &retarget.target,
+        ChooseSpec::Tagged(tag) if tag == &tagged_copy.tag
+    ));
+
+    let [fallback_effect] = fallback_segment.default_effects.as_slice() else {
+        panic!("expected one did-not-copy fallback")
+    };
+    let fallback = fallback_effect
+        .downcast_ref::<crate::effects::IfEffect>()
+        .expect("fallback should inspect the copy result");
+    assert_eq!(fallback.condition, copy_with_id.id);
+    assert_eq!(
+        fallback.predicate,
+        crate::effect::EffectPredicate::DidNotHappen
+    );
+    assert!(matches!(
+        fallback.then.as_slice(),
+        [draw] if draw
+            .downcast_ref::<crate::effects::DrawCardsEffect>()
+            .is_some_and(|draw| draw.player == PlayerFilter::You && draw.count == crate::effect::Value::Fixed(1))
+    ));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn shiko_and_narset_copies_only_targeting_spells_and_draws_on_the_fallback() {
+    fn resolve_case(targets_permanent: bool) -> (usize, usize) {
+        let def = shiko_and_narset_unified_definition();
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected Flurry trigger");
+        let program = triggered.effects.clone();
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+        let target = game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::new(), "Target Permanent")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let spell_def = CardDefinitionBuilder::new(CardId::new(), "Second Spell")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell = game.create_object_from_definition(&spell_def, alice, Zone::Stack);
+        let mut entry = crate::game_state::StackEntry::new(spell, alice);
+        if targets_permanent {
+            let target_spec = ChooseSpec::target_permanent();
+            entry = entry
+                .with_targets(vec![crate::game_state::Target::Object(target)])
+                .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                    spec: target_spec,
+                    range: 0..1,
+                }]);
+        }
+        game.push_to_stack(entry);
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::new(), "Card to Draw").build(),
+            alice,
+            Zone::Library,
+        );
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(spell).expect("spell exists"),
+            &game,
+        );
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::spells::SpellCastEvent::new_with_snapshot(
+                spell,
+                alice,
+                Zone::Hand,
+                snapshot,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+            .with_triggering_event(event);
+        crate::game_loop::execute_resolution_program(
+            &mut game,
+            &mut ctx,
+            alice,
+            source,
+            &program,
+            None,
+            &[],
+        )
+        .expect("Flurry trigger should resolve");
+        (
+            game.stack.len(),
+            game.objects_in_zone(Zone::Hand)
+                .iter()
+                .filter(|id| game.object(**id).is_some_and(|card| card.owner == alice))
+                .count(),
+        )
+    }
+
+    assert_eq!(
+        resolve_case(true),
+        (2, 0),
+        "a targeting second spell should be copied and should not draw"
+    );
+    assert_eq!(
+        resolve_case(false),
+        (1, 1),
+        "a nontargeting second spell should not be copied and should draw"
     );
 }
 
@@ -3390,6 +3736,25 @@ pub(super) fn parse_wei_assassins_etb_target_opponent_chooses_creature_then_dest
             && rendered.contains("destroy that creature"),
         "expected Wei Assassins ETB choice and destroy semantics, got {rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn nissas_pilgrimage_renders_shared_search_partition_and_count_only_mastery() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Pilgrimage Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search your library for up to two basic Forest cards, reveal those cards, and put one onto the battlefield tapped and the rest into your hand. Then shuffle.\nSpell mastery — If there are two or more instant and/or sorcery cards in your graveyard, search your library for up to three basic Forest cards instead of two.",
+        )
+        .expect("Nissa-style count-only search replacement should parse");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert_eq!(
+        rendered,
+        "Search your library for up to two basic Forest cards, reveal those cards, and put one onto the battlefield tapped and the rest into your hand. Then shuffle. Spell mastery — If there are two or more instant and/or sorcery cards in your graveyard, search your library for up to three basic Forest cards instead of two.",
+    );
+    assert_eq!(rendered.matches("reveal those cards").count(), 1);
+    assert_eq!(rendered.matches("Then shuffle").count(), 1);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

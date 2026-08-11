@@ -14,15 +14,13 @@ use super::*;
 /// 5. ChoosingX (601.2b) - Announce X value
 /// 6. AnnouncingCost (601.2b) - Announce hybrid/Phyrexian mana choices
 /// 7. ChoosingTargets (601.2c) - Choose targets
-/// 8. ChoosingAssistPlayer / ActivatingAssistManaAbilities / PayingAssistMana
-///    (702.132a) - An assisting player may activate mana abilities, then pay
-///    some of the generic component of the total cost
-/// 9. ActivatingManaAbilities (601.2g) - The caster's repeatable mana-ability window
-/// 10. ChoosingNextCost - Choose the next remaining cost to pay
-/// 11. ProcessingCosts - Pay a selected non-mana cost
-/// 12. ChoosingSacrifice / ChoosingCardCost - Resolve object/card cost choices
-/// 13. PayingMana (601.2h) - Pay locked mana costs without reopening 601.2g
-/// 14. ReadyToFinalize (601.2i) - Spell becomes cast
+/// 8. ChoosingAssistPlayer / ChoosingAssistContribution / PayingAssistMana
+///    (702.132a) - Choose and confirm an assisting player's whole-cost plan
+/// 9. ChoosingNextCost - Choose the next remaining cost to pay
+/// 10. ProcessingCosts - Pay a selected non-mana cost
+/// 11. ChoosingSacrifice / ChoosingCardCost - Resolve object/card cost choices
+/// 12. PayingMana (601.2g-h) - Confirm one authoritative activation-and-payment plan
+/// 13. ReadyToFinalize (601.2i) - Spell becomes cast
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CastStage {
     /// Spell is being proposed - moved to stack per 601.2a.
@@ -46,14 +44,10 @@ pub enum CastStage {
     ChoosingDistribution,
     /// The caster may choose another player to assist with a generic cost.
     ChoosingAssistPlayer,
-    /// The chosen assisting player may repeatedly activate mana abilities.
-    ActivatingAssistManaAbilities,
     /// The chosen assisting player chooses how much generic mana to contribute.
     ChoosingAssistContribution,
-    /// The chosen assisting player pays the announced contribution pip by pip.
+    /// The chosen assisting player confirms an authoritative payment plan.
     PayingAssistMana,
-    /// Total cost is locked; the player may repeatedly activate mana abilities.
-    ActivatingManaAbilities,
     /// Need to choose the next remaining cost to pay.
     ChoosingNextCost,
     /// Need to pay a selected immediate non-mana cost.
@@ -80,12 +74,8 @@ impl CastStage {
             CastStage::ChoosingTargets => "choosing targets",
             CastStage::ChoosingDistribution => "choosing distribution",
             CastStage::ChoosingAssistPlayer => "choosing assisting player",
-            CastStage::ActivatingAssistManaAbilities => {
-                "activating assisting player's mana abilities"
-            }
             CastStage::ChoosingAssistContribution => "choosing assist contribution",
             CastStage::PayingAssistMana => "paying assist contribution",
-            CastStage::ActivatingManaAbilities => "activating mana abilities",
             CastStage::ChoosingNextCost => "choosing next cost",
             CastStage::ProcessingCosts => "processing costs",
             CastStage::ChoosingSacrifice => "choosing sacrifices",
@@ -149,6 +139,12 @@ pub struct PendingCast {
     /// A resolving effect may reduce the total mana cost of the cast it
     /// authorizes. Apply this after ordinary modifiers and optional mana costs.
     pub effect_mana_cost_reduction: Option<crate::mana::ManaCost>,
+    /// A resolving effect may impose a mandatory mana cost in addition to the
+    /// spell's ordinary and optional costs.
+    pub effect_additional_mana_cost: Option<crate::mana::ManaCost>,
+    /// A resolving effect may broaden which mana can pay the cast's colored
+    /// or colorless requirements without creating a lasting permission.
+    pub effect_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
     /// True when this cast was initiated by a resolving effect. Such a cast
     /// receives timing permission from that effect and must not grant priority
     /// until the parent spell or ability finishes resolving.
@@ -169,12 +165,8 @@ pub struct PendingCast {
     pub assist_player_choice_made: bool,
     /// The other player chosen for Assist, if any.
     pub assist_player: Option<PlayerId>,
-    /// True once the chosen player's Assist mana-ability window has closed.
-    pub assist_mana_ability_window_closed: bool,
     /// The amount of generic mana the chosen player announced they will pay.
     pub assist_generic_contribution: u32,
-    /// Generic Assist pips that the chosen player still has to pay.
-    pub remaining_assist_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
     /// True once the chosen player has declined or finished the contribution.
     pub assist_payment_complete: bool,
     /// Mana actually spent to cast the spell (color-by-color).
@@ -183,16 +175,10 @@ pub struct PendingCast {
     pub assist_mana_spent_to_cast: ManaPool,
     /// The computed mana cost to pay (set during PayingMana stage).
     pub mana_cost_to_pay: Option<crate::mana::ManaCost>,
-    /// Stable display pips for the mana payment overlay.
-    ///
-    /// Unlike `remaining_mana_pips`, this is not mutated as payment proceeds so
-    /// the UI can render the full cost with paid and upcoming pips.
+    /// Stable display pips for the authoritative mana payment overlay.
     pub display_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
-    /// Remaining mana pips to pay (pip-by-pip payment flow).
-    /// Each element is a pip with its alternatives (e.g., [Black, Life(2)] for {B/P}).
-    pub remaining_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
-    /// Payment options already computed for the current pip prompt.
-    pub current_pip_payment_options: Vec<ManaPipPaymentOption>,
+    /// Authoritative whole-cost proposal retained until confirmation finishes.
+    pub pending_mana_payment: Option<crate::mana_payment::PendingManaPayment>,
     /// Remaining non-mana spell costs to pay, in player-chosen order.
     pub remaining_cost_steps: Vec<ActivationCostStep>,
     /// Tagged object snapshots captured while paying spell costs.
@@ -253,6 +239,8 @@ impl PendingCast {
             casting_method,
             base_mana_cost_waived: false,
             effect_mana_cost_reduction: None,
+            effect_additional_mana_cost: None,
+            effect_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
             effect_driven: false,
             optional_costs_paid,
             required_optional_cost_indices: Vec::new(),
@@ -261,16 +249,13 @@ impl PendingCast {
             mana_ability_window_closed: false,
             assist_player_choice_made: false,
             assist_player: None,
-            assist_mana_ability_window_closed: false,
             assist_generic_contribution: 0,
-            remaining_assist_mana_pips: Vec::new(),
             assist_payment_complete: false,
             mana_spent_to_cast: ManaPool::default(),
             assist_mana_spent_to_cast: ManaPool::default(),
             mana_cost_to_pay: None,
             display_mana_pips: Vec::new(),
-            remaining_mana_pips: Vec::new(),
-            current_pip_payment_options: Vec::new(),
+            pending_mana_payment: None,
             remaining_cost_steps: Vec::new(),
             tagged_objects: std::collections::HashMap::new(),
             effect_outcomes: std::collections::HashMap::new(),
@@ -320,8 +305,6 @@ pub enum ActivationStage {
     ChoosingTargets,
     /// Need to divide an amount among the chosen targets.
     ChoosingDistribution,
-    /// Total cost is locked; the player may repeatedly activate mana abilities.
-    ActivatingManaAbilities,
     /// Need to choose the next remaining cost to pay.
     ChoosingNextCost,
     /// Need to pay a selected deferred non-mana cost.
@@ -345,7 +328,6 @@ impl ActivationStage {
             ActivationStage::AnnouncingCost => "announcing costs",
             ActivationStage::ChoosingTargets => "choosing targets",
             ActivationStage::ChoosingDistribution => "choosing distribution",
-            ActivationStage::ActivatingManaAbilities => "activating mana abilities",
             ActivationStage::ChoosingNextCost => "choosing next cost",
             ActivationStage::ProcessingCosts => "processing costs",
             ActivationStage::ChoosingSacrifice => "choosing sacrifices",
@@ -809,10 +791,7 @@ pub struct PendingActivation {
     pub selected_alternative_cost: Option<usize>,
     /// Why this activation's costs are being paid.
     pub payment_reason: crate::costs::PaymentReason,
-    /// Stable display pips for the mana payment overlay.
-    ///
-    /// Unlike `remaining_mana_pips`, this is not mutated as payment proceeds so
-    /// the UI can render the full cost with paid and upcoming pips.
+    /// Stable display pips for the authoritative mana payment overlay.
     pub display_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
     /// Ordered trace of cost payments performed so far.
     pub payment_trace: Vec<CostStep>,
@@ -821,9 +800,8 @@ pub struct PendingActivation {
     pub undo_locked_by_mana: bool,
     /// True once the single CR 602.2b/601.2g mana-ability window has closed.
     pub mana_ability_window_closed: bool,
-    /// Remaining mana pips to pay (pip-by-pip payment flow).
-    /// Each element is a pip with its alternatives (e.g., [Black, Life(2)] for {B/P}).
-    pub remaining_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
+    /// Authoritative whole-cost proposal retained until confirmation finishes.
+    pub pending_mana_payment: Option<crate::mana_payment::PendingManaPayment>,
     /// Mana actually spent on this activation cost, retained color-by-color
     /// for resolution-time effects that refer to that payment.
     pub mana_spent_on_activation: ManaPool,
@@ -918,7 +896,7 @@ impl PendingActivation {
             payment_trace,
             undo_locked_by_mana: false,
             mana_ability_window_closed: false,
-            remaining_mana_pips: Vec::new(),
+            pending_mana_payment: None,
             mana_spent_on_activation: ManaPool::default(),
             remaining_cost_steps,
             tagged_objects,
@@ -974,6 +952,8 @@ pub struct PendingManaAbility {
     /// - the root mana ability itself is not undo-safe, or
     /// - a mana ability activated to pay this mana cost is not undo-safe.
     pub undo_locked_by_mana: bool,
+    /// Authoritative payment for this mana ability's own mana activation cost.
+    pub pending_mana_payment: Option<crate::mana_payment::PendingManaPayment>,
 }
 
 /// A suspended priority-loop response that should be rerun once a nested
@@ -1002,9 +982,6 @@ pub struct PriorityLoopState {
     /// Checkpoint of game state saved when starting an action chain.
     /// If an error occurs during the chain, we restore to this state.
     pub checkpoint: Option<GameState>,
-    /// Whether pip-by-pip mana payment should auto-pick a single legal option.
-    /// CLI/tests can keep this enabled for speed; WASM UI can disable it to require explicit taps.
-    pub auto_choose_single_pip_payment: bool,
 }
 
 impl PriorityLoopState {
@@ -1019,7 +996,6 @@ impl PriorityLoopState {
             pending_mana_ability: None,
             pending_continuation: None,
             checkpoint: None,
-            auto_choose_single_pip_payment: true,
         }
     }
 
@@ -1056,11 +1032,6 @@ impl PriorityLoopState {
             || self.pending_method_selection.is_some()
             || self.pending_mana_ability.is_some()
             || self.pending_continuation.is_some()
-    }
-
-    /// Configure whether single-option pip payments should be auto-selected.
-    pub fn set_auto_choose_single_pip_payment(&mut self, enabled: bool) {
-        self.auto_choose_single_pip_payment = enabled;
     }
 
     /// Return the pass-tracker state needed to restore an in-progress priority window.

@@ -145,6 +145,18 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "a player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::AttackedBySourceThisTurn => {
+            "a player this creature attacked this turn".to_string()
+        }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
+            "{} this source has dealt damage to this game",
+            describe_player_filter(base)
+        ),
+        PlayerFilter::LostLifeThisTurn { base } => format!(
+            "{} who lost life this turn",
+            strip_leading_article(&describe_player_filter(base))
+        ),
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => filter.description(),
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
@@ -159,6 +171,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             )
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
+        PlayerFilter::ControlsMost { .. } => filter.description(),
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -388,7 +401,7 @@ fn place_cast_spell_types_before_noun(description: String, filter: &ObjectFilter
     }
 }
 
-fn describe_cast_spell_origin(filter: &ObjectFilter) -> Option<String> {
+pub(super) fn describe_cast_spell_origin(filter: &ObjectFilter) -> Option<String> {
     let zone = filter.zone?;
     let possessive_zone = |zone_name: &str| {
         filter
@@ -1009,9 +1022,12 @@ pub(super) fn describe_token_blueprint_with_presentation(
                 if static_ability.id() == crate::static_abilities::StaticAbilityId::MakeColorless
         )
     });
-    let colors =
-        describe_token_color_words(card.colors(), card.is_creature() || explicit_colorless);
-    if !colors.is_empty() {
+    let all_colors = card.colors().count() == crate::color::Color::ALL.len() as u32;
+    let colors = describe_token_color_words(
+        card.colors(),
+        (card.is_creature() || explicit_colorless) && !all_colors,
+    );
+    if !colors.is_empty() && !all_colors {
         parts.push(colors);
     }
 
@@ -1104,7 +1120,29 @@ pub(super) fn describe_token_blueprint_with_presentation(
 
     parts.push("token".to_string());
 
+    let appositive_named_token = creature_name_prefix.is_some();
     let mut text = parts.join(" ");
+    if all_colors && !appositive_named_token {
+        text.push_str(" that's all colors");
+    }
+    if standalone_tail_count == 0
+        && matches!(
+            grouped_ability_presentation,
+            Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined)
+        )
+        && let Some(payload) = compact_separate_sentence_equipment_token_ability_payload(token)
+    {
+        if let Some(name) = &explicit_named_clause {
+            text.push_str(" named ");
+            text.push_str(name);
+        }
+        text.push_str(". It has ");
+        text.push_str(&payload);
+        if let Some(name) = creature_name_prefix {
+            text = format!("{name}, {}", with_indefinite_article(&text));
+        }
+        return text;
+    }
     if standalone_tail_count == 0
         && let Some(payload) = compact_equipment_token_ability_payload(token)
     {
@@ -1168,8 +1206,10 @@ pub(super) fn describe_token_blueprint_with_presentation(
                     continue;
                 }
                 extra_ability_texts.push(quote_token_granted_ability_text(
-                    normalize_token_granted_static_ability_text(static_ability.display().as_str())
-                        .as_str(),
+                    normalize_token_granted_static_ability_text(
+                        describe_static_ability_with_subject(static_ability, "this token").as_str(),
+                    )
+                    .as_str(),
                 ));
             }
             AbilityKind::Triggered(triggered) => {
@@ -1219,8 +1259,18 @@ pub(super) fn describe_token_blueprint_with_presentation(
             }
         }
     }
-    keyword_texts.sort();
-    keyword_texts.dedup();
+    if appositive_named_token {
+        let mut ordered_unique = Vec::with_capacity(keyword_texts.len());
+        for keyword in keyword_texts.drain(..) {
+            if !ordered_unique.contains(&keyword) {
+                ordered_unique.push(keyword);
+            }
+        }
+        keyword_texts = ordered_unique;
+    } else {
+        keyword_texts.sort();
+        keyword_texts.dedup();
+    }
     if matches!(
         grouped_ability_presentation,
         Some(ironsmith_core::TokenAbilityPresentation::InlineWith)
@@ -1240,6 +1290,18 @@ pub(super) fn describe_token_blueprint_with_presentation(
         extra_ability_texts.dedup();
     }
     strip_nonfinal_quoted_ability_periods(&mut extra_ability_texts);
+    // An authored inline `with` clause treats intrinsic keywords and a quoted
+    // rule as one serial list: `with flying, haste, and "When ..."`. Joining
+    // the keyword and quoted groups independently produces the lossy
+    // `flying and haste and "Whenever ..."` surface.
+    if matches!(
+        grouped_ability_presentation,
+        Some(ironsmith_core::TokenAbilityPresentation::InlineWith)
+    ) && !keyword_texts.is_empty()
+        && !extra_ability_texts.is_empty()
+    {
+        keyword_texts.append(&mut extra_ability_texts);
+    }
     if matches!(
         grouped_ability_presentation,
         Some(
@@ -1349,6 +1411,9 @@ pub(super) fn describe_token_blueprint_with_presentation(
     if named_clause_after_inline_keywords && let Some(name) = &explicit_named_clause {
         text.push_str(" named ");
         text.push_str(name);
+    }
+    if all_colors && appositive_named_token {
+        text.push_str(" that's all colors");
     }
     for standalone_ability in standalone_ability_texts {
         text.push_str(". ");
@@ -1599,6 +1664,76 @@ fn compact_equipment_token_ability_payload(token: &CardDefinition) -> Option<Str
     ))
 }
 
+/// Recombine an authored separate-sentence Equipment rule list when its
+/// executable abilities consist of intrinsic keywords, one attached-creature
+/// grant, and equip. Keeping this structural prevents an intrinsic keyword
+/// from forcing the generic renderer to quote `Equip`, while retaining the
+/// quote around the rule granted to the equipped creature.
+fn compact_separate_sentence_equipment_token_ability_payload(
+    token: &CardDefinition,
+) -> Option<String> {
+    if !token.card.card_types.contains(&CardType::Artifact)
+        || !token
+            .card
+            .subtypes
+            .contains(&crate::types::Subtype::Equipment)
+    {
+        return None;
+    }
+
+    let mut intrinsic_keywords = Vec::new();
+    let mut attached_rule: Option<String> = None;
+    let mut equip_text: Option<String> = None;
+    for ability in &token.abilities {
+        match &ability.kind {
+            AbilityKind::Static(static_ability)
+                if static_ability.id()
+                    == crate::static_abilities::StaticAbilityId::MakeColorless => {}
+            AbilityKind::Static(static_ability) if static_ability.is_keyword() => {
+                let keyword = static_ability.display().trim().to_ascii_lowercase();
+                if !intrinsic_keywords.contains(&keyword) {
+                    intrinsic_keywords.push(keyword);
+                }
+            }
+            AbilityKind::Static(static_ability) => {
+                let text =
+                    normalize_token_granted_static_ability_text(static_ability.display().as_str());
+                let text = text.trim().trim_end_matches(|ch| ch == '.' || ch == ',');
+                if !text.starts_with("Equipped creature gets ")
+                    || attached_rule.replace(text.to_string()).is_some()
+                {
+                    return None;
+                }
+            }
+            AbilityKind::Activated(_) => {
+                let text = describe_inline_ability(ability);
+                if !text.starts_with("Equip ") || text.contains(". ") {
+                    return None;
+                }
+                let text = lowercase_first(text.trim_end_matches('.'));
+                if equip_text
+                    .as_ref()
+                    .is_some_and(|existing| existing != &text)
+                {
+                    return None;
+                }
+                equip_text = Some(text);
+            }
+            _ => return None,
+        }
+    }
+
+    if intrinsic_keywords.is_empty() {
+        return None;
+    }
+    let attached_rule = attached_rule?;
+    let equip_text = equip_text?;
+    Some(format!(
+        "{}, \"{attached_rule},\" and {equip_text}",
+        intrinsic_keywords.join(", ")
+    ))
+}
+
 fn token_has_non_toxic_poison_trigger(token: &CardDefinition) -> bool {
     token.abilities.iter().any(|ability| {
         let AbilityKind::Triggered(triggered) = &ability.kind else {
@@ -1704,6 +1839,9 @@ fn normalize_token_self_reference_in_quoted_ability(text: &str) -> String {
         normalized = normalized.replace(&format!("This {source_type}"), "This token");
         normalized = normalized.replace(&format!("this {source_type}"), "this token");
     }
+    normalized = normalized
+        .replace("This token creature's", "This token's")
+        .replace("this token creature's", "this token's");
     let had_period = normalized.ends_with('.');
     let bare = normalized.trim_end_matches('.');
     if bare.eq_ignore_ascii_case("attacks each combat if able") {
@@ -1762,6 +1900,9 @@ fn token_quoted_ability_needs_terminal_period(text: &str) -> bool {
         && !trimmed.ends_with('?')
         && (trimmed.starts_with('{')
             || trimmed.contains("Sacrifice this token:")
+            || trimmed.starts_with("When ")
+            || trimmed.starts_with("Whenever ")
+            || trimmed.starts_with("At ")
             || (trimmed.starts_with("This token's power and toughness ")
                 && trimmed.contains(" are each equal to ")))
 }
@@ -1867,6 +2008,7 @@ pub(super) fn normalize_you_verb_phrase(text: &str) -> String {
         ("returns ", "return "),
         ("discards ", "discard "),
         ("sacrifices ", "sacrifice "),
+        ("creates ", "create "),
         ("chooses ", "choose "),
         ("mills ", "mill "),
         ("reveals ", "reveal "),
@@ -3175,6 +3317,16 @@ fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<
             .or_else(|| {
                 rest.strip_suffix(", reveal it, and put it into your hand. If you do, shuffle")
             })
+            .or_else(|| {
+                rest.strip_suffix(
+                    ". Reveal it, then put it into your hand. If you search your library this way, shuffle",
+                )
+            })
+            .or_else(|| {
+                rest.strip_suffix(
+                    ". Reveal it, then put it into your hand. If you searched your library this way, shuffle",
+                )
+            })
         else {
             continue;
         };
@@ -4225,17 +4377,6 @@ fn compact_each_opponent_who_didnt_draws_surface(line: &str) -> Option<String> {
     }
     Some(
         "At the beginning of your end step, draw a card. Each player may put a land card from their hand onto the battlefield, then each opponent who didn't draws a card."
-            .to_string(),
-    )
-}
-
-fn compact_tempting_offer_copy_spell_surface(line: &str) -> Option<String> {
-    let artifact = "Choose target instant or sorcery spell. Each opponent may copy it. Each opponent may choose new targets for the copy. Copy it that many players plus 1 time. You may choose new targets for the copy.";
-    if line != artifact {
-        return None;
-    }
-    Some(
-        "Tempting offer — Choose target instant or sorcery spell. Each opponent may copy that spell and may choose new targets for the copy they control. You copy that spell once plus an additional time for each opponent who copied the spell this way. You may choose new targets for the copies you control."
             .to_string(),
     )
 }

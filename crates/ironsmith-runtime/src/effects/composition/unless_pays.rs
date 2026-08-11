@@ -7,6 +7,7 @@ use crate::effect::{Effect, EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::mana::{ManaCost, ManaSymbol};
@@ -40,6 +41,8 @@ pub struct UnlessPaysEffect {
     pub cost: crate::cost::TotalCost,
     /// Whether the Oracle clause placed the payment before the consequence.
     pub leading_surface: bool,
+    /// Whether the cost is payable before a surrounding delayed step.
+    pub before_delayed_step: bool,
 }
 
 impl UnlessPaysEffect {
@@ -61,11 +64,17 @@ impl UnlessPaysEffect {
             player,
             cost,
             leading_surface: false,
+            before_delayed_step: false,
         }
     }
 
     pub fn with_leading_surface(mut self, leading_surface: bool) -> Self {
         self.leading_surface = leading_surface;
+        self
+    }
+
+    pub fn before_delayed_step(mut self, before_delayed_step: bool) -> Self {
+        self.before_delayed_step = before_delayed_step;
         self
     }
 
@@ -338,10 +347,16 @@ impl EffectExecutor for UnlessPaysEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let paying_players = if matches!(self.player, PlayerFilter::Any) {
-            players_in_turn_order(game)
-        } else {
-            vec![resolve_player_filter(game, &self.player, ctx)?]
+        let paying_players = match self.player {
+            PlayerFilter::Any => players_in_turn_order(game),
+            PlayerFilter::Opponent => {
+                let filter_ctx = ctx.filter_context(game);
+                players_in_turn_order(game)
+                    .into_iter()
+                    .filter(|player| self.player.matches_player(*player, &filter_ctx))
+                    .collect()
+            }
+            _ => vec![resolve_player_filter(game, &self.player, ctx)?],
         };
         for paying_player in paying_players {
             let can_afford = can_pay_total_cost_with_reason_in_context(
@@ -418,7 +433,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::cost::TotalCost;
     use crate::costs::Cost;
-    use crate::decision::SelectFirstDecisionMaker;
+    use crate::decision::{DecisionMaker, SelectFirstDecisionMaker};
     use crate::effect::Effect;
     use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
@@ -426,8 +441,55 @@ mod tests {
     use crate::types::CardType;
     use crate::zone::Zone;
 
+    fn dynamic_energy_sacrifice_unless(tag: crate::tag::TagKey) -> UnlessPaysEffect {
+        let tagged = crate::target::ChooseSpec::Tagged(tag);
+        let sacrifice = Effect::new(crate::effects::SacrificeTargetEffect::new(tagged.clone()));
+        let pay_energy = Effect::new(crate::effects::PayEnergyEffect::new(
+            Value::ManaValueOf(Box::new(tagged)),
+            crate::target::ChooseSpec::Player(PlayerFilter::You),
+        ));
+        let cost = Cost::try_effect(pay_energy)
+            .expect("paying dynamic energy is executable as an effect cost");
+        UnlessPaysEffect::new_total_cost(
+            vec![sacrifice],
+            PlayerFilter::You,
+            TotalCost::from_cost(cost),
+        )
+    }
+
+    fn add_creature_with_mana_value(
+        game: &mut GameState,
+        controller: PlayerId,
+        mana_value: u8,
+    ) -> crate::ids::ObjectId {
+        let card = CardBuilder::new(CardId::new(), "Exchanged creature")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+                mana_value,
+            )]]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, controller, Zone::Battlefield)
+    }
+
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    struct AcceptForLastOpponent {
+        accepting_player: PlayerId,
+        prompted: Vec<PlayerId>,
+    }
+
+    impl DecisionMaker for AcceptForLastOpponent {
+        fn decide_boolean(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            let player = game.controlling_player_for(ctx.player);
+            self.prompted.push(player);
+            player == self.accepting_player
+        }
     }
 
     fn add_payment_replacement_permanent(
@@ -520,6 +582,78 @@ mod tests {
 
         assert_ne!(result.status, crate::effect::OutcomeStatus::Declined);
         assert_eq!(game.player(alice).expect("alice exists").life, 15);
+    }
+
+    #[test]
+    fn any_opponent_unless_payment_checks_each_opponent_and_excludes_controller() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let source = game.new_object_id();
+        let mut dm = AcceptForLastOpponent {
+            accepting_player: charlie,
+            prompted: Vec::new(),
+        };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let effect = UnlessPaysEffect::new_total_cost(
+            vec![Effect::lose_life(5)],
+            PlayerFilter::Opponent,
+            TotalCost::from_cost(Cost::life(3)),
+        );
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("one of multiple opponents should be allowed to pay");
+        drop(ctx);
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::Declined);
+        assert_eq!(dm.prompted, vec![bob, charlie]);
+        assert_eq!(game.player(alice).expect("alice").life, 20);
+        assert_eq!(game.player(bob).expect("bob").life, 20);
+        assert_eq!(game.player(charlie).expect("charlie").life, 17);
+    }
+
+    #[test]
+    fn gained_energy_pays_tagged_creatures_mana_value_or_sacrifices_it() {
+        for (mana_value, should_survive, expected_energy) in [(4, true, 0), (5, false, 4)] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let target = add_creature_with_mana_value(&mut game, alice, mana_value);
+            let source = game.new_object_id();
+            let mut dm = SelectFirstDecisionMaker;
+            let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+            let snapshot = crate::ObjectSnapshot::from_object(
+                game.object(target).expect("target exists"),
+                &game,
+            );
+            let tag = crate::tag::TagKey::from("exchanged");
+            ctx.tag_object(tag.clone(), snapshot);
+
+            crate::effects::EnergyCountersEffect::you(4)
+                .execute(&mut game, &mut ctx)
+                .expect("energy gain should execute before the payment choice");
+            dynamic_energy_sacrifice_unless(tag)
+                .execute(&mut game, &mut ctx)
+                .expect("dynamic energy unless-payment should execute");
+
+            assert_eq!(game.battlefield.contains(&target), should_survive);
+            assert_eq!(
+                game.player(alice).expect("alice exists").energy_counters,
+                expected_energy
+            );
+            assert_eq!(
+                game.player(alice).expect("alice exists").graveyard.len(),
+                usize::from(!should_survive)
+            );
+        }
     }
 
     #[test]

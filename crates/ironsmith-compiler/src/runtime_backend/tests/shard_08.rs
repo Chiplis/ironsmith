@@ -255,7 +255,8 @@ pub(super) fn as_enters_opponent_choice_persists_into_static_values_and_triggers
         )?;
     let pallimud_debug = format!("{pallimud:#?}");
     assert!(
-        pallimud_debug.contains("remember_as_chosen_player: true")
+        pallimud_debug.contains("ChoosePlayerAsEnters")
+            && pallimud_debug.contains("filter: Opponent")
             && pallimud_debug.contains("controller: Some(\n")
             && pallimud_debug.contains("ChosenPlayer"),
         "as-enters choice and characteristic value must share persistent chosen-player state: {pallimud_debug}"
@@ -267,10 +268,13 @@ pub(super) fn as_enters_opponent_choice_persists_into_static_values_and_triggers
             "As this artifact enters, choose an opponent.\nAt the beginning of the chosen player's upkeep, this artifact deals 1 damage to that player.",
         )?;
     let vise_debug = format!("{vise:#?}");
+    let vise_compact = format!("{vise:?}");
     assert!(
-        vise_debug.contains("remember_as_chosen_player: true")
+        vise_debug.contains("ChoosePlayerAsEnters")
+            && vise_debug.contains("filter: Opponent")
             && vise_debug.contains("BeginningOfUpkeep {\n")
-            && vise_debug.contains("player: ChosenPlayer"),
+            && vise_debug.contains("player: ChosenPlayer")
+            && !vise_compact.contains("AliasedTarget(ChosenPlayer)"),
         "as-enters choice and possessive trigger must share persistent chosen-player state: {vise_debug}"
     );
     Ok(())
@@ -453,6 +457,87 @@ pub(super) fn steam_vines_full_card_preserves_controller_as_attachment_chooser()
         attach.target,
         crate::target::ChooseSpec::Tagged(choose.tag.clone()),
         "the Aura must attach to the land chosen by that player"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn aeon_engine_lowers_turn_order_reversal_to_a_typed_effect() -> Result<(), CardTextError>
+{
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Aeon Engine")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "This artifact enters tapped.\n{T}, Exile this artifact: Reverse the game's turn order. (For example, if play had proceeded clockwise around the table, it now goes counterclockwise.)",
+        )?;
+    let activated = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Aeon Engine should have its activated ability");
+
+    assert!(
+        activated
+            .effects
+            .flattened_default_effects()
+            .iter()
+            .any(|effect| effect
+                .downcast_ref::<crate::effects::ReverseTurnOrderEffect>()
+                .is_some()),
+        "the ability must carry the typed global turn-order transition: {activated:#?}"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn fire_magic_lowers_tiered_labels_costs_and_exactly_one_mode()
+-> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Fire Magic")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Tiered (Choose one additional cost.)\n\
+             • Fire — {0} — Fire Magic deals 1 damage to each creature.\n\
+             • Fira — {2} — Fire Magic deals 2 damage to each creature.\n\
+             • Firaga — {5} — Fire Magic deals 3 damage to each creature.",
+        )?;
+    let modal = definition
+        .spell_effect
+        .as_ref()
+        .expect("Fire Magic should have a spell program")
+        .all_effects()
+        .into_iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseModeEffect>())
+        .expect("Tiered should lower to a typed modal effect");
+
+    assert!(modal.spree, "Tiered must use casting-time mode costs");
+    assert!(
+        modal.tiered,
+        "Tiered presentation metadata must be retained"
+    );
+    assert_eq!(modal.min_choose_count, Value::Fixed(1));
+    assert_eq!(modal.choose_count, Value::Fixed(1));
+    assert_eq!(modal.modes.len(), 3);
+    assert_eq!(
+        modal
+            .mode_additional_mana_costs
+            .iter()
+            .map(|cost| cost.to_oracle())
+            .collect::<Vec<_>>(),
+        vec!["{0}", "{2}", "{5}"]
+    );
+    assert_eq!(
+        modal
+            .modes
+            .iter()
+            .map(|mode| mode.source_text.trim_end_matches('.'))
+            .collect::<Vec<_>>(),
+        vec![
+            "Fire — {0} — Fire Magic deals 1 damage to each creature",
+            "Fira — {2} — Fire Magic deals 2 damage to each creature",
+            "Firaga — {5} — Fire Magic deals 3 damage to each creature",
+        ]
     );
     Ok(())
 }

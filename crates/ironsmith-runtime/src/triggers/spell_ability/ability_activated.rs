@@ -233,12 +233,16 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         } else {
             "an ability".to_string()
         };
+        let mut source_description = source_filter_phrase(&source_filter);
+        if source_filter.chosen_creature_type {
+            source_description = source_description.replace("of the chosen type", "of that type");
+        }
         let mut text = if source_filter == ObjectFilter::default() {
             format!("Whenever {subject} {verb} {ability}")
         } else {
             format!(
                 "Whenever {subject} {verb} {ability} of {}",
-                source_filter_phrase(&source_filter)
+                source_description
             )
         };
         if self.filter.has_x_in_cost {
@@ -261,7 +265,7 @@ mod tests {
     use super::*;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::provenance::ProvNodeId;
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
 
     #[test]
     fn test_display() {
@@ -311,5 +315,59 @@ mod tests {
             ProvNodeId::default(),
         );
         assert!(!trigger.matches(&unspecified_ability_event, &ctx));
+    }
+
+    #[test]
+    fn chosen_subtype_trigger_matches_only_activated_abilities_of_that_subtype() {
+        let mut filter = ObjectFilter::planeswalker();
+        filter.chosen_creature_type = true;
+        let trigger = AbilityActivatedTrigger::new(PlayerFilter::You, filter, false);
+        let ordinary =
+            AbilityActivatedTrigger::new(PlayerFilter::You, ObjectFilter::planeswalker(), false);
+        assert_eq!(
+            trigger.display(),
+            "Whenever you activate an ability of a planeswalker of that type"
+        );
+
+        let planeswalker = |name: &str, subtype| {
+            crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+                .card_types(vec![CardType::Planeswalker])
+                .subtypes(vec![subtype])
+                .build()
+        };
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let trigger_source = game.create_object_from_definition(
+            &crate::cards::builders::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                "Subtype Chooser",
+            )
+            .card_types(vec![CardType::Creature])
+            .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let jace = game.create_object_from_definition(
+            &planeswalker("Jace Probe", Subtype::Jace),
+            alice,
+            Zone::Battlefield,
+        );
+        let chandra = game.create_object_from_definition(
+            &planeswalker("Chandra Probe", Subtype::Chandra),
+            alice,
+            Zone::Battlefield,
+        );
+        game.set_chosen_subtype(trigger_source, Subtype::Jace);
+        let ctx = TriggerContext::for_source(trigger_source, alice, &game);
+        let event = |source| {
+            TriggerEvent::new_with_provenance(
+                AbilityActivatedEvent::new(source, alice, false),
+                ProvNodeId::default(),
+            )
+        };
+
+        assert!(trigger.matches(&event(jace), &ctx));
+        assert!(!trigger.matches(&event(chandra), &ctx));
+        assert!(ordinary.matches(&event(chandra), &ctx));
     }
 }

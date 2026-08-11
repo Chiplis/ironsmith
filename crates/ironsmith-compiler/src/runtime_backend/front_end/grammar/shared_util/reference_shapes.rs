@@ -56,6 +56,26 @@ pub(crate) fn contains_from_command_zone(words: &[&str]) -> bool {
     permission_shapes::find_words(words, &["from", "command", "zone"]).is_some()
 }
 
+/// Returns true only when the object whose ability is being parsed is the
+/// object moving from the command zone.  A command-zone phrase in the effect's
+/// object set (for example, "commanders you own from the command zone") must
+/// not change the functional zone of the source ability.
+pub(crate) fn contains_source_from_command_zone(words: &[&str]) -> bool {
+    find_one_of(
+        words,
+        &[
+            &["this", "from", "command", "zone"],
+            &["thiss", "from", "command", "zone"],
+            &["this", "card", "from", "command", "zone"],
+            &["thiss", "card", "from", "command", "zone"],
+            &["this", "creature", "from", "command", "zone"],
+            &["thiss", "creature", "from", "command", "zone"],
+            &["this", "permanent", "from", "command", "zone"],
+            &["thiss", "permanent", "from", "command", "zone"],
+        ],
+    )
+}
+
 pub(crate) fn contains_discard_source(words: &[&str]) -> bool {
     permission_shapes::find_words(words, &["discard", "this", "card"]).is_some()
 }
@@ -260,6 +280,9 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
             &["that", "source's", "controller"],
             &["that", "source", "s", "controller"],
             &["that", "sources", "controller"],
+            &["that", "spell", "or", "ability's", "controller"],
+            &["that", "spell", "or", "ability", "s", "controller"],
+            &["that", "spell", "or", "abilitys", "controller"],
         ],
     ) {
         return SubjectAst::TriggeringSourceController;
@@ -328,9 +351,15 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
             },
         );
     }
-    if permission_shapes::prefix_words(slice, &["its", "controller"])
-        || (permission_shapes::prefix_words(slice, &["this"])
-            && permission_shapes::suffix_words(slice, &["controller"]))
+    if prefix_one_of(
+        slice,
+        &[
+            &["its", "controller"],
+            &["her", "controller"],
+            &["his", "controller"],
+        ],
+    ) || (permission_shapes::prefix_words(slice, &["this"])
+        && permission_shapes::suffix_words(slice, &["controller"]))
         || suffix_one_of(slice, &[&["its", "controller"], &["their", "controller"]])
     {
         return SubjectAst::Player(PlayerAst::ItsController);
@@ -397,19 +426,20 @@ pub(crate) fn parse_filter_keyword_constraint_list_words(
     let mut saw_and_or = false;
     loop {
         let rest = &words[consumed..];
-        let separator = match rest.first().copied() {
-            Some("or") => 1,
-            Some("and") => 1,
-            Some("and/or") => 1,
-            _ => 0,
+        let (separator, connective) = match rest {
+            ["and", "or", ..] => (2, Some(FilterKeywordListConnective::AndOr)),
+            ["and/or", ..] => (1, Some(FilterKeywordListConnective::AndOr)),
+            ["or", ..] => (1, Some(FilterKeywordListConnective::Or)),
+            ["and", ..] => (1, Some(FilterKeywordListConnective::And)),
+            _ => (0, None),
         };
         let Some((next, used)) = parse_filter_keyword_constraint_words(&rest[separator..]) else {
             break;
         };
-        match rest.first().copied() {
-            Some("or") if separator == 1 => saw_or = true,
-            Some("and/or") if separator == 1 => saw_and_or = true,
-            _ => {}
+        match connective {
+            Some(FilterKeywordListConnective::Or) => saw_or = true,
+            Some(FilterKeywordListConnective::AndOr) => saw_and_or = true,
+            Some(FilterKeywordListConnective::And) | None => {}
         }
         constraints.push(next);
         consumed += separator + used;
@@ -421,6 +451,12 @@ pub(crate) fn parse_filter_keyword_constraint_list_words(
     } else {
         FilterKeywordListConnective::And
     };
+    if std::env::var_os("IRONSMITH_CHOICE_TRACE").is_some() {
+        eprintln!(
+            "keyword-list: words={words:?} consumed={consumed} constraints={}",
+            constraints.len()
+        );
+    }
     Some((constraints, connective, consumed))
 }
 
@@ -483,6 +519,24 @@ pub(crate) fn parse_hand_advantage_player(words: &[&str]) -> Option<PlayerFilter
 }
 
 pub(crate) fn parse_life_advantage_player(words: &[&str]) -> Option<PlayerFilter> {
+    if permission_shapes::exact_words(
+        words,
+        &[
+            "player", "with", "most", "life", "or", "tied", "for", "most", "life",
+        ],
+    ) || permission_shapes::exact_words(
+        words,
+        &[
+            "the", "player", "with", "the", "most", "life", "or", "tied", "for", "most", "life",
+        ],
+    ) || permission_shapes::exact_words(
+        words,
+        &[
+            "a", "player", "with", "the", "most", "life", "or", "tied", "for", "most", "life",
+        ],
+    ) {
+        return Some(PlayerFilter::MostLifeTied);
+    }
     let (base, mut idx) = player_base(words)?;
     if !starts_with_one_of_words(words, idx, &["who", "that"])
         || !starts_with_one_of_words(words, idx + 1, &["has", "have"])
@@ -568,6 +622,8 @@ fn filter_keyword_constraint_for_words(words: &[&str]) -> Option<FilterKeywordCo
         Some(StaticAbilityId::Changeling)
     } else if permission_shapes::exact_words(words, &["cascade"]) {
         Some(StaticAbilityId::Cascade)
+    } else if permission_shapes::exact_words(words, &["convoke"]) {
+        Some(StaticAbilityId::Convoke)
     } else if exact_one_of(
         words,
         &[
@@ -589,6 +645,8 @@ fn filter_keyword_constraint_for_words(words: &[&str]) -> Option<FilterKeywordCo
         Some(Marker("fading"))
     } else if permission_shapes::exact_words(words, &["unearth"]) {
         Some(Marker("unearth"))
+    } else if permission_shapes::exact_words(words, &["freerunning"]) {
+        Some(Marker("freerunning"))
     } else if permission_shapes::exact_words(words, &["level", "up"]) {
         Some(Marker("level up"))
     } else if permission_shapes::exact_words(words, &["disturb"]) {
@@ -641,11 +699,15 @@ fn is_controlled_object_plural(word: &str) -> bool {
         &[word],
         0,
         &[
+            "artifacts",
             "creatures",
+            "enchantments",
+            "lands",
             "permanents",
             "planeswalkers",
             "sources",
             "spells",
+            "tokens",
         ],
     )
 }
@@ -747,6 +809,27 @@ mod tests {
             parse_subject_words(&["that", "source's", "controller", "gains", "control",]),
             SubjectAst::TriggeringSourceController
         );
+        assert_eq!(
+            parse_subject_words(&[
+                "that",
+                "spell",
+                "or",
+                "ability's",
+                "controller",
+                "sacrifices",
+                "a",
+                "land",
+            ]),
+            SubjectAst::TriggeringSourceController
+        );
+        let lexed = crate::runtime_backend::lex_line("that spell or ability's controller", 0)
+            .expect("triggering spell-or-ability controller subject should lex");
+        let lexed_words = crate::runtime_backend::token_word_refs(&lexed);
+        assert_eq!(
+            parse_subject_tokens(&lexed),
+            SubjectAst::TriggeringSourceController,
+            "lexed words: {lexed_words:?}"
+        );
         assert!(contains_source_from_your_hand(&[
             "discard", "this", "card", "from", "your", "hand"
         ]));
@@ -776,14 +859,38 @@ mod tests {
             Some((FilterKeywordConstraint::Marker("unearth"), 1))
         );
         assert_eq!(
+            parse_filter_keyword_constraint_words(&["freerunning"]),
+            Some((FilterKeywordConstraint::Marker("freerunning"), 1))
+        );
+        assert_eq!(
             parse_filter_keyword_constraint_words(&["doctor's", "companion"]),
             Some((FilterKeywordConstraint::Marker("doctor's companion"), 2))
         );
+        let (constraints, connective, consumed) = parse_filter_keyword_constraint_list_words(&[
+            "first",
+            "strike",
+            "double",
+            "strike",
+            "vigilance",
+            "and",
+            "or",
+            "haste",
+        ])
+        .expect("split and/or should remain a keyword-list connective");
+        assert_eq!(constraints.len(), 4);
+        assert_eq!(connective, FilterKeywordListConnective::AndOr);
+        assert_eq!(consumed, 8);
         assert_eq!(
             parse_life_advantage_player(&["opponent", "who", "has", "more", "life", "than", "you"]),
             Some(PlayerFilter::HasMoreLifeThanYou {
                 base: Box::new(PlayerFilter::Opponent),
             })
+        );
+        assert_eq!(
+            parse_life_advantage_player(&[
+                "player", "with", "most", "life", "or", "tied", "for", "most", "life",
+            ]),
+            Some(PlayerFilter::MostLifeTied)
         );
     }
 }

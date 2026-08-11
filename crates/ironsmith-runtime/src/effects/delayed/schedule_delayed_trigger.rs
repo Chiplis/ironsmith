@@ -16,6 +16,19 @@ use super::trigger_queue::{
     tagged_collection_has_object_in_zone,
 };
 
+/// A payment window attached to a delayed-trigger registration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DelayedTriggerPrepayment {
+    pub player: PlayerFilter,
+    pub cost: crate::cost::TotalCost,
+}
+
+impl DelayedTriggerPrepayment {
+    pub fn new(player: PlayerFilter, cost: crate::cost::TotalCost) -> Self {
+        Self { player, cost }
+    }
+}
+
 /// Effect that schedules a delayed trigger.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScheduleDelayedTriggerEffect {
@@ -35,6 +48,11 @@ pub struct ScheduleDelayedTriggerEffect {
     pub target_tag: Option<TagKey>,
     pub target_filter: Option<ObjectFilter>,
     pub controller: PlayerFilter,
+    pub prepayment: Option<DelayedTriggerPrepayment>,
+    /// Capture the prevention shield registered immediately before this
+    /// delayed trigger and expose its accumulated prevented damage as the
+    /// delayed ability's numeric event value.
+    pub event_value_from_prior_prevention: bool,
 }
 
 impl ScheduleDelayedTriggerEffect {
@@ -62,6 +80,8 @@ impl ScheduleDelayedTriggerEffect {
             target_tag: None,
             target_filter: None,
             controller,
+            prepayment: None,
+            event_value_from_prior_prevention: false,
         }
     }
 
@@ -89,6 +109,8 @@ impl ScheduleDelayedTriggerEffect {
             target_tag: Some(target_tag.into()),
             target_filter: None,
             controller,
+            prepayment: None,
+            event_value_from_prior_prevention: false,
         }
     }
 
@@ -99,6 +121,20 @@ impl ScheduleDelayedTriggerEffect {
 
     pub fn starting_next_turn(mut self) -> Self {
         self.start_next_turn = true;
+        self
+    }
+
+    pub fn unless_paid_before_trigger(
+        mut self,
+        player: PlayerFilter,
+        cost: crate::cost::TotalCost,
+    ) -> Self {
+        self.prepayment = Some(DelayedTriggerPrepayment::new(player, cost));
+        self
+    }
+
+    pub fn with_prior_prevention_event_value(mut self) -> Self {
+        self.event_value_from_prior_prevention = true;
         self
     }
 
@@ -172,6 +208,47 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         // refer to the current object rather than the stale pre-zone-change
         // ObjectId.
         let ability_source = resolve_source_object_id(game, ctx).unwrap_or(ctx.source);
+        let filter_ctx = ctx.filter_context(game);
+        let mut tagged_players = filter_ctx.tagged_players.clone();
+        if !ctx.targets_are_cost_choices {
+            let mut target_players = ctx
+                .targets
+                .iter()
+                .filter_map(|target| match target {
+                    crate::effects::ResolvedTarget::Player(player) => Some(*player),
+                    crate::effects::ResolvedTarget::Object(_) => None,
+                })
+                .collect::<Vec<_>>();
+            target_players.sort_unstable();
+            target_players.dedup();
+            if !target_players.is_empty() {
+                tagged_players
+                    .entry(crate::tag::DELAYED_TARGET_PLAYERS_TAG.into())
+                    .or_insert(target_players);
+            }
+        }
+        let prepayment = self
+            .prepayment
+            .as_ref()
+            .map(|payment| {
+                resolve_player_filter(game, &payment.player, ctx).map(|player| {
+                    crate::triggers::PendingDelayedTriggerPayment {
+                        player,
+                        cost: payment.cost.clone(),
+                        source: ability_source,
+                    }
+                })
+            })
+            .transpose()?;
+        let prevention_shield = if self.event_value_from_prior_prevention {
+            Some(ctx.last_prevention_shield.ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "delayed prevention metric requires a prior prevention shield".to_string(),
+                )
+            })?)
+        } else {
+            None
+        };
         let mut tagged_objects = ctx.tagged_objects.clone();
         if !ctx.targets_are_cost_choices {
             for (idx, target) in ctx.targets.iter().enumerate() {
@@ -241,7 +318,10 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 )
                 .with_expires_at_end_of_combat(self.until_end_of_combat)
                 .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
-                .with_tagged_objects(delayed_tagged_objects);
+                .with_tagged_objects(delayed_tagged_objects)
+                .with_tagged_players(tagged_players.clone())
+                .with_prepayment(prepayment.clone())
+                .with_prevention_shield(prevention_shield);
                 queue_delayed_from_template(
                     game,
                     DelayedWatcherIdentity::combined(if self.watch_ability_source {
@@ -280,7 +360,10 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         )
         .with_expires_at_end_of_combat(self.until_end_of_combat)
         .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
-        .with_tagged_objects(tagged_objects);
+        .with_tagged_objects(tagged_objects)
+        .with_tagged_players(tagged_players)
+        .with_prepayment(prepayment)
+        .with_prevention_shield(prevention_shield);
         let mut watched_targets = if self.watch_all_object_targets {
             ctx.targets
                 .iter()
@@ -395,6 +478,72 @@ mod tests {
             .expect("captured triggering tag");
         assert_eq!(tagged.len(), 1);
         assert_eq!(tagged[0].object_id, snapshot.object_id);
+    }
+
+    #[test]
+    fn returned_object_enter_watcher_defers_payload_and_ignores_other_entries() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::from_raw(980), "Linked Return Spell")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+        let permanent_card = CardBuilder::new(CardId::from_raw(981), "Returned Permanent")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let watched = game.create_object_from_card(&permanent_card, bob, Zone::Graveyard);
+        let decoy_card = CardBuilder::new(CardId::from_raw(982), "Unrelated Permanent")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let decoy = game.create_object_from_card(&decoy_card, bob, Zone::Graveyard);
+
+        game.move_object_by_effect(decoy, Zone::Battlefield)
+            .expect("decoy should enter first");
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        crate::effects::TaggedEffect::new(
+            "returned",
+            Effect::new(crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
+                ChooseSpec::SpecificObject(watched),
+                false,
+            )),
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("watched permanent should return");
+
+        ScheduleDelayedTriggerEffect::from_tag(
+            Trigger::this_enters_battlefield(),
+            vec![Effect::gain_life(3)],
+            true,
+            "returned",
+            PlayerFilter::You,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("linked enter watcher should register");
+
+        let life_before = game.player(alice).expect("Alice should exist").life;
+        let mut trigger_queue = TriggerQueue::new();
+        crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+        assert_eq!(
+            trigger_queue.entries.len(),
+            1,
+            "only the linked returned permanent's entry should fire"
+        );
+        assert_eq!(
+            game.player(alice).expect("Alice should exist").life,
+            life_before
+        );
+
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("linked delayed trigger should go on the stack");
+        resolve_stack_entry(&mut game).expect("linked delayed payload should resolve");
+        assert_eq!(
+            game.player(alice).expect("Alice should exist").life,
+            life_before + 3
+        );
     }
 
     #[test]
@@ -934,5 +1083,150 @@ mod tests {
             "the registration must not fire after the captured exile collection empties"
         );
         assert!(game.effect_store.delayed_triggers.is_empty());
+    }
+
+    #[test]
+    fn delayed_prepayment_is_payable_after_the_source_leaves() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_card = CardBuilder::new(CardId::new(), "Asp Payment Probe")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::DamageEvent::with_cause(
+                source,
+                crate::events::DamageTarget::Player(bob),
+                1,
+                false,
+                crate::events::EventCause::from_effect(source, alice),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut ctx =
+            ExecutionContext::new_default(source, alice).with_triggering_event(damage_event);
+        ScheduleDelayedTriggerEffect::new(
+            Trigger::beginning_of_draw_step(PlayerFilter::DamagedPlayer),
+            vec![Effect::lose_life_player(1, PlayerFilter::DamagedPlayer)],
+            true,
+            Vec::new(),
+            PlayerFilter::You,
+        )
+        .starting_next_turn()
+        .unless_paid_before_trigger(
+            PlayerFilter::DamagedPlayer,
+            crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("Nafs-like delayed obligation should register");
+
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+        let delayed = &game.effect_store.delayed_triggers[0];
+        assert_eq!(
+            delayed.tagged_players.get(&TagKey::from("damaged_player")),
+            Some(&vec![bob])
+        );
+        assert_eq!(
+            delayed.prepayment.as_ref().map(|payment| payment.player),
+            Some(bob)
+        );
+
+        game.move_object_by_effect(source, Zone::Graveyard)
+            .expect("source should leave the battlefield");
+        game.turn.priority_player = Some(bob);
+        game.player_mut(bob)
+            .expect("Bob should exist")
+            .mana_pool
+            .add(ManaSymbol::Colorless, 1);
+        let action = crate::special_actions::SpecialAction::PayDelayedTrigger {
+            delayed_trigger_index: 0,
+        };
+        assert!(crate::special_actions::can_perform_check(&action, &game, bob).is_ok());
+        assert!(
+            crate::decision::compute_legal_actions(&game, bob)
+                .contains(&crate::decision::LegalAction::SpecialAction(action.clone()))
+        );
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        crate::special_actions::perform(action, &mut game, bob, &mut decision_maker)
+            .expect("Bob should be able to prepay the delayed obligation");
+        assert!(game.effect_store.delayed_triggers.is_empty());
+    }
+
+    #[test]
+    fn unpaid_delayed_penalty_keeps_the_captured_damaged_player() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_card = CardBuilder::new(CardId::new(), "Asp Binding Probe")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::DamageEvent::with_cause(
+                source,
+                crate::events::DamageTarget::Player(bob),
+                1,
+                false,
+                crate::events::EventCause::from_effect(source, alice),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut ctx =
+            ExecutionContext::new_default(source, alice).with_triggering_event(damage_event);
+        ScheduleDelayedTriggerEffect::new(
+            Trigger::beginning_of_draw_step(PlayerFilter::DamagedPlayer),
+            vec![Effect::lose_life_player(1, PlayerFilter::DamagedPlayer)],
+            true,
+            Vec::new(),
+            PlayerFilter::You,
+        )
+        .starting_next_turn()
+        .unless_paid_before_trigger(
+            PlayerFilter::DamagedPlayer,
+            crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("Nafs-like delayed obligation should register");
+        game.move_object_by_effect(source, Zone::Graveyard)
+            .expect("source should leave the battlefield");
+
+        game.turn.turn_number = game.turn.turn_number.saturating_add(1);
+        game.turn.active_player = bob;
+        let draw_step = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfDrawStepEvent::new(bob),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let triggered = crate::triggers::check_delayed_triggers(&mut game, &draw_step);
+        assert_eq!(
+            triggered.len(),
+            1,
+            "captured player's draw step should fire"
+        );
+        assert!(game.effect_store.delayed_triggers.is_empty());
+        assert_eq!(
+            triggered[0]
+                .triggering_event
+                .player_tags()
+                .get(&TagKey::from("damaged_player")),
+            Some(&vec![bob])
+        );
+
+        let effect = triggered[0].ability.effects.flattened_default_effects()[0].clone();
+        let mut resolution_ctx = ExecutionContext::new_default(source, alice)
+            .with_triggering_event(triggered[0].triggering_event.clone());
+        assert_eq!(
+            resolution_ctx.get_tagged_players("damaged_player"),
+            Some(&vec![bob])
+        );
+        let life_before = game.player(bob).expect("Bob should exist").life;
+        crate::effects::execute_effect(&mut game, &effect, &mut resolution_ctx)
+            .expect("unpaid penalty should resolve");
+        assert_eq!(
+            game.player(bob).expect("Bob should exist").life,
+            life_before - 1
+        );
     }
 }

@@ -64,7 +64,11 @@ impl EffectExecutor for ImprintFromHandEffect {
         let source_id = ctx.source;
 
         // Find valid cards in hand that match the filter
-        let filter_ctx = game.filter_context_for(controller, Some(source_id));
+        // Imprint filters can depend on resolution context, most notably the
+        // announced X in Panoptic Mirror's "mana value X" restriction.  A
+        // bare game filter context silently evaluates those dynamic values
+        // without X and makes every positive-X card ineligible.
+        let filter_ctx = ctx.filter_context(game);
         let hand = game
             .player(controller)
             .map(|p| p.hand.clone())

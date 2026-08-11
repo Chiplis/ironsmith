@@ -54,6 +54,65 @@ fn parse_any_player_no_one_does_statement(
     }))
 }
 
+fn parse_historical_target_return_statement(
+    line: &PreprocessedLine,
+) -> Result<Option<StatementLineCst>, CardTextError> {
+    let sentences = split_lexed_sentences(&line.info.source_tokens);
+    let [choose, return_them, draw] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let choose_words = crate::runtime_backend::lexer::parser_token_word_refs(choose);
+    let return_words = crate::runtime_backend::lexer::parser_token_word_refs(return_them);
+    let draw_words = crate::runtime_backend::lexer::parser_token_word_refs(draw);
+    if !choose_words.starts_with(&[
+        "choose",
+        "up",
+        "to",
+        "three",
+        "target",
+        "permanent",
+        "cards",
+        "in",
+        "graveyards",
+        "that",
+        "were",
+        "put",
+        "there",
+        "from",
+        "the",
+        "battlefield",
+        "this",
+        "turn",
+    ]) || !return_words.starts_with(&["return", "them", "to", "the", "battlefield"])
+        || !draw_words.starts_with(&[
+            "you",
+            "draw",
+            "a",
+            "card",
+            "for",
+            "each",
+            "opponent",
+            "who",
+            "controls",
+            "one",
+            "or",
+            "more",
+            "of",
+            "those",
+            "permanents",
+        ])
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(StatementLineCst {
+        info: line.info.clone(),
+        text: line.info.raw_line.clone(),
+        parse_tokens: line.info.source_tokens.clone(),
+        parse_groups: vec![line.info.source_tokens.clone()],
+    }))
+}
+
 fn is_each_player_choose_unselected_bounce_then_draw_statement(tokens: &[OwnedLexToken]) -> bool {
     statement_shapes::parse_each_player_choose_bounce_draw_tokens(tokens).is_some()
 }
@@ -79,6 +138,49 @@ pub(super) fn parse_statement_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
+    // The complete target declaration contains an embedded `put ... there`
+    // relative clause. CST probing individual syntactic clauses would treat
+    // that history predicate as a second move instruction before the linked
+    // three-sentence semantic rule can claim it.
+    if let Some(statement) = parse_historical_target_return_statement(line)? {
+        return Ok(Some(statement));
+    }
+    // Preserve an authored player-or-planeswalker controller backreference
+    // before name/reference normalization simplifies the second target to a
+    // broad creature. The fanout parser proves the complete two-damage shape;
+    // ordinary statements continue through the normal CST probes below.
+    let authored_compound_damage_tokens = {
+        let raw_verb = line
+            .info
+            .source_tokens
+            .iter()
+            .position(|token| token.is_any_word(&["deal", "deals"]));
+        let normalized_verb = line
+            .tokens
+            .iter()
+            .position(|token| token.is_any_word(&["deal", "deals"]));
+        match (raw_verb, normalized_verb) {
+            (Some(raw_verb), Some(normalized_verb)) => {
+                let mut hybrid = line.tokens[..=normalized_verb].to_vec();
+                hybrid.extend_from_slice(&line.info.source_tokens[raw_verb + 1..]);
+                crate::runtime_backend::effect_sentences::parse_compound_damage_fanout_sentence(
+                    &hybrid,
+                )?
+                .is_some()
+                .then_some(hybrid)
+            }
+            _ => None,
+        }
+    };
+    if let Some(compound_tokens) = authored_compound_damage_tokens {
+        parse_effect_sentences_committing_loss_on_success(&compound_tokens)?;
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: line.info.raw_line.clone(),
+            parse_tokens: compound_tokens.clone(),
+            parse_groups: vec![compound_tokens],
+        }));
+    }
     if looks_like_day_night_starts_day_as_enters_static_line(&line.tokens) {
         return Ok(None);
     }
@@ -507,8 +609,10 @@ fn first_trailing_static_sentence_idx_inner(
             .enumerate()
             .skip(1)
             .find_map(|(idx, sentence)| {
-                (!followup_shapes::is_if_did_untap_source_followup(sentence)
+                (!sentence_is_anaphoric_object_conditional_effect(sentence)
+                    && !followup_shapes::is_if_did_untap_source_followup(sentence)
                     && !is_plural_tagged_result_followup_tokens(sentence)
+                    && followup_shapes::parse_moved_object_entry_followup_shape(sentence).is_none()
                     && followup_shapes::parse_cant_be_regenerated_followup(sentence).is_none()
                     && clause_dispatch_shapes::parse_direct_clause_shape(sentence)
                         != Some(DirectClauseShape::DamageCantBePrevented)
@@ -528,6 +632,16 @@ fn first_trailing_static_sentence_idx_inner(
     }
 
     Some(first_static_idx)
+}
+
+fn sentence_is_anaphoric_object_conditional_effect(tokens: &[OwnedLexToken]) -> bool {
+    probe_effect_sentences_lexed(tokens).is_ok_and(|effects| {
+        matches!(
+            effects.as_slice(),
+            [EffectAst::Conditional { predicate, .. }]
+                if predicate.uses_implicit_object_reference()
+        )
+    })
 }
 
 pub(super) fn has_effect_prefix_before_trailing_static_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -626,4 +740,32 @@ pub(super) fn parse_colon_nonactivation_statement_fallback(
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn target_bound_conditional_animation_stays_in_one_statement_group() {
+        let tokens = lex_line(
+            "Put X +1/+1 counters on target artifact you control. If it isn't a creature or Vehicle, it becomes a 0/0 Construct artifact creature.",
+            0,
+        )
+        .expect("lex target-bound conditional animation");
+
+        let groups = normalize_statement_parse_groups_lexed(&tokens);
+        assert_eq!(
+            groups.len(),
+            1,
+            "dependent conditional was split: {groups:#?}"
+        );
+        let effects = probe_effect_sentences_lexed(&groups[0])
+            .expect("grouped conditional animation should parse as effects");
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(_), EffectAst::Conditional { predicate, .. }]
+                if predicate.uses_implicit_object_reference()
+        ));
+    }
 }

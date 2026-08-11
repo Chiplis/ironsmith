@@ -26,6 +26,59 @@ fn exact_normalized_clause_match_beats_special_mismatch_penalties() {
 }
 
 #[test]
+fn targets_only_is_not_equivalent_to_has_a_matching_target() {
+    for (card_name, oracle, compiled) in [
+        (
+            "Not of This World",
+            "Counter target spell or ability that targets a permanent you control.",
+            "Counter target spell that targets only a permanent you control or ability that targets only a permanent you control.",
+        ),
+        (
+            "Diplomatic Escort",
+            "{U}, {T}, Discard a card: Counter target spell or ability that targets a creature.",
+            "{U}, {T}, Discard a card: Counter target spell that targets only a creature or ability that targets only a creature.",
+        ),
+        (
+            "Siren Stormtamer",
+            "{U}, Sacrifice this creature: Counter target spell or ability that targets you or a creature you control.",
+            "{U}, Sacrifice this creature: Counter target spell that targets only a creature you control or ability that targets only a creature you control.",
+        ),
+    ] {
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_card_semantics_scored(
+                card_name,
+                oracle,
+                &[compiled.to_string()],
+                strict_embedding(),
+            );
+
+        assert!(
+            similarity < 0.99,
+            "{card_name}: a behaviorally narrower target set must not clear the strict numeric score floor; similarity={similarity} mismatch={mismatch}"
+        );
+        assert!(
+            mismatch,
+            "{card_name}: a behaviorally narrower target set must be flagged as a semantic mismatch"
+        );
+    }
+}
+
+#[test]
+fn distributed_ordinary_counter_target_scope_remains_equivalent() {
+    let oracle = "Counter target spell or ability that targets a permanent you control.";
+    let compiled = vec![
+        "Counter target spell that targets a permanent you control or ability that targets a permanent you control."
+            .to_string(),
+    ];
+    let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+        compare_card_semantics_scored("Not of This World", oracle, &compiled, strict_embedding());
+
+    assert_eq!(similarity, 1.0);
+    assert_eq!(delta, 0);
+    assert!(!mismatch);
+}
+
+#[test]
 fn named_multi_zone_search_tense_and_sequence_surface_compare_equally() {
     let oracle = "When this creature enters, you may search your library and/or graveyard for a card named Huatli, Dinosaur Knight, reveal it, then put it into your hand. If you searched your library this way, shuffle.";
     let compiled = vec![

@@ -62,6 +62,19 @@ fn parses_first_time_frequency_condition() {
 }
 
 #[test]
+fn parses_first_time_during_each_of_your_turns_frequency_condition() {
+    let tokens = tokens(
+        "Whenever you gain life for the first time during each of your turns, create a token.",
+    );
+    let frequency = parse_trigger_frequency_tokens(&tokens);
+    assert!(frequency.first_time_during_each_of_your_turns);
+    assert_eq!(
+        parse_trigger_frequency_condition_tokens(&tokens, Some(1)),
+        Some(crate::ConditionExpr::FirstTimeThisTurn)
+    );
+}
+
+#[test]
 fn parses_do_this_frequency_condition() {
     assert_frequency_condition(
         "Do this only twice each turn.",

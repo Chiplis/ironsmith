@@ -113,6 +113,18 @@ pub trait DecisionMaker {
         selected
     }
 
+    /// Confirm, constrain, or cancel an authoritative whole-cost mana plan.
+    fn decide_mana_payment(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::ManaPaymentContext,
+    ) -> crate::mana_payment::ManaPaymentResponse {
+        crate::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id: ctx.plan.id,
+            request_hash: ctx.plan.request_hash,
+        }
+    }
+
     /// Ordering (blockers, attackers, scry, surveil).
     /// Returns the items in the desired order.
     fn decide_order(
@@ -316,6 +328,14 @@ impl DecisionMaker for DecisionRouter {
         self.dm_for(game, ctx.player).decide_options(game, ctx)
     }
 
+    fn decide_mana_payment(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::ManaPaymentContext,
+    ) -> crate::mana_payment::ManaPaymentResponse {
+        self.dm_for(game, ctx.player).decide_mana_payment(game, ctx)
+    }
+
     fn decide_text(
         &mut self,
         game: &GameState,
@@ -479,6 +499,14 @@ impl<D: DecisionMaker + ?Sized> DecisionMaker for &mut D {
         (*self).decide_options(game, ctx)
     }
 
+    fn decide_mana_payment(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::ManaPaymentContext,
+    ) -> crate::mana_payment::ManaPaymentResponse {
+        (*self).decide_mana_payment(game, ctx)
+    }
+
     fn decide_text(
         &mut self,
         game: &GameState,
@@ -623,6 +651,14 @@ impl<D: DecisionMaker + ?Sized> DecisionMaker for Box<D> {
         ctx: &crate::decisions::context::SelectOptionsContext,
     ) -> Vec<usize> {
         (**self).decide_options(game, ctx)
+    }
+
+    fn decide_mana_payment(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::ManaPaymentContext,
+    ) -> crate::mana_payment::ManaPaymentResponse {
+        (**self).decide_mana_payment(game, ctx)
     }
 
     fn decide_text(
@@ -2008,14 +2044,10 @@ impl DecisionMaker for CliDecisionMaker {
         game: &GameState,
         ctx: &crate::decisions::context::CountersContext,
     ) -> Vec<(CounterType, u32)> {
-        let target_name = game
-            .object(ctx.target)
-            .map(|o| o.name.as_str())
-            .unwrap_or("permanent");
         println!(
             "\n--- {} chooses counters to remove from {} (up to {} total) ---",
             player_name(game, ctx.player),
-            target_name,
+            ctx.target_name,
             ctx.max_total
         );
         prompt_choose_counters(&ctx.available_counters, ctx.max_total)
@@ -2720,6 +2752,29 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
             crate::special_actions::SpecialAction::IgnoreAttachedRestriction { .. } => {
                 "Sacrifice a permanent: Ignore this effect until end of turn".to_string()
             }
+            crate::special_actions::SpecialAction::IgnoreSourceEffect {
+                source_id,
+                ability_index,
+            } => {
+                let cost = crate::special_actions::ignore_source_effect_cost_display(
+                    game,
+                    *source_id,
+                    *ability_index,
+                )
+                .unwrap_or_else(|| "Pay mana".to_string());
+                format!("{cost}: Ignore this effect until end of turn")
+            }
+            crate::special_actions::SpecialAction::PayDelayedTrigger { .. } => {
+                "Pay the pending delayed-trigger cost".to_string()
+            }
+            crate::special_actions::SpecialAction::PerformRepeatableManaPaymentAction {
+                action_index,
+            } => game
+                .effect_store
+                .repeatable_mana_payment_actions
+                .get(*action_index)
+                .map(|action| format!("{}: Perform granted action", action.cost.to_oracle()))
+                .unwrap_or_else(|| "Perform granted action".to_string()),
         },
     }
 }

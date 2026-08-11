@@ -651,6 +651,7 @@ fn test_select_first_decision_maker_supports_multi_target_requirement() {
             description: "two targets".to_string(),
             legal_targets: vec![first, second],
             legal_target_sets: Vec::new(),
+            aggregate_constraint: None,
             min_targets: 2,
             max_targets: Some(2),
             distinct_player_group: None,
@@ -699,6 +700,65 @@ fn test_compute_legal_attackers() {
             .valid_targets
             .contains(&AttackTarget::Player(bob)),
         "Should be able to attack the opponent"
+    );
+}
+
+#[test]
+fn planeswalker_inclusive_attack_tax_preview_does_not_tax_battles() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let attacker = CardBuilder::new(CardId::new(), "Attack Tax Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let attacker = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker);
+
+    let tax_source = CardBuilder::new(CardId::new(), "Planeswalker-Inclusive Tax")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let tax_source = game.create_object_from_card(&tax_source, bob, Zone::Battlefield);
+    game.object_mut(tax_source)
+        .expect("tax source exists")
+        .abilities_mut()
+        .push(Ability::static_ability(
+            StaticAbility::cant_attack_you_or_planeswalkers_unless_controller_pays_per_attacker(1),
+        ));
+
+    let walker = CardBuilder::new(CardId::new(), "Taxed Walker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(3)
+        .build();
+    let walker = game.create_object_from_card(&walker, bob, Zone::Battlefield);
+    let siege = CardBuilder::new(CardId::new(), "Untaxed Siege")
+        .card_types(vec![CardType::Battle])
+        .subtypes(vec![Subtype::Siege])
+        .defense(3)
+        .build();
+    let siege = game.create_object_from_card(&siege, alice, Zone::Battlefield);
+    assert_eq!(game.battle_protector(siege), Some(bob));
+    game.refresh_continuous_state();
+
+    let options = compute_legal_attackers(&game, &CombatState::default());
+    let option = options
+        .iter()
+        .find(|option| option.creature == attacker)
+        .expect("the attacker should retain at least its untaxed Battle target");
+    assert!(
+        !option.valid_targets.contains(&AttackTarget::Player(bob)),
+        "without mana, the player target should be filtered by the tax preview"
+    );
+    assert!(
+        !option
+            .valid_targets
+            .contains(&AttackTarget::Planeswalker(walker)),
+        "the planeswalker-inclusive tax should filter its controller's planeswalker"
+    );
+    assert!(
+        option.valid_targets.contains(&AttackTarget::Battle(siege)),
+        "a Battle protected by the same player is outside the authored tax scope"
     );
 }
 
@@ -1838,6 +1898,67 @@ fn this_spell_cost_reduction_with_target_condition_uses_chosen_targets() {
         &[Target::Object(creature_id)],
     );
     assert_eq!(effective.to_oracle(), "{1}{R}");
+}
+
+#[test]
+fn target_controller_graveyard_reduction_correlates_the_chosen_target_and_controller() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell_card = CardBuilder::new(CardId::from_raw(13_300), "Correlated Target Discount")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .build();
+    let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+    let condition = crate::static_abilities::ThisSpellCostCondition::TargetsObjectWhoseControllerHasCardsInGraveyardOrMore {
+        filter: ObjectFilter::creature().in_zone(Zone::Battlefield),
+        count: 8,
+    };
+    let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+        Value::Fixed(3),
+        condition,
+    ));
+    game.object_mut(spell_id)
+        .expect("spell exists")
+        .abilities_mut()
+        .push(Ability::static_ability(ability));
+
+    let creature_card = CardBuilder::new(CardId::from_raw(13_301), "Threshold Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bob_creature = game.create_object_from_card(&creature_card, bob, Zone::Battlefield);
+    let alice_creature = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+    let filler = CardBuilder::new(CardId::from_raw(13_302), "Graveyard Filler").build();
+    for _ in 0..7 {
+        game.create_object_from_card(&filler, bob, Zone::Graveyard);
+    }
+
+    let effective_for = |game: &crate::GameState, target| {
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        calculate_effective_mana_cost_for_payment_with_chosen_targets(
+            game,
+            alice,
+            spell_obj,
+            base_cost,
+            &[Target::Object(target)],
+        )
+        .to_oracle()
+    };
+    assert_eq!(effective_for(&game, bob_creature), "{5}{U}");
+
+    game.create_object_from_card(&filler, bob, Zone::Graveyard);
+    assert_eq!(effective_for(&game, bob_creature), "{2}{U}");
+    assert_eq!(
+        effective_for(&game, alice_creature),
+        "{5}{U}",
+        "the graveyard threshold belongs to the chosen creature's controller"
+    );
 }
 
 #[test]

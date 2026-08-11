@@ -28,6 +28,42 @@ fn source_plus_any_number_sacrifice_renders_as_one_compound_cost() {
 }
 
 #[test]
+fn chosen_set_then_source_sacrifice_renders_in_authored_order() {
+    let lands = ObjectFilter::default()
+        .with_type(CardType::Land)
+        .you_control()
+        .in_zone(Zone::Battlefield);
+    let cost = crate::cost::TotalCost::from_costs(vec![
+        crate::costs::Cost::validated_effect(Effect::sacrifice(lands, 2)),
+        crate::costs::Cost::sacrifice_self(),
+    ]);
+
+    assert_eq!(
+        describe_total_cost(&cost),
+        "Sacrifice two lands and this source"
+    );
+}
+
+#[test]
+fn two_ordinary_sacrifice_costs_do_not_inherit_the_source_compactor() {
+    let land = crate::costs::Cost::validated_effect(Effect::sacrifice(
+        ObjectFilter::default().with_type(CardType::Land),
+        1,
+    ));
+    let artifact = crate::costs::Cost::validated_effect(Effect::sacrifice(
+        ObjectFilter::default().with_type(CardType::Artifact),
+        1,
+    ));
+    let cost = crate::cost::TotalCost::from_costs(vec![land, artifact]);
+
+    assert_eq!(
+        describe_cost_component_parts(cost.costs()).len(),
+        2,
+        "the conjunction requires a typed sacrifice-self component"
+    );
+}
+
+#[test]
 fn comma_then_source_and_plural_cost_set_exile_stays_one_instruction() {
     let leading = Effect::new(crate::effects::DrawCardsEffect::you(Value::Fixed(1)));
     let source = ChooseSpec::Source.with_surface_hint(

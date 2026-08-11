@@ -101,6 +101,19 @@ fn metadata_lines_from_definition(definition: &CardDefinition) -> Vec<String> {
         metadata_lines.push(format!("First printed set: {set_name}"));
     }
 
+    if !definition.card.attraction_lights.is_empty() {
+        metadata_lines.push(format!(
+            "Attraction lights: {}",
+            definition
+                .card
+                .attraction_lights
+                .iter()
+                .map(u8::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
     if let Some(power_toughness) = definition.card.power_toughness {
         metadata_lines.push(format!(
             "Power/Toughness: {}/{}",

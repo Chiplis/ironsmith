@@ -1,5 +1,6 @@
 use super::*;
 use crate::CardType;
+use crate::cards::builders::{SubjectVerbActionAst, SubjectVerbEffectAst};
 use crate::runtime_backend::front_end::grammar::effects as effect_grammar;
 use crate::runtime_backend::front_end::grammar::effects::control_copy_attach_shapes as cca_shapes;
 use crate::runtime_backend::lexer::LexedClause;
@@ -28,6 +29,80 @@ pub(crate) fn parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_
         &shape.choice,
         Some(SubjectAst::Player(PlayerAst::Opponent)),
     )
+}
+
+/// Keep re-quantified bare card domains independent from a preceding typed
+/// collection. The ordinary shared-selector grammar can represent
+/// `artifacts, creatures, and lands from the battlefield, all cards from all
+/// graveyards, and all cards from all hands` as one outer type list over three
+/// zone arms. That incorrectly applies the permanent types to graveyards and
+/// hands. Authored `all cards from all <zone>` arms prove that those zones are
+/// bare domains, so scope the outer type selector only to the remaining arms.
+pub(crate) fn scope_types_away_from_requantified_bare_card_domains(
+    tokens: &[OwnedLexToken],
+    mut filter: ObjectFilter,
+) -> ObjectFilter {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let mut bare_zones = Vec::new();
+    for window in words.windows(5) {
+        if window[..4] == ["all", "cards", "from", "all"]
+            && let Some(zone) =
+                crate::runtime_backend::front_end::shared::util::parse_zone_word(window[4])
+            && !bare_zones.contains(&zone)
+        {
+            bare_zones.push(zone);
+        }
+    }
+    if bare_zones.is_empty()
+        || filter.card_types.is_empty()
+        || filter.any_of.len() < 2
+        || !filter.has_conjunctive_set_surface()
+    {
+        return filter;
+    }
+
+    let original = filter.clone();
+    let selector = std::mem::take(&mut filter.card_types);
+    let mut branches = std::mem::take(&mut filter.any_of);
+    filter.union_surface = crate::filter::ObjectFilterUnionSurface::default();
+    if filter != ObjectFilter::default() {
+        return original;
+    }
+
+    let mut scoped_selector = false;
+    let mut seen_bare_zones = Vec::new();
+    for branch in &mut branches {
+        let Some(zone) = branch.zone else {
+            return original;
+        };
+        let mut bare_branch = branch.clone();
+        bare_branch.zone = None;
+        if bare_branch != ObjectFilter::default() {
+            return original;
+        }
+        if bare_zones.contains(&zone) {
+            if !seen_bare_zones.contains(&zone) {
+                seen_bare_zones.push(zone);
+            }
+        } else {
+            branch.card_types = selector.clone();
+            scoped_selector = true;
+        }
+    }
+    if !scoped_selector
+        || bare_zones
+            .iter()
+            .any(|zone| !seen_bare_zones.contains(zone))
+    {
+        return original;
+    }
+
+    let mut scoped = ObjectFilter {
+        any_of: branches,
+        ..ObjectFilter::default()
+    };
+    scoped.set_conjunctive_set_surface(true);
+    scoped
 }
 
 fn exile_iterated_hand_cards_and_permanents(
@@ -91,7 +166,7 @@ fn parse_exile_card_from_their_hand_or_permanent_they_control(
 pub(crate) use effect_grammar::ParsedExileOwnerPrefix as ParsedOwnerPrefix;
 
 fn with_exile_actor(mut effect: EffectAst, subject: Option<SubjectAst>) -> EffectAst {
-    if let Some(SubjectAst::Player(player)) = subject
+    if let Some(player) = extract_subject_player(subject)
         && let EffectAst::SubjectVerb(subject_verb) = &mut effect
     {
         subject_verb.subject.player = player;
@@ -192,6 +267,16 @@ pub(crate) fn parse_exile(
         ));
     }
 
+    if let Some(target_tokens) = split_until_opponent_becomes_monarch_tail(tokens) {
+        let (target_tokens, face_down) = split_exile_face_down_suffix(target_tokens);
+        let mut target = parse_target_phrase(target_tokens)?;
+        apply_exile_subject_hand_owner_context(&mut target, subject.clone());
+        return Ok(with_exile_actor(
+            EffectAst::subject_verb_exile_until_opponent_becomes_monarch(target, face_down),
+            subject,
+        ));
+    }
+
     let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
     let (tokens, face_down) = split_exile_face_down_suffix(tokens);
     let tokens = split_exile_graveyard_replacement_suffix(tokens);
@@ -257,7 +342,27 @@ pub(crate) fn parse_exile(
         )? {
             return Ok(effect);
         }
-        let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
+        // A repeated `all` collection may give each arm its own domain, for
+        // example battlefield permanents followed by every card in hands and
+        // graveyards.  The ordinary shared-terminal path can otherwise lift
+        // the first arm's card types onto the outer filter and incorrectly
+        // constrain the card-only arms.  Prefer a proven branch-scoped union
+        // before the general filter parser for this exhaustive shape.
+        let scoped_union = crate::runtime_backend::front_end::grammar::filters::parse_branch_scoped_object_filter_union_lexed(
+            filter_tokens,
+            false,
+        )
+        .or_else(|| {
+            crate::runtime_backend::front_end::grammar::filters::parse_domain_union_object_filter_lexed(
+                filter_tokens,
+                false,
+            )
+        });
+        let mut filter = match scoped_union {
+            Some(filter) => filter,
+            None => parse_object_filter_lexed(filter_tokens, false)?,
+        };
+        filter = scope_types_away_from_requantified_bare_card_domains(filter_tokens, filter);
         apply_exile_subject_owner_context(&mut filter, subject);
         return Ok(if until_source_leaves {
             EffectAst::subject_verb_exile_all_until_source_leaves(
@@ -288,15 +393,14 @@ pub(crate) fn parse_exile(
     {
         return Ok(effect);
     }
-    if !face_down
-        && !until_source_leaves
-        && let Some(effect) = parse_exile_dynamic_count_from_top_library_clause(tokens, subject)
+    if !until_source_leaves
+        && let Some(effect) =
+            parse_exile_dynamic_count_from_top_library_clause(tokens, subject, face_down)
     {
         return Ok(effect);
     }
-    if !face_down
-        && !until_source_leaves
-        && let Some(effect) = parse_exile_top_library_clause(tokens, subject)
+    if !until_source_leaves
+        && let Some(effect) = parse_exile_top_library_clause(tokens, subject, face_down)
     {
         return Ok(effect);
     }
@@ -480,6 +584,38 @@ mod tests {
     }
 
     #[test]
+    fn face_down_singular_per_each_exile_keeps_top_order_and_typed_count() {
+        let tokens = lex_line(
+            "a card from the top of your library face down for each opponent you have",
+            0,
+        )
+        .expect("top-library clause should lex");
+        let effect = parse_exile(&tokens, None).expect("top-library clause should parse");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject:
+                crate::runtime_backend::ast::SubjectVerbSubjectAst {
+                    player: PlayerAst::You,
+                    ..
+                },
+            action:
+                SubjectVerbActionAst::ExileTopOfLibrary {
+                    count, face_down, ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected an ordered exile-top action: {effect:#?}");
+        };
+        assert!(face_down);
+        assert_eq!(
+            count.unhinted(),
+            &Value::CountPlayers(PlayerFilter::Opponent)
+        );
+        assert!(count.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+    }
+
+    #[test]
     fn exile_until_distinct_target_leaves_keeps_both_targets_in_order() {
         let tokens = lex_line(
             "target creature or enchantment you don't control until target enchantment you control leaves the battlefield",
@@ -505,6 +641,32 @@ mod tests {
         assert!(exiled_filter.card_types.contains(&CardType::Enchantment));
         assert_eq!(watcher_filter.card_types, vec![CardType::Enchantment]);
         assert_eq!(watcher_filter.controller, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn exile_until_opponent_becomes_monarch_keeps_the_event_duration() {
+        let tokens = lex_line(
+            "target creature an opponent controls until an opponent becomes the monarch",
+            0,
+        )
+        .expect("clause should lex");
+        let effect = parse_exile(&tokens, None).expect("clause should parse");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ExileUntilSourceLeaves {
+                    target: TargetAst::Object(filter, Some(_), _),
+                    duration: ironsmith_core::ExileUntilDuration::OpponentBecomesMonarch,
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected a typed targeted exile with a monarch-event duration");
+        };
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
     }
 
     #[test]
@@ -534,6 +696,66 @@ mod tests {
         assert_eq!(filter.owner, Some(PlayerFilter::Defending));
         assert!(filter.one_per_card_type);
         assert_eq!(count, crate::effect::ChoiceCount::any_number());
+    }
+
+    #[test]
+    fn requantified_bare_card_domains_do_not_inherit_the_battlefield_type_list() {
+        let tokens = lex_line(
+            "all artifacts, creatures, and lands from the battlefield, all cards from all graveyards, and all cards from all hands",
+            0,
+        )
+        .expect("collection should lex");
+        let effect = parse_exile(&tokens, None).expect("collection should parse");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ExileAll { filter, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected one typed exhaustive exile union: {effect:#?}");
+        };
+
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
+        assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        let battlefield = filter
+            .any_of
+            .iter()
+            .find(|branch| branch.zone == Some(Zone::Battlefield))
+            .expect("battlefield arm");
+        assert_eq!(
+            battlefield.card_types,
+            [CardType::Artifact, CardType::Creature, CardType::Land]
+        );
+        for zone in [Zone::Graveyard, Zone::Hand] {
+            let branch = filter
+                .any_of
+                .iter()
+                .find(|branch| branch.zone == Some(zone))
+                .expect("bare card-domain arm");
+            assert!(branch.card_types.is_empty(), "{branch:#?}");
+        }
+    }
+
+    #[test]
+    fn explicitly_typed_later_card_domains_are_not_treated_as_bare() {
+        let tokens = lex_line(
+            "artifacts from the battlefield, all artifact cards from all graveyards",
+            0,
+        )
+        .expect("near miss should lex");
+        let mut filter = ObjectFilter {
+            card_types: vec![CardType::Artifact],
+            any_of: vec![
+                ObjectFilter::default().in_zone(Zone::Battlefield),
+                ObjectFilter::default().in_zone(Zone::Graveyard),
+            ],
+            ..ObjectFilter::default()
+        };
+        filter.set_conjunctive_set_surface(true);
+        assert_eq!(
+            scope_types_away_from_requantified_bare_card_domains(&tokens, filter.clone()),
+            filter
+        );
     }
 }
 
@@ -867,6 +1089,7 @@ pub(crate) fn parse_graveyard_owner_prefix_lexed(
 fn parse_exile_dynamic_count_from_top_library_clause(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
+    face_down: bool,
 ) -> Option<EffectAst> {
     let default_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let shape = effect_grammar::parse_exile_dynamic_top_library_shape(tokens, default_player)?;
@@ -877,45 +1100,86 @@ fn parse_exile_dynamic_count_from_top_library_clause(
     let surface = (default_player != PlayerAst::Implicit && default_player == player)
         .then_some(ironsmith_core::ExileTopLibrarySurface::LibraryOwnerAsActor);
 
-    Some(
-        EffectAst::subject_verb_exile_top_of_library_with_optional_surface(
-            player,
-            shape.count,
-            vec![helper_tag_for_tokens(&tag_tokens, "exiled")],
-            Vec::new(),
-            surface,
-        ),
-    )
+    Some(exile_top_library_effect(
+        player,
+        shape.count,
+        vec![helper_tag_for_tokens(&tag_tokens, "exiled")],
+        Vec::new(),
+        surface,
+        face_down || shape.face_down,
+    ))
+}
+
+fn exile_top_library_effect(
+    player: PlayerAst,
+    count: Value,
+    tags: Vec<TagKey>,
+    accumulated_tags: Vec<TagKey>,
+    surface: Option<ironsmith_core::ExileTopLibrarySurface>,
+    face_down: bool,
+) -> EffectAst {
+    let mut effect = EffectAst::subject_verb_exile_top_of_library_with_optional_surface(
+        player,
+        count,
+        tags,
+        accumulated_tags,
+        surface,
+    );
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::ExileTopOfLibrary {
+                face_down: effect_face_down,
+                ..
+            },
+        ..
+    }) = &mut effect
+    else {
+        unreachable!("exile-top constructor must produce a subject-verb action");
+    };
+    *effect_face_down = face_down;
+    effect
 }
 
 pub(crate) fn parse_exile_top_library_clause(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
+    face_down: bool,
 ) -> Option<EffectAst> {
     let default_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let shape = effect_grammar::parse_exile_top_library_shape(tokens, default_player)?;
     let tag_tokens = trim_commas(tokens);
     match shape.player {
-        effect_grammar::ExileLibraryPlayerShape::EachOpponent => Some(EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::subject_verb_exile_top_of_library(
+        effect_grammar::ExileLibraryPlayerShape::EachPlayer => Some(EffectAst::ForEachPlayer {
+            effects: vec![exile_top_library_effect(
                 PlayerAst::That,
                 shape.count,
                 Vec::new(),
                 vec![helper_tag_for_tokens(&tag_tokens, "exiled")],
+                None,
+                face_down,
+            )],
+        }),
+        effect_grammar::ExileLibraryPlayerShape::EachOpponent => Some(EffectAst::ForEachOpponent {
+            effects: vec![exile_top_library_effect(
+                PlayerAst::That,
+                shape.count,
+                Vec::new(),
+                vec![helper_tag_for_tokens(&tag_tokens, "exiled")],
+                None,
+                face_down,
             )],
         }),
         effect_grammar::ExileLibraryPlayerShape::Player(player) => {
             let surface = (default_player != PlayerAst::Implicit && default_player == player)
                 .then_some(ironsmith_core::ExileTopLibrarySurface::LibraryOwnerAsActor);
-            Some(
-                EffectAst::subject_verb_exile_top_of_library_with_optional_surface(
-                    player,
-                    shape.count,
-                    vec![helper_tag_for_tokens(&tag_tokens, "exiled")],
-                    Vec::new(),
-                    surface,
-                ),
-            )
+            Some(exile_top_library_effect(
+                player,
+                shape.count,
+                vec![helper_tag_for_tokens(&tag_tokens, "exiled")],
+                Vec::new(),
+                surface,
+                face_down,
+            ))
         }
     }
 }
@@ -946,6 +1210,9 @@ fn parse_exile_bottom_library_clause(
     };
 
     match shape.player {
+        effect_grammar::ExileLibraryPlayerShape::EachPlayer => Some(EffectAst::ForEachPlayer {
+            effects: choose_and_exile(PlayerAst::That, tag),
+        }),
         effect_grammar::ExileLibraryPlayerShape::EachOpponent => Some(EffectAst::ForEachOpponent {
             effects: choose_and_exile(PlayerAst::That, tag),
         }),

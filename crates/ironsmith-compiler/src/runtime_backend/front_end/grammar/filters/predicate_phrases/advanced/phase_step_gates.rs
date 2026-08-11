@@ -755,9 +755,13 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
     filter.controller = Some(controller);
     filter.power_greater_than_base_power |= above_base;
 
+    let authored_exactly = tail
+        .tokens()
+        .iter()
+        .any(|token| token_word_is(token, "exactly"));
     let predicate = match comparison {
         crate::effect::Comparison::Equal(count) if count >= 0 => {
-            if count == 1 {
+            if count == 1 && !authored_exactly {
                 PredicateAst::PlayerControls { player, filter }
             } else {
                 PredicateAst::PlayerControlsExactly {
@@ -1211,6 +1215,11 @@ mod tests {
             panic!("expected control predicate");
         };
         assert!(filter.power_greater_than_base_power);
+
+        assert!(matches!(
+            parse("you control exactly one creature"),
+            PredicateAst::PlayerControlsExactly { count: 1, .. }
+        ));
 
         assert!(matches!(
             parse("this creature wasn't kicked"),

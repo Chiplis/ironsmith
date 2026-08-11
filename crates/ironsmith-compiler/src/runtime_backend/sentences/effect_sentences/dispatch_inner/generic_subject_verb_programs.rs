@@ -45,6 +45,66 @@ fn parse_source_exiled_owner_library_bottom_subject_verb(
     )
 }
 
+fn parse_triggering_object_had_counters_create_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let wrap_condition = words.starts_with(&["if", "it", "had", "counters", "on", "it", "create"]);
+    if !wrap_condition && !words.first().is_some_and(|word| *word == "create") {
+        return Ok(None);
+    }
+    let where_words = [
+        "where", "x", "is", "the", "number", "of", "counters", "it", "had", "on", "it",
+    ];
+    let Some(where_word_index) = words
+        .windows(where_words.len())
+        .position(|window| window == where_words)
+    else {
+        return Ok(None);
+    };
+    if where_word_index == 0 || where_word_index + where_words.len() != words.len() {
+        return Ok(None);
+    }
+
+    let create_start = tokens
+        .iter()
+        .position(|token| token.is_word("create"))
+        .ok_or_else(|| CardTextError::ParseError("missing token-creation clause".to_string()))?;
+    let where_start = tokens
+        .iter()
+        .position(|token| token.is_word("where"))
+        .ok_or_else(|| CardTextError::ParseError("missing counter-count definition".to_string()))?;
+    let mut create_effects = parse_effect_chain_lexed(&tokens[create_start..where_start])?;
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
+            ..
+        }),
+    ] = create_effects.as_mut_slice()
+    else {
+        return Ok(None);
+    };
+    let triggering = ChooseSpec::Tagged(TagKey::from("triggering"));
+    *count = Value::CountersOn(Box::new(triggering.clone()), None).with_surface_hints([
+        ironsmith_core::ValueSurfaceHint::WhereXIs,
+        ironsmith_core::ValueSurfaceHint::TriggeringObjectCountersItHad,
+    ]);
+
+    if wrap_condition {
+        Ok(Some(EffectAst::Conditional {
+            predicate: PredicateAst::ValueComparison {
+                left: Value::CountersOn(Box::new(triggering), None),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            },
+            if_true: create_effects,
+            if_false: Vec::new(),
+        }))
+    } else {
+        Ok(create_effects.pop())
+    }
+}
+
 fn parse_effect_chain_preserving_source_exiled_owner_library_bottom(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -53,6 +113,82 @@ fn parse_effect_chain_preserving_source_exiled_owner_library_bottom(
     } else {
         parse_effect_chain_lexed(tokens)
     }
+}
+
+fn parse_source_exiled_counted_return_remainder_to_owners_libraries(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    const RETURNED_SOURCE_EXILED_TAG: &str = "source_exiled_returned";
+    let split = (0..tokens.len().saturating_sub(3)).find(|&idx| {
+        tokens[idx].is_word("and")
+            && tokens[idx + 1].is_word("put")
+            && tokens[idx + 2].is_word("the")
+            && tokens[idx + 3].is_word("rest")
+    })?;
+    let suffix_words = crate::runtime_backend::token_word_refs(&tokens[split + 1..]);
+    if suffix_words.len() != 10
+        || suffix_words[..8] != ["put", "the", "rest", "on", "the", "bottom", "of", "their"]
+        || !matches!(suffix_words[8], "owner" | "owners" | "owner's" | "owners'")
+        || !matches!(suffix_words[9], "library" | "libraries")
+    {
+        return None;
+    }
+    let prefix = trim_edge_punctuation(&tokens[..split]);
+    let return_tokens = prefix
+        .first()
+        .is_some_and(|token| token.is_word("return"))
+        .then_some(&prefix[1..])?;
+    let return_effect = super::zone_handlers::parse_return(return_tokens).ok()?;
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::MoveToZone {
+                target: TargetAst::WithCount(inner, count),
+                zone: Zone::Battlefield,
+                battlefield_controller: crate::cards::builders::ReturnControllerAst::Owner,
+                exiled_with_source_surface: Some(surface),
+                all: false,
+                ..
+            },
+        ..
+    }) = &return_effect
+    else {
+        return None;
+    };
+    let TargetAst::Object(filter, _, _) = inner.as_ref() else {
+        return None;
+    };
+    if count.min == 0
+        || count.max != Some(count.min)
+        || count.dynamic_x
+        || !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        })
+        || filter.zone != Some(Zone::Exile)
+        || !matches!(
+            surface.source,
+            ironsmith_core::ExiledWithSourceReferenceSurface::Source(_)
+        )
+    {
+        return None;
+    }
+    let remainder = EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::PutTaggedRemainderInZone {
+            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            keep_tagged: TagKey::from(RETURNED_SOURCE_EXILED_TAG),
+            zone: Zone::Library,
+            surface: ironsmith_core::LibraryRemainderSurface::Rest,
+        },
+    );
+    Some(vec![
+        EffectAst::TagAffected {
+            effect: Box::new(return_effect),
+            tag: TagKey::from(RETURNED_SOURCE_EXILED_TAG),
+        },
+        remainder,
+    ])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,6 +293,8 @@ struct TargetControlledPumpProgram {
     power: Value,
     toughness: Value,
     abilities: Vec<GrantedAbilityAst>,
+    add_all_creature_types: bool,
+    remove_all_creature_types: bool,
 }
 
 impl TargetControlledPumpProgram {
@@ -169,8 +307,22 @@ impl TargetControlledPumpProgram {
         )];
         if !self.abilities.is_empty() {
             effects.push(EffectAst::subject_verb_grant_abilities_all(
-                self.filter,
+                self.filter.clone(),
                 self.abilities,
+                Until::EndOfTurn,
+            ));
+        }
+        if self.add_all_creature_types {
+            effects.push(EffectAst::subject_verb_add_all_subtypes_of_family(
+                TargetAst::Object(self.filter.clone(), None, None),
+                crate::types::SubtypeFamily::Creature,
+                Until::EndOfTurn,
+            ));
+        }
+        if self.remove_all_creature_types {
+            effects.push(EffectAst::subject_verb_remove_all_subtypes_of_family(
+                TargetAst::Object(self.filter, None, None),
+                crate::types::SubtypeFamily::Creature,
                 Until::EndOfTurn,
             ));
         }
@@ -754,6 +906,8 @@ const TARGET_GETS_THEN_GAINS_GRANT_PHRASES: &[&[&str]] = &[
     &["and", "gains"],
     &["and", "have"],
     &["and", "has"],
+    &["and", "lose"],
+    &["and", "loses"],
 ];
 const TARGET_CONTROLLED_PUMP_GRANTED_ABILITY_PATTERN: effect_grammar::EffectSequence<'static> =
     effect_grammar::EffectSequence::new(&[
@@ -1163,6 +1317,19 @@ fn parse_branch_scoped_collection_subject_verb(
 pub(crate) fn parse_top_level_subject_verb_recognition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
+    if let Some(effect) = parse_triggering_object_had_counters_create_tokens(tokens)? {
+        return Ok(Some((
+            "subject-verb verb=Create subject=implicit recognizer=triggering-object-counter-lki",
+            vec![effect],
+        )));
+    }
+    if let Some(effects) = parse_source_exiled_counted_return_remainder_to_owners_libraries(tokens)
+    {
+        return Ok(Some((
+            "subject-verb verb=Return subject=source-exiled recognizer=counted-return-remainder",
+            effects,
+        )));
+    }
     // Copular animation clauses such as "those permanents are 4/4 creatures
     // in addition to their other types" are effect-backed state changes. They
     // must reach the generic animation parser before the broad `are`/`get`
@@ -1178,9 +1345,21 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
     if let Some(parsed) = parse_branch_scoped_collection_subject_verb(tokens) {
         return Ok(Some(parsed));
     }
+    if let Some(effect) = parse_as_you_cast_from_zone_this_turn_grant(tokens)? {
+        return Ok(Some((
+            "subject-verb verb=Gain subject=cast-from-zone recognizer=as-you-cast-this-turn",
+            vec![effect],
+        )));
+    }
     if let Some(effects) = parse_any_player_may_have_source_deal_damage(tokens)? {
         return Ok(Some((
             "subject-verb verb=Deal subject=source recognizer=any-player-may-have-source-damage",
+            effects,
+        )));
+    }
+    if let Some(effects) = parse_destroy_attached_object_then_source_damage_to_controller(tokens)? {
+        return Ok(Some((
+            "subject-verb verb=Destroy subject=attached recognizer=destroy-attached-source-damage",
             effects,
         )));
     }
@@ -1301,6 +1480,69 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
     }))
 }
 
+fn parse_as_you_cast_from_zone_this_turn_grant(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause = LexedClause::new(tokens).trimmed();
+    let word_view = clause.words();
+    let words = word_view.word_refs();
+    if !words.starts_with(&["as", "you", "cast"]) || words.len() < 9 {
+        return Ok(None);
+    }
+    let Some(turn_index) = words
+        .windows(2)
+        .position(|window| window == ["this", "turn"])
+    else {
+        return Ok(None);
+    };
+    if turn_index <= 3 || words.get(turn_index + 2..turn_index + 4) != Some(&["they", "gain"]) {
+        return Ok(None);
+    }
+    let Some(subject_range) = word_view.token_span_for_words(3, turn_index) else {
+        return Ok(None);
+    };
+    let Some(ability_range) = word_view.token_span_for_words(turn_index + 4, words.len()) else {
+        return Ok(None);
+    };
+    let subject_tokens = &clause.tokens()[subject_range];
+    let subject_words = TokenWordView::new(subject_tokens).word_refs();
+    let Some(from_index) = subject_words.iter().rposition(|word| *word == "from") else {
+        return Ok(None);
+    };
+    let origin_words = &subject_words[from_index + 1..];
+    let origin_word = match origin_words {
+        [zone] => *zone,
+        ["a" | "an" | "the" | "your" | "their" | "its", zone] => *zone,
+        _ => return Ok(None),
+    };
+    let Some(origin_zone) =
+        crate::runtime_backend::front_end::shared::util::parse_zone_word(origin_word)
+    else {
+        return Ok(None);
+    };
+
+    let mut filter = parse_object_filter_lexed(subject_tokens, false)?;
+    filter.cast_by = Some(PlayerFilter::You);
+    if filter.stack_kind != Some(crate::filter::StackObjectKind::Spell) {
+        return Ok(None);
+    }
+    // The ordinary filter parser quite reasonably models `spells` as stack
+    // objects. In this as-you-cast trigger, however, the authored `from ...`
+    // phrase is the pre-cast origin and must replace that default stack zone.
+    filter.zone = Some(origin_zone);
+    let Some(ability) = crate::runtime_backend::activation_and_restrictions::parse_ability_phrase(
+        &clause.tokens()[ability_range],
+    ) else {
+        return Ok(None);
+    };
+    filter.set_as_you_cast_this_turn_surface(true);
+    Ok(Some(EffectAst::subject_verb_grant_abilities_all(
+        filter,
+        vec![GrantedAbilityAst::KeywordAction(ability)],
+        Until::EndOfTurn,
+    )))
+}
+
 fn parse_generic_play_exiled_cards_for_as_long_as_exiled(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
@@ -1409,6 +1651,85 @@ fn parse_source_gets_unblockable_subject_verb(
             None,
         ),
     ]))
+}
+
+/// Preserve a mixed-subject attachment action as one coordinated program:
+/// `destroy enchanted land and this Aura deals N damage to that land's
+/// controller`. Both halves are independently typed, but the ordinary chain
+/// splitter can hand the possessive controller tail to the damage-trigger
+/// probe before it has established the attachment reference.
+fn parse_destroy_attached_object_then_source_damage_to_controller(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let segments = super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens);
+    let [destroy_tokens, damage_tokens] = segments.as_slice() else {
+        return Ok(None);
+    };
+    let destroy_words = crate::runtime_backend::token_word_refs(destroy_tokens);
+    let ["destroy", attachment_word, object_noun] = destroy_words.as_slice() else {
+        return Ok(None);
+    };
+    if !matches!(*attachment_word, "enchanted" | "equipped") {
+        return Ok(None);
+    }
+
+    let damage_words = crate::runtime_backend::token_word_refs(damage_tokens);
+    let Some(deals_idx) = damage_words.iter().position(|word| *word == "deals") else {
+        return Ok(None);
+    };
+    if deals_idx == 0
+        || crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(
+            &damage_words[..deals_idx],
+        )
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let suffix = &damage_words[deals_idx..];
+    let [
+        "deals",
+        amount_word,
+        "damage",
+        "to",
+        "that",
+        possessive_noun,
+        "controller",
+    ] = suffix
+    else {
+        return Ok(None);
+    };
+    if *possessive_noun != format!("{object_noun}s") {
+        return Ok(None);
+    }
+    let Some(amount) =
+        crate::runtime_backend::front_end::shared::util::parse_number_word_u32(amount_word)
+            .and_then(|amount| i32::try_from(amount).ok())
+    else {
+        return Ok(None);
+    };
+
+    let filter = parse_object_filter(&destroy_tokens[1..], false)?;
+    let attachment_tag = TagKey::from(*attachment_word);
+    if !filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == attachment_tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }) {
+        return Ok(None);
+    }
+
+    let destroy = EffectAst::subject_verb_destroy(TargetAst::Object(filter, None, None));
+    let damage = EffectAst::subject_verb_damage(
+        Value::Fixed(amount),
+        TargetAst::Player(
+            PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(attachment_tag)),
+            None,
+        ),
+    );
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects: vec![destroy, damage],
+        leading_duration: false,
+        result_conjunction: false,
+    }]))
 }
 
 fn parse_target_gets_unblockable_subject_verb(
@@ -1801,6 +2122,8 @@ fn parse_target_controlled_pump_program(
         .unwrap_or_else(|| LexedClause::new(&[]))
         .trimmed();
     let mut abilities = Vec::new();
+    let mut add_all_creature_types = false;
+    let mut remove_all_creature_types = false;
     if let Some(tail_match) = TARGET_CONTROLLED_PUMP_GRANTED_ABILITY_PATTERN.parse_full(tail_clause)
     {
         let Some(ability_clause) =
@@ -1808,13 +2131,25 @@ fn parse_target_controlled_pump_program(
         else {
             return Ok(None);
         };
-        abilities.extend(keyword_abilities_from_clause(ability_clause.trimmed()));
+        let ability_clause = ability_clause.trimmed();
+        let ability_words = ability_clause.word_refs();
+        add_all_creature_types =
+            ability_words == ["all", "creature", "types", "until", "end", "of", "turn"];
+        remove_all_creature_types = add_all_creature_types
+            && tail_clause
+                .word_refs()
+                .iter()
+                .any(|word| matches!(*word, "lose" | "loses"));
+        add_all_creature_types &= !remove_all_creature_types;
+        abilities.extend(keyword_abilities_from_clause(ability_clause));
     }
     Ok(Some(TargetControlledPumpProgram {
         filter,
         power,
         toughness,
         abilities,
+        add_all_creature_types,
+        remove_all_creature_types,
     }))
 }
 
@@ -3257,9 +3592,7 @@ const LOOK_EXILE_COUNTED_FACE_DOWN_PATTERN: effect_grammar::EffectSequence<'stat
         // omit the explicit looked-set pronoun ("exile one face down"). The
         // leading look clause still supplies the unique candidate pool, so
         // both surfaces lower to the same counted selection.
-        effect_grammar::EffectSequence::optional(
-            OPTIONAL_EXILE_COUNTED_FACE_DOWN_OBJECT_ATOMS,
-        ),
+        effect_grammar::EffectSequence::optional(OPTIONAL_EXILE_COUNTED_FACE_DOWN_OBJECT_ATOMS),
         effect_grammar::EffectSequence::phrase(&["face", "down"]),
         effect_grammar::EffectSequence::tail("remainder", effect_grammar::EffectCaptureKind::Rest),
     ]);
@@ -3418,6 +3751,61 @@ mod generic_subject_verb_program_tests {
     use crate::Subtype;
 
     #[test]
+    fn as_you_cast_from_zone_this_turn_grant_preserves_origin_duration_and_keyword() {
+        let tokens = crate::runtime_backend::lex_line(
+            "As you cast spells from your hand this turn, they gain cascade.",
+            0,
+        )
+        .expect("cast-origin grant should lex");
+        let effects = super::parse_effect_sentence_lexed(&tokens)
+            .expect("public sentence route should retain the cast-origin grant");
+        let [effect] = effects.as_slice() else {
+            panic!("expected one cast-origin grant: {effects:#?}")
+        };
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantAbilitiesAll {
+                    filter,
+                    abilities,
+                    duration,
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected typed grant-all effect")
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell)
+        );
+        assert_eq!(filter.cast_by, Some(PlayerFilter::You));
+        assert!(filter.has_as_you_cast_this_turn_surface());
+        assert_eq!(*duration, Until::EndOfTurn);
+        assert!(matches!(
+            abilities.as_slice(),
+            [GrantedAbilityAst::KeywordAction(KeywordAction::Cascade)]
+        ));
+    }
+
+    #[test]
+    fn permanent_grant_does_not_enter_cast_origin_route() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Creatures you control gain trample until end of turn.",
+            0,
+        )
+        .expect("ordinary grant should lex");
+
+        assert!(
+            parse_as_you_cast_from_zone_this_turn_grant(&tokens)
+                .expect("ordinary grant route should not error")
+                .is_none()
+        );
+    }
+
+    #[test]
     fn top_level_cant_route_preserves_leading_end_of_turn_surface() {
         let parse_surface = |text: &str| {
             let tokens = crate::runtime_backend::lex_line(text, 0)
@@ -3499,6 +3887,69 @@ mod generic_subject_verb_program_tests {
     }
 
     #[test]
+    fn source_exiled_counted_return_keeps_original_set_for_the_remainder() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Return two cards exiled with this Saga to the battlefield under their owners' control and put the rest on the bottom of their owners' libraries.",
+            0,
+        )
+        .expect("source-exiled partition should lex");
+        let effects = parse_source_exiled_counted_return_remainder_to_owners_libraries(&tokens)
+            .expect("typed source-exiled partition should match");
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("WithCount"), "{debug}");
+        assert!(debug.contains("max: Some(2)"), "{debug}");
+        assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
+        assert!(debug.matches("__source_exiled__").count() >= 2, "{debug}");
+        let EffectAst::TagAffected { effect, tag } = &effects[0] else {
+            panic!("expected distinctly tagged counted return: {debug}");
+        };
+        assert_eq!(tag.as_str(), "source_exiled_returned");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::MoveToZone {
+                    target: TargetAst::WithCount(returned, _),
+                    ..
+                },
+            ..
+        }) = effect.as_ref()
+        else {
+            panic!("expected counted typed return inside result tag: {debug}");
+        };
+        let TargetAst::Object(returned, _, _) = returned.as_ref() else {
+            panic!("expected source-linked object filter: {debug}");
+        };
+        assert_eq!(
+            returned,
+            &ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
+            "the source's Saga type is provenance, not a restriction on returned cards"
+        );
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PutTaggedRemainderInZone {
+                    tag: original_set,
+                    keep_tagged,
+                    ..
+                },
+            ..
+        }) = &effects[1]
+        else {
+            panic!("expected typed source-exiled complement: {debug}");
+        };
+        assert_eq!(original_set.as_str(), crate::tag::SOURCE_EXILED_TAG);
+        assert_eq!(keep_tagged, tag);
+        assert_ne!(keep_tagged, original_set);
+
+        let near_miss = crate::runtime_backend::lex_line(
+            "Return two cards exiled with this Saga to the battlefield under their owners' control and put those cards on the bottom of their owners' libraries.",
+            0,
+        )
+        .expect("near miss should lex");
+        assert!(
+            parse_source_exiled_counted_return_remainder_to_owners_libraries(&near_miss).is_none()
+        );
+    }
+
+    #[test]
     fn counted_face_down_exile_accepts_implicit_looked_set() {
         let tokens = crate::runtime_backend::lex_line(
             "Look at the top four cards of your library, exile one face down, then put the rest on the bottom of your library in any order.",
@@ -3508,6 +3959,26 @@ mod generic_subject_verb_program_tests {
         let effects =
             parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(&tokens)
                 .expect("implicit looked-set face-down exile bundle should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("LookAtTopCards"), "{debug}");
+        assert!(debug.contains("ChooseObjects"), "{debug}");
+        assert!(debug.contains("face_down: true"), "{debug}");
+        assert!(
+            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+            "{debug}"
+        );
+    }
+
+    #[test]
+    fn full_sentence_dispatch_keeps_the_face_down_looked_partition_before_comma_then() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Look at the top four cards of your library, exile one face down, then put the rest on the bottom of your library in any order.",
+            0,
+        )
+        .expect("face-down looked partition should lex");
+        let effects = super::super::dispatch_entry::parse_effect_sentences_lexed(&tokens)
+            .expect("full sentence dispatcher should preserve the partition");
         let debug = format!("{effects:#?}");
 
         assert!(debug.contains("LookAtTopCards"), "{debug}");
@@ -4460,6 +4931,39 @@ mod generic_subject_verb_program_tests {
     }
 
     #[test]
+    fn attached_object_destroy_and_source_damage_keeps_one_linked_program() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Destroy enchanted land and this Aura deals 2 damage to that land's controller.",
+            0,
+        )
+        .expect("attached-object damage chain should lex");
+        let effects = parse_destroy_attached_object_then_source_damage_to_controller(&tokens)
+            .expect("attached-object damage parser should not error")
+            .expect("attached-object damage parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 1, "{debug}");
+        assert!(debug.contains("Destroy"), "{debug}");
+        assert!(debug.contains("DealDamage"), "{debug}");
+        assert!(debug.contains("enchanted"), "{debug}");
+        assert!(debug.contains("ControllerOf"), "{debug}");
+    }
+
+    #[test]
+    fn attached_object_damage_rejects_a_mismatched_controller_noun() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Destroy enchanted land and this Aura deals 2 damage to that creature's controller.",
+            0,
+        )
+        .expect("near-miss chain should lex");
+        assert!(
+            parse_destroy_attached_object_then_source_damage_to_controller(&tokens)
+                .expect("near-miss parser should not error")
+                .is_none()
+        );
+    }
+
+    #[test]
     fn source_gets_filter_gains_uses_captured_filter_and_ability_tail() {
         let tokens = crate::runtime_backend::lex_line(
             "This creature gets +1/+1 and creatures you control gain trample until end of turn.",
@@ -4496,6 +5000,103 @@ mod generic_subject_verb_program_tests {
         assert!(debug.contains("Trample"), "{debug}");
         assert!(debug.contains("Pump"), "{debug}");
         assert!(debug.contains("Fixed") && debug.contains("1"), "{debug}");
+    }
+
+    #[test]
+    fn target_gains_then_gets_where_x_reuses_the_exact_declared_target() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Target creature gains trample and gets +X/+0 until end of turn, where X is that creature's mana value.",
+            0,
+        )
+        .expect("target mana-value pump text should lex");
+        let effects = parse_target_gains_then_gets_subject_verb(&tokens)
+            .expect("target gain-then-get parser should not error")
+            .expect("target gain-then-get parser should match");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::TargetOnly { target, .. },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantAbilitiesToTarget {
+                        target: grant,
+                        duration: grant_duration,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Pump {
+                        target: pump,
+                        power,
+                        duration: pump_duration,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected one target declaration plus grant/pump consumers, got {effects:#?}");
+        };
+
+        assert_eq!(grant, pump, "the shared subject must reuse one target");
+        assert!(matches!(target, TargetAst::Object(..)), "{target:#?}");
+        assert!(matches!(grant, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG));
+        assert_eq!(grant_duration, &crate::effect::Until::EndOfTurn);
+        assert_eq!(pump_duration, &crate::effect::Until::EndOfTurn);
+        assert!(matches!(
+            power.unhinted(),
+            Value::ManaValueOf(spec)
+                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG)
+        ));
+    }
+
+    #[test]
+    fn full_dispatch_keeps_gain_then_get_on_one_declared_target() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Target creature gains trample and gets +X/+0 until end of turn, where X is that creature's mana value.",
+            0,
+        )
+        .expect("target mana-value pump text should lex");
+        let effects = super::super::dispatch_entry::parse_effect_sentences_lexed(&tokens)
+            .expect("full sentence dispatcher should preserve the gain/get compound");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::TargetOnly { target, .. },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantAbilitiesToTarget {
+                        target: grant,
+                        duration: grant_duration,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Pump {
+                        target: pump,
+                        duration: pump_duration,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!(
+                "expected one target declaration plus shared grant/pump consumers, got {effects:#?}"
+            );
+        };
+
+        assert_eq!(grant, pump, "both arms must reuse the declared target");
+        assert!(matches!(target, TargetAst::Object(..)), "{target:#?}");
+        assert!(matches!(grant, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG));
+        assert_eq!(grant_duration, &crate::effect::Until::EndOfTurn);
+        assert_eq!(pump_duration, &crate::effect::Until::EndOfTurn);
     }
 
     #[test]
@@ -4552,6 +5153,40 @@ mod generic_subject_verb_program_tests {
         );
         assert!(!debug.contains("target: Source"), "{debug}");
         assert!(debug.contains("Menace"), "{debug}");
+    }
+
+    #[test]
+    fn conditional_another_target_gets_then_gains_preserves_source_exclusion() {
+        let tokens = crate::runtime_backend::lex_line(
+            "If you do, another target attacking creature gets +1/+0 and gains menace until end of turn.",
+            0,
+        )
+        .expect("conditional another-target sentence should lex");
+        let effects = parse_target_gets_then_gains_subject_verb(&tokens)
+            .expect("conditional another-target parser should not error")
+            .expect("conditional another-target parser should match");
+        let debug = format!("{effects:?}");
+
+        assert!(debug.contains("other: true"), "{debug}");
+        assert!(debug.contains("attacking: true"), "{debug}");
+        assert!(debug.contains("Menace"), "{debug}");
+    }
+
+    #[test]
+    fn duration_led_another_target_gets_then_gains_preserves_source_exclusion() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Until end of turn, another target creature you control gets +2/+0 and gains \"When this creature dies, return it to the battlefield tapped under its owner's control.\"",
+            0,
+        )
+        .expect("duration-led another-target sentence should lex");
+        let effects = parse_target_gets_then_gains_subject_verb(&tokens)
+            .expect("duration-led another-target parser should not error")
+            .expect("duration-led another-target parser should match");
+        let debug = format!("{effects:?}");
+
+        assert!(debug.contains("other: true"), "{debug}");
+        assert!(debug.contains("controller: Some(You)"), "{debug}");
+        assert!(debug.contains("ParsedObjectAbility"), "{debug}");
     }
 
     #[test]
@@ -4612,6 +5247,43 @@ mod generic_subject_verb_program_tests {
     }
 
     #[test]
+    fn target_controlled_pump_can_grant_all_creature_types() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Creatures target player controls get +0/+1 and gain all creature types until end of turn.",
+            0,
+        )
+        .expect("target-controlled pump plus creature-type text should lex");
+        let effects = parse_target_player_controls_get_subject_verb(&tokens)
+            .expect("target-controlled pump parser should not error")
+            .expect("target-controlled pump parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 2, "{debug}");
+        assert!(debug.contains("PumpAll"), "{debug}");
+        assert!(debug.contains("AddAllSubtypesOfFamily"), "{debug}");
+        assert!(debug.contains("Creature"), "{debug}");
+        assert!(debug.contains("Target") && debug.contains("Any"), "{debug}");
+    }
+
+    #[test]
+    fn target_controlled_pump_can_remove_all_creature_types() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Creatures target player controls get -2/-0 and lose all creature types until end of turn.",
+            0,
+        )
+        .expect("target-controlled pump plus creature-type loss should lex");
+        let effects = parse_target_player_controls_get_subject_verb(&tokens)
+            .expect("target-controlled pump parser should not error")
+            .expect("target-controlled pump parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 2, "{debug}");
+        assert!(debug.contains("PumpAll"), "{debug}");
+        assert!(debug.contains("RemoveAllSubtypesOfFamily"), "{debug}");
+        assert!(!debug.contains("AddAllSubtypesOfFamily"), "{debug}");
+    }
+
+    #[test]
     fn target_controlled_pump_keeps_trailing_mana_spent_condition() {
         let tokens = crate::runtime_backend::lex_line(
             "Creatures target player controls get +2/+0 and gain haste until end of turn if {R} was spent to cast this spell.",
@@ -4653,5 +5325,29 @@ mod generic_subject_verb_program_tests {
         assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
         assert!(debug.contains("SharesCardType"), "{debug}");
         assert!(debug.contains("sacrificed_0"), "{debug}");
+    }
+
+    #[test]
+    fn triggering_object_counter_total_binds_create_x_without_duplicating_condition() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Create X tapped 2/1 white and black Inkling creature tokens with flying, where X is the number of counters it had on it.",
+            0,
+        )
+        .expect("counter-count token sentence should lex");
+        let effect = parse_triggering_object_had_counters_create_tokens(&tokens)
+            .expect("counter-count parser should not error")
+            .expect("counter-count parser should match");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected direct token creation for the already-separated intervening-if body");
+        };
+        assert!(matches!(
+            count.unhinted(),
+            Value::CountersOn(spec, None)
+                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+        ));
     }
 }

@@ -160,6 +160,33 @@ fn cost_candidate_count(
                     }
                     hidden_zone_filter.matches(obj, &filter_ctx, game)
                 };
+                if effect.filter.single_graveyard && effect.filter.owner.is_none() {
+                    // "From a single graveyard" may use any player's
+                    // graveyard, but the required number must all come from
+                    // the same one. Cost preflight therefore needs the
+                    // largest eligible owner-group, not either the payer's
+                    // graveyard alone or the total across all graveyards.
+                    let maximum_in_one_graveyard = game
+                        .players
+                        .iter()
+                        .map(|player| {
+                            let matches = player
+                                .graveyard
+                                .iter()
+                                .rev()
+                                .filter_map(|&id| game.object(id))
+                                .filter(|obj| matches_hidden_filter(obj));
+                            if effect.top_only {
+                                matches.take(top_only_limit).count()
+                            } else {
+                                matches.count()
+                            }
+                        })
+                        .max()
+                        .unwrap_or(0);
+                    total += maximum_in_one_graveyard;
+                    continue;
+                }
                 if effect.top_only {
                     let mut zone_total = 0usize;
                     'owners: for owner_id in hidden_zone_owner_ids(&effect.filter) {
@@ -360,6 +387,11 @@ impl EffectExecutor for ChooseObjectsEffect {
 
         let zone_desc = match self.filter.zone.or(self.zone) {
             Some(Zone::Hand) => "from your hand",
+            Some(Zone::Graveyard)
+                if self.filter.single_graveyard && self.filter.owner.is_none() =>
+            {
+                "from a single graveyard"
+            }
             Some(Zone::Graveyard) => "from your graveyard",
             Some(Zone::OutsideGame) => "from outside the game",
             Some(Zone::Battlefield) | None => "",
@@ -467,6 +499,48 @@ mod tests {
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
         id
+    }
+
+    fn create_graveyard_creature(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let object = Object::from_card(id, &card, owner, Zone::Graveyard);
+        game.add_object(object);
+        id
+    }
+
+    #[test]
+    fn single_graveyard_cost_requires_the_full_count_in_one_graveyard() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let effect = ChooseObjectsEffect::new(
+            crate::filter::ObjectFilter::creature()
+                .in_zone(Zone::Graveyard)
+                .single_graveyard(),
+            2,
+            crate::target::PlayerFilter::You,
+            "chosen",
+        )
+        .in_zone(Zone::Graveyard);
+
+        create_graveyard_creature(&mut game, "Alice Creature", alice);
+        create_graveyard_creature(&mut game, "Bob Creature A", bob);
+        assert!(
+            crate::effects::CostExecutableEffect::can_execute_as_cost(
+                &effect, &game, source, alice,
+            )
+            .is_err(),
+            "one matching card in each of two graveyards must not satisfy a single-graveyard cost"
+        );
+
+        create_graveyard_creature(&mut game, "Bob Creature B", bob);
+        crate::effects::CostExecutableEffect::can_execute_as_cost(&effect, &game, source, alice)
+            .expect("two matching cards in Bob's graveyard should make the cost payable");
     }
 
     #[test]

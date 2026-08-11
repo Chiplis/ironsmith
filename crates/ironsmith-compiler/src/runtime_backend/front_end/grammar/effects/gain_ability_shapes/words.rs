@@ -424,22 +424,32 @@ pub(crate) fn is_must_attack_this_combat_tail(words: &[&str]) -> bool {
 
 fn count_prefix_start(words: &[&str], subject_offset: usize) -> usize {
     let mut candidate = subject_offset;
+    let mut earliest = subject_offset;
     while candidate > 0 {
         candidate -= 1;
         if leaf::parse_leaf_choice_count_prefix_words(&words[candidate..subject_offset])
             .is_some_and(|parsed| parsed.consumed == subject_offset - candidate)
         {
-            return candidate;
+            // Keep looking toward the start of the phrase. A shorter suffix
+            // can itself be a valid count (`one` in `up to one`), but the
+            // longest authored prefix carries the actual lower bound.
+            earliest = candidate;
         }
     }
-    subject_offset
+    earliest
 }
 
 fn subject_start_at(words: &[&str], offset: usize) -> Option<usize> {
     let word = *words.get(offset)?;
     if gain_word_is_pronoun(word) || word == "target" {
         let mut start = count_prefix_start(words, offset);
-        if start == offset && offset >= 1 && words.get(offset - 1).copied() == Some("x") {
+        if start == offset
+            && offset >= 1
+            && matches!(
+                words.get(offset - 1).copied(),
+                Some("x" | "another" | "other")
+            )
+        {
             start = offset - 1;
         } else if offset >= 4 {
             let prefix = words.get(offset - 4..offset)?;
@@ -531,5 +541,13 @@ mod tests {
         let copy = classify_gain_subject(&["the", "copy"]);
         assert!(copy.demonstrative_object);
         assert!(!copy.demonstrative_player);
+    }
+
+    #[test]
+    fn gain_subject_start_prefers_complete_optional_count_prefix() {
+        assert_eq!(
+            find_gain_real_subject_start(&["up", "to", "one", "target", "creature"], 4,),
+            0
+        );
     }
 }

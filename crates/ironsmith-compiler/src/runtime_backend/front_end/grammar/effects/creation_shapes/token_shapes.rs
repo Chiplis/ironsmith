@@ -217,10 +217,14 @@ pub(crate) fn parse_copy_source_clause_tokens(
     let source_tail = tokens.get(source_start..)?;
     let mut source_end = source_tail.len();
     for (idx, token) in source_tail.iter().enumerate() {
-        if token.is_comma()
-            || CreationTokens::new(std::slice::from_ref(token))
-                .token_is(0, CreationWordClass::Except)
-        {
+        let is_except =
+            CreationTokens::new(std::slice::from_ref(token)).token_is(0, CreationWordClass::Except);
+        let comma_before_except = token.is_comma()
+            && source_tail.get(idx + 1).is_some_and(|next| {
+                CreationTokens::new(std::slice::from_ref(next))
+                    .token_is(0, CreationWordClass::Except)
+            });
+        if is_except || comma_before_except {
             source_end = idx;
             break;
         }

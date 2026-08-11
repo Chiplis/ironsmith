@@ -8,7 +8,9 @@ use crate::effect::Value;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
+use super::super::super::lexer::TokenWordView;
 use super::super::super::lexer::{LexStream, OwnedLexToken, render_token_slice};
+use super::super::super::util::source_reference_surface_for_words;
 use super::super::{filters, leaf, primitives};
 use super::ActivationCostSegmentCst;
 
@@ -89,6 +91,30 @@ pub(crate) fn parse_move_to_library_top_cost_tokens(
         ActivationCostSegmentCst::MoveChosenToLibraryTop { filter }
     });
     Some(parsed)
+}
+
+/// Parse a source-moving activation cost such as "Put this creature on the
+/// bottom of its owner's library". Keeping the source surface typed prevents
+/// the broad put-counter grammar from interpreting `creature` as a counter
+/// type and `library` as the chosen-object zone.
+pub(crate) fn parse_move_source_to_library_bottom_cost_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
+    let words = TokenWordView::new(tokens).word_refs();
+    if words.len() != 10
+        || words[0] != "put"
+        || words[1] != "this"
+        || words[3..] != ["on", "the", "bottom", "of", "its", "owners", "library"]
+    {
+        return None;
+    }
+    let source_words = &words[1..3];
+    let Some(surface) = source_reference_surface_for_words(source_words) else {
+        return Some(Err(unsupported(tokens, "source-library-bottom-cost")));
+    };
+    Some(Ok(ActivationCostSegmentCst::MoveSelfToLibraryBottom {
+        surface,
+    }))
 }
 
 fn parse_segment<'a>(
@@ -316,5 +342,23 @@ mod tests {
                 filter: crate::target::ObjectFilter::artifact(),
             }
         );
+    }
+
+    #[test]
+    fn source_library_bottom_cost_preserves_the_authored_source_noun() {
+        let tokens = lex_line("put this creature on the bottom of its owner's library", 0).unwrap();
+        assert_eq!(
+            parse_move_source_to_library_bottom_cost_tokens(&tokens)
+                .expect("the source-moving family should claim the segment")
+                .unwrap(),
+            ActivationCostSegmentCst::MoveSelfToLibraryBottom {
+                surface: crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this creature".to_string(),
+                ),
+            }
+        );
+
+        let near_miss = lex_line("put a creature card on the bottom of your library", 0).unwrap();
+        assert!(parse_move_source_to_library_bottom_cost_tokens(&near_miss).is_none());
     }
 }

@@ -117,6 +117,7 @@ impl EffectExecutor for PhaseOutEffect {
             ObjectApplyResultPolicy::CountApplied
         };
 
+        let mut affected = Vec::new();
         let apply_result = apply_to_selected_objects(
             game,
             ctx,
@@ -133,6 +134,7 @@ impl EffectExecutor for PhaseOutEffect {
                     if self.duration == PhaseOutDuration::UntilSourceLeaves {
                         game.hold_phased_out_until_source_leaves(object_id, ctx.source);
                     }
+                    affected.push(object_id);
                     Ok(true)
                 } else {
                     Ok(false)
@@ -140,7 +142,9 @@ impl EffectExecutor for PhaseOutEffect {
             },
         )?;
 
-        Ok(apply_result.outcome)
+        Ok(apply_result
+            .outcome
+            .with_affected_objects_from_game(game, affected))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

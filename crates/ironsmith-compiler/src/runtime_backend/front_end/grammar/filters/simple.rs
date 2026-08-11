@@ -69,6 +69,7 @@ enum SimpleObjectFilterAtom {
     CardType(CardType),
     ExcludedCardType(CardType),
     Subtype(Subtype),
+    CompoundSubtypes(Subtype, Subtype),
     ExcludedSubtype(Subtype),
     Supertype(Supertype),
     ExcludedSupertype(Supertype),
@@ -538,6 +539,19 @@ fn parse_simple_filter_body(
                 last_type_atom_is_card_type = Some(false);
                 pending_type_separator = None;
             }
+            SimpleObjectFilterAtom::CompoundSubtypes(first, second) => {
+                first_type_atom_is_card_type.get_or_insert(false);
+                terminal_noun_follows_last_characteristic = false;
+                if pending_type_separator.is_some_and(TypeListSeparator::is_disjunction)
+                    && last_type_atom_is_card_type == Some(true)
+                {
+                    saw_type_subtype_disjunction = true;
+                }
+                push_unique(&mut filter.subtypes, first);
+                push_unique(&mut filter.subtypes, second);
+                last_type_atom_is_card_type = Some(false);
+                pending_type_separator = None;
+            }
             SimpleObjectFilterAtom::ExcludedSubtype(subtype) => {
                 push_unique(&mut filter.excluded_subtypes, subtype);
             }
@@ -621,9 +635,65 @@ fn parse_simple_object_filter_atom(input: &mut WordInput<'_>) -> WResult<SimpleO
         parse_simple_flag_atom,
         parse_named_object_filter_atom.map(SimpleObjectFilterAtom::Named),
         parse_split_non_atom,
+        parse_compound_subtype_atom,
         parse_typed_word_atom,
     ))
     .parse_next(input)
+}
+
+fn parse_compound_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
+    alt((
+        parse_time_lord_compound_atom,
+        parse_urzas_land_compound_atom,
+    ))
+    .parse_next(input)
+}
+
+/// Parse Magic's compound `Time Lord` creature type.
+fn parse_time_lord_compound_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
+    word_phrase(&["time", "lord"])
+        .value(SimpleObjectFilterAtom::Subtype(Subtype::TimeLord))
+        .parse_next(input)
+}
+
+/// Parse the three compound Urza's land subtypes in their unambiguous rules-text
+/// context. `Mine` and `Tower` are deliberately rejected by the broad subtype
+/// parser because they are common English nouns, while `Power-Plant` must remain
+/// one subtype rather than `Plant`. The `Urza's` prefix removes that ambiguity.
+fn parse_urzas_land_compound_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
+    let checkpoint = *input;
+    let first = parse_any_word.parse_next(input)?;
+    if parse_subtype_flexible(first) != Some(Subtype::Urzas) {
+        *input = checkpoint;
+        return Err(primitives::backtrack_err(
+            "compound Urza's land subtype",
+            "Urza's followed by Mine, Power-Plant, or Tower",
+        ));
+    }
+
+    let second_word = parse_any_word.parse_next(input)?;
+    let second = if second_word.eq_ignore_ascii_case("power")
+        && input
+            .first()
+            .is_some_and(|word| word.eq_ignore_ascii_case("plant"))
+    {
+        *input = &input[1..];
+        Some(Subtype::PowerPlant)
+    } else {
+        super::super::leaf::classify_token_definition_subtype(second_word)
+    };
+    let Some(second @ (Subtype::Mine | Subtype::PowerPlant | Subtype::Tower)) = second else {
+        *input = checkpoint;
+        return Err(primitives::backtrack_err(
+            "compound Urza's land subtype",
+            "Mine, Power-Plant, or Tower after Urza's",
+        ));
+    };
+
+    Ok(SimpleObjectFilterAtom::CompoundSubtypes(
+        Subtype::Urzas,
+        second,
+    ))
 }
 
 fn parse_type_list_separator(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
@@ -792,6 +862,7 @@ fn parse_filter_face_state(input: &mut WordInput<'_>) -> WResult<FilterFaceState
 fn parse_named_object_filter_atom(input: &mut WordInput<'_>) -> WResult<NamedObjectFilterAtom> {
     alt((
         word_phrase(&["chosen", "color"]).value(NamedObjectFilterAtom::ChosenColor),
+        word_phrase(&["that", "color"]).value(NamedObjectFilterAtom::ChosenColor),
         word_phrase(&["chosen", "type"]).value(NamedObjectFilterAtom::ChosenType),
         word_phrase(&["that", "type"]).value(NamedObjectFilterAtom::ChosenType),
         word_phrase(&["nonchosen", "type"]).value(NamedObjectFilterAtom::NonChosenType),
@@ -1038,15 +1109,20 @@ fn parse_owner_suffix(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterSu
 fn parse_controller_player(input: &mut WordInput<'_>) -> WResult<PlayerFilter> {
     alt((
         alt((
-            word_phrase(&["target", "opponent"]).value(PlayerFilter::target_opponent()),
-            word_phrase(&["target", "player"]).value(PlayerFilter::target_player()),
-            word_phrase(&["the", "chosen", "player"]).value(PlayerFilter::ChosenPlayer),
-            word_phrase(&["chosen", "player"]).value(PlayerFilter::ChosenPlayer),
-            word_phrase(&["that", "player"]).value(PlayerFilter::IteratedPlayer),
-            word_phrase(&["your", "team"]).map(|()| PlayerFilter::your_team()),
-            primitives::word_slice_exact("opponents").value(PlayerFilter::Opponent),
-            primitives::word_slice_exact("opponent").value(PlayerFilter::Opponent),
-            primitives::word_slice_exact("you").value(PlayerFilter::You),
+            word_phrase(&["another", "target", "player"]).value(PlayerFilter::Target(Box::new(
+                PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::target_player()),
+            ))),
+            alt((
+                word_phrase(&["target", "opponent"]).value(PlayerFilter::target_opponent()),
+                word_phrase(&["target", "player"]).value(PlayerFilter::target_player()),
+                word_phrase(&["the", "chosen", "player"]).value(PlayerFilter::ChosenPlayer),
+                word_phrase(&["chosen", "player"]).value(PlayerFilter::ChosenPlayer),
+                word_phrase(&["that", "player"]).value(PlayerFilter::IteratedPlayer),
+                word_phrase(&["your", "team"]).map(|()| PlayerFilter::your_team()),
+                primitives::word_slice_exact("opponents").value(PlayerFilter::Opponent),
+                primitives::word_slice_exact("opponent").value(PlayerFilter::Opponent),
+                primitives::word_slice_exact("you").value(PlayerFilter::You),
+            )),
         )),
         parse_target_player_or_planeswalker_controller,
     ))
@@ -1104,15 +1180,23 @@ fn parse_control_negation(input: &mut WordInput<'_>) -> WResult<()> {
 
 fn parse_location(input: &mut WordInput<'_>) -> WResult<(Option<PlayerFilter>, Zone)> {
     alt((
-        parse_chosen_player_location,
-        word_phrase(&["your", "graveyard"]).value((Some(PlayerFilter::You), Zone::Graveyard)),
-        word_phrase(&["your", "hand"]).value((Some(PlayerFilter::You), Zone::Hand)),
-        word_phrase(&["your", "library"]).value((Some(PlayerFilter::You), Zone::Library)),
-        word_phrase(&["all", "graveyards"]).value((None, Zone::Graveyard)),
-        primitives::word_slice_exact("graveyard").value((None, Zone::Graveyard)),
-        primitives::word_slice_exact("hand").value((None, Zone::Hand)),
-        primitives::word_slice_exact("library").value((None, Zone::Library)),
-        primitives::word_slice_exact("exile").value((None, Zone::Exile)),
+        alt((
+            parse_chosen_player_location,
+            word_phrase(&["defending", "player", "graveyard"])
+                .value((Some(PlayerFilter::Defending), Zone::Graveyard)),
+            word_phrase(&["defending", "players", "graveyard"])
+                .value((Some(PlayerFilter::Defending), Zone::Graveyard)),
+            word_phrase(&["your", "graveyard"]).value((Some(PlayerFilter::You), Zone::Graveyard)),
+            word_phrase(&["your", "hand"]).value((Some(PlayerFilter::You), Zone::Hand)),
+            word_phrase(&["your", "library"]).value((Some(PlayerFilter::You), Zone::Library)),
+        )),
+        alt((
+            word_phrase(&["all", "graveyards"]).value((None, Zone::Graveyard)),
+            primitives::word_slice_exact("graveyard").value((None, Zone::Graveyard)),
+            primitives::word_slice_exact("hand").value((None, Zone::Hand)),
+            primitives::word_slice_exact("library").value((None, Zone::Library)),
+            primitives::word_slice_exact("exile").value((None, Zone::Exile)),
+        )),
     ))
     .parse_next(input)
 }

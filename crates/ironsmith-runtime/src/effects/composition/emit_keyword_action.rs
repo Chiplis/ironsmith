@@ -10,13 +10,18 @@ use crate::card::LinkedFaceLayout;
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::{KeywordActionEvent, KeywordActionKind};
+use crate::events::processing::{
+    TraitEventResult, process_trait_event_with_dm_and_applied_effects,
+};
+use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::ObjectKind;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::triggers::TriggerEvent;
 pub use ironsmith_core::EmitKeywordActionEffect;
+
+use super::mechanic_actions::execute_keyword_action_replacement_effects;
 
 fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> ObjectSnapshot {
     let mut snapshot = game
@@ -56,6 +61,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: crate::player::ManaPool::default(),
+            mana_sources_spent_to_cast: Vec::new(),
             counters: HashMap::new(),
             is_token: memory.is_token,
             tapped: false,
@@ -151,11 +157,58 @@ impl EffectExecutor for EmitKeywordActionEffect {
                 // left the planar zone, the ability does nothing on resolution.
                 return Ok(EffectOutcome::count(0));
             }
+            let mut outcomes = Vec::with_capacity(self.amount as usize);
             for _ in 0..self.amount {
-                game.planeswalk(ctx.controller, ctx.source)
-                    .map_err(ExecutionError::Impossible)?;
+                let would_event = Event::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Planeswalk,
+                        ctx.controller,
+                        ctx.source,
+                        1,
+                    ),
+                    ctx.provenance,
+                );
+                let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
+                let applied_effect_keys =
+                    ctx.replacement.suppressed_replacement_effect_keys.clone();
+                if applied_effects.is_empty() && applied_effect_keys.is_empty() {
+                    game.update_replacement_effects();
+                }
+                match process_trait_event_with_dm_and_applied_effects(
+                    game,
+                    would_event,
+                    ctx.decision_maker,
+                    &applied_effects,
+                    &applied_effect_keys,
+                ) {
+                    TraitEventResult::Replaced {
+                        effects, effect_id, ..
+                    } => outcomes.push(execute_keyword_action_replacement_effects(
+                        game, ctx, effects, effect_id, None,
+                    )?),
+                    TraitEventResult::Prevented => {}
+                    TraitEventResult::NeedsChoice { .. }
+                    | TraitEventResult::NeedsInteraction { .. } => {
+                        return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
+                    }
+                    TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
+                        let action =
+                            crate::events::downcast_event::<KeywordActionEvent>(event.inner())
+                                .ok_or_else(|| {
+                                    ExecutionError::Impossible(
+                                        "planeswalk replacement produced a non-planeswalk event"
+                                            .to_string(),
+                                    )
+                                })?;
+                        let destination = game
+                            .planeswalk(action.player, action.source)
+                            .map_err(ExecutionError::Impossible)?;
+                        outcomes
+                            .push(EffectOutcome::count(1).with_affected_objects(vec![destination]));
+                    }
+                }
             }
-            return Ok(EffectOutcome::count(self.amount as i32));
+            return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
         }
         if self.action == KeywordActionKind::SetSchemeInMotion {
             let mut schemes = Vec::with_capacity(self.amount as usize);

@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::SubjectVerbActionAst;
 use crate::runtime_backend::effect_sentences::SubjectVerbPrimitiveClause;
 fn parse_return_back_reference_target(
     tokens: &[OwnedLexToken],
@@ -28,6 +29,18 @@ fn set_return_destination_first_surface(target: &mut TargetAst, destination_firs
             set_return_destination_first_surface(inner, destination_first);
         }
         _ => {}
+    }
+}
+
+fn strip_except_this_card_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
+    if tokens.len() >= 3
+        && tokens[tokens.len() - 3].is_word("except")
+        && tokens[tokens.len() - 2].is_word("this")
+        && tokens[tokens.len() - 1].is_word("card")
+    {
+        (&tokens[..tokens.len() - 3], true)
+    } else {
+        (tokens, false)
     }
 }
 
@@ -97,6 +110,18 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
 
     let clause_text = crate::runtime_backend::token_word_refs(tokens).join(" ");
+    let mut exiled_with_source_surface =
+        crate::runtime_backend::effect_sentences::verb_handlers::parse_exiled_with_source_return_tail_surface(
+            tokens,
+        )
+        .or_else(|| {
+            crate::runtime_backend::effect_sentences::verb_handlers::parse_exiled_with_source_move_surface(
+                tokens,
+            )
+        });
+    if let Some(surface) = &mut exiled_with_source_surface {
+        surface.verb = ironsmith_core::ExiledWithSourceMoveVerbSurface::Return;
+    }
     let shape = crate::runtime_backend::grammar::effects::parse_return_clause_shape(tokens)
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -127,6 +152,8 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             DelayedReturnTimingAst::EndOfCombat
         }
     });
+    let under_that_player_control = destination.controller
+        == crate::runtime_backend::grammar::effects::ReturnControllerShape::ThatPlayer;
     let return_controller = match destination.controller {
         crate::runtime_backend::grammar::effects::ReturnControllerShape::Preserve => {
             ReturnControllerAst::Preserve
@@ -136,6 +163,12 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         }
         crate::runtime_backend::grammar::effects::ReturnControllerShape::Owner => {
             ReturnControllerAst::Owner
+        }
+        crate::runtime_backend::grammar::effects::ReturnControllerShape::ThatPlayer => {
+            // The exact player is carried by the actor of the generic
+            // PutOntoBattlefield action below, so no new controller model is
+            // needed here.
+            ReturnControllerAst::Preserve
         }
     };
     let attached_to_target = destination
@@ -175,7 +208,40 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             filter_tokens,
             count,
         } => {
-            let mut filter = parse_object_filter(&filter_tokens, false)?;
+            let (filter_tokens, excludes_source) = strip_except_this_card_suffix(&filter_tokens);
+            // The `exiled with this <source>` relative clause identifies the
+            // source-linked set; it is not a characteristic restriction on
+            // the returned cards. Parse only the authored noun phrase before
+            // `exiled`, then represent the relationship with SOURCE_EXILED_TAG.
+            // This prevents a source type such as "Vehicle" or "Saga" from
+            // leaking into the selected-card filter.
+            let source_linked_subject = exiled_with_source_surface
+                .as_ref()
+                .and_then(|_| {
+                    filter_tokens
+                        .iter()
+                        .position(|token| token.is_word("exiled"))
+                })
+                .map(|exiled_idx| &filter_tokens[..exiled_idx])
+                .unwrap_or(filter_tokens);
+            let source_linked_excludes_current = exiled_with_source_surface.is_some()
+                && source_linked_subject
+                    .iter()
+                    .any(|token| token.is_word("other"));
+            let mut filter = parse_object_filter(source_linked_subject, false)?;
+            if exiled_with_source_surface.is_some() {
+                // The dedicated move surface owns the authored `card(s)` noun.
+                // Keeping the same presentation bit on the executable filter
+                // would make an otherwise identical source-linked set compare
+                // differently in structural renderers.
+                filter.set_explicit_card_noun(false);
+                filter.zone = Some(Zone::Exile);
+                // In "each other card exiled with this source", `other`
+                // excludes the object produced by the immediately preceding
+                // exile result. It is not the ordinary source-relative
+                // `ObjectFilter::other` predicate.
+                filter.other = false;
+            }
             // "The exiled cards" can appear in a later ability of the same
             // source. Do not let its generic `it` placeholder bind to an
             // unrelated local action (for example, a sacrifice immediately
@@ -188,6 +254,10 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 TagKey::from(crate::tag::SOURCE_EXILED_TAG),
                 TaggedOpbjectRelation::IsTaggedObject,
             );
+            if source_linked_excludes_current {
+                filter = filter.not_tagged(TagKey::from(crate::cards::builders::IT_TAG));
+            }
+            filter.other |= excludes_source;
             match destination.zone {
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Battlefield => {
                     if let Some(attached_to) = attached_to_target.clone() {
@@ -221,6 +291,35 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                                 return_controller,
                                 destination.tapped,
                                 Some(attached_to),
+                            )
+                        };
+                        effect.with_move_to_zone_verb_surface(
+                            ironsmith_core::MoveToZoneVerbSurface::Return,
+                        )
+                    } else if count.is_some() || exiled_with_source_surface.is_some() {
+                        if destination.face_down {
+                            return Err(CardTextError::ParseError(format!(
+                                "unsupported counted/source-linked face-down return clause (clause: '{clause_text}')"
+                            )));
+                        }
+                        let target = TargetAst::Object(filter, None, None);
+                        let effect = if let Some(count) = count {
+                            EffectAst::subject_verb_move_to_zone(
+                                TargetAst::WithCount(Box::new(target), count),
+                                Zone::Battlefield,
+                                false,
+                                return_controller,
+                                destination.tapped,
+                                None,
+                            )
+                        } else {
+                            EffectAst::subject_verb_move_all_to_zone(
+                                target,
+                                Zone::Battlefield,
+                                false,
+                                return_controller,
+                                destination.tapped,
+                                None,
                             )
                         };
                         effect.with_move_to_zone_verb_surface(
@@ -368,6 +467,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         crate::runtime_backend::grammar::effects::ReturnTargetShape::Singular {
             target_tokens,
             source_from_graveyard_tokens,
+            source_from_graveyard_or_exile_tokens,
             dynamic_count,
             back_reference,
             top_only,
@@ -384,7 +484,16 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                         Ok(TargetAst::Source(span)) => Some(TargetAst::Source(span)),
                         _ => None,
                     });
-            let mut target = if let Some(target) = source_from_graveyard_target {
+            let source_from_graveyard_or_exile_target = source_from_graveyard_or_exile_tokens
+                .as_deref()
+                .and_then(|prefix_tokens| match parse_target_phrase(prefix_tokens) {
+                    Ok(TargetAst::Source(span)) => Some(TargetAst::Source(span)),
+                    _ => None,
+                });
+            let graveyard_or_exile_source = source_from_graveyard_or_exile_target.is_some();
+            let mut target = if let Some(target) = source_from_graveyard_or_exile_target {
+                target
+            } else if let Some(target) = source_from_graveyard_target {
                 target
             } else if back_reference {
                 parse_return_back_reference_target(&target_tokens)?
@@ -406,7 +515,24 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                             "unsupported face-down transformed/converted return clause (clause: '{clause_text}')"
                         )));
                     }
-                    if let Some(attached_to) = attached_to_target {
+                    if under_that_player_control {
+                        if destination.attacking
+                            || destination.face_down
+                            || destination.transformed
+                            || destination.converted
+                            || attached_to_target.is_some()
+                        {
+                            return Err(CardTextError::ParseError(format!(
+                                "unsupported modified return under that player's control (clause: '{clause_text}')"
+                            )));
+                        }
+                        EffectAst::subject_verb_put_onto_battlefield(
+                            PlayerAst::That,
+                            target,
+                            destination.tapped,
+                            ReturnControllerAst::Preserve,
+                        )
+                    } else if let Some(attached_to) = attached_to_target {
                         if destination.transformed || destination.converted || count_value.is_some()
                         {
                             return Err(CardTextError::ParseError(format!(
@@ -441,7 +567,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                             ironsmith_core::MoveToZoneVerbSurface::Return,
                         )
                     } else {
-                        EffectAst::subject_verb_return_to_battlefield(
+                        let effect = EffectAst::subject_verb_return_to_battlefield(
                             target,
                             destination.tapped,
                             destination.transformed,
@@ -449,7 +575,12 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                             return_controller,
                             count_value,
                         )
-                        .with_top_only_return_choice(top_only)
+                        .with_top_only_return_choice(top_only);
+                        if graveyard_or_exile_source {
+                            effect.with_graveyard_or_exile_return_origin()
+                        } else {
+                            effect
+                        }
                     }
                 }
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Graveyard => {
@@ -469,12 +600,25 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             }
         }
     };
-    let effect =
-        if destination.zone == crate::runtime_backend::grammar::effects::ReturnZoneShape::Hand {
-            effect.with_return_destination_player_surface(destination.destination_player_surface)
-        } else {
-            effect
-        };
+    let mut effect = effect.with_exiled_with_source_surface(exiled_with_source_surface);
+    effect = if destination.zone == crate::runtime_backend::grammar::effects::ReturnZoneShape::Hand
+    {
+        effect.with_return_destination_player_surface(destination.destination_player_surface)
+    } else {
+        effect
+    };
+    if destination.zone
+        == crate::runtime_backend::grammar::effects::ReturnZoneShape::Battlefield
+        && destination.destination_player_surface == Some(PlayerAst::That)
+        && let EffectAst::SubjectVerb(subject_verb) = &mut effect
+        && let SubjectVerbActionAst::ReturnToBattlefield { target, .. } = &mut subject_verb.action
+        && let Some(filter) = crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(target)
+    {
+        // This surface fact distinguishes an authored "under their control"
+        // destination from the ordinary rules-default owner controller. The
+        // owner filter remains the executable identity of "their".
+        filter.set_enters_under_controller_surface(true);
+    }
     Ok(wrap_return_with_delayed_timing(effect, delayed_timing))
 }
 pub(crate) fn parse_exchange(
@@ -600,7 +744,20 @@ pub(crate) fn parse_exchange(
                     "missing exchange target filter".to_string(),
                 ));
             }
-            let filter = parse_object_filter(control.filter_tokens, false)?;
+            let controller_set =
+                crate::runtime_backend::grammar::targets::parse_target_controller_set_suffix(
+                    control.filter_tokens,
+                );
+            let mut filter = parse_object_filter(&controller_set.core_tokens, false)?;
+            match controller_set.constraint {
+                crate::runtime_backend::grammar::targets::TargetControllerSetConstraint::None => {}
+                crate::runtime_backend::grammar::targets::TargetControllerSetConstraint::SameController => {
+                    filter.target_set_same_controller = true;
+                }
+                crate::runtime_backend::grammar::targets::TargetControllerSetConstraint::DifferentControllers => {
+                    filter.target_set_different_controllers = true;
+                }
+            }
             Ok(EffectAst::subject_verb_exchange_control(
                 filter,
                 control.count,
@@ -669,6 +826,100 @@ mod tests {
                 .iter()
                 .any(|constraint| { constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG })
         );
+    }
+
+    #[test]
+    fn source_linked_return_tail_excludes_only_the_current_exile_result() {
+        let tokens = lex_line(
+            "each other card exiled with this Vehicle to the battlefield under its owner's control",
+            0,
+        )
+        .expect("lex source-linked return clause");
+        let effect = parse_return(&tokens).expect("parse source-linked return clause");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::MoveToZone {
+                    target: TargetAst::Object(filter, None, _),
+                    zone: Zone::Battlefield,
+                    all: true,
+                    exiled_with_source_surface: Some(surface),
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected a source-linked bulk move: {effect:#?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Exile));
+        assert!(
+            !filter.other,
+            "`other` is result-relative, not source-relative"
+        );
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
+        assert!(filter.subtypes.is_empty(), "{filter:#?}");
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::cards::builders::IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        }));
+        assert_eq!(
+            surface.subject,
+            ironsmith_core::ExiledWithSourceSubjectSurface::Custom("each other card".to_string())
+        );
+    }
+
+    #[test]
+    fn exchange_target_preserves_joint_negative_owner_and_controller_predicates() {
+        let tokens = lex_line(
+            "control of this enchantment and target permanent you neither own nor control",
+            0,
+        )
+        .expect("lex heterogeneous exchange clause");
+        let effect = parse_exchange(&tokens, None).expect("parse heterogeneous exchange clause");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ExchangeControlHeterogeneous {
+                    permanent2: TargetAst::Object(filter, Some(_), _),
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected heterogeneous source/target exchange: {effect:#?}");
+        };
+        assert_eq!(filter.owner, Some(PlayerFilter::NotYou));
+        assert_eq!(filter.controller, Some(PlayerFilter::NotYou));
+        assert_eq!(
+            filter.description(),
+            "permanent you neither own nor control"
+        );
+    }
+
+    #[test]
+    fn exchange_target_preserves_different_controller_set_constraint() {
+        let tokens = lex_line(
+            "control of two target creatures controlled by different players",
+            0,
+        )
+        .expect("lex homogeneous exchange clause");
+        let effect = parse_exchange(&tokens, None).expect("parse homogeneous exchange clause");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ExchangeControl {
+                    filter, count: 2, ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected one counted exchange target set: {effect:#?}");
+        };
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert!(filter.target_set_different_controllers, "{filter:#?}");
+        assert!(!filter.target_set_same_controller, "{filter:#?}");
     }
 
     #[test]

@@ -378,7 +378,14 @@ impl EffectExecutor for SacrificeEffect {
         if self.player != PlayerFilter::You {
             return None;
         }
-        let description = self.filter.description();
+        let mut display_filter = self.filter.clone();
+        // A player can sacrifice only a permanent they control. The chooser
+        // constraint remains executable, but repeating it in a cost invents
+        // an unauthored "you control" qualifier for ordinary sacrifice costs.
+        if display_filter.controller == Some(PlayerFilter::You) {
+            display_filter.controller = None;
+        }
+        let description = display_filter.description();
         Some(if count == 1 {
             if description.starts_with("a ")
                 || description.starts_with("an ")
@@ -1006,6 +1013,21 @@ mod tests {
             Some("Sacrifice ED-E")
         );
         assert!(sacrifice.is_sacrifice_source_cost());
+    }
+
+    #[test]
+    fn filtered_sacrifice_cost_omits_redundant_controller_scope() {
+        let sacrifice = SacrificeEffect::you(
+            ObjectFilter::default()
+                .with_type(CardType::Land)
+                .controlled_by(PlayerFilter::You),
+            1,
+        );
+
+        assert_eq!(
+            sacrifice.cost_description().as_deref(),
+            Some("Sacrifice a land")
+        );
     }
 
     fn create_creature_on_battlefield(

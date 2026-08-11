@@ -14,6 +14,8 @@ pub struct SequenceEffect {
     pub effects: Vec<Effect>,
     /// Whether these effects were printed as one coordinated Oracle clause.
     pub surface: ironsmith_core::SequenceSurface,
+    /// Optional authored label on a numeric result-table row.
+    pub result_label: Option<String>,
 }
 
 impl SequenceEffect {
@@ -22,6 +24,7 @@ impl SequenceEffect {
         Self {
             effects,
             surface: ironsmith_core::SequenceSurface::Sequential,
+            result_label: None,
         }
     }
 
@@ -29,6 +32,7 @@ impl SequenceEffect {
         Self {
             effects,
             surface: ironsmith_core::SequenceSurface::SentenceLeadingThen,
+            result_label: None,
         }
     }
 
@@ -36,6 +40,7 @@ impl SequenceEffect {
         Self {
             effects,
             surface: ironsmith_core::SequenceSurface::CommaThen,
+            result_label: None,
         }
     }
 
@@ -43,6 +48,7 @@ impl SequenceEffect {
         Self {
             effects,
             surface: ironsmith_core::SequenceSurface::Coordinated,
+            result_label: None,
         }
     }
 
@@ -50,6 +56,7 @@ impl SequenceEffect {
         Self {
             effects,
             surface: ironsmith_core::SequenceSurface::CoordinatedLeadingDuration,
+            result_label: None,
         }
     }
 
@@ -57,6 +64,15 @@ impl SequenceEffect {
         Self {
             effects,
             surface: ironsmith_core::SequenceSurface::ResultConjunction { leading_duration },
+            result_label: None,
+        }
+    }
+
+    pub fn result_labeled(effects: Vec<Effect>, label: impl Into<String>) -> Self {
+        Self {
+            effects,
+            surface: ironsmith_core::SequenceSurface::Sequential,
+            result_label: Some(label.into()),
         }
     }
 }
@@ -91,41 +107,54 @@ impl EffectExecutor for SequenceEffect {
         let mut outcomes = Vec::with_capacity(self.effects.len());
         let mut events = Vec::new();
         let mut execution_facts = Vec::new();
-        // A one-child coordinated wrapper is presentation provenance left
-        // after normalization removes a sibling marker (such as "repeat this
+        // A one-child wrapper is presentation provenance left after
+        // normalization removes a sibling marker (such as "repeat this
         // process"). It is semantically transparent and must not restart the
-        // target-assignment cursor at zero around its only child.
-        let coordinated_assignments = (self.surface.is_coordinated()
-            && self.effects.len() > 1
-            && !ctx.target_assignments.is_empty())
-        .then(|| ctx.target_assignments.clone());
+        // target-assignment cursor at zero around its only child. Multi-child
+        // wrappers, including authored `, then` sequences, must scope a
+        // lowering-only target declaration and its following consumer to the
+        // same announced target instead of exposing every target on the stack.
+        let child_assignments = (self.effects.len() > 1 && !ctx.target_assignments.is_empty())
+            .then(|| ctx.target_assignments.clone());
         let chosen_modes = ctx.chosen_modes.clone();
         let mut consumed_modal_selection = false;
+        let mut coordinated_target_state = crate::game_loop::CoordinatedTargetState::default();
         let mut assignment_cursor = 0usize;
+        let mut active_scope = None;
 
         for effect in &self.effects {
-            let assignment_count = if coordinated_assignments.is_some() {
-                crate::game_loop::count_target_selection_slots_for_isolated_effect(
-                    effect,
-                    chosen_modes.as_deref(),
-                    &mut consumed_modal_selection,
-                )
+            let assignment_count = if child_assignments.is_some() {
+                if self.surface.is_coordinated() {
+                    crate::game_loop::count_target_selection_slots_for_coordinated_child(
+                        effect,
+                        chosen_modes.as_deref(),
+                        &mut consumed_modal_selection,
+                        &mut coordinated_target_state,
+                    )
+                } else {
+                    crate::game_loop::count_target_selection_slots_for_isolated_effect(
+                        effect,
+                        chosen_modes.as_deref(),
+                        &mut consumed_modal_selection,
+                    )
+                }
             } else {
                 0
             };
-            let outcome = if assignment_count > 0 {
-                let assignments = coordinated_assignments
+            if assignment_count > 0 {
+                let assignments = child_assignments
                     .as_ref()
-                    .expect("coordinated assignments checked above");
+                    .expect("child assignments checked above");
                 let end = assignment_cursor
                     .saturating_add(assignment_count)
                     .min(assignments.len());
                 let scoped_assignments = assignments[assignment_cursor..end].to_vec();
                 assignment_cursor = end;
-                let (scoped_targets, scoped_assignments) =
-                    rebase_target_scope(&ctx.targets, &scoped_assignments);
-                ctx.with_temp_targets(scoped_targets, |ctx| {
-                    ctx.with_temp_target_assignments(scoped_assignments, |ctx| {
+                active_scope = Some(rebase_target_scope(&ctx.targets, &scoped_assignments));
+            }
+            let outcome = if let Some((scoped_targets, scoped_assignments)) = &active_scope {
+                ctx.with_temp_targets(scoped_targets.clone(), |ctx| {
+                    ctx.with_temp_target_assignments(scoped_assignments.clone(), |ctx| {
                         execute_effect(game, effect, ctx)
                     })
                 })?
@@ -135,7 +164,14 @@ impl EffectExecutor for SequenceEffect {
             events.extend(outcome.events.clone());
             execution_facts.extend(outcome.execution_facts.clone());
 
-            if outcome.status.is_failure() {
+            // A coordinated Oracle clause describes sibling instructions that
+            // each do as much as possible. Preventing or protecting against
+            // one child must not suppress the others (for example, preventing
+            // one of Hail Storm's damage instructions, or an indestructible
+            // Maelstrom Pulse target surviving while the other same-name
+            // permanents are still destroyed). Authored `then`/sequential
+            // surfaces retain their dependency short-circuit.
+            if outcome.status.is_failure() && !self.surface.is_coordinated() {
                 return Ok(EffectOutcome::with_details(
                     outcome.status,
                     outcome.value.clone(),
@@ -243,6 +279,19 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Debug)]
+    struct PreventedEffect;
+
+    impl EffectExecutor for PreventedEffect {
+        fn execute(
+            &self,
+            _game: &mut GameState,
+            _ctx: &mut ExecutionContext,
+        ) -> Result<EffectOutcome, ExecutionError> {
+            Ok(EffectOutcome::prevented())
+        }
+    }
+
     #[derive(Default)]
     struct CapturingDecisionMaker {
         pending: bool,
@@ -333,6 +382,41 @@ mod tests {
             starting_life,
             "later sequence effects must not run before the pending choice is answered"
         );
+    }
+
+    #[test]
+    fn only_coordinated_sequences_continue_after_a_prevented_child() {
+        let alice = PlayerId::from_index(0);
+
+        let mut coordinated_game = crate::tests::test_helpers::setup_two_player_game();
+        let source = coordinated_game.new_object_id();
+        let mut coordinated_ctx = ExecutionContext::new_default(source, alice);
+        let coordinated =
+            SequenceEffect::coordinated(vec![Effect::new(PreventedEffect), Effect::gain_life(3)]);
+        let outcome = coordinated
+            .execute(&mut coordinated_game, &mut coordinated_ctx)
+            .expect("coordinated sequence should resolve");
+        assert_eq!(
+            coordinated_game.player(alice).expect("Alice").life,
+            23,
+            "a prevented sibling must not suppress an independent coordinated action"
+        );
+        assert_eq!(outcome.status, crate::effect::OutcomeStatus::Succeeded);
+
+        let mut sequential_game = crate::tests::test_helpers::setup_two_player_game();
+        let source = sequential_game.new_object_id();
+        let mut sequential_ctx = ExecutionContext::new_default(source, alice);
+        let sequential =
+            SequenceEffect::new(vec![Effect::new(PreventedEffect), Effect::gain_life(3)]);
+        let outcome = sequential
+            .execute(&mut sequential_game, &mut sequential_ctx)
+            .expect("sequential sequence should resolve");
+        assert_eq!(
+            sequential_game.player(alice).expect("Alice").life,
+            20,
+            "ordinary sequential dependency should still short-circuit"
+        );
+        assert_eq!(outcome.status, crate::effect::OutcomeStatus::Prevented);
     }
 
     #[test]

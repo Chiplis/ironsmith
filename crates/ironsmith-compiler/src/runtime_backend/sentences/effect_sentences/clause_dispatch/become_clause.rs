@@ -11,7 +11,7 @@ use super::super::zone_counter_helpers::parse_half_starting_life_total_value;
 use super::helpers::render_lower_words;
 use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value};
-use crate::host::{CardTextError, EffectAst, IT_TAG, TagKey, TargetAst};
+use crate::host::{CardTextError, EffectAst, IT_TAG, PredicateAst, TagKey, TargetAst};
 use crate::runtime_backend::grammar::effects::become_shapes as become_grammar;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::types::{CardType, SubtypeFamily};
@@ -39,6 +39,71 @@ pub(crate) fn parse_become_clause(
     rest_tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
     let subject_tokens = LexedClause::new(subject_tokens).trim();
+    let rest_clause = LexedClause::new(rest_tokens).trimmed();
+    let rest_words = rest_clause.word_refs();
+    const TRIGGERING_SPELL_COLOR_PROTECTION_SUFFIX: &[&str] = &[
+        "with",
+        "protection",
+        "from",
+        "each",
+        "of",
+        "that",
+        "spell",
+        "s",
+        "colors",
+    ];
+    const NORMALIZED_TRIGGERING_SPELL_COLOR_PROTECTION_SUFFIX: &[&str] = &[
+        "with",
+        "protection",
+        "from",
+        "each",
+        "of",
+        "that",
+        "spells",
+        "colors",
+    ];
+    let triggering_spell_color_suffix_len = rest_words
+        .ends_with(TRIGGERING_SPELL_COLOR_PROTECTION_SUFFIX)
+        .then_some(TRIGGERING_SPELL_COLOR_PROTECTION_SUFFIX.len())
+        .or_else(|| {
+            rest_words
+                .ends_with(NORMALIZED_TRIGGERING_SPELL_COLOR_PROTECTION_SUFFIX)
+                .then_some(NORMALIZED_TRIGGERING_SPELL_COLOR_PROTECTION_SUFFIX.len())
+        });
+    if let Some(suffix_len) = triggering_spell_color_suffix_len
+        && let Some(base_clause) = rest_clause.before_word(rest_words.len() - suffix_len)
+    {
+        let mut effects = vec![parse_become_clause(&subject_tokens, base_clause.tokens())?];
+        for colors in [
+            crate::color::ColorSet::WHITE,
+            crate::color::ColorSet::BLUE,
+            crate::color::ColorSet::BLACK,
+            crate::color::ColorSet::RED,
+            crate::color::ColorSet::GREEN,
+        ] {
+            effects.push(EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(
+                    TagKey::from("triggering"),
+                    ObjectFilter::default().with_colors(colors),
+                ),
+                if_true: vec![EffectAst::subject_verb_grant_abilities_to_target(
+                    TargetAst::Source(None),
+                    vec![GrantedAbilityAst::StaticAbility(
+                        crate::static_abilities::StaticAbility::protection(
+                            crate::ability::ProtectionFrom::Color(colors),
+                        ),
+                    )],
+                    Until::Forever,
+                )],
+                if_false: Vec::new(),
+            });
+        }
+        return Ok(EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+            result_conjunction: false,
+        });
+    }
     let original_subject_tokens = subject_tokens.clone();
     let rest_shape = become_grammar::parse_become_rest_shape(rest_tokens);
     let rest_tokens = rest_shape.rest_tokens;
@@ -268,9 +333,29 @@ pub(crate) fn parse_become_clause(
         } else {
             ObjectFilter::creature()
         };
-        return Ok(EffectAst::subject_verb_become_aura_enchantment(
+        let quote_indices = become_body_tokens
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, token)| (token.kind == TokenKind::Quote).then_some(idx))
+            .collect::<Vec<_>>();
+        let granted_abilities = if let [open_quote, close_quote, ..] = quote_indices.as_slice() {
+            let ability_tokens = &become_body_tokens[open_quote + 1..*close_quote];
+            let (abilities, is_choice) =
+                parse_granted_abilities_for_gain_clause(ability_tokens, become_words, false)?;
+            if is_choice {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported modal Aura grant (clause: '{}')",
+                    render_lower_words(ability_tokens)
+                )));
+            }
+            abilities
+        } else {
+            Vec::new()
+        };
+        return Ok(EffectAst::subject_verb_become_aura_enchantment_with_grants(
             target,
             attachment_filter,
+            granted_abilities,
             duration,
         ));
     }
@@ -565,6 +650,62 @@ mod quoted_duration_tests {
     }
 
     #[test]
+    fn triggering_spell_color_protection_becomes_exact_color_gated_grants() {
+        let subject = crate::runtime_backend::lexer::lex_line("this enchantment", 0)
+            .expect("animation subject should lex");
+        let body = crate::runtime_backend::lexer::lex_line(
+            "a 4/4 Giant creature with protection from each of that spell's colors",
+            0,
+        )
+        .expect("dynamic protection animation should lex");
+        let effect = parse_become_clause(&subject, &body)
+            .expect("dynamic protection animation should parse structurally");
+        let EffectAst::Coordinated { effects, .. } = effect else {
+            panic!("expected a coordinated animation and grants: {effect:#?}");
+        };
+        assert_eq!(effects.len(), 6, "{effects:#?}");
+        let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature { subtypes, .. },
+            ..
+        }) = &effects[0]
+        else {
+            panic!(
+                "first effect should retain the animation: {:#?}",
+                effects[0]
+            );
+        };
+        assert_eq!(subtypes, &[crate::types::Subtype::Giant]);
+
+        for effect in &effects[1..] {
+            let EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(tag, filter),
+                if_true,
+                if_false,
+            } = effect
+            else {
+                panic!("expected a tagged-color conditional grant: {effect:#?}");
+            };
+            assert_eq!(tag.as_str(), "triggering");
+            assert!(filter.colors.is_some());
+            assert!(if_false.is_empty());
+            assert!(matches!(
+                if_true.as_slice(),
+                [EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action:
+                            crate::cards::builders::SubjectVerbActionAst::GrantAbilitiesToTarget {
+                                target: TargetAst::Source(_),
+                                ..
+                            },
+                        ..
+                    }
+                )]
+            ));
+        }
+    }
+
+    #[test]
     fn leading_and_trailing_animation_durations_remain_distinct() {
         let leading_subject =
             crate::runtime_backend::lexer::lex_line("until end of turn target land you control", 0)
@@ -640,6 +781,49 @@ mod quoted_duration_tests {
 
         assert!(!trailing_duration_belongs_to_quoted_ability(
             &tokens, &remainder
+        ));
+    }
+
+    #[test]
+    fn aura_animation_preserves_balanced_quoted_ability_grant() {
+        let subject = crate::runtime_backend::lexer::lex_line("it", 0).expect("lex subject");
+        let body = crate::runtime_backend::lexer::lex_line(
+            "an Aura enchantment with enchant creature you control and \"{G}{W}: Enchanted creature gains indestructible until end of turn,\"",
+            0,
+        )
+        .expect("lex Aura animation");
+        let effect = parse_become_clause(&subject, &body).expect("parse Aura animation");
+        let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                crate::cards::builders::SubjectVerbActionAst::BecomeAuraEnchantment {
+                    attachment_filter,
+                    granted_abilities,
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected typed Aura animation with grant: {effect:#?}");
+        };
+        assert_eq!(attachment_filter, ObjectFilter::creature().you_control());
+        assert_eq!(granted_abilities.len(), 1, "{granted_abilities:#?}");
+
+        let plain_body = crate::runtime_backend::lexer::lex_line(
+            "an Aura enchantment with enchant creature you control",
+            0,
+        )
+        .expect("lex plain Aura animation");
+        let plain = parse_become_clause(&subject, &plain_body).expect("parse plain Aura animation");
+        assert!(matches!(
+            plain,
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::BecomeAuraEnchantment {
+                        granted_abilities,
+                        ..
+                    },
+                ..
+            }) if granted_abilities.is_empty()
         ));
     }
 

@@ -190,6 +190,41 @@ fn tagged_move_to_zone_cost_precheck(
     }
 }
 
+fn tagged_exile_cost_precheck(
+    effect: &Effect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Option<Result<(), CostPaymentError>> {
+    let effect = transparent_cost_effect(effect);
+    let exile = effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    let tag = match exile.spec.base() {
+        crate::target::ChooseSpec::Tagged(tag) => tag,
+        crate::target::ChooseSpec::Object(filter) => tagged_selection_tag(filter)?,
+        _ => return None,
+    };
+
+    let Some(chosen) = ctx.tagged_objects.get(tag.as_str()) else {
+        return Some(Err(CostPaymentError::Other(
+            "exile cost has no chosen object".to_string(),
+        )));
+    };
+
+    // Cardinality belongs to the preceding ChooseObjects cost. An optional
+    // choice may legitimately publish an empty tag, while a required choice
+    // cannot do so because its own cost validation/execution enforces `min`.
+    if chosen.iter().all(|snapshot| {
+        game.find_object_by_stable_id(snapshot.stable_id)
+            .and_then(|id| game.object(id))
+            .is_some()
+    }) {
+        Some(Ok(()))
+    } else {
+        Some(Err(CostPaymentError::Other(
+            "chosen object is no longer available to exile".to_string(),
+        )))
+    }
+}
+
 fn tagged_unattach_cost_precheck(
     effect: &Effect,
     game: &GameState,
@@ -291,6 +326,9 @@ impl CostPayer for CostEffect {
         if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
             return result;
         }
+        if let Some(result) = tagged_exile_cost_precheck(&self.effect, game, ctx) {
+            return result;
+        }
         if let Some(result) = tagged_unattach_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
@@ -336,6 +374,8 @@ impl CostPayer for CostEffect {
         if let Some(result) = tagged_sacrifice_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
+            result?;
+        } else if let Some(result) = tagged_exile_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else if let Some(result) = tagged_unattach_cost_precheck(&self.effect, game, ctx) {
             result?;
@@ -618,7 +658,8 @@ impl CostPayer for CostEffect {
             return CostProcessingMode::InlineWithTriggers;
         }
 
-        if let Some(effect) = self.effect.downcast_ref::<SacrificeEffect>()
+        if let Some(effect) =
+            transparent_cost_effect(&self.effect).downcast_ref::<SacrificeEffect>()
             && effect.player == PlayerFilter::You
             && matches!(effect.count, crate::effect::Value::Fixed(1))
         {
@@ -825,6 +866,24 @@ mod tests {
                 .filter_map(|id| game.object(*id))
                 .any(|obj| obj.name == "Skarrgan Firebird")
         );
+    }
+
+    #[test]
+    fn result_tagged_sacrifice_cost_keeps_its_interactive_payment_mode() {
+        let filter = crate::target::ObjectFilter::creature().you_control();
+        let tagged =
+            crate::effect::Effect::new(SacrificeEffect::new(filter.clone(), 1, PlayerFilter::You))
+                .tag("sacrifice_cost_0");
+        let cost = CostEffect::from_validated_effect(tagged)
+            .expect("a transparent result tag should preserve cost executability");
+
+        let crate::costs::CostProcessingMode::SacrificeTarget {
+            filter: actual_filter,
+        } = cost.processing_mode()
+        else {
+            panic!("a result tag must preserve the sacrifice choice mode");
+        };
+        assert_eq!(actual_filter, filter);
     }
 
     #[test]

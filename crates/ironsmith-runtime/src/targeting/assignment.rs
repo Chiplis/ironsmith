@@ -15,11 +15,17 @@ fn selected_targets_satisfy_requirement(
         return false;
     }
 
-    req.legal_target_sets.is_empty()
+    let satisfies_set_constraint = req.legal_target_sets.is_empty()
         || req
             .legal_target_sets
             .iter()
-            .any(|set| selected.iter().all(|target| set.contains(target)))
+            .any(|set| selected.iter().all(|target| set.contains(target)));
+    let satisfies_aggregate_constraint = req
+        .aggregate_constraint
+        .as_ref()
+        .is_none_or(|constraint| constraint.allows(selected));
+
+    satisfies_set_constraint && satisfies_aggregate_constraint
 }
 
 fn legal_pool_for_selected(
@@ -199,7 +205,14 @@ pub fn normalize_targets_for_requirements(
                 if selected.len() >= req.min_targets {
                     break;
                 }
+                let aggregate_allows_extension =
+                    req.aggregate_constraint.as_ref().is_none_or(|constraint| {
+                        let mut extended = selected.clone();
+                        extended.push(*legal);
+                        constraint.allows(&extended)
+                    });
                 if !selected.contains(legal)
+                    && aggregate_allows_extension
                     && selected_targets_satisfy_distinct_player_group(
                         req,
                         std::slice::from_ref(legal),
@@ -329,6 +342,7 @@ mod tests {
                 description: "any number".to_string(),
                 legal_targets: vec![a, b, c],
                 legal_target_sets: Vec::new(),
+                aggregate_constraint: None,
                 min_targets: 0,
                 max_targets: None,
                 distinct_player_group: None,
@@ -337,6 +351,7 @@ mod tests {
                 description: "final target".to_string(),
                 legal_targets: vec![d],
                 legal_target_sets: Vec::new(),
+                aggregate_constraint: None,
                 min_targets: 1,
                 max_targets: Some(1),
                 distinct_player_group: None,
@@ -360,6 +375,7 @@ mod tests {
             description: "required".to_string(),
             legal_targets: vec![a],
             legal_target_sets: Vec::new(),
+            aggregate_constraint: None,
             min_targets: 1,
             max_targets: Some(1),
             distinct_player_group: None,
@@ -380,6 +396,7 @@ mod tests {
                 description: "first".to_string(),
                 legal_targets: vec![a],
                 legal_target_sets: Vec::new(),
+                aggregate_constraint: None,
                 min_targets: 1,
                 max_targets: Some(1),
                 distinct_player_group: None,
@@ -388,6 +405,7 @@ mod tests {
                 description: "second".to_string(),
                 legal_targets: vec![b],
                 legal_target_sets: Vec::new(),
+                aggregate_constraint: None,
                 min_targets: 1,
                 max_targets: Some(1),
                 distinct_player_group: None,
@@ -405,6 +423,7 @@ mod tests {
             description: "replacement target".to_string(),
             legal_targets: vec![new_legal_target],
             legal_target_sets: Vec::new(),
+            aggregate_constraint: None,
             min_targets: 1,
             max_targets: Some(1),
             distinct_player_group: None,
@@ -427,6 +446,7 @@ mod tests {
             description: "same controller targets".to_string(),
             legal_targets: vec![a, b, c, d],
             legal_target_sets: vec![vec![a, b], vec![c, d]],
+            aggregate_constraint: None,
             min_targets: 2,
             max_targets: Some(2),
             distinct_player_group: None,
@@ -446,6 +466,7 @@ mod tests {
             description: "same controller targets".to_string(),
             legal_targets: vec![a, b, c, d],
             legal_target_sets: vec![vec![a, b], vec![c, d]],
+            aggregate_constraint: None,
             min_targets: 2,
             max_targets: Some(2),
             distinct_player_group: None,
@@ -454,5 +475,31 @@ mod tests {
         let normalized = normalize_targets_for_requirements(&requirements, vec![c]).expect("valid");
 
         assert_eq!(normalized, vec![c, d]);
+    }
+
+    #[test]
+    fn aggregate_requirement_rejects_individually_legal_targets_over_the_total() {
+        let four = Target::Object(ObjectId::from_raw(1));
+        let three = Target::Object(ObjectId::from_raw(2));
+        let two = Target::Object(ObjectId::from_raw(3));
+        let requirements = vec![TargetRequirementContext {
+            description: "total mana value 6 or less".to_string(),
+            legal_targets: vec![four, three, two],
+            legal_target_sets: Vec::new(),
+            aggregate_constraint: Some(crate::targeting::ResolvedTargetAggregateConstraint {
+                metric: crate::effect::ChoiceAggregateMetric::ManaValue,
+                maximum: 6,
+                target_values: vec![(four, 4), (three, 3), (two, 2)],
+            }),
+            min_targets: 0,
+            max_targets: None,
+            distinct_player_group: None,
+        }];
+
+        assert!(!validate_flat_target_assignment(
+            &requirements,
+            &[four, three]
+        ));
+        assert!(validate_flat_target_assignment(&requirements, &[four, two]));
     }
 }
