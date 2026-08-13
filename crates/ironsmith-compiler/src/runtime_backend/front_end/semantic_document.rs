@@ -81,7 +81,7 @@ pub(crate) fn parse_semantic_document(
         builder,
         annotations,
         provenance,
-        symbols,
+        mut symbols,
         items,
         overload_items,
         cleave_items,
@@ -96,7 +96,31 @@ pub(crate) fn parse_semantic_document(
         .transpose()?
         .map(|items| ParsedCleaveBranch { items });
 
-    let items = parse_rewrite_items(items)?;
+    let mut items = parse_rewrite_items(items)?;
+    let mut overload_branch = overload_branch;
+    let mut cleave_branch = cleave_branch;
+    super::front_end::library_clause_migration::migrate_library_clauses(&mut items, &mut symbols)
+        .map_err(|error| {
+        CardTextError::ParseError(format!("library clause binding failed: {error:?}"))
+    })?;
+    if let Some(branch) = &mut overload_branch {
+        super::front_end::library_clause_migration::migrate_library_clauses(
+            &mut branch.items,
+            &mut symbols,
+        )
+        .map_err(|error| {
+            CardTextError::ParseError(format!("overload library clause binding failed: {error:?}"))
+        })?;
+    }
+    if let Some(branch) = &mut cleave_branch {
+        super::front_end::library_clause_migration::migrate_library_clauses(
+            &mut branch.items,
+            &mut symbols,
+        )
+        .map_err(|error| {
+            CardTextError::ParseError(format!("cleave library clause binding failed: {error:?}"))
+        })?;
+    }
     let mut reference_resolution =
         crate::model::canonical_references::resolve_parsed_items_references(&items, &symbols);
     if let Some(branch) = &overload_branch {

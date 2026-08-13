@@ -6,6 +6,7 @@
 
 use crate::effect::ValueComparisonOperator;
 use crate::model::costs::CompilerTotalCost;
+use crate::model::library_clauses::CompilerLibraryClauseAst;
 use crate::model::provenance::SemanticProvenance;
 use crate::model::selections::{CompilerFilterAst, CompilerSelectionAst, CompilerValueAst};
 use crate::model::symbols::SymbolReference;
@@ -70,6 +71,24 @@ pub(crate) enum ClauseActorAst {
     EachPlayer,
     Selection(CompilerSelectionAst),
     Reference(SymbolReference),
+    Player(CompilerPlayerAst),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum CompilerPlayerAst {
+    Any,
+    Chosen,
+    Defending,
+    Attacking,
+    Opponent,
+    Target,
+    TargetOpponent,
+    Enchanted,
+    OtherThanSourceController,
+    Contextual,
+    TriggeringSourceController,
+    ReferencedObjectController,
+    ReferencedObjectOwner,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -229,6 +248,7 @@ pub(crate) struct CompilerClauseAst {
     pub condition: Option<ClauseConditionAst>,
     pub bindings: Vec<ClauseReferenceBindingAst>,
     pub complements: Vec<ClauseComplementAst>,
+    pub library: Option<CompilerLibraryClauseAst>,
     pub provenance: Option<SemanticProvenance>,
 }
 
@@ -270,6 +290,18 @@ impl CompilerClauseAst {
                 ClauseComplementAst::Duration(duration) => strip_duration_provenance(duration),
                 ClauseComplementAst::Condition(condition) => strip_condition_provenance(condition),
                 ClauseComplementAst::Quantity(_) | ClauseComplementAst::Binding(_) => {}
+            }
+        }
+        if let Some(library) = &mut self.library {
+            strip_actor_provenance(&mut library.owner);
+            if let Some(chooser) = &mut library.chooser {
+                strip_actor_provenance(chooser);
+            }
+            if let Some(destination) = &mut library.destination {
+                strip_destination_provenance(destination);
+            }
+            if let Some(remainder) = &mut library.remainder {
+                strip_destination_provenance(&mut remainder.destination);
             }
         }
     }

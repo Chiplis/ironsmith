@@ -10,6 +10,7 @@ pub mod costs;
 pub(crate) mod facts;
 pub mod ir;
 pub(crate) mod legality;
+pub(crate) mod library_clauses;
 pub mod parse_types;
 pub mod provenance;
 pub mod reference;
@@ -17,17 +18,16 @@ pub(crate) mod reference_state;
 pub mod restrictions;
 pub(crate) mod selections;
 pub mod semantic;
-pub mod symbols;
 pub(crate) mod static_abilities;
 pub(crate) mod structured_abilities;
+pub mod symbols;
 pub(crate) mod token_definition;
 pub(crate) mod triggered_abilities;
 pub(crate) mod visit;
 
 pub(crate) use activated_abilities::{
-    ActivatedLineBoundaryAst, ActivationRestrictionAst, ActivationTimingAst,
-    ActivationUseLimitAst, ActivationUsePeriodAst, CompilerActivatedAbilityAst, LoyaltyCostAst,
-    ManaAbilityFacts,
+    ActivatedLineBoundaryAst, ActivationRestrictionAst, ActivationTimingAst, ActivationUseLimitAst,
+    ActivationUsePeriodAst, CompilerActivatedAbilityAst, LoyaltyCostAst, ManaAbilityFacts,
 };
 pub(crate) use card_document::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
 pub(crate) use clauses::{
@@ -35,7 +35,7 @@ pub(crate) use clauses::{
     ClauseConditionAst, ClauseConditionKindAst, ClauseDestinationAst, ClauseDestinationRelationAst,
     ClauseDistributionAst, ClauseDurationAst, ClauseObjectAst, ClausePolarityAst,
     ClausePredicateAst, ClauseQuantityAst, ClauseQuantityUnitAst, ClauseReferenceBindingAst,
-    ClauseSubjectAst, ClauseVerbAst, ClauseZonePlacementAst, CompilerClauseAst,
+    ClauseSubjectAst, ClauseVerbAst, ClauseZonePlacementAst, CompilerClauseAst, CompilerPlayerAst,
 };
 pub(crate) use control_flow::{
     CompilerControlFlowAst, CompilerDurationAst, ConditionPositionAst, ControlConditionAst,
@@ -50,9 +50,13 @@ pub(crate) use coordination::{
 };
 pub(crate) use legality::{
     CompilerActivationLegalityAst, CompilerCastingLegalityAst, CompilerPermissionAst,
-    CompilerTriggerLegalityAst, LegalityFrequencyAst, LegalityPeriodAst,
-    LegalityRelationshipAst, ManaUseConstraintAst, PermissionKindAst, PhaseStepAst,
-    TimingWindowAst, TurnOwnerAst,
+    CompilerTriggerLegalityAst, LegalityFrequencyAst, LegalityPeriodAst, LegalityRelationshipAst,
+    ManaUseConstraintAst, PermissionKindAst, PhaseStepAst, TimingWindowAst, TurnOwnerAst,
+};
+pub(crate) use library_clauses::{
+    CompilerLibraryClauseAst, LibraryExposureAst, LibraryOrderAst, LibraryPositionAst,
+    LibraryRemainderAst, LibraryResultBindingAst, LibraryResultKindAst, LibrarySelectionAst,
+    LibrarySelectionModeAst,
 };
 pub(crate) use selections::{
     ArithmeticOperatorAst, CompilerFilterAst, CompilerSelectionAst, CompilerValueAst,
@@ -75,9 +79,9 @@ pub(crate) use static_abilities::{
 pub(crate) use structured_abilities::{
     CompilerClassAbilityAst, CompilerClassLevelAst, CompilerKeywordAbilityAst,
     CompilerKeywordIdentityAst, CompilerKeywordPayloadAst, CompilerLevelAbilityAst,
-    CompilerLevelBandAst, CompilerModalAbilityAst, CompilerModalModeAst,
-    CompilerModalSelectionAst, CompilerSagaAbilityAst, CompilerSagaChapterAst,
-    CompilerStructuredAbilityAst, LevelBandAst, ModalSelectionModifierAst,
+    CompilerLevelBandAst, CompilerModalAbilityAst, CompilerModalModeAst, CompilerModalSelectionAst,
+    CompilerSagaAbilityAst, CompilerSagaChapterAst, CompilerStructuredAbilityAst, LevelBandAst,
+    ModalSelectionModifierAst,
 };
 pub(crate) use triggered_abilities::{
     CompilerTriggerEventAst, CompilerTriggeredAbilityAst, LinkedTriggerEffectAst,

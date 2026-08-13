@@ -12,6 +12,9 @@ use crate::model::control_flow::{
 };
 use crate::model::coordination::CarriedFactAst;
 use crate::model::costs::CompilerTotalCost;
+use crate::model::library_clauses::{
+    CompilerLibraryClauseAst, LibraryPositionAst, LibraryRemainderAst,
+};
 use crate::model::selections::{
     CompilerFilterAst, CompilerSelectionAst, CompilerValueAst, SelectionDomainAst,
 };
@@ -677,7 +680,71 @@ pub(crate) fn visit_clause_tree<V: SemanticVisitor + ?Sized>(
             }
         }
     }
+    if let Some(library) = &clause.library {
+        visit_library_clause(visitor, library)?;
+    }
     ControlFlow::Continue(())
+}
+
+fn visit_library_clause<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    library: &CompilerLibraryClauseAst,
+) -> ControlFlow<V::Break> {
+    visit_clause_actor(visitor, &library.owner)?;
+    if let Some(chooser) = &library.chooser {
+        visit_clause_actor(visitor, chooser)?;
+    }
+    match &library.position {
+        LibraryPositionAst::Top(value)
+        | LibraryPositionAst::Bottom(value)
+        | LibraryPositionAst::Random(value)
+        | LibraryPositionAst::NthFromTop(value) => visit_compiler_value_tree(visitor, value)?,
+        LibraryPositionAst::UntilMatch {
+            qualification,
+            match_count,
+            maximum_exposed,
+        } => {
+            visit_compiler_filter(visitor, qualification)?;
+            visit_compiler_value_tree(visitor, match_count)?;
+            if let Some(maximum) = maximum_exposed {
+                visit_compiler_value_tree(visitor, maximum)?;
+            }
+        }
+        LibraryPositionAst::BoundCollection(reference) => {
+            visitor.visit_reference(reference)?;
+        }
+        LibraryPositionAst::WholeZone => {}
+    }
+    for selection in &library.selections {
+        if let Some(qualification) = &selection.qualification {
+            visit_compiler_filter(visitor, qualification)?;
+        }
+        visit_compiler_value_tree(visitor, &selection.minimum)?;
+        if let Some(maximum) = &selection.maximum {
+            visit_compiler_value_tree(visitor, maximum)?;
+        }
+    }
+    for result in &library.results {
+        visitor.visit_reference_binding(&result.reference)?;
+    }
+    if let Some(destination) = &library.destination {
+        visit_clause_destination(visitor, destination)?;
+    }
+    if let Some(remainder) = &library.remainder {
+        visit_library_remainder(visitor, remainder)?;
+    }
+    ControlFlow::Continue(())
+}
+
+fn visit_library_remainder<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    remainder: &LibraryRemainderAst,
+) -> ControlFlow<V::Break> {
+    visitor.visit_reference(&remainder.collection)?;
+    for reference in &remainder.excluding {
+        visitor.visit_reference(reference)?;
+    }
+    visit_clause_destination(visitor, &remainder.destination)
 }
 
 fn visit_clause_actor<V: SemanticVisitor + ?Sized>(
@@ -690,7 +757,8 @@ fn visit_clause_actor<V: SemanticVisitor + ?Sized>(
         ClauseActorAst::SourceController
         | ClauseActorAst::ActivePlayer
         | ClauseActorAst::EachOpponent
-        | ClauseActorAst::EachPlayer => ControlFlow::Continue(()),
+        | ClauseActorAst::EachPlayer
+        | ClauseActorAst::Player(_) => ControlFlow::Continue(()),
     }
 }
 
@@ -1113,7 +1181,72 @@ pub(crate) fn fold_clause_tree<F: SemanticFolder + ?Sized>(
             }
         })
         .collect();
+    clause.library = clause
+        .library
+        .map(|library| fold_library_clause(folder, library));
     folder.fold_clause(clause)
+}
+
+fn fold_library_clause<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    mut library: CompilerLibraryClauseAst,
+) -> CompilerLibraryClauseAst {
+    library.owner = fold_clause_actor(folder, library.owner);
+    library.chooser = library
+        .chooser
+        .map(|chooser| fold_clause_actor(folder, chooser));
+    library.position = match library.position {
+        LibraryPositionAst::Top(value) => {
+            LibraryPositionAst::Top(fold_compiler_value_tree(folder, value))
+        }
+        LibraryPositionAst::Bottom(value) => {
+            LibraryPositionAst::Bottom(fold_compiler_value_tree(folder, value))
+        }
+        LibraryPositionAst::Random(value) => {
+            LibraryPositionAst::Random(fold_compiler_value_tree(folder, value))
+        }
+        LibraryPositionAst::NthFromTop(value) => {
+            LibraryPositionAst::NthFromTop(fold_compiler_value_tree(folder, value))
+        }
+        LibraryPositionAst::UntilMatch {
+            qualification,
+            match_count,
+            maximum_exposed,
+        } => LibraryPositionAst::UntilMatch {
+            qualification: fold_compiler_filter(folder, qualification),
+            match_count: fold_compiler_value_tree(folder, match_count),
+            maximum_exposed: maximum_exposed.map(|value| fold_compiler_value_tree(folder, value)),
+        },
+        LibraryPositionAst::BoundCollection(reference) => {
+            LibraryPositionAst::BoundCollection(folder.fold_reference(reference))
+        }
+        LibraryPositionAst::WholeZone => LibraryPositionAst::WholeZone,
+    };
+    for selection in &mut library.selections {
+        selection.qualification = selection
+            .qualification
+            .take()
+            .map(|qualification| fold_compiler_filter(folder, qualification));
+        selection.minimum = fold_compiler_value_tree(folder, selection.minimum.clone());
+        selection.maximum = selection
+            .maximum
+            .take()
+            .map(|value| fold_compiler_value_tree(folder, value));
+    }
+    for result in &mut library.results {
+        result.reference = folder.fold_reference(result.reference);
+    }
+    library.destination = library
+        .destination
+        .map(|destination| fold_clause_destination(folder, destination));
+    if let Some(remainder) = &mut library.remainder {
+        remainder.collection = folder.fold_reference(remainder.collection);
+        for reference in &mut remainder.excluding {
+            *reference = folder.fold_reference(*reference);
+        }
+        remainder.destination = fold_clause_destination(folder, remainder.destination.clone());
+    }
+    library
 }
 
 fn fold_clause_actor<F: SemanticFolder + ?Sized>(
