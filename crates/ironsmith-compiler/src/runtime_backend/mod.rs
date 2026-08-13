@@ -25,6 +25,8 @@ pub(crate) mod compile_support;
 pub(crate) mod condition_antecedent;
 #[path = "front_end/cst.rs"]
 pub(crate) mod cst;
+#[path = "front_end/canonical_pipeline.rs"]
+pub(crate) mod canonical_pipeline;
 #[path = "front_end/cst_lowering.rs"]
 pub(crate) mod cst_lowering;
 #[path = "front_end/document/mod.rs"]

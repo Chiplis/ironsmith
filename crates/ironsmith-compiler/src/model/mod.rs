@@ -1,5 +1,6 @@
 pub(crate) mod activated_abilities;
 pub(crate) mod ast;
+pub(crate) mod card_document;
 pub(crate) mod compiler_semantic;
 pub mod costs;
 pub(crate) mod facts;
@@ -22,6 +23,7 @@ pub(crate) use activated_abilities::{
     ActivationUseLimitAst, ActivationUsePeriodAst, CompilerActivatedAbilityAst, LoyaltyCostAst,
     ManaAbilityFacts,
 };
+pub(crate) use card_document::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
 
 pub use ast::{
     CompilerAbility, CompilerAbilityKind, CompilerAbilityPayload, CompilerActivatedAbility,

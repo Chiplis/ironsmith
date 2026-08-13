@@ -23,6 +23,7 @@ pub mod game_state;
 pub mod grant;
 pub mod host;
 pub mod ids;
+pub(crate) mod lowering;
 pub mod mana;
 pub mod model;
 pub mod object;

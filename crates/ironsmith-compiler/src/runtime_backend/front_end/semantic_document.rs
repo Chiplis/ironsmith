@@ -7,9 +7,9 @@ use crate::cards::builders::{
     CardTextError, LineAst, ParsedCardItem, ParsedLevelAbilityAst, ParsedLineAst,
     ParsedRestrictions, TriggerSpec,
 };
+use crate::model::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
 use crate::static_abilities::StaticAbility;
 
-use super::effect_pipeline::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
 use super::ir::{RewriteSemanticDocument, RewriteSemanticItem};
 use super::semantic_line_parsing::rewrite_modal_to_parsed_item;
 

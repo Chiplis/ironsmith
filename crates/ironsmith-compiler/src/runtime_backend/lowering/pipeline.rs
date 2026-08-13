@@ -2,11 +2,13 @@ use crate::cards::ParseAnnotations;
 #[cfg(test)]
 use crate::cards::builders::CardDefinition;
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
+use crate::lowering::CardAstMaterializer;
+use crate::model::ParsedCardAst;
 use crate::parse_context::ParseContext;
 use crate::parse_trace;
 
 use super::document_parser;
-use super::effect_pipeline::{LoweredCardDocument, NormalizedCardAst, ParsedCardAst};
+use super::effect_pipeline::{LoweredCardDocument, NormalizedCardAst};
 use super::ir::RewriteSemanticDocument;
 use super::lower;
 
@@ -65,20 +67,29 @@ pub(crate) fn parse_text_with_annotations_lowered_with_facts_context(
     builder: CardDefinitionBuilder,
     text: String,
 ) -> Result<LoweredCardDocument, CardTextError> {
-    let (doc, _) = parse_text_to_semantic_document_with_context(context, builder, text)?;
-    let parsed = {
-        let _scope = parse_trace::scope("semantic parse");
-        parse_semantic_document(doc)?
-    };
-    let prepared = {
-        let _scope = parse_trace::scope("prepare lowering input");
-        prepare_parsed_document(parsed)?
-    };
-    let lowered = {
+    let parsed = crate::runtime_backend::canonical_pipeline::parse_card_ast_with_context(
+        context, builder, text,
+    )?;
+    crate::lowering::lower_card_ast(&mut RuntimeCardAstMaterializer, parsed)
+}
+
+struct RuntimeCardAstMaterializer;
+
+impl CardAstMaterializer for RuntimeCardAstMaterializer {
+    type RuntimeDocument = LoweredCardDocument;
+    type Error = CardTextError;
+
+    fn materialize(
+        &mut self,
+        ast: ParsedCardAst,
+    ) -> Result<Self::RuntimeDocument, Self::Error> {
+        let prepared = {
+            let _scope = parse_trace::scope("prepare lowering input");
+            prepare_parsed_document(ast)?
+        };
         let _scope = parse_trace::scope("lower runtime definition");
-        lower_prepared_document_with_facts(prepared)?
-    };
-    Ok(lowered)
+        lower_prepared_document_with_facts(prepared)
+    }
 }
 
 /// PR-02 contextless compatibility facade retained for existing internal

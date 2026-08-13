@@ -13,8 +13,7 @@ use super::reference_model::{
     AnnotatedEffectSequence, ReferenceEnv, ReferenceExports, ReferenceImports,
 };
 use super::semantic::{
-    GiftTimingAst, ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst, ParsedModalHeader,
-    ParsedRestrictions,
+    GiftTimingAst, ParsedAbility, ParsedLevelAbilityAst, ParsedModalHeader, ParsedRestrictions,
 };
 use super::shared_types::{LineInfo, LineSemanticFacts};
 
@@ -156,16 +155,6 @@ pub(crate) enum NormalizedCardItem {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedOverloadBranch {
-    pub(crate) items: Vec<ParsedCardItem>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ParsedCleaveBranch {
-    pub(crate) items: Vec<ParsedCardItem>,
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct NormalizedOverloadBranch {
     pub(crate) items: Vec<NormalizedCardItem>,
 }
@@ -184,18 +173,6 @@ pub(crate) struct NormalizedCardAst {
     pub(crate) items: Vec<NormalizedCardItem>,
     pub(crate) overload_branch: Option<NormalizedOverloadBranch>,
     pub(crate) cleave_branch: Option<NormalizedCleaveBranch>,
-    pub(crate) allow_unsupported: bool,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ParsedCardAst {
-    pub(crate) builder: CardDefinitionBuilder,
-    pub(crate) annotations: ParseAnnotations,
-    pub(crate) provenance: ProvenanceStore,
-    pub(crate) symbols: SymbolTable,
-    pub(crate) items: Vec<ParsedCardItem>,
-    pub(crate) overload_branch: Option<ParsedOverloadBranch>,
-    pub(crate) cleave_branch: Option<ParsedCleaveBranch>,
     pub(crate) allow_unsupported: bool,
 }
 

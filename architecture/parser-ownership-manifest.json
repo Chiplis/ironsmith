@@ -10,7 +10,8 @@
     {
       "id": "document",
       "roots": [
-        "crates/ironsmith-compiler/src/front_end/document"
+        "crates/ironsmith-compiler/src/front_end/document",
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/canonical_pipeline.rs"
       ]
     },
     {
@@ -37,6 +38,7 @@
       "id": "compiler_ast",
       "roots": [
         "crates/ironsmith-compiler/src/model/ast",
+        "crates/ironsmith-compiler/src/model/card_document.rs",
         "crates/ironsmith-compiler/src/model/activated_abilities.rs",
         "crates/ironsmith-compiler/src/model/costs.rs",
         "crates/ironsmith-compiler/src/model/static_abilities.rs",

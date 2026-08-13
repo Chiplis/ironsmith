@@ -5,6 +5,7 @@ use crate::cards::builders::{
     ParsedLevelAbilityItemAst, ParsedModalAst, ParsedRestrictions, PlayerAst, PredicateAst,
     ReferenceImports, SubjectVerbActionAst, TagKey, TriggerSpec,
 };
+use crate::model::ParsedCardAst;
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, ObjectFilter};
@@ -48,7 +49,7 @@ use super::effect_pipeline::{
     LoweredCardDocument, NormalizedAdditionalCostChoiceOptionAst, NormalizedCardAst,
     NormalizedCardItem, NormalizedCleaveBranch, NormalizedLineAst, NormalizedLineChunk,
     NormalizedModalAst, NormalizedModalModeAst, NormalizedOverloadBranch, NormalizedParsedAbility,
-    NormalizedPreparedAbility, ParsedCardAst,
+    NormalizedPreparedAbility,
 };
 use super::lowering_support::{
     rewrite_apply_delayed_trigger_followup_statement_to_last_ability,

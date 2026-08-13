@@ -1,6 +1,7 @@
 #![allow(dead_code, unused_imports)]
 
 pub(crate) use super::cst;
+pub(crate) use super::canonical_pipeline;
 pub(crate) use super::cst_lowering;
 pub(crate) mod document {
     pub(crate) use super::super::document_parser::parse_text_to_semantic_document;
