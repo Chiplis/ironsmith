@@ -10,6 +10,7 @@ pub(crate) mod reference_state;
 pub mod restrictions;
 pub mod semantic;
 pub mod symbols;
+pub(crate) mod static_abilities;
 pub(crate) mod token_definition;
 pub(crate) mod visit;
 
@@ -20,6 +21,11 @@ pub use ast::{
 pub use costs::{
     CastingConditionAst, CompilerAlternativeCastingMethod, CompilerCost, CompilerOptionalCost,
     CompilerTotalCost, CostRelationship,
+};
+pub(crate) use static_abilities::{
+    CharacteristicChangeAst, CharacteristicValueAst, CompilerGrantedAbilityAst,
+    CompilerStaticAbilityAst, ContinuousLayerAst, StaticOperationAst, StaticRestrictionAst,
+    StaticScopeAst, StaticSubjectAst,
 };
 
 pub use ir::{
