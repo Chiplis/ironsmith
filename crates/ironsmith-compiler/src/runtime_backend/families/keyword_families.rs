@@ -1,5 +1,6 @@
-use super::grammar::keyword_dispatch as keyword_dispatch_grammar;
-pub(super) use super::grammar::keyword_dispatch::KeywordDispatchHint;
+pub(super) use super::grammar::keyword_dispatch::{
+    KeywordDispatchHint, parse_keyword_dispatch_hint_tokens as parse_keyword_dispatch_hint,
+};
 use super::keyword_registry as registry;
 use super::lexer::OwnedLexToken;
 use crate::recognition::RuleId;
@@ -275,8 +276,4 @@ pub(super) fn keyword_line_rules() -> Vec<KeywordLineRule> {
     rules.extend_from_slice(activated_keywords::RULES);
     rules.extend_from_slice(spell_keywords::RULES);
     rules
-}
-
-pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<KeywordDispatchHint> {
-    keyword_dispatch_grammar::parse_keyword_dispatch_hint_tokens(tokens)
 }

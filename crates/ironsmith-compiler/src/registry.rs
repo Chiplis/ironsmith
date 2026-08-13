@@ -5,6 +5,9 @@ use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 pub enum HeadDiscriminator {
     Any,
     Words(&'static [&'static str]),
+    /// A named typed grammar performed structural candidate filtering before
+    /// the generic registry resolver was entered.
+    Grammar(&'static str),
 }
 
 impl HeadDiscriminator {
@@ -16,16 +19,21 @@ impl HeadDiscriminator {
         }
     }
 
+    pub const fn grammar(name: &'static str) -> Self {
+        Self::Grammar(name)
+    }
+
     pub fn accepts(self, head: &str) -> bool {
         match self {
             Self::Any => true,
             Self::Words(words) => words.contains(&head),
+            Self::Grammar(_) => true,
         }
     }
 
     pub const fn indexed_words(self) -> &'static [&'static str] {
         match self {
-            Self::Any => &[],
+            Self::Any | Self::Grammar(_) => &[],
             Self::Words(words) => words,
         }
     }

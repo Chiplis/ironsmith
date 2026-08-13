@@ -48,6 +48,58 @@ pub(crate) enum KeywordDispatchHint {
     Exploit,
 }
 
+impl KeywordDispatchHint {
+    pub(crate) const fn head_words(self) -> &'static [&'static str] {
+        match self {
+            Self::AdditionalCostFamily => &["as"],
+            Self::AlternativeOrExertFamily => &[
+                "you",
+                "if",
+                "prowl",
+                "sneak",
+                "aftermath",
+                "encore",
+                "jump-start",
+                "jump",
+            ],
+            Self::Bestow => &["bestow"],
+            Self::Blitz => &["blitz"],
+            Self::Bargain => &["bargain"],
+            Self::Buyback => &["buyback"],
+            Self::Channel => &["channel"],
+            Self::Craft => &["craft"],
+            Self::Cycling => &["cycling", "basic"],
+            Self::Reinforce => &["reinforce"],
+            Self::Equip => &["equip"],
+            Self::Reconfigure => &["reconfigure"],
+            Self::Kicker => &["kicker"],
+            Self::Flashback => &["flashback"],
+            Self::Harmonize => &["harmonize"],
+            Self::Retrace => &["retrace"],
+            Self::Multikicker => &["multikicker"],
+            Self::Replicate => &["replicate"],
+            Self::Entwine => &["entwine"],
+            Self::Escalate => &["escalate"],
+            Self::Eternalize => &["eternalize"],
+            Self::Evoke => &["evoke"],
+            Self::Epic => &["epic"],
+            Self::Offspring => &["offspring"],
+            Self::Madness => &["madness"],
+            Self::Escape => &["escape"],
+            Self::MorphFamily => &["morph", "megamorph", "disguise"],
+            Self::Mutate => &["mutate"],
+            Self::Squad => &["squad"],
+            Self::Splice => &["splice"],
+            Self::Transmute => &["transmute"],
+            Self::Transfigure => &["transfigure"],
+            Self::CastThisSpellOnly => &["cast"],
+            Self::Gift => &["gift"],
+            Self::Warp => &["warp"],
+            Self::Exploit => &["exploit"],
+        }
+    }
+}
+
 pub(crate) fn parse_keyword_dispatch_hint_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordDispatchHint> {

@@ -44,7 +44,10 @@ pub(crate) fn recognize_keyword_line_cst(
         ) {
             ParseOutcome::Match(matched) => {
                 candidates.push(RegistryCandidate::new(
-                    RegistryRuleMetadata::distinct(rule.id, HeadDiscriminator::Any),
+                    RegistryRuleMetadata::distinct(
+                        rule.id,
+                        HeadDiscriminator::words(hint.head_words()),
+                    ),
                     (rule.cst_kind, matched.value),
                     matched.span,
                 ));

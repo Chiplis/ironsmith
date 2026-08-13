@@ -137,7 +137,10 @@ use crate::cost::TotalCost;
 use crate::effect::{Condition, Effect, EventValueSpec, Value};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
-use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId};
+use crate::recognition::{ParseOutcome, RuleId};
+use crate::registry::{
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
+};
 use crate::runtime_backend::grammar::shared_util::value_semantics::{
     parse_aggregate_scope_value_lexed, parse_commander_cast_count_player,
 };
@@ -399,36 +402,6 @@ fn replay_static_rule_parse_loss(report: &crate::parse_loss::ParseLossReport) {
     }
 }
 
-fn try_static_ability_ast_line_rule_indices(
-    rules: &'static [StaticAbilityLineRuleDef],
-    tokens: &[OwnedLexToken],
-    tried: &mut [bool],
-    deferred_error: &mut Option<ParseDiagnostic>,
-    candidate_indices: &[usize],
-) -> Option<Vec<StaticAbilityAst>> {
-    for &idx in candidate_indices {
-        tried[idx] = true;
-        let (result, loss) = crate::parse_loss::capture(|| {
-            run_static_ability_ast_line_rule(rules[idx].id, rules[idx].rule, tokens)
-        });
-        match result {
-            ParseOutcome::Match(matched) => {
-                replay_static_rule_parse_loss(&loss);
-                if std::env::var("IRONSMITH_STATIC_RULE_TRACE").is_ok() {
-                    eprintln!("static-rule claim: {}", rules[idx].id);
-                }
-                return Some(matched.value);
-            }
-            ParseOutcome::NoMatch => {}
-            ParseOutcome::Error(diagnostic) => {
-                deferred_error.get_or_insert(diagnostic);
-            }
-        }
-    }
-
-    None
-}
-
 fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadHint> {
     match rule_id.as_str() {
         "parse_characteristic_defining_pt_line" => Vec::new(),
@@ -683,6 +656,23 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             Some("activated") => vec![StaticAbilityLineHeadHint::Single("activated")],
             _ => Vec::new(),
         },
+    }
+}
+
+#[derive(Debug, Clone)]
+enum StaticAbilityLineHeadDiscriminator {
+    Lexical(Vec<StaticAbilityLineHeadHint>),
+    WholeLine,
+}
+
+fn static_ability_rule_head_discriminator(
+    rule_id: RuleId,
+) -> StaticAbilityLineHeadDiscriminator {
+    let hints = static_ability_rule_head_hints(rule_id);
+    if hints.is_empty() {
+        StaticAbilityLineHeadDiscriminator::WholeLine
+    } else {
+        StaticAbilityLineHeadDiscriminator::Lexical(hints)
     }
 }
 
@@ -1114,71 +1104,101 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
     RULES
 }
 
-static STATIC_ABILITY_AST_LINE_RULE_INDEX: LazyLock<LexRuleHintIndex> = LazyLock::new(|| {
-    let rules = static_ability_ast_line_rules();
-    build_lex_rule_hint_index(rules.len(), |idx| {
-        static_ability_rule_head_hints(rules[idx].id)
-    })
-});
+#[derive(Debug)]
+struct StaticAbilityLineRuleIndex {
+    lexical: LexRuleHintIndex,
+    whole_line: Vec<usize>,
+}
+
+impl StaticAbilityLineRuleIndex {
+    fn candidate_indices(&self, head: &str, second: Option<&str>) -> Vec<usize> {
+        let mut indices = self.lexical.candidate_indices(head, second);
+        indices.extend(self.whole_line.iter().copied());
+        indices.sort_unstable();
+        indices.dedup();
+        indices
+    }
+}
+
+static STATIC_ABILITY_AST_LINE_RULE_INDEX: LazyLock<StaticAbilityLineRuleIndex> =
+    LazyLock::new(|| {
+        let rules = static_ability_ast_line_rules();
+        let lexical = build_lex_rule_hint_index(rules.len(), |idx| {
+            match static_ability_rule_head_discriminator(rules[idx].id) {
+                StaticAbilityLineHeadDiscriminator::Lexical(hints) => hints,
+                StaticAbilityLineHeadDiscriminator::WholeLine => Vec::new(),
+            }
+        });
+        let whole_line = rules
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, rule)| {
+                matches!(
+                    static_ability_rule_head_discriminator(rule.id),
+                    StaticAbilityLineHeadDiscriminator::WholeLine
+                )
+                .then_some(idx)
+            })
+            .collect();
+        StaticAbilityLineRuleIndex {
+            lexical,
+            whole_line,
+        }
+    });
 
 fn parse_static_ability_ast_line_lowered(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    recognize_static_ability_ast_line_legacy_compatibility_registry(tokens)
-        .into_legacy_result_option()
+    recognize_static_ability_ast_line_registry(tokens).into_legacy_result_option()
 }
 
-// BRIDGE-LEGACY-REGISTRY: the complete, finite static rule table remains
-// registration-ordered until PR-17 rebuilds it on structural discriminators.
-fn recognize_static_ability_ast_line_legacy_compatibility_registry(
+fn recognize_static_ability_ast_line_registry(
     tokens: &[OwnedLexToken],
 ) -> ParseOutcome<Vec<StaticAbilityAst>> {
     let rules = static_ability_ast_line_rules();
     let (head, second) = lexed_head_words(tokens).unwrap_or(("", None));
-    let mut tried = vec![false; rules.len()];
-    let mut deferred_error: Option<ParseDiagnostic> = None;
-    let span = crate::runtime_backend::span_from_tokens(tokens);
-
     let candidate_indices = STATIC_ABILITY_AST_LINE_RULE_INDEX.candidate_indices(head, second);
-    if !candidate_indices.is_empty() {
-        if let Some(abilities) = try_static_ability_ast_line_rule_indices(
-            rules,
-            tokens,
-            &mut tried,
-            &mut deferred_error,
-            &candidate_indices,
-        ) {
-            return ParseOutcome::matched(abilities, span);
-        }
-    }
+    let mut candidates = Vec::new();
+    let mut diagnostics = Vec::new();
 
-    for (idx, rule) in rules.iter().enumerate() {
-        if tried[idx] {
-            continue;
-        }
+    for idx in candidate_indices {
+        let rule = &rules[idx];
         let (result, loss) = crate::parse_loss::capture(|| {
             run_static_ability_ast_line_rule(rule.id, rule.rule, tokens)
         });
         match result {
             ParseOutcome::Match(matched) => {
-                replay_static_rule_parse_loss(&loss);
-                if std::env::var("IRONSMITH_STATIC_RULE_TRACE").is_ok() {
-                    eprintln!("static-rule claim: {}", rule.id);
-                }
-                return ParseOutcome::matched(matched.value, matched.span);
+                candidates.push(RegistryCandidate::new(
+                    RegistryRuleMetadata::distinct(
+                        rule.id,
+                        HeadDiscriminator::grammar(rule.id.as_str()),
+                    ),
+                    (matched.value, loss),
+                    matched.span,
+                ));
             }
             ParseOutcome::NoMatch => {}
-            ParseOutcome::Error(diagnostic) => {
-                deferred_error.get_or_insert(diagnostic);
-            }
+            ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
     }
 
-    if let Some(diagnostic) = deferred_error {
-        return ParseOutcome::Error(diagnostic);
+    match resolve_registry_candidates(
+        RuleId::new("static-ability-line-registry"),
+        candidates,
+        diagnostics,
+    ) {
+        ParseOutcome::Match(matched) => {
+            let rule_match = matched.value;
+            let (abilities, loss) = rule_match.value;
+            replay_static_rule_parse_loss(&loss);
+            if std::env::var("IRONSMITH_STATIC_RULE_TRACE").is_ok() {
+                eprintln!("static-rule claim: {}", rule_match.rule);
+            }
+            ParseOutcome::matched(abilities, rule_match.span)
+        }
+        ParseOutcome::NoMatch => ParseOutcome::NoMatch,
+        ParseOutcome::Error(diagnostic) => ParseOutcome::Error(diagnostic),
     }
-
-    ParseOutcome::NoMatch
 }
 
 fn title_case_count_as_card_name(words: &[&str]) -> String {

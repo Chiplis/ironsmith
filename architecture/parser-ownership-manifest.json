@@ -115,7 +115,7 @@
         "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences"
       ],
       "removal_pr": 33,
-      "reason": "Registration-order dispatch remains behind one compatibility registry during collect-and-resolve migration."
+      "reason": "Three finite sentence compatibility registries remain registration-ordered while sentence-domain migration proceeds."
     },
     {
       "id": "BRIDGE-TAGKEY-SYMBOL",
@@ -149,12 +149,6 @@
     }
   ],
   "legacy_compatibility_registries": [
-    {
-      "id": "static-ability-line-legacy-compatibility-registry",
-      "path": "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs",
-      "rule_count": 229,
-      "removal_pr": 17
-    },
     {
       "id": "subject-verb-primitive-legacy-compatibility-registry",
       "path": "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives",
