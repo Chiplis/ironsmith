@@ -1,8 +1,6 @@
-use crate::mana::ManaSymbol;
 use crate::model::ast::{EffectAst, PredicateAst};
 use crate::model::provenance::SemanticProvenance;
-use crate::payload::KeywordAction;
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
@@ -84,20 +82,9 @@ pub(crate) enum StaticRestrictionAst {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CompilerGrantedAbilityAst {
-    Keyword(KeywordAction),
+    Keyword(crate::model::CompilerKeywordAbilityAst),
     Static(Box<CompilerStaticAbilityAst>),
-    Activated(
-        Box<
-            crate::model::CompilerActivatedAbility<
-                crate::model::CompilerTotalCost,
-                EffectAst,
-                ChooseSpec,
-                PredicateAst,
-                ManaSymbol,
-                PredicateAst,
-            >,
-        >,
-    ),
+    Activated(Box<crate::model::CompilerActivatedAbilityAst>),
     Triggered(Box<crate::model::CompilerTriggeredAbilityAst>),
 }
 
