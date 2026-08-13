@@ -27,12 +27,12 @@ pub(crate) use crate::model::compiler_semantic::{
     ParsedModalActivatedHeader, ParsedModalAst, ParsedModalGate, ParsedModalHeader,
     ParsedModalModeAst, ParsedRestrictions,
 };
-pub(crate) use crate::runtime_backend::util::SubjectAst;
-pub(crate) use crate::runtime_backend::{
+pub(crate) use crate::util::SubjectAst;
+pub(crate) use crate::{
     CarryContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine,
     NormalizedLine, TokenCopyFollowup, Verb,
 };
-pub(crate) use crate::runtime_backend::{
+pub(crate) use crate::{
     PermissionClauseSpec, PermissionLifetime, ReferenceEnv, ReferenceImports,
 };
 #[cfg(test)]
@@ -74,7 +74,7 @@ impl From<KeywordAction> for GrantedAbilityAst {
     }
 }
 
-pub(crate) use crate::runtime_backend::lexer::OwnedLexToken;
+pub(crate) use crate::lexer::OwnedLexToken;
 
 pub(crate) use crate::model::ast::{
     ChooseOneModeAst, EffectAst, PredicateAst, ReturnAsAuraAst, StaticAbilityAst,
@@ -442,7 +442,7 @@ impl CardDefinitionBuilder {
             other if other.lowers_to_static_ability() => {
                 let text = other.display_text();
                 let static_ability =
-                    crate::runtime_backend::static_ability_helpers::static_ability_for_keyword_action(
+                    crate::static_ability_helpers::static_ability_for_keyword_action(
                         other,
                     )
                     .unwrap_or_else(|| {
@@ -464,14 +464,14 @@ impl CardDefinitionBuilder {
         let meta = meta.into();
         match meta {
             crate::front_end::MetadataLine::ManaCost(raw) => {
-                let cost = crate::runtime_backend::parse_scryfall_mana_cost(&raw)?;
+                let cost = crate::parse_scryfall_mana_cost(&raw)?;
                 if !cost.is_empty() {
                     self.card_builder = self.card_builder.mana_cost(cost);
                 }
             }
             crate::front_end::MetadataLine::TypeLine(raw) => {
                 let (supertypes, card_types, subtypes) =
-                    crate::runtime_backend::parse_type_line(&raw)?;
+                    crate::parse_type_line(&raw)?;
                 if !supertypes.is_empty() {
                     self.card_builder = self.card_builder.supertypes(supertypes);
                 }
@@ -512,7 +512,7 @@ impl CardDefinitionBuilder {
                 self.card_builder = self.card_builder.attraction_lights(lights);
             }
             crate::front_end::MetadataLine::PowerToughness(raw) => {
-                if let Some(pt) = crate::runtime_backend::parse_power_toughness(&raw) {
+                if let Some(pt) = crate::parse_power_toughness(&raw) {
                     self.card_builder = self.card_builder.power_toughness(pt);
                 }
             }
@@ -531,14 +531,14 @@ impl CardDefinitionBuilder {
     }
 
     pub fn parse_text(self, text: impl Into<String>) -> Result<CardDefinition, CardTextError> {
-        crate::runtime_backend::parse_card_text(self, text)
+        crate::parse_card_text(self, text)
     }
 
     pub fn parse_text_allow_unsupported(
         self,
         text: impl Into<String>,
     ) -> Result<CardDefinition, CardTextError> {
-        crate::runtime_backend::parse_card_text_allow_unsupported(self, text)
+        crate::parse_card_text_allow_unsupported(self, text)
     }
 
     pub fn flying(self) -> Self {
@@ -560,7 +560,7 @@ impl CardDefinitionBuilder {
         .with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::cant_block(),
         ))
-        .with_ability(crate::runtime_backend::static_ability_helpers::decayed_triggered_ability())
+        .with_ability(crate::static_ability_helpers::decayed_triggered_ability())
     }
 
     pub fn vigilance(self) -> Self {

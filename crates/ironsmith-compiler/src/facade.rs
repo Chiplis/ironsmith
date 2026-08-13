@@ -5,7 +5,6 @@ use crate::front_end::{
     split_text_for_parse_with_restrictions,
 };
 use crate::model::{ParsedRestrictions, RestrictionBucket};
-use std::hash::Hash;
 
 fn fallback_static_ability_id_name(
     id: crate::static_abilities::StaticAbilityId,
@@ -160,30 +159,6 @@ impl<Context> CompilerCompileRequest<Context> {
     }
 }
 
-impl<Context: Clone + Eq + Hash> CompilerCompileRequest<Context> {
-    pub fn cache_key(&self) -> ParseCacheKey<Context> {
-        ParseCacheKey::new(self.context.clone(), self.text.clone(), self.policy)
-    }
-}
-
-/// Compiler-owned cache key shape. Runtime still owns the concrete cache backend.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ParseCacheKey<Context> {
-    pub context: Context,
-    pub text: String,
-    pub allow_unsupported: bool,
-}
-
-impl<Context> ParseCacheKey<Context> {
-    pub fn new(context: Context, text: impl Into<String>, policy: CompilePolicy) -> Self {
-        Self {
-            context,
-            text: text.into(),
-            allow_unsupported: policy.allow_unsupported,
-        }
-    }
-}
-
 /// Compiler-owned output envelope for parsed card text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompiledCardText<Definition> {
@@ -328,7 +303,7 @@ impl CompilerFacade {
         policy: CompilePolicy,
     ) -> Result<CompiledCardText<crate::cards::CardDefinition>, CardTextError> {
         let compiled =
-            crate::runtime_backend::compile_card_text(builder, text, policy.allow_unsupported)?;
+            crate::compile_card_text(builder, text, policy.allow_unsupported)?;
         reject_compiled_parser_fallbacks(&compiled.definition)?;
         Ok(CompiledCardText {
             definition: compiled.definition,

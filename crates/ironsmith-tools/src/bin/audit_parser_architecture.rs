@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 mod tooling_paths;
 
@@ -304,8 +305,7 @@ fn audit_expired_migration_state(
         }
     }
     for legacy in &manifest.audit.legacy_paths {
-        let path = repo_root.join(&legacy.path);
-        if path.exists() {
+        if tracked_path_exists(repo_root, &legacy.path) {
             let suppressed_by = (completed_pr < legacy.removal_pr)
                 .then(|| format!("scheduled for PR-{:02}", legacy.removal_pr));
             findings.push(Finding {
@@ -390,48 +390,209 @@ fn audit_patterns(
 }
 
 fn rust_files(repo_root: &Path, root: &str, excluded: &[String]) -> Vec<PathBuf> {
-    let scan_root = repo_root.join(root);
-    if !scan_root.exists() {
-        return Vec::new();
-    }
-    let mut files = Vec::new();
-    collect_rust_files(repo_root, &scan_root, excluded, &mut files);
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["ls-files", "--", root])
+        .output()
+        .unwrap_or_else(|error| panic!("failed to enumerate tracked parser sources: {error}"));
+    assert!(
+        output.status.success(),
+        "git ls-files failed while enumerating {root}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut files = String::from_utf8(output.stdout)
+        .expect("git ls-files returned a non-UTF-8 path")
+        .lines()
+        .filter(|relative| relative.ends_with(".rs"))
+        .filter(|relative| !excluded.iter().any(|fragment| relative.contains(fragment)))
+        .map(|relative| repo_root.join(relative))
+        .filter(|path| path.is_file())
+        .collect::<Vec<_>>();
     files.sort();
+    files.dedup();
     files
 }
 
-fn collect_rust_files(
-    repo_root: &Path,
-    path: &Path,
-    excluded: &[String],
-    files: &mut Vec<PathBuf>,
-) {
-    if path.is_dir() {
-        let mut entries: Vec<_> = fs::read_dir(path)
-            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
-            .map(|entry| entry.expect("failed to read directory entry").path())
-            .collect();
-        entries.sort();
-        for entry in entries {
-            collect_rust_files(repo_root, &entry, excluded, files);
-        }
-        return;
-    }
-    if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {
-        return;
-    }
-    let relative = relative_path(repo_root, path);
-    if !excluded.iter().any(|fragment| relative.contains(fragment)) {
-        files.push(path.to_path_buf());
-    }
+fn tracked_path_exists(repo_root: &Path, relative: &str) -> bool {
+    !rust_files(repo_root, relative, &[]).is_empty()
 }
 
 fn scan_lines(path: &Path, mut inspect: impl FnMut(usize, &str)) {
     let source = fs::read_to_string(path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+    let test_lines = cfg_test_lines(&source);
     for (index, line) in source.lines().enumerate() {
-        inspect(index + 1, line);
+        if !test_lines.get(index).copied().unwrap_or(false) {
+            inspect(index + 1, line);
+        }
     }
+}
+
+fn cfg_test_lines(source: &str) -> Vec<bool> {
+    let masked = mask_comments_and_literals(source);
+    let bytes = masked.as_bytes();
+    let mut ranges = Vec::new();
+    let mut cursor = 0;
+    while cursor + 1 < bytes.len() {
+        let Some(relative) = masked[cursor..].find("#[") else {
+            break;
+        };
+        let start = cursor + relative;
+        let end = matching_delimiter(bytes, start + 1, b'[', b']');
+        let attribute = &masked[start..end];
+        if attribute.contains("cfg")
+            && attribute
+                .split(|ch: char| !ch.is_alphanumeric())
+                .any(|word| word == "test")
+        {
+            ranges.push((start, cfg_item_end(&masked, end)));
+            cursor = ranges.last().expect("range just pushed").1;
+        } else {
+            cursor = end;
+        }
+    }
+
+    let mut test_lines = vec![false; source.lines().count()];
+    let mut line_starts = vec![0usize];
+    line_starts.extend(source.match_indices('\n').map(|(index, _)| index + 1));
+    for (start, end) in ranges {
+        let first = line_starts
+            .partition_point(|offset| *offset <= start)
+            .saturating_sub(1);
+        let last = line_starts.partition_point(|offset| *offset < end);
+        for line in first..last.min(test_lines.len()) {
+            test_lines[line] = true;
+        }
+    }
+    test_lines
+}
+
+fn cfg_item_end(masked: &str, attribute_end: usize) -> usize {
+    let bytes = masked.as_bytes();
+    let mut cursor = skip_attributes(masked, attribute_end);
+    let head_end = (cursor + 300).min(masked.len());
+    let braced_item = masked[cursor..head_end]
+        .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+        .take(12)
+        .any(|word| {
+            matches!(
+                word,
+                "fn" | "mod" | "impl" | "struct" | "enum" | "union" | "trait" | "macro_rules"
+            )
+        });
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'(' => paren_depth += 1,
+            b')' => paren_depth = paren_depth.saturating_sub(1),
+            b'[' => bracket_depth += 1,
+            b']' => bracket_depth = bracket_depth.saturating_sub(1),
+            b'{' if paren_depth == 0 && bracket_depth == 0 => {
+                let end = matching_delimiter(bytes, cursor, b'{', b'}');
+                if braced_item {
+                    return end;
+                }
+                cursor = end;
+                continue;
+            }
+            b';' if paren_depth == 0 && bracket_depth == 0 => return cursor + 1,
+            b',' if paren_depth == 0 && bracket_depth == 0 && !braced_item => return cursor + 1,
+            _ => {}
+        }
+        cursor += 1;
+    }
+    bytes.len()
+}
+
+fn skip_attributes(masked: &str, mut cursor: usize) -> usize {
+    let bytes = masked.as_bytes();
+    loop {
+        while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if bytes.get(cursor..cursor + 2) != Some(b"#[") {
+            return cursor;
+        }
+        cursor = matching_delimiter(bytes, cursor + 1, b'[', b']');
+    }
+}
+
+fn matching_delimiter(bytes: &[u8], start: usize, opening: u8, closing: u8) -> usize {
+    let mut depth = 0usize;
+    for (index, byte) in bytes.iter().enumerate().skip(start) {
+        if *byte == opening {
+            depth += 1;
+        } else if *byte == closing {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                return index + 1;
+            }
+        }
+    }
+    bytes.len()
+}
+
+fn mask_comments_and_literals(source: &str) -> String {
+    let bytes = source.as_bytes();
+    let mut masked = bytes.to_vec();
+    let mut cursor = 0usize;
+    let mut block_depth = 0usize;
+    while cursor < bytes.len() {
+        if block_depth > 0 {
+            if bytes.get(cursor..cursor + 2) == Some(b"/*") {
+                masked[cursor..cursor + 2].fill(b' ');
+                block_depth += 1;
+                cursor += 2;
+            } else if bytes.get(cursor..cursor + 2) == Some(b"*/") {
+                masked[cursor..cursor + 2].fill(b' ');
+                block_depth -= 1;
+                cursor += 2;
+            } else {
+                if bytes[cursor] != b'\n' {
+                    masked[cursor] = b' ';
+                }
+                cursor += 1;
+            }
+            continue;
+        }
+        if bytes.get(cursor..cursor + 2) == Some(b"//") {
+            while cursor < bytes.len() && bytes[cursor] != b'\n' {
+                masked[cursor] = b' ';
+                cursor += 1;
+            }
+            continue;
+        }
+        if bytes.get(cursor..cursor + 2) == Some(b"/*") {
+            masked[cursor..cursor + 2].fill(b' ');
+            block_depth = 1;
+            cursor += 2;
+            continue;
+        }
+        if bytes[cursor] == b'"' {
+            masked[cursor] = b' ';
+            cursor += 1;
+            let mut escaped = false;
+            while cursor < bytes.len() {
+                let byte = bytes[cursor];
+                if byte != b'\n' {
+                    masked[cursor] = b' ';
+                }
+                cursor += 1;
+                if byte == b'"' && !escaped {
+                    break;
+                }
+                escaped = byte == b'\\' && !escaped;
+                if byte != b'\\' {
+                    escaped = false;
+                }
+            }
+            continue;
+        }
+        cursor += 1;
+    }
+    String::from_utf8(masked).expect("mask preserved UTF-8 source bytes")
 }
 
 #[allow(clippy::too_many_arguments)]

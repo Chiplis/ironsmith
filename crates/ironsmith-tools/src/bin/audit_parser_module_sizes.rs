@@ -8,12 +8,12 @@ struct Budget {
     max_lines: usize,
 }
 
-const RUNTIME_BACKEND: &str = "crates/ironsmith-compiler/src/runtime_backend";
+const PARSER_SOURCE: &str = "crates/ironsmith-compiler/src";
 
 fn main() {
     let repo_root = tooling_paths::repo_root()
         .unwrap_or_else(|err| panic!("failed to locate repo root: {err}"));
-    let parser_root = repo_root.join(RUNTIME_BACKEND);
+    let parser_root = repo_root.join(PARSER_SOURCE);
     let budgets = [
         Budget {
             path: "front_end/grammar/ability_rules/activation_and_restrictions/mod.rs",

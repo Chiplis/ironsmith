@@ -1,8 +1,8 @@
 //! Compiler crate for parser/front-end ownership in the split workspace.
 //!
-//! The full parser and lowering pipeline has not been extracted yet, but this
-//! crate now owns the compiler-facing diagnostics and source-preparation
-//! surface instead of acting as a pure marker package.
+//! The compiler crate owns oracle-text recognition, canonical compiler ASTs,
+//! explicit reference resolution, and the single lowering boundary consumed by
+//! runtime crates.
 
 pub mod ability;
 pub mod alternative_cast;
@@ -36,7 +36,6 @@ pub mod pipeline;
 pub mod resolution;
 pub mod recognition;
 pub mod registry;
-mod runtime_backend;
 mod slice_primitives;
 pub mod static_abilities;
 mod string_primitives;
@@ -46,6 +45,130 @@ pub mod triggers;
 pub mod types;
 mod word_primitives;
 pub mod zone;
+
+#[path = "front_end/grammar/ability_rules/activation_and_restrictions/mod.rs"]
+pub(crate) mod activation_and_restrictions;
+#[path = "front_end/grammar/ability_rules/activation_helpers.rs"]
+pub(crate) mod activation_helpers;
+#[path = "lowering/battlefield_entry_counter_fusion.rs"]
+pub(crate) mod battlefield_entry_counter_fusion;
+#[path = "front_end/grammar/ability_rules/clause_support.rs"]
+pub(crate) mod clause_support;
+#[path = "lowering/compile_support.rs"]
+pub(crate) mod compile_support;
+#[path = "lowering/condition_antecedent.rs"]
+pub(crate) mod condition_antecedent;
+#[path = "front_end/cst.rs"]
+pub(crate) mod cst;
+#[path = "front_end/canonical_pipeline.rs"]
+pub(crate) mod canonical_pipeline;
+#[path = "front_end/cst_lowering.rs"]
+pub(crate) mod cst_lowering;
+#[path = "front_end/document/mod.rs"]
+pub(crate) mod document_parser;
+#[path = "lowering/effect_pipeline.rs"]
+pub(crate) mod effect_pipeline;
+#[path = "model/effect_ast_normalization.rs"]
+pub(crate) mod effect_ast_normalization;
+pub(crate) use model::visit as effect_ast_traversal;
+#[path = "front_end/grammar/effect_clauses/effect_sentences/mod.rs"]
+pub(crate) mod effect_sentences;
+#[path = "front_end/grammar/mod.rs"]
+pub(crate) mod grammar;
+#[path = "model/semantic_document.rs"]
+pub(crate) mod ir;
+#[path = "front_end/grammar/ability_rules/keyword_families.rs"]
+pub(crate) mod keyword_families;
+#[path = "front_end/grammar/ability_rules/keyword_payloads.rs"]
+pub(crate) mod keyword_payloads;
+#[path = "front_end/grammar/ability_rules/keyword_registry.rs"]
+pub(crate) mod keyword_registry;
+#[path = "front_end/grammar/ability_rules/keyword_static/mod.rs"]
+pub(crate) mod keyword_static;
+#[path = "front_end/grammar/ability_rules/keyword_static_helpers.rs"]
+pub(crate) mod keyword_static_helpers;
+#[path = "lowering/lower/mod.rs"]
+pub(crate) mod lower;
+#[path = "lowering/lowering_support.rs"]
+pub(crate) mod lowering_support;
+#[path = "front_end/grammar/ability_rules/modal_helpers.rs"]
+pub(crate) mod modal_helpers;
+#[path = "model/modal_support.rs"]
+pub(crate) mod modal_support;
+#[path = "front_end/grammar/ability_rules/object_filters.rs"]
+pub(crate) mod object_filters;
+#[path = "front_end/semantic_parser_support.rs"]
+pub(crate) mod parser_support;
+#[path = "front_end/grammar/ability_rules/permission_helpers.rs"]
+pub(crate) mod permission_helpers;
+#[path = "lowering/pipeline.rs"]
+pub(crate) mod compiler_pipeline;
+#[path = "front_end/semantic_preprocess.rs"]
+pub(crate) mod preprocess;
+#[path = "model/reference_helpers.rs"]
+pub(crate) mod reference_helpers;
+#[path = "model/reference_resolution.rs"]
+pub(crate) mod reference_resolution;
+#[path = "front_end/grammar/ability_rules/restriction_support.rs"]
+pub(crate) mod restriction_support;
+#[path = "front_end/rule_engine.rs"]
+pub(crate) mod rule_engine;
+#[path = "front_end/grammar/effect_clauses/search_library_support.rs"]
+pub(crate) mod search_library_support;
+#[path = "front_end/semantic_document.rs"]
+pub(crate) mod semantic_document;
+#[path = "front_end/semantic_line_parsing/mod.rs"]
+pub(crate) mod semantic_line_parsing;
+#[path = "front_end/grammar/ability_rules/static_ability_helpers.rs"]
+pub(crate) mod static_ability_helpers;
+#[path = "front_end/token_primitives.rs"]
+pub(crate) mod token_primitives;
+#[path = "front_end/shared/util.rs"]
+pub(crate) mod util;
+
+pub(crate) use front_end::lexer;
+
+pub(crate) fn compile_card_text(
+    builder: CardDefinitionBuilder,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<facade::CompiledCardText<CardDefinition>, CardTextError> {
+    let text = text.into();
+    let mut builder = builder;
+    for raw_line in text.lines() {
+        let Some(MetadataLine::TypeLine(raw_type_line)) = parse_metadata_line(raw_line)? else {
+            continue;
+        };
+        builder = builder.apply_metadata(MetadataLine::TypeLine(raw_type_line))?;
+    }
+    let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+    compiler_pipeline::parse_text_with_annotations_lowered_with_facts_context(
+        &mut context,
+        builder,
+        text,
+    )
+    .map(|lowered| facade::CompiledCardText {
+        definition: lowered.definition,
+        annotations: lowered.annotations,
+    })
+}
+
+pub(crate) fn parse_card_text(
+    builder: CardDefinitionBuilder,
+    text: impl Into<String>,
+) -> Result<CardDefinition, CardTextError> {
+    compile_card_text(builder, text, false).map(|compiled| compiled.definition)
+}
+
+pub(crate) fn parse_card_text_allow_unsupported(
+    builder: CardDefinitionBuilder,
+    text: impl Into<String>,
+) -> Result<CardDefinition, CardTextError> {
+    compile_card_text(builder, text, true).map(|compiled| compiled.definition)
+}
+
+#[cfg(test)]
+mod tests;
 
 pub use alternative_cast::TrapCondition;
 pub use card::PowerToughness;
@@ -57,7 +180,7 @@ pub use diagnostics::{CardTextError, ParseAnnotations, TextSpan};
 pub use effect::{ChoiceCount, DelayedTriggerSpec, Effect, EffectId, Until, Value};
 pub use facade::{
     CompilePolicy, CompiledCardText, CompilerBackend, CompilerCompileRequest, CompilerFacade,
-    CompilerSourceDocument, ParseCacheKey,
+    CompilerSourceDocument,
 };
 pub use front_end::{
     ActivatedLineCst, ClassifiedFace, ClassifiedLine, CommonSentenceHead, DocumentStructure,

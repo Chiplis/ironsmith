@@ -2,10 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 mod tooling_paths;
 
-const PARSER_ROOT: &str = "crates/ironsmith-compiler/src/runtime_backend";
+const PARSER_ROOT: &str = "crates/ironsmith-compiler/src";
 
 const PHRASE_HELPER_PATTERNS: &[&str] = &[
     "words_match_prefix(",
@@ -362,9 +363,7 @@ fn main() {
     let args = Args::parse();
     let repo_root = tooling_paths::repo_root()
         .unwrap_or_else(|err| panic!("failed to locate repo root: {err}"));
-    let parser_root = repo_root.join(PARSER_ROOT);
-    let mut files = Vec::new();
-    collect_rs_files(&parser_root, &mut files);
+    let files = tracked_rs_files(&repo_root, PARSER_ROOT);
 
     let mut findings = Vec::new();
     for path in files {
@@ -527,18 +526,32 @@ fn print_report(findings: &[Finding]) {
     }
 }
 
-fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = fs::read_dir(dir)
-        .unwrap_or_else(|err| panic!("failed reading directory {}: {err}", dir.display()));
-    for entry in entries {
-        let entry = entry.unwrap_or_else(|err| panic!("failed reading directory entry: {err}"));
-        let path = entry.path();
-        if path.is_dir() {
-            collect_rs_files(&path, out);
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
+fn tracked_rs_files(repo_root: &Path, root: &str) -> Vec<PathBuf> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["ls-files", "--", root])
+        .output()
+        .unwrap_or_else(|err| panic!("failed enumerating tracked parser files: {err}"));
+    assert!(
+        output.status.success(),
+        "git ls-files failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut files = String::from_utf8(output.stdout)
+        .expect("git ls-files returned a non-UTF-8 path")
+        .lines()
+        .filter(|path| path.ends_with(".rs"))
+        .filter(|path| {
+            !path.contains("/tests/")
+                && !path.ends_with("/tests.rs")
+                && !path.ends_with("_tests.rs")
+        })
+        .map(|path| repo_root.join(path))
+        .filter(|path| path.is_file())
+        .collect::<Vec<_>>();
+    files.sort();
+    files
 }
 
 fn extract_functions(file: &str, source: &str) -> Vec<FunctionSection> {

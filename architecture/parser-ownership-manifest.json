@@ -11,9 +11,9 @@
       "id": "document",
       "roots": [
         "crates/ironsmith-compiler/src/front_end/document",
+        "crates/ironsmith-compiler/src/front_end/canonical_pipeline.rs",
         "crates/ironsmith-compiler/src/front_end/preprocess.rs",
-        "crates/ironsmith-compiler/src/front_end/source_model.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/canonical_pipeline.rs"
+        "crates/ironsmith-compiler/src/front_end/source_model.rs"
       ]
     },
     {
@@ -25,14 +25,16 @@
     {
       "id": "semantic_facts",
       "roots": [
-        "crates/ironsmith-compiler/src/model/facts",
+        "crates/ironsmith-compiler/src/model/facts.rs",
         "crates/ironsmith-compiler/src/model/provenance.rs"
       ]
     },
     {
       "id": "reference_resolution",
       "roots": [
-        "crates/ironsmith-compiler/src/references",
+        "crates/ironsmith-compiler/src/model/reference_helpers.rs",
+        "crates/ironsmith-compiler/src/model/reference_resolution.rs",
+        "crates/ironsmith-compiler/src/model/reference_state.rs",
         "crates/ironsmith-compiler/src/model/canonical_references.rs",
         "crates/ironsmith-compiler/src/model/symbols.rs"
       ]
@@ -99,205 +101,8 @@
       "to": "runtime"
     }
   ],
-  "bridges": [
-    {
-      "id": "BRIDGE-PARSE-CONTEXT-TLS",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/legacy_source_reference_bridge.rs"
-      ],
-      "removal_pr": 33,
-      "reason": "The legacy source-reference context is thread-local until explicit ParseContext reaches all entry points."
-    },
-    {
-      "id": "BRIDGE-CONTEXTLESS-PARSE-FACADE",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/document/mod.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/pipeline.rs"
-      ],
-      "removal_pr": 33,
-      "reason": "Existing internal and test consumers retain contextless facade wrappers while production compilation uses explicit ParseContext."
-    },
-    {
-      "id": "BRIDGE-PARSE-OUTCOME-OPTION",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end",
-        "crates/ironsmith-compiler/src/runtime_backend/families",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences"
-      ],
-      "removal_pr": 33,
-      "reason": "Legacy Option recognizers require one registry-boundary adapter while leaf and domain rules migrate."
-    },
-    {
-      "id": "BRIDGE-PARSE-OUTCOME-RESULT",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end",
-        "crates/ironsmith-compiler/src/runtime_backend/families",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences"
-      ],
-      "removal_pr": 33,
-      "reason": "Legacy Result recognizers require one adapter until committed diagnostics are native throughout recognition."
-    },
-    {
-      "id": "BRIDGE-TAGKEY-SYMBOL",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/references/legacy_tag_symbol_bridge.rs"
-      ],
-      "removal_pr": 33,
-      "reason": "A total TagKey/SymbolId conversion is needed while compiler references migrate to typed symbols."
-    },
-    {
-      "id": "BRIDGE-CANONICAL-MODEL-REEXPORT",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/model/ast.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/model/effect_ast_traversal.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/model/semantic.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/model/shared_types.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/model/token_definition.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/references/reference_model.rs"
-      ],
-      "removal_pr": 33,
-      "reason": "Temporary re-exports preserve source compatibility while authoritative types move to the compiler-owned model."
-    },
-    {
-      "id": "BRIDGE-RUNTIME-PARSER-OUTPUT",
-      "paths": [
-        "crates/ironsmith-compiler/src/model/ast/nodes.rs",
-        "crates/ironsmith-compiler/src/model/compiler_semantic.rs"
-      ],
-      "removal_pr": 33,
-      "reason": "Legacy parser facades expose runtime-backed output until every consumer uses canonical compiler AST plus explicit lowering."
-    }
-  ],
-  "exceptions": [
-    {
-      "id": "EX-FRONT-END-RUNTIME-CONSTRUCTION",
-      "finding_kinds": [
-        "forbidden_import"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end"
-      ],
-      "removal_pr": 13,
-      "reason": "The legacy front end still imports lowering and runtime constructors."
-    },
-    {
-      "id": "EX-GRAMMAR-RUNTIME-FACTS",
-      "finding_kinds": [
-        "forbidden_import"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar"
-      ],
-      "removal_pr": 16,
-      "reason": "Legacy grammar returns runtime filters, values, costs, restrictions, and permissions."
-    },
-    {
-      "id": "EX-FAMILY-RUNTIME-OUTPUT",
-      "finding_kinds": [
-        "forbidden_import"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/families"
-      ],
-      "removal_pr": 12,
-      "reason": "Family parsers construct runtime ability categories."
-    },
-    {
-      "id": "EX-OPTION-REGISTRY-OUTCOMES",
-      "finding_kinds": [
-        "discarded_error"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end",
-        "crates/ironsmith-compiler/src/runtime_backend/families",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences"
-      ],
-      "removal_pr": 33,
-      "reason": "Legacy recognizers still erase errors with .ok() while structured outcomes roll out."
-    },
-    {
-      "id": "EX-FIRST-MATCH-REGISTRIES",
-      "finding_kinds": [
-        "first_match_registry"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end",
-        "crates/ironsmith-compiler/src/runtime_backend/families",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences"
-      ],
-      "removal_pr": 33,
-      "reason": "Legacy registries still select the first or numerically best viable parse."
-    },
-    {
-      "id": "EX-STRING-REFERENCE-TAGS",
-      "finding_kinds": [
-        "string_reference_tag"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend"
-      ],
-      "removal_pr": 33,
-      "reason": "Reference identity is still represented by literal TagKey values."
-    },
-    {
-      "id": "EX-SHADOW-MODEL",
-      "finding_kinds": [
-        "legacy_path"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/model"
-      ],
-      "removal_pr": 33,
-      "reason": "Compiler semantic ownership is still shadowed under runtime_backend/model."
-    },
-    {
-      "id": "EX-SHADOW-BACKEND",
-      "finding_kinds": [
-        "legacy_path"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend"
-      ],
-      "removal_pr": 33,
-      "reason": "The runtime_backend namespace remains the shadow ownership boundary."
-    },
-    {
-      "id": "EX-THREAD-LOCAL-SOURCE-CONTEXT",
-      "finding_kinds": [
-        "legacy_path"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/legacy_source_reference_bridge.rs"
-      ],
-      "removal_pr": 33,
-      "reason": "Source-reference identity is hidden in a thread-local context."
-    },
-    {
-      "id": "EX-DEBUG-STRING-PARSE-CACHE",
-      "finding_kinds": [
-        "legacy_path"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/facade/mod.rs"
-      ],
-      "removal_pr": 33,
-      "reason": "The unbounded cache is keyed by Debug-formatted builder state."
-    },
-    {
-      "id": "EX-PARSER-STACK-GROWTH",
-      "finding_kinds": [
-        "legacy_path"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end",
-        "crates/ironsmith-compiler/src/runtime_backend/families",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering"
-      ],
-      "removal_pr": 33,
-      "reason": "Recursive parser and lowering paths still require stacker workarounds."
-    }
-  ],
+  "bridges": [],
+  "exceptions": [],
   "audit": {
     "excluded_path_fragments": [
       "/tests/",
@@ -308,21 +113,16 @@
       {
         "id": "front-end-does-not-import-lowering",
         "source_prefixes": [
-          "crates/ironsmith-compiler/src/front_end",
-          "crates/ironsmith-compiler/src/runtime_backend/front_end"
+          "crates/ironsmith-compiler/src/front_end"
         ],
         "fragments": [
-          "runtime_backend::lowering",
           "crate::lowering"
         ]
       },
       {
         "id": "front-end-does-not-construct-runtime",
         "source_prefixes": [
-          "crates/ironsmith-compiler/src/front_end",
-          "crates/ironsmith-compiler/src/runtime_backend/front_end",
-          "crates/ironsmith-compiler/src/runtime_backend/families",
-          "crates/ironsmith-compiler/src/runtime_backend/sentences"
+          "crates/ironsmith-compiler/src/front_end"
         ],
         "fragments": [
           "crate::ability::",
@@ -335,14 +135,9 @@
       {
         "id": "lowering-does-not-import-recognition",
         "source_prefixes": [
-          "crates/ironsmith-compiler/src/lowering",
-          "crates/ironsmith-compiler/src/runtime_backend/lowering"
+          "crates/ironsmith-compiler/src/lowering"
         ],
         "fragments": [
-          "runtime_backend::front_end",
-          "runtime_backend::grammar",
-          "runtime_backend::lexer",
-          "runtime_backend::sentences",
           "crate::front_end",
           "crate::grammar"
         ]
@@ -353,8 +148,7 @@
         "id": "lowering-source-recognition",
         "kind": "raw_text_lowering",
         "roots": [
-          "crates/ironsmith-compiler/src/lowering",
-          "crates/ironsmith-compiler/src/runtime_backend/lowering"
+          "crates/ironsmith-compiler/src/lowering"
         ],
         "patterns": [
           "OwnedLexToken",
@@ -381,10 +175,7 @@
         "id": "discarded-recognizer-errors",
         "kind": "discarded_error",
         "roots": [
-          "crates/ironsmith-compiler/src/front_end",
-          "crates/ironsmith-compiler/src/runtime_backend/front_end",
-          "crates/ironsmith-compiler/src/runtime_backend/families",
-          "crates/ironsmith-compiler/src/runtime_backend/sentences"
+          "crates/ironsmith-compiler/src/front_end"
         ],
         "patterns": [
           ".ok()"
@@ -394,34 +185,49 @@
         "id": "registration-order-semantics",
         "kind": "first_match_registry",
         "roots": [
-          "crates/ironsmith-compiler/src/front_end",
-          "crates/ironsmith-compiler/src/runtime_backend/front_end",
-          "crates/ironsmith-compiler/src/runtime_backend/families",
-          "crates/ironsmith-compiler/src/runtime_backend/sentences"
+          "crates/ironsmith-compiler/src/front_end"
         ],
         "patterns": [
           "run_first",
           "first_match",
           "best_match"
         ]
+      },
+      {
+        "id": "hidden-parser-state",
+        "kind": "hidden_state",
+        "roots": [
+          "crates/ironsmith-compiler/src"
+        ],
+        "patterns": [
+          "legacy_source_reference_bridge"
+        ]
+      },
+      {
+        "id": "unbounded-parse-cache",
+        "kind": "legacy_path",
+        "roots": [
+          "crates/ironsmith-compiler/src",
+          "crates/ironsmith-runtime/src/cards/builders.rs"
+        ],
+        "patterns": [
+          "PARSE_RESULT_CACHE",
+          "parse_result_cache",
+          "format!(\"{builder:?}\")"
+        ]
+      },
+      {
+        "id": "parser-stack-growth",
+        "kind": "legacy_path",
+        "roots": [
+          "crates/ironsmith-compiler/src",
+          "crates/ironsmith-runtime/src/cards/builders.rs"
+        ],
+        "patterns": [
+          "stacker::maybe_grow"
+        ]
       }
     ],
-    "legacy_paths": [
-      {
-        "id": "shadow-runtime-backend-model",
-        "path": "crates/ironsmith-compiler/src/runtime_backend/model",
-        "removal_pr": 33
-      },
-      {
-        "id": "shadow-runtime-backend",
-        "path": "crates/ironsmith-compiler/src/runtime_backend",
-        "removal_pr": 33
-      },
-      {
-        "id": "unbounded-debug-parse-cache",
-        "path": "crates/ironsmith-compiler/src/runtime_backend/facade/mod.rs",
-        "removal_pr": 33
-      }
-    ]
+    "legacy_paths": []
   }
 }

@@ -12,28 +12,28 @@ pub enum MetadataLine {
     Defense(String),
 }
 
-impl From<crate::runtime_backend::shared_types::MetadataLine> for MetadataLine {
-    fn from(value: crate::runtime_backend::shared_types::MetadataLine) -> Self {
+impl From<crate::model::facts::MetadataLine> for MetadataLine {
+    fn from(value: crate::model::facts::MetadataLine) -> Self {
         match value {
-            crate::runtime_backend::shared_types::MetadataLine::ManaCost(text) => {
+            crate::model::facts::MetadataLine::ManaCost(text) => {
                 Self::ManaCost(text)
             }
-            crate::runtime_backend::shared_types::MetadataLine::TypeLine(text) => {
+            crate::model::facts::MetadataLine::TypeLine(text) => {
                 Self::TypeLine(text)
             }
-            crate::runtime_backend::shared_types::MetadataLine::FirstPrintedSet(text) => {
+            crate::model::facts::MetadataLine::FirstPrintedSet(text) => {
                 Self::FirstPrintedSet(text)
             }
-            crate::runtime_backend::shared_types::MetadataLine::AttractionLights(text) => {
+            crate::model::facts::MetadataLine::AttractionLights(text) => {
                 Self::AttractionLights(text)
             }
-            crate::runtime_backend::shared_types::MetadataLine::PowerToughness(text) => {
+            crate::model::facts::MetadataLine::PowerToughness(text) => {
                 Self::PowerToughness(text)
             }
-            crate::runtime_backend::shared_types::MetadataLine::Loyalty(text) => {
+            crate::model::facts::MetadataLine::Loyalty(text) => {
                 Self::Loyalty(text)
             }
-            crate::runtime_backend::shared_types::MetadataLine::Defense(text) => {
+            crate::model::facts::MetadataLine::Defense(text) => {
                 Self::Defense(text)
             }
         }

@@ -1,12 +1,12 @@
 use crate::cards::CardDefinitionBuilder;
 use crate::diagnostics::CardTextError;
 use crate::ids::CardId;
-use crate::runtime_backend::cst::{LevelItemKindCst, RewriteLineCst, UnsupportedLineCst};
-use crate::runtime_backend::document_parser::parse_document_cst;
-use crate::runtime_backend::ir::ChosenOptionContext;
-use crate::runtime_backend::lexer::{OwnedLexToken, render_token_slice};
-use crate::runtime_backend::model::LineInfo;
-use crate::runtime_backend::preprocess::preprocess_document;
+use crate::cst::{LevelItemKindCst, RewriteLineCst, UnsupportedLineCst};
+use crate::document_parser::parse_document_cst;
+use crate::ir::ChosenOptionContext;
+use crate::lexer::{OwnedLexToken, render_token_slice};
+use crate::model::LineInfo;
+use crate::preprocess::preprocess_document;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OracleGrammarDocument {
@@ -118,19 +118,19 @@ fn convert_line(line: RewriteLineCst) -> OracleGrammarLine {
     match line {
         RewriteLineCst::Metadata(line) => {
             let (kind, value) = match line.value {
-                crate::runtime_backend::model::MetadataLine::ManaCost(value) => ("ManaCost", value),
-                crate::runtime_backend::model::MetadataLine::TypeLine(value) => ("TypeLine", value),
-                crate::runtime_backend::model::MetadataLine::FirstPrintedSet(value) => {
+                crate::model::MetadataLine::ManaCost(value) => ("ManaCost", value),
+                crate::model::MetadataLine::TypeLine(value) => ("TypeLine", value),
+                crate::model::MetadataLine::FirstPrintedSet(value) => {
                     ("FirstPrintedSet", value)
                 }
-                crate::runtime_backend::model::MetadataLine::AttractionLights(value) => {
+                crate::model::MetadataLine::AttractionLights(value) => {
                     ("AttractionLights", value)
                 }
-                crate::runtime_backend::model::MetadataLine::PowerToughness(value) => {
+                crate::model::MetadataLine::PowerToughness(value) => {
                     ("PowerToughness", value)
                 }
-                crate::runtime_backend::model::MetadataLine::Loyalty(value) => ("Loyalty", value),
-                crate::runtime_backend::model::MetadataLine::Defense(value) => ("Defense", value),
+                crate::model::MetadataLine::Loyalty(value) => ("Loyalty", value),
+                crate::model::MetadataLine::Defense(value) => ("Defense", value),
             };
             OracleGrammarLine::Metadata {
                 kind: kind.to_string(),
