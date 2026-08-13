@@ -16,35 +16,35 @@ fn main() {
     let parser_root = repo_root.join(RUNTIME_BACKEND);
     let budgets = [
         Budget {
-            path: "families/activation_and_restrictions/mod.rs",
+            path: "front_end/grammar/ability_rules/activation_and_restrictions/mod.rs",
             max_lines: 900,
         },
         Budget {
-            path: "families/activation_and_restrictions/activated_sentence_parsers.rs",
+            path: "front_end/grammar/ability_rules/activation_and_restrictions/activated_sentence_parsers.rs",
             max_lines: 2500,
         },
         Budget {
-            path: "families/activation_and_restrictions/keyword_activated_lines.rs",
+            path: "front_end/grammar/ability_rules/activation_and_restrictions/keyword_activated_lines.rs",
             max_lines: 1200,
         },
         Budget {
-            path: "families/activation_and_restrictions/activated_line_core.rs",
+            path: "front_end/grammar/ability_rules/activation_and_restrictions/activated_line_core.rs",
             max_lines: 1600,
         },
         Budget {
-            path: "families/activation_and_restrictions/activation_costs.rs",
+            path: "front_end/grammar/ability_rules/activation_and_restrictions/activation_costs.rs",
             max_lines: 2300,
         },
         Budget {
-            path: "families/activation_and_restrictions/activation_restriction_clauses.rs",
+            path: "front_end/grammar/ability_rules/activation_and_restrictions/activation_restriction_clauses.rs",
             max_lines: 2800,
         },
         Budget {
-            path: "families/activation_and_restrictions/keyword_action_costs.rs",
+            path: "front_end/grammar/ability_rules/activation_and_restrictions/keyword_action_costs.rs",
             max_lines: 2400,
         },
         Budget {
-            path: "families/keyword_static/attached_object_static_lines.rs",
+            path: "front_end/grammar/ability_rules/keyword_static/attached_object_static_lines.rs",
             max_lines: 1500,
         },
         Budget {
@@ -52,91 +52,91 @@ fn main() {
             max_lines: 5400,
         },
         Budget {
-            path: "families/activation_and_restrictions/trigger_subject_filters.rs",
+            path: "front_end/grammar/ability_rules/activation_and_restrictions/trigger_subject_filters.rs",
             max_lines: 2500,
         },
         Budget {
-            path: "families/activation_and_restrictions/choice_object_clauses.rs",
+            path: "front_end/grammar/ability_rules/activation_and_restrictions/choice_object_clauses.rs",
             max_lines: 1050,
         },
         Budget {
-            path: "families/activation_helpers.rs",
+            path: "front_end/grammar/ability_rules/activation_helpers.rs",
             max_lines: 500,
         },
         Budget {
-            path: "families/keyword_families.rs",
+            path: "front_end/grammar/ability_rules/keyword_families.rs",
             max_lines: 400,
         },
         Budget {
-            path: "families/keyword_registry.rs",
+            path: "front_end/grammar/ability_rules/keyword_registry.rs",
             max_lines: 150,
         },
         Budget {
-            path: "families/keyword_payloads.rs",
+            path: "front_end/grammar/ability_rules/keyword_payloads.rs",
             max_lines: 625,
         },
         Budget {
-            path: "families/permission_helpers.rs",
+            path: "front_end/grammar/ability_rules/permission_helpers.rs",
             max_lines: 3200,
         },
         Budget {
-            path: "sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs",
             max_lines: 3600,
         },
         Budget {
-            path: "sentences/effect_sentences/chain_carry.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/chain_carry.rs",
             max_lines: 3000,
         },
         Budget {
-            path: "sentences/effect_sentences/lex_chain_helpers.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/lex_chain_helpers.rs",
             max_lines: 250,
         },
         Budget {
-            path: "sentences/effect_sentences/search_library.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/search_library.rs",
             max_lines: 850,
         },
         Budget {
-            path: "sentences/effect_sentences/sacrifice_discard.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/sacrifice_discard.rs",
             max_lines: 575,
         },
         Budget {
-            path: "sentences/effect_sentences/clause_dispatch/become_clause.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/clause_dispatch/become_clause.rs",
             max_lines: 425,
         },
         Budget {
-            path: "sentences/effect_sentences/clause_dispatch.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/clause_dispatch.rs",
             max_lines: 1800,
         },
         Budget {
-            path: "sentences/effect_sentences/looked_cards_family.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/looked_cards_family.rs",
             max_lines: 200,
         },
         Budget {
-            path: "sentences/effect_sentences/misc_actions.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/misc_actions.rs",
             max_lines: 825,
         },
         Budget {
-            path: "sentences/effect_sentences/emblem_actions.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/emblem_actions.rs",
             max_lines: 175,
         },
         Budget {
-            path: "sentences/effect_sentences/gain_ability.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/gain_ability.rs",
             max_lines: 2650,
         },
         Budget {
-            path: "sentences/effect_sentences/clause_pattern_helpers.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/clause_pattern_helpers.rs",
             max_lines: 2150,
         },
         Budget {
-            path: "sentences/effect_sentences/dispatch_entry/subject_verb_followups.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/dispatch_entry/subject_verb_followups.rs",
             max_lines: 1600,
         },
         Budget {
-            path: "sentences/effect_sentences/return_exchange.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/return_exchange.rs",
             max_lines: 500,
         },
         Budget {
-            path: "sentences/effect_sentences/sequence_rules/generic_subject_verb_sequences/triples.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/sequence_rules/generic_subject_verb_sequences/triples.rs",
             max_lines: 3700,
         },
         Budget {
@@ -1607,103 +1607,103 @@ fn main() {
             max_lines: 100,
         },
         Budget {
-            path: "sentences/effect_sentences/bundle_rules.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/bundle_rules.rs",
             max_lines: 1600,
         },
         Budget {
-            path: "sentences/effect_sentences/sequence_rules/generic_subject_verb_sequences/pairs.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/sequence_rules/generic_subject_verb_sequences/pairs.rs",
             max_lines: 2800,
         },
         Budget {
-            path: "sentences/effect_sentences/sequence_rules/generic_subject_verb_sequences/quads.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/sequence_rules/generic_subject_verb_sequences/quads.rs",
             max_lines: 950,
         },
         Budget {
-            path: "sentences/effect_sentences/sequence_rules/generic_subject_verb_sequences/mod.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/sequence_rules/generic_subject_verb_sequences/mod.rs",
             max_lines: 775,
         },
         Budget {
-            path: "sentences/effect_sentences/subject_verb_primitives/mod.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/mod.rs",
             max_lines: 900,
         },
         Budget {
-            path: "sentences/effect_sentences/subject_verb_primitives/choice_damage_family.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/choice_damage_family.rs",
             max_lines: 775,
         },
         Budget {
-            path: "sentences/effect_sentences/subject_verb_primitives/registry.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/registry.rs",
             max_lines: 2200,
         },
         Budget {
-            path: "sentences/effect_sentences/subject_verb_primitives/counter_marker_family.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/counter_marker_family.rs",
             max_lines: 900,
         },
         Budget {
-            path: "sentences/effect_sentences/subject_verb_primitives/token_copy_control_family.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/token_copy_control_family.rs",
             max_lines: 700,
         },
         Budget {
-            path: "sentences/effect_sentences/subject_verb_primitives/combat_and_damage_family.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/combat_and_damage_family.rs",
             max_lines: 925,
         },
         Budget {
-            path: "sentences/effect_sentences/subject_verb_primitives/delayed_step_family.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/delayed_step_family.rs",
             max_lines: 1800,
         },
         Budget {
-            path: "sentences/effect_sentences/subject_verb_primitives/mechanic_marker_family.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/mechanic_marker_family.rs",
             max_lines: 1800,
         },
         Budget {
-            path: "sentences/effect_sentences/verb_handlers/mod.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/verb_handlers/mod.rs",
             max_lines: 700,
         },
         Budget {
-            path: "sentences/effect_sentences/verb_handlers/resource_verbs.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/verb_handlers/resource_verbs.rs",
             max_lines: 1500,
         },
         Budget {
-            path: "sentences/effect_sentences/verb_handlers/combat_verbs.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/verb_handlers/combat_verbs.rs",
             max_lines: 750,
         },
         Budget {
-            path: "sentences/effect_sentences/verb_handlers/zone_move_verbs.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/verb_handlers/zone_move_verbs.rs",
             max_lines: 1500,
         },
         Budget {
-            path: "sentences/effect_sentences/verb_handlers/counter_stat_verbs.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/verb_handlers/counter_stat_verbs.rs",
             max_lines: 1500,
         },
         Budget {
-            path: "sentences/effect_sentences/verb_handlers/control_copy_attach_verbs.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/verb_handlers/control_copy_attach_verbs.rs",
             max_lines: 1100,
         },
         Budget {
-            path: "sentences/effect_sentences/for_each_helpers.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/for_each_helpers.rs",
             max_lines: 700,
         },
         Budget {
-            path: "sentences/effect_sentences/dispatch_inner/mod.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/mod.rs",
             max_lines: 650,
         },
         Budget {
-            path: "sentences/effect_sentences/dispatch_inner/sentence_shape_predicates.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/sentence_shape_predicates.rs",
             max_lines: 1200,
         },
         Budget {
-            path: "sentences/effect_sentences/dispatch_inner/labeled_prefixes.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/labeled_prefixes.rs",
             max_lines: 625,
         },
         Budget {
-            path: "sentences/effect_sentences/dispatch_inner/copy_and_next_spell_shapes.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/copy_and_next_spell_shapes.rs",
             max_lines: 1200,
         },
         Budget {
-            path: "sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs",
             max_lines: 650,
         },
         Budget {
-            path: "sentences/effect_sentences/dispatch_inner/unsupported_shape_diagnostics.rs",
+            path: "front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/unsupported_shape_diagnostics.rs",
             max_lines: 1200,
         },
         Budget {

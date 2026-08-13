@@ -203,17 +203,6 @@
       "reason": "Family parsers construct runtime ability categories."
     },
     {
-      "id": "EX-SENTENCE-RUNTIME-OUTPUT",
-      "finding_kinds": [
-        "forbidden_import"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/sentences"
-      ],
-      "removal_pr": 32,
-      "reason": "Residual sentence leaf parsers construct runtime-shaped ability payloads until the legacy sentence tree is removed."
-    },
-    {
       "id": "EX-OPTION-REGISTRY-OUTCOMES",
       "finding_kinds": [
         "discarded_error"
@@ -249,28 +238,6 @@
       ],
       "removal_pr": 33,
       "reason": "Reference identity is still represented by literal TagKey values."
-    },
-    {
-      "id": "EX-LEGACY-SENTENCE-TREE",
-      "finding_kinds": [
-        "legacy_path"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/sentences"
-      ],
-      "removal_pr": 32,
-      "reason": "The legacy sentence tree remains until all domains use the common clause vocabulary."
-    },
-    {
-      "id": "EX-LEGACY-FAMILY-TREE",
-      "finding_kinds": [
-        "legacy_path"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/families"
-      ],
-      "removal_pr": 32,
-      "reason": "The legacy family tree remains while top-level categories migrate."
     },
     {
       "id": "EX-SHADOW-MODEL",
@@ -329,17 +296,6 @@
       ],
       "removal_pr": 33,
       "reason": "Recursive parser and lowering paths still require stacker workarounds."
-    },
-    {
-      "id": "EX-MODULE-SIZE-BUDGETS",
-      "finding_kinds": [
-        "legacy_path"
-      ],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend"
-      ],
-      "removal_pr": 32,
-      "reason": "Oversized legacy modules remain pending semantic model and parser-tree decomposition."
     }
   ],
   "audit": {
@@ -451,16 +407,6 @@
       }
     ],
     "legacy_paths": [
-      {
-        "id": "legacy-sentence-tree",
-        "path": "crates/ironsmith-compiler/src/runtime_backend/sentences",
-        "removal_pr": 32
-      },
-      {
-        "id": "legacy-family-tree",
-        "path": "crates/ironsmith-compiler/src/runtime_backend/families",
-        "removal_pr": 32
-      },
       {
         "id": "shadow-runtime-backend-model",
         "path": "crates/ironsmith-compiler/src/runtime_backend/model",
