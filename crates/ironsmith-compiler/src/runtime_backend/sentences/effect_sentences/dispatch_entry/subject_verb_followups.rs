@@ -4,6 +4,7 @@ use crate::cards::builders::SubjectVerbSubjectAst;
 use crate::runtime_backend::grammar::effects::followup_shapes;
 use crate::runtime_backend::grammar::structure::parse_trailing_if_predicate_lexed;
 use crate::recognition::{ParseOutcome, RuleId};
+use crate::registry::LegacyOrderRank;
 
 pub(super) enum PreParseFollowupResult {
     Handled {
@@ -35,14 +36,14 @@ type PostParseFollowupRuleFn = for<'a> fn(
 
 struct SubjectVerbFollowupRuleDef {
     id: &'static str,
-    priority: u16,
+    legacy_order: LegacyOrderRank,
     heads: &'static [&'static str],
     run: PreParseFollowupRuleFn,
 }
 
 struct SubjectVerbPostParseRuleDef {
     id: &'static str,
-    priority: u16,
+    legacy_order: LegacyOrderRank,
     heads: &'static [&'static str],
     run: PostParseFollowupRuleFn,
 }
@@ -353,11 +354,17 @@ pub(super) fn run_pre_parse_followup_registry(
     sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    recognize_pre_parse_followup(state, sentences, sentence_idx, sentence_tokens)
+    recognize_pre_parse_followup_legacy_compatibility_registry(
+        state,
+        sentences,
+        sentence_idx,
+        sentence_tokens,
+    )
         .into_legacy_result_option()
 }
 
-fn recognize_pre_parse_followup(
+// BRIDGE-LEGACY-REGISTRY: PR-21 through PR-29 retire the finite follow-up table.
+fn recognize_pre_parse_followup_legacy_compatibility_registry(
     state: &mut SentenceDispatchState<'_>,
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -367,7 +374,7 @@ fn recognize_pre_parse_followup(
         .iter()
         .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
         .collect::<Vec<_>>();
-    matching_rules.sort_by_key(|rule| rule.priority);
+    matching_rules.sort_by_key(|rule| rule.legacy_order);
     let span = crate::runtime_backend::span_from_tokens(sentence_tokens);
 
     for rule in matching_rules {
@@ -406,7 +413,7 @@ pub(super) fn run_post_parse_followup_registry(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    recognize_post_parse_followup(
+    recognize_post_parse_followup_legacy_compatibility_registry(
         state,
         sentences,
         sentence_idx,
@@ -416,7 +423,8 @@ pub(super) fn run_post_parse_followup_registry(
     .into_legacy_result_option()
 }
 
-fn recognize_post_parse_followup(
+// BRIDGE-LEGACY-REGISTRY: PR-21 through PR-29 retire the finite follow-up table.
+fn recognize_post_parse_followup_legacy_compatibility_registry(
     state: &mut SentenceDispatchState<'_>,
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -427,7 +435,7 @@ fn recognize_post_parse_followup(
         .iter()
         .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
         .collect::<Vec<_>>();
-    matching_rules.sort_by_key(|rule| rule.priority);
+    matching_rules.sort_by_key(|rule| rule.legacy_order);
     let span = crate::runtime_backend::span_from_tokens(sentence_tokens);
 
     for rule in matching_rules {
@@ -4369,43 +4377,43 @@ mod delayed_copy_retarget_followup_tests {
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     SubjectVerbFollowupRuleDef {
         id: "optional-source-exile-and-collect-evidence",
-        priority: 5,
+        legacy_order: LegacyOrderRank(5),
         heads: &["you"],
         run: pre_rule_optional_source_exile_and_collect_evidence,
     },
     SubjectVerbFollowupRuleDef {
         id: "library-shuffle",
-        priority: 10,
+        legacy_order: LegacyOrderRank(10),
         heads: &["if", "then", "that"],
         run: pre_rule_library_shuffle_followups,
     },
     SubjectVerbFollowupRuleDef {
         id: "still-lands",
-        priority: 20,
+        legacy_order: LegacyOrderRank(20),
         heads: &["theyre", "they", "its", "it"],
         run: pre_rule_still_lands_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "cant-be-regenerated",
-        priority: 30,
+        legacy_order: LegacyOrderRank(30),
         heads: &["it", "they", "those", "creature", "creatures", "a"],
         run: pre_rule_cant_be_regenerated_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "damage-cant-be-prevented",
-        priority: 35,
+        legacy_order: LegacyOrderRank(35),
         heads: &["the"],
         run: pre_rule_damage_cant_be_prevented_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "copy-and-cast",
-        priority: 40,
+        legacy_order: LegacyOrderRank(40),
         heads: &["copy", "that", "you", "the"],
         run: pre_rule_copy_and_cast_followups,
     },
     SubjectVerbFollowupRuleDef {
         id: "draw-count-demonstrative-gain",
-        priority: 45,
+        legacy_order: LegacyOrderRank(45),
         heads: &["that", "those", "each", "all"],
         run: pre_rule_draw_count_demonstrative_gain_followup,
     },
@@ -4414,91 +4422,91 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         // Token-copy modifiers such as "Those tokens gain haste" are a
         // narrower interpretation than the generic demonstrative collection
         // grant below. Give the typed token route first refusal.
-        priority: 42,
+        legacy_order: LegacyOrderRank(42),
         heads: &[],
         run: pre_rule_token_followups,
     },
     SubjectVerbFollowupRuleDef {
         id: "moved-object-entry-followup",
-        priority: 43,
+        legacy_order: LegacyOrderRank(43),
         heads: &["it"],
         run: pre_rule_moved_object_entry_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "exile-this-way",
-        priority: 55,
+        legacy_order: LegacyOrderRank(55),
         heads: &["if"],
         run: pre_rule_exile_this_way_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "source-exiled-return-if-sacrificed",
-        priority: 55,
+        legacy_order: LegacyOrderRank(55),
         heads: &["if"],
         run: pre_rule_return_source_exiled_cards_if_source_sacrificed,
     },
     SubjectVerbFollowupRuleDef {
         id: "declined-tagged-battlefield-move",
-        priority: 54,
+        legacy_order: LegacyOrderRank(54),
         heads: &["if"],
         run: pre_rule_declined_tagged_battlefield_move_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "milled-this-way",
-        priority: 55,
+        legacy_order: LegacyOrderRank(55),
         heads: &["when"],
         run: pre_rule_when_milled_this_way_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "if-no-one-does",
-        priority: 55,
+        legacy_order: LegacyOrderRank(55),
         heads: &["if"],
         run: pre_rule_if_no_one_does_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "if-you-win",
-        priority: 55,
+        legacy_order: LegacyOrderRank(55),
         heads: &["if"],
         run: pre_rule_if_you_win_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "choose-for-each-player-instead",
-        priority: 55,
+        legacy_order: LegacyOrderRank(55),
         heads: &["if"],
         run: pre_rule_choose_for_each_player_instead,
     },
     SubjectVerbFollowupRuleDef {
         id: "future-zone-replacement",
-        priority: 56,
+        legacy_order: LegacyOrderRank(56),
         heads: &["if"],
         run: pre_rule_future_zone_replacement_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "skip-tapped-source-turn-replacement",
-        priority: 57,
+        legacy_order: LegacyOrderRank(57),
         heads: &["if"],
         run: pre_rule_skip_tapped_source_turn_replacement,
     },
     SubjectVerbFollowupRuleDef {
         id: "damage-this-way-player-followup",
-        priority: 58,
+        legacy_order: LegacyOrderRank(58),
         heads: &["if", "players"],
         run: pre_rule_damage_this_way_player_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "tap-damage-this-way",
-        priority: 58,
+        legacy_order: LegacyOrderRank(58),
         heads: &["tap"],
         run: pre_rule_tap_damage_this_way_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "destroy-those-creatures",
-        priority: 59,
+        legacy_order: LegacyOrderRank(59),
         heads: &["destroy", "then"],
         run: pre_rule_destroy_those_creatures_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "otherwise",
-        priority: 60,
+        legacy_order: LegacyOrderRank(60),
         heads: &["otherwise"],
         run: pre_rule_otherwise_followup,
     },
@@ -4507,97 +4515,97 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
 const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &[
     SubjectVerbPostParseRuleDef {
         id: "numeric-result-branch-label",
-        priority: 5,
+        legacy_order: LegacyOrderRank(5),
         heads: &[],
         run: post_rule_numeric_result_branch_label,
     },
     SubjectVerbPostParseRuleDef {
         id: "token-copy-and-extra-turn",
-        priority: 10,
+        legacy_order: LegacyOrderRank(10),
         heads: &[],
         run: post_rule_token_copy_and_extra_turn,
     },
     SubjectVerbPostParseRuleDef {
         id: "future-zone-and-self-replacement",
-        priority: 20,
+        legacy_order: LegacyOrderRank(20),
         heads: &[],
         run: post_rule_future_zone_and_self_replacement,
     },
     SubjectVerbPostParseRuleDef {
         id: "each-player-coin-face-followup",
-        priority: 22,
+        legacy_order: LegacyOrderRank(22),
         heads: &["each"],
         run: post_rule_each_player_coin_face_followup,
     },
     SubjectVerbPostParseRuleDef {
         id: "typed-sacrificed-result-iterator",
-        priority: 23,
+        legacy_order: LegacyOrderRank(23),
         heads: &["for"],
         run: post_rule_typed_sacrificed_result_iterator,
     },
     SubjectVerbPostParseRuleDef {
         id: "revealed-same-mana-value-as-another-iterator",
-        priority: 23,
+        legacy_order: LegacyOrderRank(23),
         heads: &["for"],
         run: post_rule_revealed_same_mana_value_as_another_iterator,
     },
     SubjectVerbPostParseRuleDef {
         id: "correlated-plural-sacrifice-result",
-        priority: 24,
+        legacy_order: LegacyOrderRank(24),
         heads: &["those"],
         run: post_rule_correlated_plural_sacrifice_result,
     },
     SubjectVerbPostParseRuleDef {
         id: "hand-reveal-choice-discard-followup",
-        priority: 25,
+        legacy_order: LegacyOrderRank(25),
         heads: &["that", "the"],
         run: post_rule_hand_reveal_choice_discard_followup,
     },
     SubjectVerbPostParseRuleDef {
         id: "prior-exiled-card-reference",
-        priority: 26,
+        legacy_order: LegacyOrderRank(26),
         heads: &[],
         run: post_rule_prior_exiled_card_reference,
     },
     SubjectVerbPostParseRuleDef {
         id: "returned-permanent-enters",
-        priority: 26,
+        legacy_order: LegacyOrderRank(26),
         heads: &["when"],
         run: post_rule_returned_permanent_enters,
     },
     SubjectVerbPostParseRuleDef {
         id: "targeted-object-delayed-leave",
-        priority: 26,
+        legacy_order: LegacyOrderRank(26),
         heads: &["when", "whenever"],
         run: post_rule_targeted_object_delayed_leave,
     },
     SubjectVerbPostParseRuleDef {
         id: "reflexive-object-followup",
-        priority: 27,
+        legacy_order: LegacyOrderRank(27),
         heads: &[],
         run: post_rule_reflexive_object_followup,
     },
     SubjectVerbPostParseRuleDef {
         id: "delayed-trigger-result-followup",
-        priority: 30,
+        legacy_order: LegacyOrderRank(30),
         heads: &["if", "when"],
         run: post_rule_delayed_trigger_result_followup,
     },
     SubjectVerbPostParseRuleDef {
         id: "delayed-trigger-copy-retarget-followup",
-        priority: 31,
+        legacy_order: LegacyOrderRank(31),
         heads: &["you"],
         run: post_rule_delayed_trigger_copy_retarget_followup,
     },
     SubjectVerbPostParseRuleDef {
         id: "optional-copy-retarget-followup",
-        priority: 32,
+        legacy_order: LegacyOrderRank(32),
         heads: &["the"],
         run: post_rule_optional_copy_retarget_followup,
     },
     SubjectVerbPostParseRuleDef {
         id: "self-replacement-common-suffix",
-        priority: 100,
+        legacy_order: LegacyOrderRank(100),
         heads: &[],
         run: post_rule_self_replacement_common_suffix,
     },

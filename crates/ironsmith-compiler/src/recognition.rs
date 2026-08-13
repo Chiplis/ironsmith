@@ -111,6 +111,22 @@ impl ParseDiagnostic {
         }
     }
 
+    pub fn ambiguous(
+        rule: RuleId,
+        span: Option<TextSpan>,
+        alternatives: Vec<RuleId>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            rule,
+            rule_path: vec![rule],
+            span,
+            furthest_committed_span: span,
+            kind: ParseDiagnosticKind::Ambiguous { alternatives },
+            message: message.into(),
+        }
+    }
+
     pub fn from_legacy_error(rule: RuleId, span: Option<TextSpan>, error: CardTextError) -> Self {
         match error {
             CardTextError::UnsupportedLine(message) => Self::unsupported(

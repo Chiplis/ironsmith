@@ -30,6 +30,7 @@ use super::super::permission_helpers::{
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleHandler, LexRuleIndex};
 use super::super::span_from_tokens;
 use crate::recognition::RuleId;
+use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
 #[cfg(test)]
 use super::super::token_primitives::str_contains as string_contains;
 use super::super::util::{
@@ -308,9 +309,10 @@ pub(super) fn parse_effect_chain_rule_lexed(
 
 pub(super) const FALLBACK_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 1] =
     [LexRuleDef {
-        id: RuleId::new("effect-chain"),
-        priority: 170,
-        heads: &[],
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("effect-chain"),
+            HeadDiscriminator::words(&[]),
+        ),
         shape_mask: 0,
         run: LexRuleHandler::Legacy(parse_effect_chain_rule_lexed),
     }];

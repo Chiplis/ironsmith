@@ -19,7 +19,7 @@ fn run_sentence_rule_family(
     index: &'static super::super::rule_engine::LexRuleIndex<Vec<EffectAst>>,
     view: &LexClauseView<'_>,
 ) -> ParseOutcome<RuleMatch<Vec<EffectAst>>> {
-    index.run_first(view)
+    index.recognize(view)
 }
 
 pub(super) fn run_sentence_parse_rules_lexed(

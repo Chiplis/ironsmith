@@ -131,6 +131,32 @@
       "reason": "Legacy parser facades expose runtime-backed output until every consumer uses canonical compiler AST plus explicit lowering."
     }
   ],
+  "legacy_compatibility_registries": [
+    {
+      "id": "static-ability-line-legacy-compatibility-registry",
+      "path": "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs",
+      "rule_count": 229,
+      "removal_pr": 17
+    },
+    {
+      "id": "subject-verb-primitive-legacy-compatibility-registry",
+      "path": "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives",
+      "rule_count": 101,
+      "removal_pr": 21
+    },
+    {
+      "id": "subject-verb-sequence-legacy-compatibility-registry",
+      "path": "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sequence_rules/mod.rs",
+      "rule_count": 145,
+      "removal_pr": 29
+    },
+    {
+      "id": "subject-verb-followup-legacy-compatibility-registry",
+      "path": "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_entry/subject_verb_followups.rs",
+      "rule_count": 38,
+      "removal_pr": 29
+    }
+  ],
   "exceptions": [
     {
       "id": "EX-FRONT-END-RUNTIME-CONSTRUCTION",

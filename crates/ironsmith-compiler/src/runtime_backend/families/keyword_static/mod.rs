@@ -648,7 +648,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_lose_game_replacement_line" => {
             vec![StaticAbilityLineHeadHint::Single("if")]
         }
-        _ => match static_keyword_shapes::parse_rule_id_head(rule_id) {
+        _ => match static_keyword_shapes::parse_rule_id_head(rule_id.as_str()) {
             Some("ward") => vec![StaticAbilityLineHeadHint::Single("ward")],
             Some("skulk") => vec![StaticAbilityLineHeadHint::Single("skulk")],
             Some("if") => vec![StaticAbilityLineHeadHint::Single("if")],
@@ -743,7 +743,7 @@ macro_rules! multi_static_ability_ast_passthrough_rule {
 }
 
 fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
-    &[
+    static RULES: &[StaticAbilityLineRuleDef] = &[
         StaticAbilityLineRuleDef {
             id: RuleId::new(stringify!(parse_soulbond_shared_line)),
             rule: StaticAbilityLineRuleAst::Multi(parse_soulbond_shared_line),
@@ -1110,7 +1110,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_activated_abilities_cant_be_activated_line),
         multi_static_ability_ast_rule!(parse_cant_clauses),
-    ]
+    ];
+    RULES
 }
 
 static STATIC_ABILITY_AST_LINE_RULE_INDEX: LazyLock<LexRuleHintIndex> = LazyLock::new(|| {
@@ -1123,10 +1124,13 @@ static STATIC_ABILITY_AST_LINE_RULE_INDEX: LazyLock<LexRuleHintIndex> = LazyLock
 fn parse_static_ability_ast_line_lowered(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    recognize_static_ability_ast_line_lowered(tokens).into_legacy_result_option()
+    recognize_static_ability_ast_line_legacy_compatibility_registry(tokens)
+        .into_legacy_result_option()
 }
 
-fn recognize_static_ability_ast_line_lowered(
+// BRIDGE-LEGACY-REGISTRY: the complete, finite static rule table remains
+// registration-ordered until PR-17 rebuilds it on structural discriminators.
+fn recognize_static_ability_ast_line_legacy_compatibility_registry(
     tokens: &[OwnedLexToken],
 ) -> ParseOutcome<Vec<StaticAbilityAst>> {
     let rules = static_ability_ast_line_rules();

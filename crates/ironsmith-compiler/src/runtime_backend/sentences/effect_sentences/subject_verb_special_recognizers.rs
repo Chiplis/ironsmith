@@ -8,6 +8,7 @@ use crate::cards::builders::{CardTextError, ChoiceCount, EffectAst};
 use crate::cards::builders::{IT_TAG, PlayerAst, TagKey, Value};
 use crate::effect::{EventValueSpec, Until};
 use crate::recognition::RuleId;
+use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
 use crate::runtime_backend::model::ast::{SubjectVerbActionAst, SubjectVerbRoleAst};
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::types::CardType;
@@ -200,44 +201,50 @@ pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
 
 pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 6] = [
     LexRuleDef {
-        id: RuleId::new("redirect-next-damage"),
-        priority: 100,
-        heads: &["the", "all"],
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("redirect-next-damage"),
+            HeadDiscriminator::words(&["the", "all"]),
+        ),
         shape_mask: 0,
         run: LexRuleHandler::Legacy(parse_redirect_next_damage_sentence_rule_lexed),
     },
     LexRuleDef {
-        id: RuleId::new("prevent-next-time-damage"),
-        priority: 110,
-        heads: &["the"],
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("prevent-next-time-damage"),
+            HeadDiscriminator::words(&["the"]),
+        ),
         shape_mask: 0,
         run: LexRuleHandler::Legacy(parse_prevent_next_time_damage_sentence_rule_lexed),
     },
     LexRuleDef {
-        id: RuleId::new("scale-target-power"),
-        priority: 120,
-        heads: &["double", "triple", "until"],
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("scale-target-power"),
+            HeadDiscriminator::words(&["double", "triple", "until"]),
+        ),
         shape_mask: 0,
         run: LexRuleHandler::Legacy(parse_scaled_target_power_sentence_rule_lexed),
     },
     LexRuleDef {
-        id: RuleId::new("keyword-bundle-pump"),
-        priority: 125,
-        heads: &["until"],
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("keyword-bundle-pump"),
+            HeadDiscriminator::words(&["until"]),
+        ),
         shape_mask: 0,
         run: LexRuleHandler::Legacy(parse_keyword_bundle_pump_sentence_rule_lexed),
     },
     LexRuleDef {
-        id: RuleId::new("spell-this-way-pay-life"),
-        priority: 130,
-        heads: &["if"],
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("spell-this-way-pay-life"),
+            HeadDiscriminator::words(&["if"]),
+        ),
         shape_mask: RULE_SHAPE_STARTS_IF,
         run: LexRuleHandler::Legacy(parse_spell_this_way_pay_life_rule_lexed),
     },
     LexRuleDef {
-        id: RuleId::new("sacrifice-any-number-then-draw-that-many"),
-        priority: 140,
-        heads: &["sacrifice"],
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("sacrifice-any-number-then-draw-that-many"),
+            HeadDiscriminator::words(&["sacrifice"]),
+        ),
         shape_mask: 0,
         run: LexRuleHandler::Legacy(parse_sacrifice_any_number_then_draw_that_many_rule_lexed),
     },

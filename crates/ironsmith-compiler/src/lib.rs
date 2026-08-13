@@ -34,6 +34,7 @@ pub mod payload;
 pub mod pipeline;
 pub mod resolution;
 pub mod recognition;
+pub mod registry;
 mod runtime_backend;
 mod slice_primitives;
 pub mod static_abilities;
@@ -132,6 +133,11 @@ pub use parse_context::{
 pub use recognition::{
     ParseDiagnostic, ParseDiagnosticKind, ParseExpectation, ParseMatch, ParseOutcome, RuleId,
     RuleMatch, UnsupportedReason,
+};
+pub use registry::{
+    HeadDiscriminator, LegacyCompatibilityRule, LegacyOrderRank, RegistryCandidate,
+    RegistryRuleMetadata, SemanticEquivalenceKey, SourceSpanPolicy,
+    furthest_committed_diagnostic, resolve_registry_candidates,
 };
 pub use payload::{IfResultPredicate, KeywordAction};
 pub use pipeline::{LoweringPipeline, PostpassProcessor};

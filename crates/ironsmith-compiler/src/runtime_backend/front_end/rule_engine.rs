@@ -1,5 +1,9 @@
 use crate::cards::builders::CardTextError;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch, UnsupportedReason};
+use crate::registry::{
+    RegistryCandidate, RegistryRuleMetadata, furthest_committed_diagnostic,
+    resolve_registry_candidates,
+};
 use std::collections::HashMap;
 
 use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, contains_token_kind};
@@ -163,9 +167,7 @@ impl LexRuleHintIndex {
 
 #[derive(Clone, Copy)]
 pub(crate) struct LexRuleDef<T> {
-    pub(crate) id: RuleId,
-    pub(crate) priority: u16,
-    pub(crate) heads: &'static [&'static str],
+    pub(crate) metadata: RegistryRuleMetadata,
     pub(crate) shape_mask: u32,
     pub(crate) run: LexRuleHandler<T>,
 }
@@ -180,8 +182,8 @@ impl<T: 'static> LexRuleIndex<T> {
         Self { rules }
     }
 
-    pub(crate) fn run_first<'a>(&self, view: &LexClauseView<'a>) -> ParseOutcome<RuleMatch<T>> {
-        let mut candidate_indices = self
+    pub(crate) fn recognize<'a>(&self, view: &LexClauseView<'a>) -> ParseOutcome<RuleMatch<T>> {
+        let candidate_indices = self
             .rules
             .iter()
             .enumerate()
@@ -189,13 +191,14 @@ impl<T: 'static> LexRuleIndex<T> {
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
 
-        candidate_indices.sort_by_key(|idx| self.rules[*idx].priority);
+        let mut candidates = Vec::new();
+        let mut diagnostics = Vec::new();
         for idx in candidate_indices {
             let rule = &self.rules[idx];
             let outcome = match rule.run {
-                LexRuleHandler::Structured(run) => run(view).within(rule.id),
+                LexRuleHandler::Structured(run) => run(view).within(rule.metadata.id),
                 LexRuleHandler::Legacy(run) => ParseOutcome::from_legacy_result_option(
-                    rule.id,
+                    rule.metadata.id,
                     lex_clause_span(view),
                     run(view),
                 ),
@@ -203,14 +206,17 @@ impl<T: 'static> LexRuleIndex<T> {
             match outcome {
                 ParseOutcome::NoMatch => {}
                 ParseOutcome::Match(matched) => {
-                    let span = matched.span;
-                    return ParseOutcome::matched(RuleMatch::new(rule.id, matched), span);
+                    candidates.push(RegistryCandidate::new(
+                        rule.metadata,
+                        matched.value,
+                        matched.span,
+                    ));
                 }
-                ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
+                ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
             }
         }
 
-        ParseOutcome::NoMatch
+        resolve_registry_candidates(RuleId::new("lex-rule-registry"), candidates, diagnostics)
     }
 }
 
@@ -225,9 +231,7 @@ fn lex_clause_span(view: &LexClauseView<'_>) -> Option<crate::cards::TextSpan> {
 }
 
 fn lex_rule_matches_view<T>(rule: &LexRuleDef<T>, view: &LexClauseView<'_>) -> bool {
-    let head_matches =
-        rule.heads.is_empty() || rule.heads.iter().any(|candidate| *candidate == view.head());
-    if !head_matches {
+    if !rule.metadata.head.accepts(view.head()) {
         return false;
     }
     if rule.shape_mask == 0 {
@@ -240,9 +244,7 @@ pub(crate) type LexUnsupportedPredicate = for<'a> fn(&LexClauseView<'a>) -> bool
 
 #[derive(Clone, Copy)]
 pub(crate) struct LexUnsupportedRuleDef {
-    pub(crate) id: RuleId,
-    pub(crate) priority: u16,
-    pub(crate) heads: &'static [&'static str],
+    pub(crate) metadata: RegistryRuleMetadata,
     pub(crate) shape_mask: u32,
     pub(crate) message: &'static str,
     pub(crate) predicate: LexUnsupportedPredicate,
@@ -263,7 +265,7 @@ impl LexUnsupportedDiagnoser {
         view: &LexClauseView<'_>,
         subject_label: &'static str,
     ) -> ParseOutcome<()> {
-        let mut candidate_indices = self
+        let candidate_indices = self
             .rules
             .iter()
             .enumerate()
@@ -271,7 +273,7 @@ impl LexUnsupportedDiagnoser {
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
 
-        candidate_indices.sort_by_key(|idx| self.rules[*idx].priority);
+        let mut diagnostics = Vec::new();
         for idx in candidate_indices {
             let rule = &self.rules[idx];
             if (rule.predicate)(view) {
@@ -281,15 +283,17 @@ impl LexUnsupportedDiagnoser {
                     subject_label,
                     view.display_text()
                 );
-                return ParseOutcome::Error(ParseDiagnostic::unsupported(
-                    rule.id,
+                diagnostics.push(ParseDiagnostic::unsupported(
+                    rule.metadata.id,
                     lex_clause_span(view),
-                    UnsupportedReason::new(rule.id.as_str(), detail.clone()),
+                    UnsupportedReason::new(rule.metadata.id.as_str(), detail.clone()),
                     detail,
                 ));
             }
         }
-        ParseOutcome::NoMatch
+        furthest_committed_diagnostic(diagnostics)
+            .map(ParseOutcome::Error)
+            .unwrap_or(ParseOutcome::NoMatch)
     }
 }
 
@@ -297,9 +301,7 @@ fn lex_unsupported_rule_matches_view(
     rule: &LexUnsupportedRuleDef,
     view: &LexClauseView<'_>,
 ) -> bool {
-    let head_matches =
-        rule.heads.is_empty() || rule.heads.iter().any(|candidate| *candidate == view.head());
-    if !head_matches {
+    if !rule.metadata.head.accepts(view.head()) {
         return false;
     }
     if rule.shape_mask == 0 {
