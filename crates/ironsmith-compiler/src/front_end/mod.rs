@@ -5,6 +5,7 @@
 //! now have a real home in `ironsmith-compiler`.
 
 pub mod cst_primitives;
+pub mod document_structure;
 pub mod document_cst;
 pub mod lexer;
 pub mod parser_support;
@@ -19,6 +20,10 @@ pub use cst_primitives::{
 pub use document_cst::{
     ActivatedLineCst, LevelHeaderCst, LevelItemCst, LevelItemKindCst, ModalBlockCst, ModalModeCst,
     RewriteDocumentCst, RewriteLineCst, SagaChapterLineCst, TriggeredLineCst,
+};
+pub use document_structure::{
+    ClassifiedFace, ClassifiedLine, DocumentStructure, ModeMarker, SelfReferenceSurface,
+    StructuralLineKind, StructuralNode, StructuralNodeKind, classify_document_structure,
 };
 pub use lexer::{
     LexCursor, LexStream, LexToken, LexerError, OwnedLexToken, TokenKind, TokenWordPiece,
@@ -50,7 +55,9 @@ pub use parser_support::{
     split_text_for_parse, split_text_for_parse_with_restrictions,
 };
 pub use preprocess::{make_line_info, normalize_trimmed_line, parse_metadata_line};
-pub use source_model::{LineInfo, MetadataLine, NormalizedLine};
+pub use source_model::{
+    LineInfo, MetadataLine, NormalizedLine, NormalizedSourceMap, NormalizedSourceSegment,
+};
 pub use token_utils::{
     CommonSentenceHead, LeadingMayActionMatch, LeadingMayActor, TurnDurationPhrase,
     clone_sentence_chunk_tokens, contains_sequence, contains_window, find_index, find_window_by,

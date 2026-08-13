@@ -1,7 +1,9 @@
 use crate::diagnostics::CardTextError;
 
 use super::lexer::lex_line;
-use super::source_model::{LineInfo, MetadataLine, NormalizedLine};
+use super::source_model::{
+    LineInfo, MetadataLine, NormalizedLine, NormalizedSourceMap, NormalizedSourceSegment,
+};
 
 pub fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError> {
     let trimmed = line.trim();
@@ -74,18 +76,63 @@ pub fn make_line_info(
 }
 
 pub fn normalize_trimmed_line(line: &str) -> Option<NormalizedLine> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() {
+    let source_start = line.find(|ch: char| !ch.is_whitespace())?;
+    let source_end = line
+        .rfind(|ch: char| !ch.is_whitespace())
+        .and_then(|byte| line[byte..].chars().next().map(|ch| byte + ch.len_utf8()))?;
+    if source_start >= source_end {
         return None;
     }
 
-    let normalized = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
-    let char_map = build_char_map(trimmed, &normalized);
+    let mut normalized = String::new();
+    let mut char_map = Vec::new();
+    let mut segments = Vec::new();
+    let mut pending_whitespace = None;
+
+    for (relative_byte, ch) in line[source_start..source_end].char_indices() {
+        let source_byte = source_start + relative_byte;
+        if ch.is_whitespace() {
+            pending_whitespace.get_or_insert(source_byte);
+            continue;
+        }
+
+        if let Some(whitespace_start) = pending_whitespace.take()
+            && !normalized.is_empty()
+        {
+            let normalized_start = normalized.len();
+            normalized.push(' ');
+            segments.push(NormalizedSourceSegment {
+                normalized_bytes: normalized_start..normalized.len(),
+                source_bytes: whitespace_start..source_byte,
+            });
+            char_map.push(line[..whitespace_start].chars().count());
+        }
+
+        let normalized_start = normalized.len();
+        normalized.push(ch);
+        segments.push(NormalizedSourceSegment {
+            normalized_bytes: normalized_start..normalized.len(),
+            source_bytes: source_byte..source_byte + ch.len_utf8(),
+        });
+        char_map.push(line[..source_byte].chars().count());
+    }
+
+    let mut omitted_source_bytes = Vec::new();
+    if source_start > 0 {
+        omitted_source_bytes.push(0..source_start);
+    }
+    if source_end < line.len() {
+        omitted_source_bytes.push(source_end..line.len());
+    }
 
     Some(NormalizedLine {
-        original: trimmed.to_string(),
+        original: line.to_string(),
         normalized,
         char_map,
+        source_map: NormalizedSourceMap {
+            segments,
+            omitted_source_bytes,
+        },
     })
 }
 
@@ -98,46 +145,6 @@ enum MetadataKind {
     PowerToughness,
     Loyalty,
     Defense,
-}
-
-fn build_char_map(original: &str, normalized: &str) -> Vec<usize> {
-    if normalized.is_empty() {
-        return Vec::new();
-    }
-
-    let original_chars: Vec<char> = original.chars().collect();
-    let normalized_chars: Vec<char> = normalized.chars().collect();
-    let mut map = Vec::with_capacity(normalized_chars.len());
-    let mut original_idx = 0usize;
-
-    for normalized_char in normalized_chars {
-        while original_idx < original_chars.len()
-            && original_chars[original_idx].is_whitespace()
-            && normalized_char != ' '
-        {
-            original_idx += 1;
-        }
-
-        if normalized_char == ' ' {
-            while original_idx < original_chars.len()
-                && !original_chars[original_idx].is_whitespace()
-            {
-                original_idx += 1;
-            }
-            while original_idx < original_chars.len()
-                && original_chars[original_idx].is_whitespace()
-            {
-                original_idx += 1;
-            }
-            map.push(original_idx.saturating_sub(1));
-            continue;
-        }
-
-        map.push(original_idx);
-        original_idx += 1;
-    }
-
-    map
 }
 
 #[cfg(test)]

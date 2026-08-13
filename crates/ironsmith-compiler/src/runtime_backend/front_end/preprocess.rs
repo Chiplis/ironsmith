@@ -9,7 +9,9 @@ use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
     ParseAnnotations,
 };
-use crate::model::provenance::{ProvenanceStore, SourceUnitId};
+use crate::model::provenance::{
+    ProvenanceStore, ReminderTextDecision, SourceSliceKind, SourceUnitId,
+};
 use crate::types::CardType;
 
 #[derive(Debug, Clone)]
@@ -17,6 +19,7 @@ pub(crate) struct PreprocessedDocument {
     pub(crate) builder: CardDefinitionBuilder,
     pub(crate) annotations: ParseAnnotations,
     pub(crate) provenance: ProvenanceStore,
+    pub(crate) structure: crate::front_end::DocumentStructure,
     pub(crate) items: Vec<PreprocessedItem>,
 }
 
@@ -165,6 +168,24 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
     };
 
     Ok(Some(metadata))
+}
+
+fn materialize_structural_metadata(value: &crate::front_end::MetadataLine) -> MetadataLine {
+    match value {
+        crate::front_end::MetadataLine::ManaCost(value) => MetadataLine::ManaCost(value.clone()),
+        crate::front_end::MetadataLine::TypeLine(value) => MetadataLine::TypeLine(value.clone()),
+        crate::front_end::MetadataLine::FirstPrintedSet(value) => {
+            MetadataLine::FirstPrintedSet(value.clone())
+        }
+        crate::front_end::MetadataLine::AttractionLights(value) => {
+            MetadataLine::AttractionLights(value.clone())
+        }
+        crate::front_end::MetadataLine::PowerToughness(value) => {
+            MetadataLine::PowerToughness(value.clone())
+        }
+        crate::front_end::MetadataLine::Loyalty(value) => MetadataLine::Loyalty(value.clone()),
+        crate::front_end::MetadataLine::Defense(value) => MetadataLine::Defense(value.clone()),
+    }
 }
 
 fn replace_names_with_map(
@@ -896,6 +917,59 @@ pub(crate) fn preprocess_document_with_provenance(
     text: &str,
     mut provenance: ProvenanceStore,
 ) -> Result<PreprocessedDocument, CardTextError> {
+    let structure = crate::front_end::classify_document_structure(
+        provenance.source().id,
+        text,
+        builder.card_builder.name_ref().trim(),
+    )?;
+    for node in structure.lines.iter().flat_map(|line| &line.nodes) {
+        let (kind, reminder_text) = match &node.kind {
+            crate::front_end::StructuralNodeKind::SelfReference(_) => (
+                SourceSliceKind::SelfReference,
+                ReminderTextDecision::NotReminderText,
+            ),
+            crate::front_end::StructuralNodeKind::Quotation(_) => (
+                SourceSliceKind::Quotation,
+                ReminderTextDecision::NotReminderText,
+            ),
+            crate::front_end::StructuralNodeKind::AbilityWord { .. } => (
+                SourceSliceKind::AbilityWord,
+                ReminderTextDecision::NotReminderText,
+            ),
+            crate::front_end::StructuralNodeKind::ReminderText(decision) => {
+                (SourceSliceKind::ReminderText, *decision)
+            }
+            crate::front_end::StructuralNodeKind::Symbol => (
+                SourceSliceKind::Symbol,
+                ReminderTextDecision::NotReminderText,
+            ),
+            crate::front_end::StructuralNodeKind::FaceSeparator => (
+                SourceSliceKind::FaceSeparator,
+                ReminderTextDecision::NotReminderText,
+            ),
+            crate::front_end::StructuralNodeKind::ChapterHeader { .. } => (
+                SourceSliceKind::ChapterHeader,
+                ReminderTextDecision::NotReminderText,
+            ),
+            crate::front_end::StructuralNodeKind::ClassHeader { .. } => (
+                SourceSliceKind::ClassHeader,
+                ReminderTextDecision::NotReminderText,
+            ),
+            crate::front_end::StructuralNodeKind::LevelHeader { .. } => (
+                SourceSliceKind::LevelHeader,
+                ReminderTextDecision::NotReminderText,
+            ),
+            crate::front_end::StructuralNodeKind::ModeMarker(_) => (
+                SourceSliceKind::ModeMarker,
+                ReminderTextDecision::NotReminderText,
+            ),
+            crate::front_end::StructuralNodeKind::Punctuation(_) => (
+                SourceSliceKind::Punctuation,
+                ReminderTextDecision::NotReminderText,
+            ),
+        };
+        provenance.record_structural_span(kind, node.span, reminder_text);
+    }
     fn normalize_card_name_for_self_reference(name: &str) -> String {
         let lower = name.to_ascii_lowercase();
         let bytes = lower.as_bytes();
@@ -999,12 +1073,43 @@ pub(crate) fn preprocess_document_with_provenance(
     let mut items = Vec::new();
 
     for (line_index, raw_line) in text.lines().enumerate() {
+        let structural_line = structure.line(line_index);
+        if structural_line.is_some_and(|line| {
+            matches!(
+                &line.kind,
+                crate::front_end::StructuralLineKind::Blank
+                    | crate::front_end::StructuralLineKind::FaceSeparator
+            )
+        }) {
+            continue;
+        }
+        if structural_line.is_some_and(|line| {
+            matches!(
+                &line.kind,
+                crate::front_end::StructuralLineKind::ReminderOnly
+            )
+                && !line.nodes.iter().any(|node| {
+                    matches!(
+                        &node.kind,
+                        crate::front_end::StructuralNodeKind::ReminderText(
+                            ReminderTextDecision::TreatedAsRulesText
+                        )
+                    )
+                })
+        }) {
+            continue;
+        }
         let line = raw_line.trim();
         if line.is_empty() {
             continue;
         }
 
-        if let Some(meta) = parse_metadata_line(line)? {
+        if let Some(meta) = structural_line.and_then(|line| match &line.kind {
+            crate::front_end::StructuralLineKind::Metadata(value) => {
+                Some(materialize_structural_metadata(value))
+            }
+            _ => None,
+        }) {
             let normalized = NormalizedLine {
                 original: line.to_string(),
                 normalized: line.to_string(),
@@ -1129,6 +1234,7 @@ pub(crate) fn preprocess_document_with_provenance(
             builder,
             annotations,
             provenance,
+            structure,
             items,
         });
     }
@@ -1137,6 +1243,7 @@ pub(crate) fn preprocess_document_with_provenance(
         builder,
         annotations,
         provenance,
+        structure,
         items,
     })
 }

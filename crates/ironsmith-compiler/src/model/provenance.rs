@@ -34,10 +34,18 @@ pub enum SourceSliceKind {
     FullDocument,
     OracleLine { line: usize },
     CardName,
+    SelfReference,
     Quotation,
     Parenthetical,
+    ReminderText,
     Symbol,
     FaceSeparator,
+    AbilityWord,
+    ChapterHeader,
+    ClassHeader,
+    LevelHeader,
+    ModeMarker,
+    Punctuation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -263,6 +271,24 @@ impl ProvenanceStore {
             reminder_text_decision(authored),
             rendering_hints(authored),
         )
+    }
+
+    pub fn record_structural_span(
+        &mut self,
+        kind: SourceSliceKind,
+        span: SourceSpan,
+        reminder_text: ReminderTextDecision,
+    ) -> Option<ProvenanceId> {
+        let authored = self.source.slice(span)?.to_string();
+        Some(self.push_record(
+            kind,
+            Some(span),
+            authored.clone(),
+            None,
+            Vec::new(),
+            reminder_text,
+            rendering_hints(&authored),
+        ))
     }
 
     fn capture_structural_boundaries(&mut self) {

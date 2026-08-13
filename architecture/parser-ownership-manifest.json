@@ -11,6 +11,8 @@
       "id": "document",
       "roots": [
         "crates/ironsmith-compiler/src/front_end/document",
+        "crates/ironsmith-compiler/src/front_end/preprocess.rs",
+        "crates/ironsmith-compiler/src/front_end/source_model.rs",
         "crates/ironsmith-compiler/src/runtime_backend/front_end/canonical_pipeline.rs"
       ]
     },
