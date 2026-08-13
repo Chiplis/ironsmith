@@ -267,13 +267,6 @@
       "reason": "Reference identity is still represented by literal TagKey values."
     },
     {
-      "id": "EX-SEMANTIC-POSTPARSE-FIXUPS",
-      "finding_kinds": ["legacy_path"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_line_parsing"],
-      "removal_pr": 30,
-      "reason": "Semantic line parsing contains source-sensitive postparse repair."
-    },
-    {
       "id": "EX-POST-LOWERING-REPAIR-CHAIN",
       "finding_kinds": ["legacy_path", "raw_text_lowering"],
       "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs"],
@@ -451,11 +444,6 @@
       }
     ],
     "legacy_paths": [
-      {
-        "id": "legacy-semantic-line-fixups",
-        "path": "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_line_parsing",
-        "removal_pr": 30
-      },
       {
         "id": "legacy-line-lowering-monolith",
         "path": "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs",

@@ -42,12 +42,7 @@ pub(crate) use triggered_chunks::{
 
 pub(crate) use activated::parse_activated_line;
 pub(crate) use lines::{
-    dynamic_zone_change_group_token_creation_from_authored_trigger,
-    exact_graveyard_card_copy_cast_sequence, exact_looked_hand_optional_cast_bundle,
-    exact_target_same_name_graveyard_may_cast_bundle,
-    has_linked_created_token_next_turn_sacrifice_surface,
-    is_authored_dynamic_exile_permission_bundle, is_authored_look_hand_optional_cast_bundle,
-    is_exact_correlated_trigger_effect_bundle, parse_exert_attack_keyword_line,
+    has_linked_created_token_next_turn_sacrifice_surface, parse_exert_attack_keyword_line,
     parse_gift_keyword_line, parse_keyword_special_cases,
     parse_library_origin_source_pump_unblockable_triggered_line,
     parse_statement_token_groups_to_chunks, parse_static_line, parse_triggered_line,
@@ -236,16 +231,6 @@ fn parse_effect_sentences_preserving_source_boundaries(
     } else {
         parse_effect_sentences_lexed(tokens)?
     };
-    // Cross-sentence self-replacement construction can rebuild a token-copy
-    // action after the sentence-local parser has already discarded its
-    // quoted exception. The complete authored token stream is still present
-    // at this boundary, so reattach the typed inline rule before comparing
-    // prefix parses. A changed joint AST intentionally falls back to the flat
-    // program below, preserving the enriched replacement as one unit.
-    crate::runtime_backend::effect_sentences::attach_inline_token_granted_abilities_to_last_create(
-        &mut parsed_together,
-        tokens,
-    );
     if sentences.len() < 2 {
         let Some(sentence) = sentences.first() else {
             return Ok(parsed_together);

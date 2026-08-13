@@ -127,124 +127,6 @@ fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
     })
 }
 
-fn activation_cost_sets_x_from_counter_removal(cost: &TotalCost) -> bool {
-    fn component_sets_x(component: &Cost) -> bool {
-        match component {
-            Cost::RemoveCounters { .. } | Cost::RemoveAnyCountersFromSource { .. } => true,
-            Cost::Effect(effect) => {
-                effect
-                    .downcast_ref::<crate::effects::RemoveCountersEffect>()
-                    .is_some_and(|effect| {
-                        matches!(effect.target.base(), crate::target::ChooseSpec::Source)
-                    })
-                    || effect
-                        .downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
-                        .is_some()
-                    || effect
-                        .downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
-                        .is_some()
-            }
-            _ => false,
-        }
-    }
-
-    match cost.kind() {
-        TotalCostKind::All(components) => components.iter().any(component_sets_x),
-        TotalCostKind::OneOf(branches) => branches
-            .iter()
-            .any(activation_cost_sets_x_from_counter_removal),
-    }
-}
-
-fn bind_event_amount_to_cost_x(value: &mut crate::effect::Value) {
-    use crate::effect::{EventValueSpec, Value};
-
-    match value {
-        Value::EventValue(EventValueSpec::Amount)
-        | Value::EventValue(EventValueSpec::LifeAmount) => {
-            *value = Value::X;
-        }
-        Value::EventValueOffset(EventValueSpec::Amount, offset)
-        | Value::EventValueOffset(EventValueSpec::LifeAmount, offset) => {
-            *value = Value::Add(Box::new(Value::X), Box::new(Value::Fixed(*offset)));
-        }
-        Value::Add(left, right) | Value::Min(left, right) => {
-            bind_event_amount_to_cost_x(left);
-            bind_event_amount_to_cost_x(right);
-        }
-        Value::Scaled(inner, _)
-        | Value::DividedRoundedDown(inner, _)
-        | Value::HalfRoundedDown(inner) => {
-            bind_event_amount_to_cost_x(inner);
-        }
-        Value::SurfaceHinted { value, .. } => bind_event_amount_to_cost_x(value),
-        _ => {}
-    }
-}
-
-fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
-    if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::PumpByLastEffect {
-            power,
-            toughness,
-            target,
-            duration,
-            includes_this_way,
-        } = &subject_verb.action
-    {
-        let basis = crate::effect::Value::X.with_surface_hint(if *includes_this_way {
-            ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay
-        } else {
-            ironsmith_core::ValueSurfaceHint::CountersRemoved
-        });
-        let scale = |multiplier: i32| match multiplier {
-            0 => crate::effect::Value::Fixed(0),
-            1 => basis.clone(),
-            _ => crate::effect::Value::Scaled(Box::new(basis.clone()), multiplier),
-        };
-        *effect = EffectAst::subject_verb_pump(
-            scale(*power),
-            scale(*toughness),
-            target.clone(),
-            duration.clone(),
-            None,
-        );
-        return;
-    }
-
-    match effect {
-        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::DealDamage { amount, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
-            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
-            | SubjectVerbActionAst::DealDamageEach { amount, .. }
-            | SubjectVerbActionAst::Mill { count: amount }
-            | SubjectVerbActionAst::Draw { count: amount }
-            | SubjectVerbActionAst::AddManaScaled { amount, .. }
-            | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
-            | SubjectVerbActionAst::AddManaAnyOneColor { amount }
-            | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
-            | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
-            | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
-                bind_event_amount_to_cost_x(amount);
-            }
-            _ => {}
-        },
-        _ => {}
-    }
-    for_each_nested_effects_mut(effect, true, |nested| {
-        for inner in nested {
-            bind_event_amounts_to_cost_x_in_effect(inner);
-        }
-    });
-}
-
-fn bind_event_amounts_to_cost_x(effects: &mut [EffectAst]) {
-    for effect in effects {
-        bind_event_amounts_to_cost_x_in_effect(effect);
-    }
-}
-
 fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => matches!(
@@ -347,29 +229,6 @@ fn activated_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effec
             let offset = tokens.len().checked_sub(shape.value_tokens.len() + 3)?;
             parse_standalone_x_definition_value(&tokens[offset..])
         })
-}
-
-fn bind_activated_x_definition_to_mana_cost(
-    cost: TotalCost,
-    x_value: Option<crate::effect::Value>,
-) -> TotalCost {
-    let Some(x_value) = x_value else {
-        return cost;
-    };
-
-    cost.try_map(|component| {
-        if let Some(mana_cost) = component.mana_cost_ref()
-            && mana_cost.has_x()
-        {
-            Ok(Cost::dynamic_mana(ironsmith_core::DynamicManaCost::from_x(
-                mana_cost.clone(),
-                x_value.clone(),
-            )))
-        } else {
-            Ok(component)
-        }
-    })
-    .unwrap_or_else(|_: std::convert::Infallible| unreachable!())
 }
 
 fn finalize_rewrite_activated_effect_sentences(
@@ -721,53 +580,6 @@ fn parse_activated_effects_lexed(
     Ok(effects)
 }
 
-fn rewrite_self_replacements_as_conditionals(effect: EffectAst) -> EffectAst {
-    match effect {
-        EffectAst::Conditional {
-            predicate,
-            if_true,
-            if_false,
-        } => EffectAst::Conditional {
-            predicate,
-            if_true: if_true
-                .into_iter()
-                .map(rewrite_self_replacements_as_conditionals)
-                .collect(),
-            if_false: if_false
-                .into_iter()
-                .map(rewrite_self_replacements_as_conditionals)
-                .collect(),
-        },
-        EffectAst::SelfReplacement {
-            predicate,
-            if_true,
-            if_false,
-            ..
-        } => EffectAst::Conditional {
-            predicate,
-            if_true: if_true
-                .into_iter()
-                .map(rewrite_self_replacements_as_conditionals)
-                .collect(),
-            if_false: if_false
-                .into_iter()
-                .map(rewrite_self_replacements_as_conditionals)
-                .collect(),
-        },
-        other => other,
-    }
-}
-
-fn normalize_mana_replacement_effects(effects: Vec<EffectAst>) -> Vec<EffectAst> {
-    effects
-        .into_iter()
-        .map(|effect| match effect {
-            EffectAst::SelfReplacement { .. } => effect,
-            other => rewrite_self_replacements_as_conditionals(other),
-        })
-        .collect()
-}
-
 pub(crate) struct ParsedActivatedLine {
     pub(crate) chunk: LineAst,
     pub(crate) restrictions: ParsedRestrictions,
@@ -820,8 +632,8 @@ fn parse_activated_line_impl(
     line: &RewriteActivatedLine,
     original_effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<ParsedActivatedLine, CardTextError> {
-    let x_definition_value = activated_x_definition_value(original_effect_parse_tokens);
-    let has_x_definition_value = x_definition_value.is_some();
+    let has_x_definition_value =
+        activated_x_definition_value(original_effect_parse_tokens).is_some();
     let SplitRewriteActivatedEffectText {
         effect_text,
         effect_parse_tokens,
@@ -836,8 +648,7 @@ fn parse_activated_line_impl(
         )));
     }
 
-    let normalized_cost =
-        bind_activated_x_definition_to_mana_cost(line.cost.clone(), x_definition_value);
+    let normalized_cost = line.cost.clone();
     let original_effect_mentions_where_x =
         activated_grammar::contains_where_x_definition(original_effect_parse_tokens);
     let ability_text = rewrite_activated_display_text(line);
@@ -951,11 +762,11 @@ fn parse_activated_line_impl(
     }
 
     if activated_effect_may_be_mana_ability_lexed(&effect_parse_tokens) {
-        let effects_ast = normalize_mana_replacement_effects(parse_activated_effects_lexed(
+        let effects_ast = parse_activated_effects_lexed(
             effect_text.as_str(),
             &effect_parse_tokens,
             line.info.line_index,
-        )?);
+        )?;
         if effects_ast_can_lower_as_mana_ability(&effects_ast)
             || effects_ast
                 .first()
@@ -1008,9 +819,6 @@ fn parse_activated_line_impl(
         &effect_parse_tokens,
         line.info.line_index,
     )?;
-    if activation_cost_sets_x_from_counter_removal(&normalized_cost) {
-        bind_event_amounts_to_cost_x(&mut effects_ast);
-    }
     let functional_zones = infer_rewrite_activated_functional_zones(line)?;
     let reference_imports = activation_cost_reference_imports(&normalized_cost);
     let mut parsed = ParsedAbility {

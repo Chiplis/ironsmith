@@ -109,26 +109,17 @@ fn parse_triggered_line_cst_inner(
         return Err(err);
     }
 
-    // The preprocessing pass may simplify possessive/value references in a
-    // trigger's effect tail. For the small correlated bundles below, those
-    // authored references are executable provenance rather than presentation:
-    // e.g. `its power`, `its owner's library`, and a quoted Aura grant. Prove
-    // and retain the original tail before probing the normalized split.
+    // Preserve the grammar-proven created-token/delayed-sacrifice program
+    // before probing ordinary trigger splits.
     let (source_tokens_without_cap, _) =
         strip_trailing_trigger_cap_suffix_tokens(&line.info.source_tokens);
     if parse_trigger_intro_tokens(source_tokens_without_cap).is_some()
         && let Some((leading_tokens, effect_tokens)) =
             grammar::split_lexed_once_on_comma(source_tokens_without_cap)
         && leading_tokens.len() > 1
-        && (crate::runtime_backend::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(
+        && crate::runtime_backend::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
             effect_tokens,
-        ) || crate::runtime_backend::semantic_line_parsing::is_authored_dynamic_exile_permission_bundle(
-            effect_tokens,
-        ) || crate::runtime_backend::semantic_line_parsing::is_authored_look_hand_optional_cast_bundle(
-            effect_tokens,
-        ) || crate::runtime_backend::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
-            effect_tokens,
-        ))
+        )
         && let Some(candidate) = render_triggered_split_candidate(
             &leading_tokens[1..],
             effect_tokens,
@@ -140,19 +131,13 @@ fn parse_triggered_line_cst_inner(
         return Ok(candidate.into_cst(line, source_tokens_without_cap));
     }
 
-    // A small set of fully typed trigger bodies carry executable provenance
-    // across their authored sentence boundary. Claim the exact full tail
-    // before the ordinary split probes can independently accept the return or
-    // exile producer and peel the linked Aura/permission sentence into a
-    // separate generic program.
+    // The normalized token stream can prove the same linked program directly.
     if let Some((leading_tokens, effect_tokens)) =
         grammar::split_lexed_once_on_comma(tokens_without_cap)
         && leading_tokens.len() > 1
-        && (crate::runtime_backend::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(
+        && crate::runtime_backend::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
             effect_tokens,
-        ) || crate::runtime_backend::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
-            effect_tokens,
-        ))
+        )
         && let Some(candidate) = render_triggered_split_candidate(
             &leading_tokens[1..],
             effect_tokens,
