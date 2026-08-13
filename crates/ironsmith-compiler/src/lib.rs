@@ -126,6 +126,11 @@ pub use model::provenance::{
     PunctuationKind, QuoteStyle, ReminderTextDecision, RenderingHint, SemanticProvenance,
     SourcePosition, SourceSliceKind, SourceSpan, SourceUnit,
 };
+pub use model::symbols::{
+    Cardinality, ObjectDomain, ReferenceQuery, ReferenceRole, SymbolBinding, SymbolId,
+    SymbolReference, SymbolResolutionError, SymbolScope, SymbolScopeId, SymbolScopeKind,
+    SymbolTable,
+};
 pub use object::{AuraAttachmentFilter, CounterType};
 pub use oracle_grammar::{
     OracleGrammarDocument, OracleGrammarLevelItem, OracleGrammarLine, OracleGrammarLineInfo,

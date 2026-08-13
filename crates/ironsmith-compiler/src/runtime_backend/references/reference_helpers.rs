@@ -4,6 +4,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{EventValueSpec, Restriction, Value};
 use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
+use crate::runtime_backend::references::legacy_tag_symbol_bridge::legacy_tag;
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
 use crate::zone::Zone;
 use ironsmith_core::TurnHistoryCount;
@@ -112,7 +113,7 @@ pub(crate) fn resolve_non_target_player_filter(
         PlayerAst::Opponent => Ok(PlayerFilter::Opponent),
         PlayerAst::PlayerToYourLeft => Ok(PlayerFilter::PlayerToYourLeft),
         PlayerAst::PlayerToYourRight => Ok(PlayerFilter::PlayerToYourRight),
-        PlayerAst::Enchanted => Ok(PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))),
+        PlayerAst::Enchanted => Ok(PlayerFilter::TaggedPlayer(legacy_tag("enchanted"))),
         PlayerAst::NotYou => {
             if let Some(excluded) = refs.known_last_player_filter()
                 && !is_you_player_filter(excluded)
@@ -709,7 +710,7 @@ pub(crate) fn resolve_it_tag(
             .snapshot_tag_aliases
             .iter()
             .find(|(alias, _)| alias == ADDITIONAL_COST_OBJECT_TAG)
-            .map(|(_, concrete)| TagKey::from(concrete.as_str()))
+            .map(|(_, concrete)| legacy_tag(concrete.as_str()))
             .expect("plural cost reference proved a snapshot above");
         for constraint in &mut resolved.tagged_constraints {
             if constraint.tag.as_str() == IT_TAG
@@ -729,7 +730,7 @@ pub(crate) fn resolve_it_tag(
         refs.snapshot_tag_aliases
             .iter()
             .find(|(alias, _)| alias == "__public_revealed")
-            .map(|(_, concrete)| TagKey::from(concrete.as_str()))
+            .map(|(_, concrete)| legacy_tag(concrete.as_str()))
     })
     .flatten();
     if let Some(revealed_collection_tag) = revealed_collection_tag {
@@ -751,7 +752,7 @@ pub(crate) fn resolve_it_tag(
                 .iter()
                 .find(|(alias, _)| alias == constraint.tag.as_str())
             {
-                constraint.tag = TagKey::from(concrete.as_str());
+                constraint.tag = legacy_tag(concrete.as_str());
             }
         }
     }
@@ -897,7 +898,7 @@ pub(crate) fn resolve_it_tag_key(
         .iter()
         .find(|(alias, _)| alias == tag.as_str())
     {
-        return Ok(TagKey::from(concrete.as_str()));
+        return Ok(legacy_tag(concrete.as_str()));
     }
     if tag.as_str() == ADDITIONAL_COST_OBJECT_TAG {
         return refs.known_last_object_tag().cloned().ok_or_else(|| {
@@ -931,7 +932,7 @@ pub(crate) fn resolve_it_tag_key(
     let resolved = refs.known_last_object_tag().ok_or_else(|| {
         CardTextError::ParseError("unable to resolve 'it' without prior reference".to_string())
     })?;
-    Ok(TagKey::from(resolved.as_str()))
+    Ok(legacy_tag(resolved.as_str()))
 }
 
 pub(crate) fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option<TagKey> {
@@ -1119,11 +1120,11 @@ pub(crate) fn resolve_choose_spec_it_tag(
                 return Ok(if refs.iterated_object {
                     ChooseSpec::Iterated
                 } else {
-                    ChooseSpec::Tagged(TagKey::from(IT_TAG))
+                    ChooseSpec::Tagged(legacy_tag(IT_TAG))
                 });
             }
             if let Some(resolved) = refs.known_last_object_tag() {
-                return Ok(ChooseSpec::Tagged(TagKey::from(resolved.as_str())));
+                return Ok(ChooseSpec::Tagged(legacy_tag(resolved.as_str())));
             }
             if refs.has_source_object_antecedent() {
                 return Ok(ChooseSpec::Source);
@@ -1691,7 +1692,7 @@ pub(crate) fn resolve_target_spec_with_choices(
         let tag = refs
             .known_last_object_tag()
             .cloned()
-            .unwrap_or_else(|| TagKey::from(IT_TAG));
+            .unwrap_or_else(|| legacy_tag(IT_TAG));
         spec = ChooseSpec::Tagged(tag);
     }
     if let TargetAst::Player(filter, explicit_target_span) = target
@@ -1739,7 +1740,7 @@ pub(crate) fn resolve_attach_object_spec(
                 tag.as_str().to_string()
             };
             Ok((
-                ChooseSpec::All(ObjectFilter::tagged(TagKey::from(resolved_tag.as_str()))),
+                ChooseSpec::All(ObjectFilter::tagged(legacy_tag(resolved_tag.as_str()))),
                 Vec::new(),
             ))
         }

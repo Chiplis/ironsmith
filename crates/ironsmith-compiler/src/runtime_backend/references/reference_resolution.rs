@@ -8,6 +8,7 @@ use crate::filter::TaggedOpbjectRelation;
 use crate::target::ChooseSpec;
 use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
+use crate::runtime_backend::references::legacy_tag_symbol_bridge::legacy_tag;
 use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectAction, ValueSurfaceHint};
 
 #[cfg(test)]
@@ -3094,7 +3095,7 @@ fn resolve_effect_references_in_effect(
         // through the ordinary result path above.
         effect = EffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
-                crate::TagKey::from(format!("sacrifice_cost_{tag_index}")),
+                legacy_tag(format!("sacrifice_cost_{tag_index}")),
                 surface.filter.clone(),
             ),
             if_true: effects.clone(),
@@ -4077,7 +4078,7 @@ fn resolve_sacrifice_cost_tagged_metric(
         return None;
     }
     let filter = query.filter.clone().unwrap_or_default().match_tagged(
-        crate::TagKey::from(format!("sacrifice_cost_{tag_index}")),
+        legacy_tag(format!("sacrifice_cost_{tag_index}")),
         TaggedOpbjectRelation::IsTaggedObject,
     );
     match query.metric {
@@ -4110,7 +4111,7 @@ fn resolve_exile_cost_tagged_metric(
         return None;
     }
     let filter = query.filter.clone().unwrap_or_default().match_tagged(
-        crate::TagKey::from(format!("exile_cost_{tag_index}")),
+        legacy_tag(format!("exile_cost_{tag_index}")),
         TaggedOpbjectRelation::IsTaggedObject,
     );
     match query.metric {

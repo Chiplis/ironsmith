@@ -1,4 +1,5 @@
 use crate::diagnostics::{CardTextError, TextSpan};
+use crate::model::symbols::{ReferenceQuery, SymbolId, SymbolResolutionError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RuleId(&'static str);
@@ -49,9 +50,26 @@ impl UnsupportedReason {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseDiagnosticKind {
-    Malformed { expected: Vec<ParseExpectation> },
-    Unsupported { reason: UnsupportedReason },
-    Ambiguous { alternatives: Vec<RuleId> },
+    Malformed {
+        expected: Vec<ParseExpectation>,
+    },
+    Unsupported {
+        reason: UnsupportedReason,
+    },
+    Ambiguous {
+        alternatives: Vec<RuleId>,
+    },
+    UnresolvedReference {
+        query: ReferenceQuery,
+    },
+    AmbiguousReference {
+        query: ReferenceQuery,
+        candidates: Vec<SymbolId>,
+    },
+    InvalidReference {
+        query: ReferenceQuery,
+        candidates: Vec<SymbolId>,
+    },
     Invariant,
 }
 
@@ -142,6 +160,64 @@ impl ParseDiagnostic {
         }
     }
 
+    pub fn from_symbol_error(
+        rule: RuleId,
+        span: Option<TextSpan>,
+        error: SymbolResolutionError,
+    ) -> Self {
+        let (kind, message) = match error {
+            SymbolResolutionError::Unresolved(query) => (
+                ParseDiagnosticKind::UnresolvedReference { query },
+                format!(
+                    "unresolved {:?} reference in {:?} domain",
+                    query.role, query.domain
+                ),
+            ),
+            SymbolResolutionError::Ambiguous { query, candidates } => (
+                ParseDiagnosticKind::AmbiguousReference {
+                    query,
+                    candidates: candidates.clone(),
+                },
+                format!(
+                    "ambiguous {:?} reference matched symbols {candidates:?}",
+                    query.role
+                ),
+            ),
+            SymbolResolutionError::WrongDomain { query, candidates } => (
+                ParseDiagnosticKind::InvalidReference {
+                    query,
+                    candidates: candidates.clone(),
+                },
+                format!(
+                    "{:?} reference resolved only in the wrong domain: {candidates:?}",
+                    query.role
+                ),
+            ),
+            SymbolResolutionError::WrongCardinality { query, candidates } => (
+                ParseDiagnosticKind::InvalidReference {
+                    query,
+                    candidates: candidates.clone(),
+                },
+                format!(
+                    "{:?} reference resolved only with the wrong cardinality: {candidates:?}",
+                    query.role
+                ),
+            ),
+            SymbolResolutionError::UnknownScope(scope) => (
+                ParseDiagnosticKind::Invariant,
+                format!("unknown lexical symbol scope {scope:?}"),
+            ),
+        };
+        Self {
+            rule,
+            rule_path: vec![rule],
+            span,
+            furthest_committed_span: span,
+            kind,
+            message,
+        }
+    }
+
     pub fn within(mut self, parent: RuleId) -> Self {
         if self.rule_path.first().copied() != Some(parent) {
             self.rule_path.insert(0, parent);
@@ -163,9 +239,11 @@ impl ParseDiagnostic {
         };
         match self.kind {
             ParseDiagnosticKind::Unsupported { .. } => CardTextError::UnsupportedLine(message),
-            ParseDiagnosticKind::Malformed { .. } | ParseDiagnosticKind::Ambiguous { .. } => {
-                CardTextError::ParseError(message)
-            }
+            ParseDiagnosticKind::Malformed { .. }
+            | ParseDiagnosticKind::Ambiguous { .. }
+            | ParseDiagnosticKind::UnresolvedReference { .. }
+            | ParseDiagnosticKind::AmbiguousReference { .. }
+            | ParseDiagnosticKind::InvalidReference { .. } => CardTextError::ParseError(message),
             ParseDiagnosticKind::Invariant => CardTextError::InvariantViolation(message),
         }
     }

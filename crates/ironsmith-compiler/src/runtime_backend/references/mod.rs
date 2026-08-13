@@ -4,6 +4,7 @@ pub(crate) type ReferenceSeed = super::ReferenceImports;
 pub(crate) type ReferenceState = super::ReferenceEnv;
 pub(crate) type ReferenceSummary = super::ReferenceExports;
 
+pub(crate) mod legacy_tag_symbol_bridge;
 pub(crate) use super::reference_helpers;
 pub(crate) use super::reference_model;
 pub(crate) use super::reference_resolution;

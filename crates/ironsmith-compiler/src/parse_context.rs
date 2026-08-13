@@ -1,8 +1,12 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 
 use crate::cards::builders::CardDefinitionBuilder;
 use crate::diagnostics::TextSpan;
 use crate::model::provenance::{ProvenanceId, ProvenanceStore};
+use crate::model::symbols::{
+    Cardinality, ObjectDomain, ReferenceQuery, ReferenceRole, SymbolId, SymbolResolutionError,
+    SymbolScopeId, SymbolScopeKind, SymbolTable,
+};
 use crate::types::{CardType, Subtype, Supertype};
 
 pub use crate::model::provenance::SourceUnitId;
@@ -78,7 +82,6 @@ impl ParseDiagnosticSink {
 pub struct ParseArenas {
     next_scope: Cell<u32>,
     next_provenance: Cell<u32>,
-    next_symbol: Cell<u32>,
 }
 
 impl Default for ParseArenas {
@@ -86,7 +89,6 @@ impl Default for ParseArenas {
         Self {
             next_scope: Cell::new(1),
             next_provenance: Cell::new(0),
-            next_symbol: Cell::new(0),
         }
     }
 }
@@ -107,10 +109,6 @@ impl ParseArenas {
         let ParseArenaId(id) = Self::allocate(&self.next_provenance);
         ProvenanceId(id)
     }
-
-    pub fn allocate_symbol(&self) -> ParseArenaId {
-        Self::allocate(&self.next_symbol)
-    }
 }
 
 #[derive(Debug)]
@@ -121,11 +119,23 @@ pub struct ParseContext {
     diagnostics: ParseDiagnosticSink,
     arenas: ParseArenas,
     provenance: ProvenanceStore,
+    symbols: RefCell<SymbolTable>,
 }
 
 impl ParseContext {
     pub fn new(source: SourceIdentity, card: CardFaceMetadata, features: ParseFeatures) -> Self {
         let provenance = ProvenanceStore::capture(source.unit, "", &source.card_name);
+        let mut symbols = SymbolTable::default();
+        let root_scope = symbols.root_scope();
+        symbols
+            .bind(
+                root_scope,
+                ReferenceRole::Source,
+                Cardinality::ExactlyOne,
+                ObjectDomain::Object,
+                None,
+            )
+            .expect("root symbol scope must exist");
         Self {
             source,
             card,
@@ -133,6 +143,7 @@ impl ParseContext {
             diagnostics: ParseDiagnosticSink::default(),
             arenas: ParseArenas::default(),
             provenance,
+            symbols: RefCell::new(symbols),
         }
     }
 
@@ -194,6 +205,14 @@ impl ParseContext {
         self.provenance = provenance;
     }
 
+    pub fn symbols(&self) -> Ref<'_, SymbolTable> {
+        self.symbols.borrow()
+    }
+
+    pub fn symbols_mut(&self) -> RefMut<'_, SymbolTable> {
+        self.symbols.borrow_mut()
+    }
+
     pub fn view(&self) -> ParseContextView<'_> {
         ParseContextView {
             source: &self.source,
@@ -202,6 +221,8 @@ impl ParseContext {
             diagnostics: &self.diagnostics,
             arenas: &self.arenas,
             provenance: &self.provenance,
+            symbols: &self.symbols,
+            symbol_scope: SymbolScopeId(0),
             scope: ParseScopeId(0),
             scope_kind: ParseScopeKind::Root,
         }
@@ -216,6 +237,8 @@ pub struct ParseContextView<'a> {
     diagnostics: &'a ParseDiagnosticSink,
     arenas: &'a ParseArenas,
     provenance: &'a ProvenanceStore,
+    symbols: &'a RefCell<SymbolTable>,
+    symbol_scope: SymbolScopeId,
     scope: ParseScopeId,
     scope_kind: ParseScopeKind,
 }
@@ -245,6 +268,40 @@ impl<'a> ParseContextView<'a> {
         self.provenance
     }
 
+    pub fn symbol_scope(self) -> SymbolScopeId {
+        self.symbol_scope
+    }
+
+    pub fn symbols(self) -> Ref<'a, SymbolTable> {
+        self.symbols.borrow()
+    }
+
+    pub fn bind_symbol(
+        self,
+        role: ReferenceRole,
+        cardinality: Cardinality,
+        domain: ObjectDomain,
+        provenance: Option<ProvenanceId>,
+    ) -> Result<SymbolId, SymbolResolutionError> {
+        self.symbols
+            .borrow_mut()
+            .bind(self.symbol_scope, role, cardinality, domain, provenance)
+    }
+
+    pub fn resolve_symbol(
+        self,
+        role: ReferenceRole,
+        domain: ObjectDomain,
+        required_cardinality: Option<Cardinality>,
+    ) -> Result<SymbolId, SymbolResolutionError> {
+        self.symbols.borrow().resolve(ReferenceQuery {
+            scope: self.symbol_scope,
+            role,
+            domain,
+            required_cardinality,
+        })
+    }
+
     pub fn scope(self) -> ParseScopeId {
         self.scope
     }
@@ -254,9 +311,24 @@ impl<'a> ParseContextView<'a> {
     }
 
     pub fn child(self, scope_kind: ParseScopeKind) -> Self {
+        let symbol_scope_kind = match scope_kind {
+            ParseScopeKind::Root => SymbolScopeKind::Root,
+            ParseScopeKind::Document => SymbolScopeKind::Document,
+            ParseScopeKind::Line { .. } => SymbolScopeKind::Line,
+            ParseScopeKind::NestedAbility => SymbolScopeKind::NestedAbility,
+            ParseScopeKind::ModalMode { .. } => SymbolScopeKind::ModalMode,
+            ParseScopeKind::TokenDefinition => SymbolScopeKind::TokenDefinition,
+            ParseScopeKind::CleaveBranch => SymbolScopeKind::Branch,
+        };
+        let symbol_scope = self
+            .symbols
+            .borrow_mut()
+            .create_scope(self.symbol_scope, symbol_scope_kind)
+            .expect("parent parse symbol scope must exist");
         Self {
             scope: self.arenas.allocate_scope(),
             scope_kind,
+            symbol_scope,
             ..self
         }
     }

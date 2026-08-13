@@ -6,6 +6,7 @@ use crate::cards::builders::{
 };
 use crate::cost::OptionalCost;
 use crate::model::provenance::ProvenanceStore;
+use crate::model::symbols::SymbolTable;
 
 use super::ast::{StaticAbilityAst, TriggerSpec};
 use super::reference_model::{
@@ -179,6 +180,7 @@ pub(crate) struct NormalizedCardAst {
     pub(crate) builder: CardDefinitionBuilder,
     pub(crate) annotations: ParseAnnotations,
     pub(crate) provenance: ProvenanceStore,
+    pub(crate) symbols: SymbolTable,
     pub(crate) items: Vec<NormalizedCardItem>,
     pub(crate) overload_branch: Option<NormalizedOverloadBranch>,
     pub(crate) cleave_branch: Option<NormalizedCleaveBranch>,
@@ -190,6 +192,7 @@ pub(crate) struct ParsedCardAst {
     pub(crate) builder: CardDefinitionBuilder,
     pub(crate) annotations: ParseAnnotations,
     pub(crate) provenance: ProvenanceStore,
+    pub(crate) symbols: SymbolTable,
     pub(crate) items: Vec<ParsedCardItem>,
     pub(crate) overload_branch: Option<ParsedOverloadBranch>,
     pub(crate) cleave_branch: Option<ParsedCleaveBranch>,

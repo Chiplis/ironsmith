@@ -5571,12 +5571,13 @@ pub(crate) fn parse_text_to_semantic_document_with_context(
             cst.lines.len()
         );
     }
-    let semantic = lower_document_cst(
+    let semantic = lower_document_cst_with_symbols(
         preprocessed,
         cst,
         cleave_cst,
         semantic_facts,
         allow_unsupported,
+        context.symbols().clone(),
     )?;
     let annotations = semantic.annotations.clone();
     parse_trace::event(format!("semantic items: {}", semantic.items.len()));
@@ -5928,6 +5929,24 @@ fn lower_document_cst(
     semantic_facts: super::ir::DocumentSemanticFacts,
     allow_unsupported: bool,
 ) -> Result<RewriteSemanticDocument, CardTextError> {
+    lower_document_cst_with_symbols(
+        preprocessed,
+        cst,
+        cleave_cst,
+        semantic_facts,
+        allow_unsupported,
+        crate::model::symbols::SymbolTable::default(),
+    )
+}
+
+fn lower_document_cst_with_symbols(
+    preprocessed: PreprocessedDocument,
+    cst: RewriteDocumentCst,
+    cleave_cst: Option<RewriteDocumentCst>,
+    semantic_facts: super::ir::DocumentSemanticFacts,
+    allow_unsupported: bool,
+    symbols: crate::model::symbols::SymbolTable,
+) -> Result<RewriteSemanticDocument, CardTextError> {
     let overload_items = semantic_facts
         .overload_rewrite
         .as_ref()
@@ -5986,6 +6005,7 @@ fn lower_document_cst(
         builder,
         annotations: preprocessed.annotations,
         provenance: preprocessed.provenance,
+        symbols,
         items,
         overload_items,
         cleave_items,

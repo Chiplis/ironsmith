@@ -4,6 +4,7 @@ pub mod provenance;
 pub mod reference;
 pub mod restrictions;
 pub mod semantic;
+pub mod symbols;
 
 pub use ir::{
     RewriteActivatedLine, RewriteKeywordLine, RewriteLevelHeader, RewriteLevelItem,
@@ -34,4 +35,9 @@ pub use semantic::{
     ParsedCardItemKind, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst,
     ParsedModalActivatedHeader, ParsedModalAst, ParsedModalGate, ParsedModalHeader,
     ParsedModalModeAst,
+};
+pub use symbols::{
+    Cardinality, ObjectDomain, ReferenceQuery, ReferenceRole, SymbolBinding, SymbolId,
+    SymbolReference, SymbolResolutionError, SymbolScope, SymbolScopeId, SymbolScopeKind,
+    SymbolTable,
 };

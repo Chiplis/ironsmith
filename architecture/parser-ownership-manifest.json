@@ -29,7 +29,8 @@
     {
       "id": "reference_resolution",
       "roots": [
-        "crates/ironsmith-compiler/src/references"
+        "crates/ironsmith-compiler/src/references",
+        "crates/ironsmith-compiler/src/model/symbols.rs"
       ]
     },
     {
@@ -110,7 +111,7 @@
     {
       "id": "BRIDGE-TAGKEY-SYMBOL",
       "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/references"
+        "crates/ironsmith-compiler/src/runtime_backend/references/legacy_tag_symbol_bridge.rs"
       ],
       "removal_pr": 33,
       "reason": "A total TagKey/SymbolId conversion is needed while compiler references migrate to typed symbols."
