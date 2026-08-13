@@ -40,6 +40,7 @@
       "id": "compiler_ast",
       "roots": [
         "crates/ironsmith-compiler/src/model/ast",
+        "crates/ironsmith-compiler/src/model/clauses.rs",
         "crates/ironsmith-compiler/src/model/card_document.rs",
         "crates/ironsmith-compiler/src/model/activated_abilities.rs",
         "crates/ironsmith-compiler/src/model/costs.rs",
@@ -47,7 +48,8 @@
         "crates/ironsmith-compiler/src/model/selections.rs",
         "crates/ironsmith-compiler/src/model/static_abilities.rs",
         "crates/ironsmith-compiler/src/model/structured_abilities.rs",
-        "crates/ironsmith-compiler/src/model/triggered_abilities.rs"
+        "crates/ironsmith-compiler/src/model/triggered_abilities.rs",
+        "crates/ironsmith-compiler/src/model/visit.rs"
       ]
     },
     {

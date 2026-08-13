@@ -470,7 +470,7 @@ enum CommonPlayerActionPattern {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct PlayerAmountClause<'a> {
+struct ComposedPlayerActionClause<'a> {
     subject: SubjectAst,
     verb: Verb,
     action_tokens: &'a [OwnedLexToken],
@@ -487,81 +487,16 @@ fn parse_copular_base_pt_animation_clause(
 }
 
 #[derive(Debug, Clone, Copy)]
-struct PlayerObjectClause<'a> {
-    subject: SubjectAst,
-    verb: Verb,
-    action_tokens: &'a [OwnedLexToken],
-}
-
-#[derive(Debug, Clone, Copy)]
-struct PlayerZoneClause<'a> {
-    subject: SubjectAst,
-    verb: Verb,
-    action_tokens: &'a [OwnedLexToken],
-}
-
-#[derive(Debug, Clone, Copy)]
-struct PlayerChoiceClause<'a> {
-    subject: SubjectAst,
-    verb: Verb,
-    action_tokens: &'a [OwnedLexToken],
-}
-
-#[derive(Debug, Clone, Copy)]
-struct PlayerPaymentClause<'a> {
-    subject: SubjectAst,
-    verb: Verb,
-    action_tokens: &'a [OwnedLexToken],
-}
-
-#[derive(Debug, Clone, Copy)]
-struct PlayerStateClause<'a> {
-    subject: SubjectAst,
-    verb: Verb,
-    action_tokens: &'a [OwnedLexToken],
-}
-
-#[derive(Debug, Clone, Copy)]
 enum CommonPlayerActionClause<'a> {
-    Amount(PlayerAmountClause<'a>),
-    Object(PlayerObjectClause<'a>),
-    Zone(PlayerZoneClause<'a>),
-    Choice(PlayerChoiceClause<'a>),
-    Payment(PlayerPaymentClause<'a>),
-    State(PlayerStateClause<'a>),
+    Amount(ComposedPlayerActionClause<'a>),
+    Object(ComposedPlayerActionClause<'a>),
+    Zone(ComposedPlayerActionClause<'a>),
+    Choice(ComposedPlayerActionClause<'a>),
+    Payment(ComposedPlayerActionClause<'a>),
+    State(ComposedPlayerActionClause<'a>),
 }
 
-impl<'a> PlayerAmountClause<'a> {
-    fn lower(self) -> Result<EffectAst, CardTextError> {
-        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
-    }
-}
-
-impl<'a> PlayerObjectClause<'a> {
-    fn lower(self) -> Result<EffectAst, CardTextError> {
-        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
-    }
-}
-
-impl<'a> PlayerZoneClause<'a> {
-    fn lower(self) -> Result<EffectAst, CardTextError> {
-        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
-    }
-}
-
-impl<'a> PlayerChoiceClause<'a> {
-    fn lower(self) -> Result<EffectAst, CardTextError> {
-        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
-    }
-}
-
-impl<'a> PlayerPaymentClause<'a> {
-    fn lower(self) -> Result<EffectAst, CardTextError> {
-        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
-    }
-}
-
-impl<'a> PlayerStateClause<'a> {
+impl<'a> ComposedPlayerActionClause<'a> {
     fn lower(self) -> Result<EffectAst, CardTextError> {
         parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
     }
@@ -638,37 +573,18 @@ impl<'a> CommonPlayerActionClause<'a> {
             return None;
         }
         let pattern = common_player_action_pattern_for(verb, action_tokens)?;
+        let clause = ComposedPlayerActionClause {
+            subject,
+            verb,
+            action_tokens,
+        };
         Some(match pattern {
-            CommonPlayerActionPattern::Amount => Self::Amount(PlayerAmountClause {
-                subject,
-                verb,
-                action_tokens,
-            }),
-            CommonPlayerActionPattern::ObjectSelection => Self::Object(PlayerObjectClause {
-                subject,
-                verb,
-                action_tokens,
-            }),
-            CommonPlayerActionPattern::ZoneMovement => Self::Zone(PlayerZoneClause {
-                subject,
-                verb,
-                action_tokens,
-            }),
-            CommonPlayerActionPattern::Choice => Self::Choice(PlayerChoiceClause {
-                subject,
-                verb,
-                action_tokens,
-            }),
-            CommonPlayerActionPattern::Payment => Self::Payment(PlayerPaymentClause {
-                subject,
-                verb,
-                action_tokens,
-            }),
-            CommonPlayerActionPattern::StateChange => Self::State(PlayerStateClause {
-                subject,
-                verb,
-                action_tokens,
-            }),
+            CommonPlayerActionPattern::Amount => Self::Amount(clause),
+            CommonPlayerActionPattern::ObjectSelection => Self::Object(clause),
+            CommonPlayerActionPattern::ZoneMovement => Self::Zone(clause),
+            CommonPlayerActionPattern::Choice => Self::Choice(clause),
+            CommonPlayerActionPattern::Payment => Self::Payment(clause),
+            CommonPlayerActionPattern::StateChange => Self::State(clause),
         })
     }
 

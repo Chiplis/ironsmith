@@ -1,6 +1,7 @@
 pub(crate) mod activated_abilities;
 pub(crate) mod ast;
 pub(crate) mod card_document;
+pub(crate) mod clauses;
 pub(crate) mod compiler_semantic;
 pub mod costs;
 pub(crate) mod facts;
@@ -26,6 +27,13 @@ pub(crate) use activated_abilities::{
     ManaAbilityFacts,
 };
 pub(crate) use card_document::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
+pub(crate) use clauses::{
+    ClauseActionAst, ClauseActorAst, ClauseBindingSourceAst, ClauseComplementAst,
+    ClauseConditionAst, ClauseConditionKindAst, ClauseDestinationAst, ClauseDestinationRelationAst,
+    ClauseDistributionAst, ClauseDurationAst, ClauseObjectAst, ClausePolarityAst,
+    ClausePredicateAst, ClauseQuantityAst, ClauseQuantityUnitAst, ClauseReferenceBindingAst,
+    ClauseSubjectAst, ClauseVerbAst, ClauseZonePlacementAst, CompilerClauseAst,
+};
 pub(crate) use legality::{
     CompilerActivationLegalityAst, CompilerCastingLegalityAst, CompilerPermissionAst,
     CompilerTriggerLegalityAst, LegalityFrequencyAst, LegalityPeriodAst,

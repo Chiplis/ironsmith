@@ -10,6 +10,9 @@ pub(crate) struct ChooseOneModeAst {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EffectAst {
+    /// A new-style effect assembled from the common semantic clause
+    /// vocabulary. Lowering owns the only conversion into runtime actions.
+    Clause(CompilerClauseAst),
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
     RestartGame {
