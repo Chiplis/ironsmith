@@ -142,7 +142,21 @@ pub(crate) fn interpret_trigger_model(
                 branches: interpreted_branches,
             })
         }
+        TriggerKind::ConditionQualified {
+            trigger,
+            condition,
+            surface,
+            stun_counter_reminder_surface,
+        } => crate::triggers::Trigger::condition_qualified(
+            interpret_trigger_model(*trigger)?,
+            condition,
+            surface,
+            stun_counter_reminder_surface,
+        ),
         TriggerKind::ThisAttacks => crate::triggers::Trigger::this_attacks(),
+        TriggerKind::ThisAttacksWhileYouControl { filter } => {
+            crate::triggers::Trigger::this_attacks_while_you_control(filter)
+        }
         TriggerKind::ThisAndAnotherAttackDifferentPlayers => {
             crate::triggers::Trigger::this_and_another_attack_different_players()
         }
@@ -204,6 +218,15 @@ pub(crate) fn interpret_trigger_model(
         } => {
             crate::triggers::Trigger::attacks_one_or_more_with_exact_total(filter, total_attackers)
         }
+        TriggerKind::AttacksOneOrMoreWithAggregate {
+            filter,
+            metric,
+            comparison,
+        } => crate::triggers::Trigger::attacks_one_or_more_with_aggregate(
+            filter,
+            metric,
+            comparison,
+        ),
         TriggerKind::AttacksAlone { filter } => crate::triggers::Trigger::attacks_alone(filter),
         TriggerKind::AttacksYou { filter } => crate::triggers::Trigger::attacks_you(filter),
         TriggerKind::AttacksYouOneOrMore { filter } => {

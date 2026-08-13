@@ -1712,6 +1712,7 @@ impl StaticAbilityKind for DrawReplacementSkipEmptyLibrary {
 pub struct ConditionalDrawReplacement {
     pub condition: Condition,
     pub replacement_effects: Vec<Effect>,
+    pub optional: bool,
     pub display: String,
 }
 
@@ -1719,11 +1720,13 @@ impl ConditionalDrawReplacement {
     pub fn new(
         condition: Condition,
         replacement_effects: Vec<Effect>,
+        optional: bool,
         display: impl Into<String>,
     ) -> Self {
         Self {
             condition,
             replacement_effects,
+            optional,
             display: display.into(),
         }
     }
@@ -1754,7 +1757,7 @@ impl StaticAbilityKind for ConditionalDrawReplacement {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
-        Some(ReplacementEffect::with_matcher(
+        let replacement = ReplacementEffect::with_matcher(
             source,
             controller,
             ConditionalWouldDrawCardMatcher {
@@ -1762,7 +1765,12 @@ impl StaticAbilityKind for ConditionalDrawReplacement {
                 display: self.display.clone(),
             },
             ReplacementAction::Instead(self.replacement_effects.clone()),
-        ))
+        );
+        Some(if self.optional {
+            replacement.optional()
+        } else {
+            replacement
+        })
     }
 }
 
@@ -2008,6 +2016,7 @@ pub struct KeywordActionReplacement {
     pub source_filter: ObjectFilter,
     pub performer_filter: Option<PlayerFilter>,
     pub replacement_effects: Vec<Effect>,
+    pub optional: bool,
     pub display: String,
 }
 
@@ -2017,6 +2026,7 @@ impl KeywordActionReplacement {
         source_filter: ObjectFilter,
         performer_filter: Option<PlayerFilter>,
         replacement_effects: Vec<Effect>,
+        optional: bool,
         display: impl Into<String>,
     ) -> Self {
         Self {
@@ -2024,6 +2034,7 @@ impl KeywordActionReplacement {
             source_filter,
             performer_filter,
             replacement_effects,
+            optional,
             display: display.into(),
         }
     }
@@ -2043,7 +2054,7 @@ impl StaticAbilityKind for KeywordActionReplacement {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
-        Some(ReplacementEffect::with_matcher(
+        let replacement = ReplacementEffect::with_matcher(
             source,
             controller,
             crate::events::other::WouldKeywordActionMatcher::new(
@@ -2052,7 +2063,12 @@ impl StaticAbilityKind for KeywordActionReplacement {
             )
             .with_performer_filter(self.performer_filter.clone()),
             ReplacementAction::Instead(self.replacement_effects.clone()),
-        ))
+        );
+        Some(if self.optional {
+            replacement.optional()
+        } else {
+            replacement
+        })
     }
 }
 

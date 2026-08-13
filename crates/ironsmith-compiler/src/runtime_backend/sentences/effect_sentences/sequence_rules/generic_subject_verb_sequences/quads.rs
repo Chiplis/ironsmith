@@ -987,7 +987,11 @@ pub(crate) fn parse_look_at_top_optional_battlefield_then_conditional_remainder(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let conditional_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    // Keep authored number/type words intact. A card name can itself install
+    // a short source alias matching one of those words (for example `Nine`
+    // in Nine-Fingers Keene), and the normalized view would otherwise turn
+    // the threshold and look count into a source reference.
+    let conditional_tokens = trim_commas(sentences[sentence_idx + 2].lexed());
     let Ok(parsed_conditional) = effect_sentences::parse_effect_sentence_lexed(&conditional_tokens)
     else {
         return Ok(None);
@@ -997,7 +1001,7 @@ pub(crate) fn parse_look_at_top_optional_battlefield_then_conditional_remainder(
     };
     let predicate = predicate.clone();
 
-    let otherwise_tokens = trim_commas(sentences[sentence_idx + 3].lowered());
+    let otherwise_tokens = trim_commas(sentences[sentence_idx + 3].lexed());
     let bottom_tokens = strip_leading_token_words_any(&otherwise_tokens, &["otherwise"]);
     let partition_sentences = [
         SentenceInput::from_lexed(sentences[sentence_idx].lexed()),

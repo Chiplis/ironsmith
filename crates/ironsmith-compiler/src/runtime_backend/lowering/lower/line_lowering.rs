@@ -768,13 +768,12 @@ fn normalize_each_damaged_target_self_replacement(
         let [default_root] = segment.default_effects.as_slice() else {
             continue;
         };
-        let Some(default_with_id) = default_root.downcast_ref::<crate::effects::WithIdEffect>()
-        else {
-            continue;
-        };
-        let Some(default_tagged) = default_with_id
-            .effect
-            .downcast_ref::<crate::effects::TaggedEffect>()
+        let (default_id, default_inner) = default_root
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .map_or((None, default_root), |with_id| {
+                (Some(with_id.id), with_id.effect.as_ref())
+            });
+        let Some(default_tagged) = default_inner.downcast_ref::<crate::effects::TaggedEffect>()
         else {
             continue;
         };
@@ -792,18 +791,27 @@ fn normalize_each_damaged_target_self_replacement(
             let [replacement_root] = branch.replacement_effects.as_slice() else {
                 continue;
             };
-            let Some(replacement_with_id) =
-                replacement_root.downcast_ref::<crate::effects::WithIdEffect>()
-            else {
-                continue;
-            };
-            let Some(conditional) = replacement_with_id
-                .effect
+            let (replacement_id, replacement_inner) = replacement_root
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .map_or((None, replacement_root), |with_id| {
+                    (Some(with_id.id), with_id.effect.as_ref())
+                });
+            let (nested_condition, replacement_effects) = replacement_inner
                 .downcast_ref::<crate::effects::ConditionalEffect>()
-            else {
-                continue;
-            };
-            let [for_each_root] = conditional.if_true.as_slice() else {
+                .map_or(
+                    (None, std::slice::from_ref(replacement_inner)),
+                    |conditional| {
+                        (
+                            Some((
+                                &conditional.condition,
+                                conditional.surface,
+                                conditional.if_false.is_empty(),
+                            )),
+                            conditional.if_true.as_slice(),
+                        )
+                    },
+                );
+            let [for_each_root] = replacement_effects else {
                 continue;
             };
             let Some(for_each) = for_each_root.downcast_ref::<crate::effects::ForEachObject>()
@@ -850,10 +858,12 @@ fn normalize_each_damaged_target_self_replacement(
             iterated_filter.zone = None;
             iterated_filter.card_types.clear();
             iterated_filter.union_surface = crate::filter::ObjectFilterUnionSurface::default();
-            if replacement_with_id.id != default_with_id.id
-                || conditional.condition != branch.condition
-                || conditional.surface != ironsmith_core::ConditionalSurface::TrailingIf
-                || !conditional.if_false.is_empty()
+            if default_id != replacement_id
+                || nested_condition.is_some_and(|(condition, surface, empty_else)| {
+                    condition != &branch.condition
+                        || surface != ironsmith_core::ConditionalSurface::TrailingIf
+                        || !empty_else
+                })
                 || !exact_tag
                 || !exact_permanent_domain
                 || iterated_filter != ObjectFilter::default()
@@ -867,9 +877,15 @@ fn normalize_each_damaged_target_self_replacement(
             rebound_damage.target = default_damage.target.clone();
             let mut rebound_tagged = default_tagged.clone();
             rebound_tagged.effect = Box::new(crate::effect::Effect::new(rebound_damage));
-            let mut rebound_with_id = default_with_id.clone();
-            rebound_with_id.effect = Box::new(crate::effect::Effect::new(rebound_tagged));
-            branch.replacement_effects = vec![crate::effect::Effect::new(rebound_with_id)];
+            let rebound = crate::effect::Effect::new(rebound_tagged);
+            branch.replacement_effects = if let Some(id) = default_id {
+                vec![crate::effect::Effect::new(crate::effects::WithIdEffect {
+                    id,
+                    effect: Box::new(rebound),
+                })]
+            } else {
+                vec![rebound]
+            };
         }
     }
 }
@@ -1909,7 +1925,7 @@ pub(super) fn rewrite_apply_line_ast(
     allow_unsupported: bool,
     annotations: &mut ParseAnnotations,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
-    match parsed {
+    let mut builder = match parsed {
         parsed @ NormalizedLineChunk::Abilities(_) => {
             lower_abilities_chunk(LineChunkLoweringInput {
                 builder,
@@ -2042,6 +2058,65 @@ pub(super) fn rewrite_apply_line_ast(
                 annotations,
             })
         }
+    }?;
+    if let Some(program) = builder.spell_effect.as_mut() {
+        let authored_tokens =
+            crate::runtime_backend::lexer::lex_line(&info.raw_line, info.line_index)
+                .unwrap_or_else(|_| info.source_tokens.clone());
+        bind_each_opponent_sacrifice_failure_half_life(program, &authored_tokens);
+        bind_optional_linked_mana_value_damage(program, &info.raw_line);
+        preserve_repeated_comma_then_surface(program, &info.raw_line);
+    }
+    Ok(builder)
+}
+
+/// Preserve the distinction between one trailing `, then` and an authored
+/// chain that repeats `, then` before every later action. Both execute as the
+/// same sequence, but quantified-player text needs the typed distinction to
+/// avoid dropping the first connective.
+fn preserve_repeated_comma_then_surface(
+    program: &mut crate::resolution::ResolutionProgram,
+    raw_line: &str,
+) {
+    let boundary_count = raw_line.to_ascii_lowercase().matches(", then").count();
+    if boundary_count < 2 {
+        return;
+    }
+
+    fn rewrite(effect: &crate::effect::Effect, boundary_count: usize) -> crate::effect::Effect {
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+            && sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+            && sequence.effects.len() == boundary_count + 1
+        {
+            let mut sequence = sequence.clone();
+            sequence.surface = ironsmith_core::SequenceSurface::RepeatedCommaThen;
+            return crate::effect::Effect::new(sequence);
+        }
+        if let Some(for_players) =
+            effect.downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
+        {
+            let mut for_players = for_players.clone();
+            for_players.effects = for_players
+                .effects
+                .iter()
+                .map(|child| rewrite(child, boundary_count))
+                .collect();
+            return crate::effect::Effect::new(for_players);
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            let mut with_id = with_id.clone();
+            with_id.effect = Box::new(rewrite(&with_id.effect, boundary_count));
+            return crate::effect::Effect::new(with_id);
+        }
+        effect.clone()
+    }
+
+    for segment in &mut program.segments {
+        segment.default_effects = segment
+            .default_effects
+            .iter()
+            .map(|effect| rewrite(effect, boundary_count))
+            .collect();
     }
 }
 
@@ -2091,7 +2166,25 @@ fn compile_static_ability_with_zones(
         ability.payload,
         crate::static_abilities::StaticAbilityPayload::Conditional { .. }
     );
-    if (conditional_shape || preserve_single_ability_label)
+    let typed_payload_owns_full_surface = matches!(
+        ability.payload,
+        crate::static_abilities::StaticAbilityPayload::Companion(_)
+    );
+    let authored_flash_permission_surface = ability.id()
+        == crate::static_abilities::StaticAbilityId::Flash
+        && ability.label.to_ascii_lowercase().contains("as though");
+    if authored_flash_permission_surface
+        && let Some(label) = facts
+            .presentation_label
+            .as_ref()
+            .and_then(crate::ability::PresentationLabel::display_prefix)
+        && !ability.label.starts_with(&format!("{label} —"))
+    {
+        ability.label = format!("{label} — {}", ability.label);
+    }
+    if !authored_flash_permission_surface
+        && (conditional_shape
+            || (preserve_single_ability_label && !typed_payload_owns_full_surface))
         && let Some(label) = facts
             .presentation_label
             .as_ref()
@@ -2412,6 +2505,160 @@ fn rewrite_self_spell_cost_modifier(
     }
 }
 
+fn bind_authored_chosen_creature_static_filters(
+    abilities: &mut [crate::static_abilities::StaticAbility],
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words
+        .windows(3)
+        .any(|window| window == ["the", "chosen", "creature"])
+        || !words
+            .iter()
+            .any(|word| matches!(*word, "gets" | "get" | "has" | "have"))
+    {
+        return false;
+    }
+
+    fn bind_filter(filter: &mut ObjectFilter) -> bool {
+        let [constraint] = filter.tagged_constraints.as_slice() else {
+            return false;
+        };
+        if constraint.tag.as_str() != crate::cards::builders::IT_TAG
+            || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        {
+            return false;
+        }
+        let mut semantic = filter.clone();
+        semantic.tagged_constraints.clear();
+        semantic.union_surface = Default::default();
+        if semantic != ObjectFilter::creature().in_zone(Zone::Battlefield) {
+            return false;
+        }
+        filter.tagged_constraints[0].tag =
+            crate::tag::TagKey::from(ironsmith_core::CHOSEN_OBJECTS_TAG);
+        true
+    }
+
+    fn bind_payload(payload: &mut crate::static_abilities::StaticAbilityPayload) -> bool {
+        match payload {
+            crate::static_abilities::StaticAbilityPayload::Anthem(anthem) => {
+                anthem.filter.as_mut().is_some_and(bind_filter)
+            }
+            crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
+                bind_filter(&mut grant.filter)
+            }
+            crate::static_abilities::StaticAbilityPayload::Conditional { ability, .. } => {
+                bind_payload(&mut ability.payload)
+            }
+            _ => false,
+        }
+    }
+
+    let mut changed = false;
+    for ability in abilities {
+        changed |= bind_payload(&mut ability.payload);
+    }
+    changed
+}
+
+fn bind_authored_chosen_creature_sacrifice(
+    triggered: &mut crate::ability::TriggeredAbility,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    let exact_source_leaves_trigger = match &triggered.trigger.kind {
+        crate::triggers::TriggerKind::ThisLeavesBattlefield => true,
+        crate::triggers::TriggerKind::ZoneChange(zone_change) => {
+            zone_change.this
+                && zone_change.from == Some(Zone::Battlefield)
+                && zone_change.from_zones.is_none()
+                && zone_change.from_excluded.is_none()
+                && zone_change.to.is_none()
+                && zone_change.to_excluded.is_none()
+                && zone_change.count == crate::triggers::CountMode::One
+        }
+        _ => false,
+    };
+    if !words
+        .windows(4)
+        .any(|window| window == ["sacrifice", "the", "chosen", "creature"])
+        || !words
+            .windows(5)
+            .any(|window| window == ["this", "creature", "leaves", "the", "battlefield"])
+        || !exact_source_leaves_trigger
+        || !triggered.choices.is_empty()
+        || triggered.intervening_if.is_some()
+    {
+        return false;
+    }
+    let [segment] = triggered.effects.segments.as_mut_slice() else {
+        return false;
+    };
+    if !segment.self_replacements.is_empty() {
+        return false;
+    }
+    let (choose_effect, sacrifice_effect) = match segment.default_effects.as_slice() {
+        [tag_triggering, choose_effect, sacrifice_effect]
+            if tag_triggering
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some() =>
+        {
+            (choose_effect, sacrifice_effect)
+        }
+        [sequence] => {
+            let Some(sequence) = sequence.downcast_ref::<crate::effects::SequenceEffect>() else {
+                return false;
+            };
+            let [choose_effect, sacrifice_effect] = sequence.effects.as_slice() else {
+                return false;
+            };
+            (choose_effect, sacrifice_effect)
+        }
+        _ => return false,
+    };
+    let Some(choose) = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
+        return false;
+    };
+    let Some(sacrifice) = sacrifice_effect.downcast_ref::<crate::effects::SacrificePlayerEffect>()
+    else {
+        return false;
+    };
+    let triggering_constraint = crate::target::TaggedObjectConstraint {
+        tag: crate::tag::TagKey::from("triggering"),
+        relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+    };
+    let mut choose_filter = choose.filter.clone();
+    choose_filter.tagged_constraints.clear();
+    choose_filter.union_surface = Default::default();
+    if !choose.count.is_single()
+        || choose.chooser != PlayerFilter::You
+        || choose.filter.tagged_constraints.as_slice() != [triggering_constraint]
+        || choose_filter != ObjectFilter::creature().in_zone(Zone::Battlefield)
+        || sacrifice.player != PlayerFilter::You
+        || !sacrifice
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| {
+                constraint.tag == choose.tag
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+    {
+        return false;
+    }
+    let chosen_creature = ObjectFilter::creature()
+        .in_zone(Zone::Battlefield)
+        .match_tagged(
+            ironsmith_core::CHOSEN_OBJECTS_TAG,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
+    segment.default_effects = vec![crate::effect::Effect::new(
+        crate::effects::SacrificeTargetEffect::new(ChooseSpec::Object(chosen_creature)),
+    )];
+    true
+}
+
 fn lower_static_ability_chunk(
     input: LineChunkLoweringInput<'_>,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
@@ -2443,7 +2690,7 @@ fn lower_static_ability_chunk(
         return Ok(builder.has_fuse());
     }
 
-    let mut ability = match super::rewrite_lower_static_ability_ast(ability) {
+    let ability = match super::rewrite_lower_static_ability_ast(ability) {
         Ok(ability) => ability,
         Err(err) if allow_unsupported => {
             return Ok(super::push_unsupported_marker(
@@ -2454,16 +2701,152 @@ fn lower_static_ability_chunk(
         }
         Err(err) => return Err(err),
     };
+    let mut ability = rewrite_self_spell_cost_modifier(ability, &semantic_facts.static_ability);
+    let authored_tokens = crate::runtime_backend::lexer::lex_line(&info.raw_line, info.line_index)
+        .unwrap_or_else(|_| info.source_tokens.clone());
     bind_fixed_reduction_to_as_long_as_draw_threshold(
         std::slice::from_mut(&mut ability),
         &info.source_tokens,
     );
+    bind_fixed_reduction_to_as_long_as_draw_threshold(
+        std::slice::from_mut(&mut ability),
+        &authored_tokens,
+    );
+    bind_authored_chosen_creature_static_filters(
+        std::slice::from_mut(&mut ability),
+        &authored_tokens,
+    );
+    bind_authored_spell_cost_filter_qualifiers(
+        std::slice::from_mut(&mut ability),
+        &authored_tokens,
+    );
+    bind_authored_named_token_static_filters(std::slice::from_mut(&mut ability), &authored_tokens);
     let mut compiled =
         compile_static_ability_with_zones(ability, &semantic_facts.static_ability, true);
     preserve_as_long_as_its_your_turn_static_surface(&mut compiled, &info.source_tokens);
+    preserve_as_long_as_its_your_turn_static_surface(&mut compiled, &authored_tokens);
     builder = builder.with_ability(compiled);
     fuse_pending_removed_counter_as_enters(&mut builder);
     Ok(builder)
+}
+
+/// Restore grammar-proven spell qualifiers that occur between the spell noun
+/// and the cost-modification verb.  Some static-line routes finish building
+/// the reduction from the leading subject before those trailing qualifiers
+/// have been folded into its executable filter.
+fn bind_authored_spell_cost_filter_qualifiers(
+    abilities: &mut [crate::static_abilities::StaticAbility],
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    let is_named_cast_cost_modifier = words
+        .windows(2)
+        .any(|window| matches!(window, ["blitz", "cost" | "costs"]));
+    let is_cost_modifier = words.iter().any(|word| matches!(*word, "cost" | "costs"))
+        && (words.iter().any(|word| matches!(*word, "spell" | "spells"))
+            || is_named_cast_cost_modifier);
+    if !is_cost_modifier {
+        return false;
+    }
+    let has_x_in_cost = [
+        &["with", "x", "in", "its", "mana", "cost"][..],
+        &["with", "x", "in", "their", "mana", "cost"][..],
+    ]
+    .iter()
+    .any(|phrase| words.windows(phrase.len()).any(|window| window == *phrase));
+    let kicked_spell = words
+        .windows(2)
+        .any(|window| matches!(window, ["kicked", "spell" | "spells"]));
+    let commander_cast_count = words
+        .windows(3)
+        .any(|window| window == ["for", "each", "time"])
+        && words.iter().any(|word| *word == "cast")
+        && words.iter().any(|word| *word == "commander")
+        && words
+            .windows(4)
+            .any(|window| window == ["from", "the", "command", "zone"]);
+    if !has_x_in_cost && !kicked_spell && !commander_cast_count {
+        return false;
+    }
+
+    let mut changed = false;
+    for ability in abilities {
+        let crate::static_abilities::StaticAbilityPayload::CostReduction(reduction) =
+            &mut ability.payload
+        else {
+            continue;
+        };
+        if has_x_in_cost && !reduction.filter.has_x_in_cost {
+            reduction.filter.has_x_in_cost = true;
+            changed = true;
+        }
+        if kicked_spell
+            && !reduction
+                .filter
+                .ability_markers
+                .iter()
+                .any(|marker| marker.eq_ignore_ascii_case("kicked"))
+        {
+            reduction.filter.ability_markers.push("kicked".to_string());
+            changed = true;
+        }
+        if commander_cast_count
+            && reduction.amount.unhinted()
+                != &crate::effect::Value::CommanderCastCount(PlayerFilter::You)
+        {
+            reduction.amount = crate::effect::Value::CommanderCastCount(PlayerFilter::You);
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Preserve a subtype that grammatically modifies `tokens you control` across
+/// every member of a compound static line. The broad token-subject route can
+/// otherwise retain only `token`, making a Blood/Clue/Treasure rule apply to
+/// every token the player controls.
+fn bind_authored_named_token_static_filters(
+    abilities: &mut [crate::static_abilities::StaticAbility],
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    let [subtype_word, "tokens", "you", "control", ..] = words.as_slice() else {
+        return false;
+    };
+    let Some(subtype) =
+        crate::runtime_backend::front_end::shared::util::parse_subtype_flexible(subtype_word)
+    else {
+        return false;
+    };
+
+    fn add_subtype(filter: &mut ObjectFilter, subtype: crate::types::Subtype) -> bool {
+        if !filter.token
+            || filter.controller != Some(PlayerFilter::You)
+            || filter.subtypes.contains(&subtype)
+        {
+            return false;
+        }
+        filter.subtypes.push(subtype);
+        true
+    }
+
+    let mut changed = false;
+    for ability in abilities {
+        changed |= match &mut ability.payload {
+            crate::static_abilities::StaticAbilityPayload::AddCardTypes { filter, .. }
+            | crate::static_abilities::StaticAbilityPayload::AddSubtypes { filter, .. } => {
+                add_subtype(filter, subtype)
+            }
+            crate::static_abilities::StaticAbilityPayload::GrantAbility(grant) => {
+                add_subtype(&mut grant.filter, subtype)
+            }
+            crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
+                add_subtype(&mut grant.filter, subtype)
+            }
+            _ => false,
+        };
+    }
+    changed
 }
 
 fn is_source_line_static_loss_group(abilities: &[crate::static_abilities::StaticAbility]) -> bool {
@@ -2773,7 +3156,7 @@ fn bind_leading_during_your_turn_to_type_addition_group(
     abilities: &mut [crate::static_abilities::StaticAbility],
     source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
 ) {
-    let words = crate::runtime_backend::token_word_refs(source_tokens);
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
     if !words.windows(2).any(|window| window == ["and", "have"]) {
         return;
     }
@@ -3192,6 +3575,73 @@ fn source_line_ability_word_label(info: &LineInfo) -> Option<String> {
     (!label.is_empty()).then_some(label)
 }
 
+fn is_source_line_chosen_object_anthem_keyword_grant_group(
+    abilities: &[crate::static_abilities::StaticAbility],
+) -> bool {
+    let [anthem, grant] = abilities else {
+        return false;
+    };
+    let crate::static_abilities::StaticAbilityPayload::Anthem(anthem) = &anthem.payload else {
+        return false;
+    };
+    let Some(anthem_filter) = anthem.filter.as_ref() else {
+        return false;
+    };
+    let crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
+        &grant.payload
+    else {
+        return false;
+    };
+    let [constraint] = anthem_filter.tagged_constraints.as_slice() else {
+        return false;
+    };
+    let mut semantic_filter = anthem_filter.clone();
+    semantic_filter.tagged_constraints.clear();
+    semantic_filter.union_surface = Default::default();
+    anthem_filter == &grant.filter
+        && constraint.tag.as_str() == ironsmith_core::CHOSEN_OBJECTS_TAG
+        && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        && semantic_filter == ObjectFilter::creature().in_zone(Zone::Battlefield)
+        && anthem.condition.is_none()
+        && anthem.set_quantifier_surface.is_none()
+        && !anthem.count_uses_where_x
+        && !anthem.additional_surface
+        && anthem.replacement_surface.is_none()
+        && grant.condition.is_none()
+        && grant.set_quantifier_surface.is_none()
+        && grant.additional_abilities.is_empty()
+        && matches!(
+            &grant.ability.kind,
+            crate::ability::AbilityKind::Static(static_ability)
+                if static_ability.id().is_keyword()
+    )
+}
+
+fn is_source_line_first_spell_cost_reduction_and_flash_group(
+    abilities: &[crate::static_abilities::StaticAbility],
+) -> bool {
+    let [reduction_ability, flash_ability] = abilities else {
+        return false;
+    };
+    let crate::static_abilities::StaticAbilityPayload::CostReduction(reduction) =
+        &reduction_ability.payload
+    else {
+        return false;
+    };
+    if !reduction.filter.first_spell_cast_each_turn
+        || reduction.filter.cast_by != Some(PlayerFilter::You)
+        || reduction.condition.is_some()
+        || reduction.per_target
+        || reduction.characteristic_intersection.is_some()
+    {
+        return false;
+    }
+    let crate::static_abilities::StaticAbilityPayload::Grants(flash) = &flash_ability.payload else {
+        return false;
+    };
+    **flash == crate::grant::GrantSpec::flash_to_spells_matching(reduction.filter.clone())
+}
+
 fn is_renderable_source_line_static_group(
     abilities: &[crate::static_abilities::StaticAbility],
 ) -> bool {
@@ -3210,6 +3660,45 @@ fn is_renderable_source_line_static_group(
         || is_source_line_conditioned_source_anthem_trait_group(abilities)
         || is_source_line_keyword_attack_dynamic_anthem_group(abilities)
         || is_source_line_off_battlefield_creature_characteristic_group(abilities)
+        || is_source_line_chosen_object_anthem_keyword_grant_group(abilities)
+        || is_source_line_first_spell_cost_reduction_and_flash_group(abilities)
+        || matches!(
+            abilities,
+            [anthem, reach, shadow]
+                if matches!(
+                    &anthem.payload,
+                    crate::static_abilities::StaticAbilityPayload::Anthem(model)
+                        if matches!(
+                            (&model.power, &model.toughness),
+                            (
+                                ironsmith_core::AnthemValue::Fixed(1),
+                                ironsmith_core::AnthemValue::Fixed(1)
+                            )
+                        )
+                )
+                    && matches!(
+                        &reach.payload,
+                        crate::static_abilities::StaticAbilityPayload::GrantAbility(grant)
+                            if matches!(
+                                &grant.ability.kind,
+                                crate::ability::AbilityKind::Static(granted)
+                                    if granted.id == Some(
+                                        crate::static_abilities::StaticAbilityId::Reach
+                                    )
+                            )
+                    )
+                    && matches!(
+                        &shadow.payload,
+                        crate::static_abilities::StaticAbilityPayload::GrantAbility(grant)
+                            if matches!(
+                                &grant.ability.kind,
+                                crate::ability::AbilityKind::Static(granted)
+                                    if granted.id == Some(
+                                        crate::static_abilities::StaticAbilityId::CanBlockAsThoughNoShadow
+                                    )
+                            )
+                    )
+        )
         || matches!(
             abilities,
             [permission, surcharge]
@@ -3237,12 +3726,50 @@ fn bind_fixed_reduction_to_as_long_as_draw_threshold(
     abilities: &mut [crate::static_abilities::StaticAbility],
     source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
 ) {
-    let words = crate::runtime_backend::token_word_refs(source_tokens);
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
     if !words.starts_with(&["this", "spell", "costs"])
         || !source_words_contain(source_tokens, &["less", "to", "cast", "as", "long", "as"])
     {
         return;
     }
+
+    // Prefer the dedicated static-line parser's already-proven result. The
+    // broad document route can lower this syntax as an unconditional dynamic
+    // reduction before this final presentation pass; reusing the narrow
+    // parser keeps the fixed reduction and draw threshold distinct.
+    if let Ok(Some(reparsed)) =
+        crate::runtime_backend::keyword_static::parse_spells_cost_modifier_line(source_tokens)
+        && let crate::static_abilities::StaticAbilityPayload::ThisSpellCostReduction(
+            reparsed_reduction,
+        ) = &reparsed.payload
+        && matches!(reparsed_reduction.amount.unhinted(), crate::effect::Value::Fixed(amount) if *amount > 0)
+        && matches!(
+            &reparsed_reduction.condition,
+            crate::static_abilities::ThisSpellCostCondition::AsLongAsConditionExpr {
+                condition: crate::effect::Condition::ValueComparison {
+                    left,
+                    operator: ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual,
+                    right,
+                },
+                ..
+            } if matches!(left.unhinted(), crate::effect::Value::MaxCardsDrawnThisTurn(PlayerFilter::You))
+                && matches!(right.unhinted(), crate::effect::Value::Fixed(threshold) if *threshold > 0)
+        )
+        && let [ability] = abilities
+        && let crate::static_abilities::StaticAbilityPayload::ThisSpellCostReduction(existing) =
+            &ability.payload
+        && existing.condition == crate::static_abilities::ThisSpellCostCondition::Always
+        && existing.affinity_filter.is_none()
+        && existing.alternative_cast.is_none()
+        && matches!(
+            existing.amount.unhinted(),
+            crate::effect::Value::MaxCardsDrawnThisTurn(PlayerFilter::You)
+        )
+    {
+        ability.payload = reparsed.payload;
+        return;
+    }
+
     let Some(costs_token) = source_tokens
         .iter()
         .position(|token| token.is_word("costs"))
@@ -3438,7 +3965,17 @@ fn lower_static_abilities_chunk(
         Err(err) => return Err(err),
     };
     lowered_abilities.extend(abilities);
+    lowered_abilities = lowered_abilities
+        .into_iter()
+        .map(|ability| rewrite_self_spell_cost_modifier(ability, &semantic_facts.static_ability))
+        .collect();
+    let authored_tokens = crate::runtime_backend::lexer::lex_line(&info.raw_line, info.line_index)
+        .unwrap_or_else(|_| info.source_tokens.clone());
     bind_fixed_reduction_to_as_long_as_draw_threshold(&mut lowered_abilities, &info.source_tokens);
+    bind_fixed_reduction_to_as_long_as_draw_threshold(&mut lowered_abilities, &authored_tokens);
+    bind_authored_chosen_creature_static_filters(&mut lowered_abilities, &authored_tokens);
+    bind_authored_spell_cost_filter_qualifiers(&mut lowered_abilities, &authored_tokens);
+    bind_authored_named_token_static_filters(&mut lowered_abilities, &authored_tokens);
     bind_authored_additional_anthem_surface(&mut lowered_abilities, &info.source_tokens);
     bind_leading_during_your_turn_to_type_addition_group(
         &mut lowered_abilities,
@@ -3468,7 +4005,20 @@ fn lower_static_abilities_chunk(
         builder = builder.with_ability(Ability::static_ability(marker).in_zones(Vec::new()));
     }
     let preserve_single_ability_label = lowered_abilities.len() == 1;
-    for ability in lowered_abilities {
+    let source_ability_word = source_line_ability_word_label(info);
+    for mut ability in lowered_abilities {
+        if ability.id() == crate::static_abilities::StaticAbilityId::Flash
+            && ability.label.to_ascii_lowercase().contains("as though")
+            && let Some(label) = source_ability_word.as_deref()
+            && !ability.label.starts_with(&format!("{label} —"))
+        {
+            let mut chars = ability.label.chars();
+            let body = chars
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                .unwrap_or_default();
+            ability.label = format!("{label} — {body}");
+        }
         let spell_damage_prevention =
             conditional_spell_protection_group && is_conditional_spell_damage_prevention(&ability);
         let mut compiled = compile_static_ability_with_zones(
@@ -3553,29 +4103,87 @@ fn lower_parsed_ability_chunk(
                 &info.source_tokens,
             )
         });
-    let reconciled_dynamic_found = reconciled_dynamic.is_some();
-    let reconciled_looked_hand_found = reconciled_looked_hand.is_some();
+    let reconciled_targeted_same_name_cast = authored_tail
+        .as_ref()
+        .and_then(|tail| {
+            crate::runtime_backend::semantic_line_parsing::
+                exact_target_same_name_graveyard_may_cast_bundle(tail)
+        })
+        .or_else(|| {
+            source_tail.as_ref().and_then(|tail| {
+                crate::runtime_backend::semantic_line_parsing::
+                exact_target_same_name_graveyard_may_cast_bundle(tail)
+            })
+        });
+    let reconciled_graveyard_copy_cast = authored_tail
+        .as_ref()
+        .and_then(|tail| {
+            crate::runtime_backend::semantic_line_parsing::exact_graveyard_card_copy_cast_sequence(
+                tail,
+            )
+        })
+        .or_else(|| {
+            source_tail.as_ref().and_then(|tail| {
+                crate::runtime_backend::semantic_line_parsing::
+                    exact_graveyard_card_copy_cast_sequence(tail)
+            })
+        });
+    let reconciled_quantified_token_rules = authored_tail
+        .as_ref()
+        .map(|tail| {
+            crate::runtime_backend::effect_sentences::
+                parse_quantified_token_creation_with_embedded_rules(tail)
+        })
+        .transpose()?
+        .flatten()
+        .or(source_tail
+            .as_ref()
+            .map(|tail| {
+                crate::runtime_backend::effect_sentences::
+                        parse_quantified_token_creation_with_embedded_rules(tail)
+            })
+            .transpose()?
+            .flatten());
+    let reconciled_attacking_opponents_pump = if let Some(tail) = authored_tail.as_ref() {
+        let words = crate::runtime_backend::lexer::parser_token_word_refs(tail);
+        if words
+            .windows(3)
+            .any(|window| window == ["creatures", "attacking", "your"])
+            && words.iter().any(|word| *word == "opponents")
+            && words.iter().any(|word| *word == "planeswalkers")
+            && words.windows(2).any(|window| window == ["they", "control"])
+        {
+            Some(crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(tail)?)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let reconciled_library_origin =
+        crate::runtime_backend::semantic_line_parsing::
+            parse_library_origin_source_pump_unblockable_triggered_line(&authored_tokens)?
+            .or(crate::runtime_backend::semantic_line_parsing::
+                parse_library_origin_source_pump_unblockable_triggered_line(
+                    &info.source_tokens,
+                )?);
+    let reconciled_library_effects = match reconciled_library_origin {
+        Some(LineAst::Triggered {
+            trigger, effects, ..
+        }) => {
+            parsed_ability.parsed.trigger_spec = Some(trigger);
+            Some(effects)
+        }
+        _ => None,
+    };
     let reconciled_effects = reconciled_dynamic
         .map(|effect| vec![effect])
-        .or(reconciled_looked_hand);
-    let source_words = crate::runtime_backend::token_word_refs(&info.source_tokens);
-    if source_words
-        .windows(4)
-        .any(|window| window == ["base", "power", "and", "toughness"])
-        || source_words
-            .windows(4)
-            .any(|window| window == ["from", "among", "those", "cards"])
-    {
-        eprintln!(
-            "correlated-trigger reconciliation: raw={:?} source={:?} authored_tail={} source_tail={} dynamic={} looked_hand={}",
-            info.raw_line,
-            crate::runtime_backend::lexer::render_token_slice(&info.source_tokens),
-            authored_tail.is_some(),
-            source_tail.is_some(),
-            reconciled_dynamic_found,
-            reconciled_looked_hand_found,
-        );
-    }
+        .or(reconciled_attacking_opponents_pump)
+        .or(reconciled_looked_hand)
+        .or(reconciled_targeted_same_name_cast)
+        .or(reconciled_graveyard_copy_cast)
+        .or(reconciled_library_effects)
+        .or_else(|| reconciled_quantified_token_rules.map(|effect| vec![effect]));
     if let Some(effects) = reconciled_effects {
         parsed_ability.parsed.effects_ast = Some(effects);
         parsed_ability.prepared = None;
@@ -3600,16 +4208,42 @@ fn lower_parsed_ability_chunk(
         );
     }
     let mut ability = parsed_ability.into_runtime();
+    if let AbilityKind::Triggered(triggered) = &mut ability.kind {
+        preserve_condition_qualified_stun_reminder(triggered, &info.raw_line);
+    }
+    if !preserve_exiled_last_time_counter_trigger_surface(&mut ability, &authored_tokens) {
+        preserve_exiled_last_time_counter_trigger_surface(&mut ability, &info.source_tokens);
+    }
+    bind_attacking_group_counter_reference(&mut ability, &authored_tokens);
+    if let AbilityKind::Static(static_ability) = &mut ability.kind {
+        bind_fixed_reduction_to_as_long_as_draw_threshold(
+            std::slice::from_mut(static_ability),
+            &info.source_tokens,
+        );
+        bind_fixed_reduction_to_as_long_as_draw_threshold(
+            std::slice::from_mut(static_ability),
+            &authored_tokens,
+        );
+        bind_authored_chosen_creature_static_filters(
+            std::slice::from_mut(static_ability),
+            &authored_tokens,
+        );
+    }
     preserve_as_long_as_its_your_turn_static_surface(&mut ability, &info.source_tokens);
     reconcile_exactly_one_creature_intervening_condition(&mut ability, &info.source_tokens);
     if let AbilityKind::Triggered(triggered) = &mut ability.kind {
+        bind_authored_otherwise_move_to_conditional_false(&mut triggered.effects, &authored_tokens);
+        bind_aura_enters_sticker_pronoun_to_source(triggered, &info.source_tokens);
         dedupe_lowered_adjacent_target_declarations(&mut triggered.effects);
         bind_source_exiled_return_complement(&mut triggered.effects);
         reconcile_authored_source_exiled_return_runtime(
             &mut triggered.effects,
             &info.source_tokens,
         );
+        normalize_singular_source_exiled_runtime_move(&mut triggered.effects);
         normalize_graveyard_card_copy_cast_program(&mut triggered.effects);
+        preserve_separate_copy_instruction_surface(&mut triggered.effects, &authored_tokens);
+        bind_each_opponent_sacrifice_failure_half_life(&mut triggered.effects, &authored_tokens);
         bind_dynamic_power_owner_exile_permission(
             &mut triggered.effects,
             &info.source_tokens,
@@ -3626,12 +4260,23 @@ fn lower_parsed_ability_chunk(
         bind_demonstrative_land_self_replacement_to_triggering_object(&mut triggered.effects);
         bind_unique_most_control_leader_to_controller_change(triggered);
         bind_equipped_attack_subject_to_result_pump(triggered);
+        bind_combat_damage_group_controller_draw(triggered, &authored_tokens);
         bind_equipped_attack_draw_reveal_result(triggered, &info.source_tokens);
+        bind_triggered_attachment_union_count(triggered, &authored_tokens);
+        super::rebind_returned_attachment_history_to_triggering_object(
+            &mut triggered.effects.segments,
+        );
+        bind_returned_card_to_hand_result_condition(&mut triggered.effects, &authored_tokens);
+        bind_then_if_source_untap_and_transform(&mut triggered.effects, &authored_tokens);
+        bind_attacking_opponents_result_pump(triggered, &authored_tokens);
         bind_later_attacker_choice_to_prior_target_power(triggered);
         bind_authored_single_target_spell_cast_filter(triggered, &info.source_tokens);
+        bind_authored_spell_cast_color_list(triggered, &info.source_tokens);
+        bind_authored_spell_cast_ability_marker(triggered, &info.source_tokens);
         bind_authored_spell_cast_relation_constraints(triggered, &info.source_tokens);
         bind_original_and_copy_plural_keyword_grant(triggered, &info.source_tokens);
         bind_reflexive_optional_cast_replacement_result(triggered);
+        bind_authored_chosen_creature_sacrifice(triggered, &authored_tokens);
     }
     if let AbilityKind::Activated(activated) = &mut ability.kind {
         let authored_tokens =
@@ -3640,6 +4285,10 @@ fn lower_parsed_ability_chunk(
         bind_target_player_lost_life_this_turn_qualifier(
             &mut activated.effects,
             &mut activated.choices,
+            &authored_tokens,
+        );
+        bind_authored_source_and_each_opponent_creature_exile(
+            &mut activated.effects,
             &authored_tokens,
         );
     }
@@ -3653,7 +4302,11 @@ fn lower_parsed_ability_chunk(
         bind_source_exiled_return_complement(program);
         reconcile_authored_source_exiled_return_runtime(program, &info.source_tokens);
         normalize_graveyard_card_copy_cast_program(program);
+        preserve_separate_copy_instruction_surface(program, &authored_tokens);
+        bind_each_opponent_sacrifice_failure_half_life(program, &authored_tokens);
+        bind_commander_hand_move_from_command_zone(program, &authored_tokens);
         bind_dynamic_power_owner_exile_permission(program, &info.source_tokens, &info.raw_line);
+        bind_next_spell_other_opponent_copy_retarget_choice(program);
         bind_each_opponent_explicit_you_token_unless_iterated_sacrifice(
             program,
             Some(&info.source_tokens),
@@ -3711,6 +4364,517 @@ fn lower_parsed_ability_chunk(
     }
     builder = builder.with_ability(ability);
     Ok(builder)
+}
+
+/// Recover an untargeted union when Oracle exiles the ability's source and a
+/// quantified opponent-controlled creature set. The generic noun parser can
+/// otherwise interpret the source's short name as a subtype and lower the
+/// whole instruction as one singular object choice.
+fn bind_authored_source_and_each_opponent_creature_exile(
+    program: &mut crate::resolution::ResolutionProgram,
+    authored_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(authored_tokens);
+    let Some(exile_index) = words.iter().position(|word| *word == "exile") else {
+        return false;
+    };
+    let Some(tail_index) = words
+        .windows(6)
+        .position(|window| window == ["and", "each", "creature", "your", "opponents", "control"])
+    else {
+        return false;
+    };
+    if tail_index <= exile_index + 1 || tail_index + 6 != words.len() {
+        return false;
+    }
+    let Some(source_surface) =
+        crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(
+            &words[exile_index + 1..tail_index],
+        )
+    else {
+        return false;
+    };
+
+    let [segment] = program.segments.as_mut_slice() else {
+        return false;
+    };
+    if !segment.self_replacements.is_empty() {
+        return false;
+    }
+    let [effect] = segment.default_effects.as_mut_slice() else {
+        return false;
+    };
+    let Some(move_to_zone) = effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .cloned()
+    else {
+        return false;
+    };
+    if move_to_zone.zone != Zone::Exile
+        || !matches!(move_to_zone.target.unhinted(), ChooseSpec::Object(_))
+    {
+        return false;
+    }
+
+    let source = ObjectFilter::source_with_surface(source_surface);
+    let mut creatures = ObjectFilter::creature().controlled_by(PlayerFilter::Opponent);
+    creatures.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+    let mut union = ObjectFilter::default();
+    union.any_of = vec![source, creatures];
+    union.set_conjunctive_set_surface(true);
+
+    let mut corrected = move_to_zone;
+    corrected.target = ChooseSpec::All(union);
+    corrected.target_plural_surface = false;
+    *effect = crate::effect::Effect::new(corrected);
+    true
+}
+
+fn bind_authored_otherwise_move_to_conditional_false(
+    program: &mut crate::resolution::ResolutionProgram,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words
+        .windows(6)
+        .any(|window| window == ["otherwise", "put", "it", "into", "your", "hand"])
+    {
+        return false;
+    }
+    for segment in &mut program.segments {
+        let mut index = 0usize;
+        while index + 1 < segment.default_effects.len() {
+            let Some(mut conditional) = segment.default_effects[index]
+                .downcast_ref::<crate::effects::ConditionalEffect>()
+                .cloned()
+            else {
+                index += 1;
+                continue;
+            };
+            let Some(hand_move) = segment.default_effects[index + 1]
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .cloned()
+            else {
+                index += 1;
+                continue;
+            };
+            if !conditional.if_false.is_empty()
+                || hand_move.zone != Zone::Hand
+                || conditional.if_true.len() != 1
+            {
+                index += 1;
+                continue;
+            }
+            let true_effect = &conditional.if_true[0];
+            let true_effect = true_effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .map(|tagged| tagged.effect.as_ref())
+                .unwrap_or(true_effect);
+            let Some(battlefield_move) =
+                true_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            else {
+                index += 1;
+                continue;
+            };
+            if battlefield_move.zone != Zone::Battlefield
+                || battlefield_move.target != hand_move.target
+            {
+                index += 1;
+                continue;
+            }
+            conditional.if_false = vec![crate::effect::Effect::new(hand_move)];
+            segment.default_effects[index] = crate::effect::Effect::new(conditional);
+            segment.default_effects.remove(index + 1);
+            return true;
+        }
+    }
+    false
+}
+
+fn preserve_exiled_last_time_counter_trigger_surface(
+    ability: &mut Ability,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    let exact_surface = words
+        .windows(7)
+        .any(|window| window == ["last", "time", "counter", "is", "removed", "from", "this"])
+        && (words
+            .windows(3)
+            .any(|window| window == ["while", "it", "s"])
+            || words
+                .windows(2)
+                .any(|window| matches!(window, ["while", "its" | "it's"])))
+        && words.iter().any(|word| *word == "exiled");
+    if !exact_surface {
+        return false;
+    }
+    let AbilityKind::Triggered(triggered) = &mut ability.kind else {
+        return false;
+    };
+    let crate::triggers::TriggerKind::CounterRemovedFrom(counter_removed) = &triggered.trigger.kind
+    else {
+        return false;
+    };
+    if !counter_removed.last
+        || counter_removed.counter_type != Some(crate::CounterType::Time)
+        || !counter_removed.filter.source
+    {
+        return false;
+    }
+    triggered.intervening_if = None;
+    ability.functional_zones = vec![Zone::Exile];
+    for effect in triggered
+        .effects
+        .segments
+        .iter_mut()
+        .flat_map(|segment| segment.default_effects.iter_mut())
+    {
+        let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>().cloned() else {
+            continue;
+        };
+        let crate::effect::Restriction::BeBlocked(mut filter) = cant.restriction.clone() else {
+            continue;
+        };
+        if filter.card_types == [crate::types::CardType::Creature] {
+            filter.set_plural_object_noun_surface(true);
+            let mut preserved = cant;
+            preserved.restriction = crate::effect::Restriction::BeBlocked(filter);
+            *effect = crate::effect::Effect::new(preserved);
+        }
+    }
+    true
+}
+
+fn bind_attacking_group_counter_reference(
+    ability: &mut Ability,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words
+        .windows(6)
+        .any(|window| window == ["attack", "with", "two", "or", "more", "non"])
+        || !words
+            .windows(5)
+            .any(|window| window == ["on", "each", "of", "those", "creatures"])
+    {
+        return false;
+    }
+    let AbilityKind::Triggered(triggered) = &mut ability.kind else {
+        return false;
+    };
+    let crate::triggers::TriggerKind::AttacksOneOrMoreWithMinTotal {
+        min_total_attackers,
+        ..
+    } = &triggered.trigger.kind
+    else {
+        return false;
+    };
+    if *min_total_attackers != 2 {
+        return false;
+    }
+
+    for segment in &mut triggered.effects.segments {
+        for effect in &mut segment.default_effects {
+            if let Some(mut for_each) = effect
+                .downcast_ref::<crate::effects::ForEachObject>()
+                .cloned()
+                && for_each.effects.len() == 1
+                && for_each.effects[0]
+                    .downcast_ref::<crate::effects::PutCountersEffect>()
+                    .is_some_and(|counters| {
+                        counters.counter_type == crate::CounterType::PlusOnePlusOne
+                            && counters.amount == crate::Value::Fixed(1)
+                    })
+            {
+                for_each.filter =
+                    ObjectFilter::tagged(crate::TagKey::from(ironsmith_core::ATTACKING_GROUP_TAG));
+                *effect = crate::effect::Effect::new(for_each);
+                return true;
+            }
+            let Some(mut counters) = effect
+                .downcast_ref::<crate::effects::PutCountersEffect>()
+                .cloned()
+            else {
+                continue;
+            };
+            let crate::target::ChooseSpec::All(filter) = counters.target.unhinted() else {
+                continue;
+            };
+            if filter.zone != Some(Zone::Battlefield)
+                || filter.card_types != [crate::types::CardType::Creature]
+                || counters.counter_type != crate::CounterType::PlusOnePlusOne
+                || counters.amount != crate::Value::Fixed(1)
+            {
+                continue;
+            }
+            counters.target = crate::target::ChooseSpec::Tagged(crate::TagKey::from(
+                ironsmith_core::ATTACKING_GROUP_TAG,
+            ));
+            *effect = crate::effect::Effect::new(counters);
+            return true;
+        }
+    }
+    false
+}
+
+/// Preserve the authored sentence break in `Exile ... . Copy that card. You
+/// may cast the copy.` after the executable copy/cast normalization has
+/// collapsed the latter two instructions into one optional CastTagged
+/// effect. The exact renderer still proves the shared exile tag and
+/// graveyard domain before using this presentation bit.
+fn preserve_separate_copy_instruction_surface(
+    program: &mut crate::resolution::ResolutionProgram,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let authored_sentences = crate::runtime_backend::lexer::split_lexed_sentences(source_tokens);
+    let has_permanent_copy_reminder = authored_sentences.iter().any(|sentence| {
+        crate::runtime_backend::lexer::parser_token_word_refs(sentence).as_slice()
+            == [
+                "a",
+                "copy",
+                "of",
+                "a",
+                "permanent",
+                "spell",
+                "becomes",
+                "a",
+                "token",
+            ]
+    });
+    let surface = authored_sentences
+        .iter()
+        .find_map(|sentence| {
+            let words = crate::runtime_backend::lexer::parser_token_word_refs(sentence);
+            if words.starts_with(&["copy", "that", "card"]) {
+                return Some(ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard);
+            }
+            if words.starts_with(&["copy", "it"]) {
+                return Some(if words.get(2) == Some(&"then") {
+                    if has_permanent_copy_reminder {
+                        ironsmith_core::effect::CopyInstructionSurface::SeparateItThenPermanentCopyReminder
+                    } else {
+                        ironsmith_core::effect::CopyInstructionSurface::SeparateItThen
+                    }
+                } else {
+                    ironsmith_core::effect::CopyInstructionSurface::SeparateIt
+                });
+            }
+            None
+        });
+    let Some(surface) = surface else {
+        return;
+    };
+    // Triggered and activated public routes can retain the exile and the
+    // optional cast in separate resolution segments. Locate the one exact
+    // optional copy instruction rather than requiring a one-segment shell;
+    // the renderer still proves that its tag is the exile result tag.
+    for segment in &mut program.segments {
+        if !segment.self_replacements.is_empty() {
+            continue;
+        }
+        for may_root in &mut segment.default_effects {
+            let Some(mut may) = may_root
+                .downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+                .cloned()
+            else {
+                continue;
+            };
+            let [cast_root] = may.effects.as_mut_slice() else {
+                continue;
+            };
+            let Some(mut cast) = cast_root
+                .downcast_ref::<crate::effects::CastTaggedEffect>()
+                .cloned()
+            else {
+                continue;
+            };
+            if !cast.as_copy {
+                continue;
+            }
+            cast.copy_instruction_surface = Some(surface);
+            *cast_root = crate::effect::Effect::new(cast);
+            *may_root = crate::effect::Effect::new(may);
+            return;
+        }
+    }
+}
+
+fn preserve_condition_qualified_stun_reminder(
+    triggered: &mut crate::ability::TriggeredAbility,
+    raw_line: &str,
+) {
+    if !raw_line.contains(
+        "If a permanent with a stun counter would become untapped, remove one from it instead.",
+    ) {
+        return;
+    }
+    let ironsmith_core::TriggerKind::ConditionQualified {
+        stun_counter_reminder_surface,
+        ..
+    } = &mut triggered.trigger.kind
+    else {
+        return;
+    };
+    *stun_counter_reminder_surface = true;
+}
+
+/// Reapply an authored command-zone origin after the generic "put ... into"
+/// destination parser has separated the trailing source phrase from its
+/// object filter. The target must already be the controller's commander, so
+/// ordinary hand moves cannot acquire command-zone legality accidentally.
+fn bind_commander_hand_move_from_command_zone(
+    program: &mut crate::resolution::ResolutionProgram,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words
+        .windows(4)
+        .any(|window| window == ["from", "the", "command", "zone"])
+    {
+        return;
+    }
+    for segment in &mut program.segments {
+        for root in &mut segment.default_effects {
+            let Some(mut move_to_zone) = root
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .cloned()
+            else {
+                continue;
+            };
+            if move_to_zone.zone != Zone::Hand {
+                continue;
+            }
+            let ChooseSpec::Object(filter) = move_to_zone.target.base() else {
+                continue;
+            };
+            if !filter.is_commander {
+                continue;
+            }
+            let mut filter = filter.clone();
+            filter.zone = Some(Zone::Command);
+            filter.owner = Some(PlayerFilter::You);
+            move_to_zone.target = ChooseSpec::Object(filter);
+            *root = crate::effect::Effect::new(move_to_zone);
+        }
+    }
+}
+
+/// Preserve the correlated failure branch in an authored per-opponent
+/// sacrifice instruction. The ordinary sentence path already compiles the
+/// sacrifice correctly but can discard the second sentence before it is
+/// linked to that action's result.
+fn bind_each_opponent_sacrifice_failure_half_life(
+    program: &mut crate::resolution::ResolutionProgram,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    let has_failure_clause = words
+        .windows(3)
+        .any(|window| window == ["each", "opponent", "who"])
+        && (words
+            .iter()
+            .any(|word| matches!(*word, "cant" | "can't" | "cannot"))
+            || words.windows(2).any(|window| window == ["can", "t"]))
+        && words
+            .windows(4)
+            .any(|window| window == ["half", "their", "life", "rounded"])
+        && words.iter().any(|word| *word == "up");
+    if !has_failure_clause || program.segments.len() != 1 {
+        return;
+    }
+    let fresh_id = crate::effect::EffectId(
+        program
+            .all_effects()
+            .into_iter()
+            .filter_map(max_effect_id)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1),
+    );
+    let segment = &mut program.segments[0];
+    let [root] = segment.default_effects.as_mut_slice() else {
+        return;
+    };
+    let (id, sacrifice_root) = if let Some(with_id) = root.as_with_id() {
+        (with_id.id, with_id.effect.as_ref())
+    } else {
+        (fresh_id, &*root)
+    };
+    let Some(for_players) =
+        sacrifice_root.downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
+    else {
+        return;
+    };
+    if for_players.filter != PlayerFilter::Opponent {
+        return;
+    }
+    let sacrifice_id = for_players.effects.iter().find_map(|effect| {
+        let with_id = effect.as_with_id()?;
+        with_id
+            .effect
+            .downcast_ref::<crate::effects::SacrificePlayerEffect>()
+            .map(|_| with_id.id)
+    });
+    if let Some(sacrifice_id) = sacrifice_id {
+        let mut rebound = for_players.clone();
+        let mut filled = false;
+        for effect in &mut rebound.effects {
+            let Some(mut conditional) = effect.downcast_ref::<crate::effects::IfEffect>().cloned()
+            else {
+                continue;
+            };
+            if conditional.condition != sacrifice_id
+                || conditional.predicate != crate::effect::EffectPredicate::DidNotHappen
+                || !conditional.then.is_empty()
+                || !conditional.else_.is_empty()
+            {
+                continue;
+            }
+            conditional.then.push(crate::effect::Effect::new(
+                crate::effects::LoseLifeEffect::new(
+                    crate::effect::Value::HalfLifeTotalRoundedUp(PlayerFilter::IteratedPlayer),
+                    PlayerFilter::IteratedPlayer,
+                ),
+            ));
+            *effect = crate::effect::Effect::new(conditional);
+            filled = true;
+        }
+        if filled {
+            *root = crate::effect::Effect::new(rebound);
+            return;
+        }
+    }
+    if !for_players.effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::SacrificePlayerEffect>()
+            .is_some()
+    }) {
+        return;
+    }
+    if root.as_with_id().is_none() {
+        let antecedent = root.clone();
+        *root = crate::effect::Effect::with_id(id.0, antecedent);
+    }
+    let failure = crate::effects::ForPlayersEffect {
+        filter: PlayerFilter::Opponent,
+        effects: vec![crate::effect::Effect::new(crate::effects::IfEffect::new(
+            id,
+            crate::effect::EffectPredicate::DidNotHappen,
+            vec![crate::effect::Effect::new(
+                crate::effects::LoseLifeEffect::new(
+                    crate::effect::Value::HalfLifeTotalRoundedUp(PlayerFilter::IteratedPlayer),
+                    PlayerFilter::IteratedPlayer,
+                ),
+            )],
+            vec![],
+        ))],
+        starting_with_controller: false,
+        stop_after_first_happened: false,
+    };
+    segment
+        .default_effects
+        .push(crate::effect::Effect::new(failure));
 }
 
 /// Keep the one-shot zone replacement in a reflexive targeted graveyard cast
@@ -3949,7 +5113,7 @@ fn preserve_as_long_as_its_your_turn_static_surface(
     ability: &mut Ability,
     source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
 ) {
-    let words = crate::runtime_backend::token_word_refs(source_tokens);
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
     if !matches!(
         words.as_slice(),
         ["as", "long", "as", "it", "s", "your", "turn", ..]
@@ -4181,6 +5345,68 @@ fn bind_equipped_attack_subject_to_result_pump(triggered: &mut crate::ability::T
     let mut result_if = result_if.clone();
     result_if.then = vec![crate::effect::Effect::new(rebound).tag(tagged.tag.clone())];
     result_segment.default_effects = vec![crate::effect::Effect::new(result_if)];
+}
+
+/// Preserve the controller set of a coalesced combat-damage trigger for an
+/// authored "you and the controller of those creatures each draw" follow-up.
+/// The trigger checker snapshots the complete matching damage-source group;
+/// this lowering step consumes that group once per distinct controller.
+fn bind_combat_damage_group_controller_draw(
+    triggered: &mut crate::ability::TriggeredAbility,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words.windows(11).any(|window| {
+        window
+            == [
+                "you",
+                "and",
+                "the",
+                "controller",
+                "of",
+                "those",
+                "creatures",
+                "each",
+                "draw",
+                "a",
+                "card",
+            ]
+    }) || !matches!(
+        &triggered.trigger.kind,
+        crate::triggers::TriggerKind::DealsCombatDamageToPlayer {
+            one_or_more: true,
+            ..
+        }
+    ) || !triggered.choices.is_empty()
+        || triggered.intervening_if.is_some()
+    {
+        return false;
+    }
+    let [segment] = triggered.effects.segments.as_mut_slice() else {
+        return false;
+    };
+    if !segment.self_replacements.is_empty() {
+        return false;
+    }
+    let [draw_effect] = segment.default_effects.as_slice() else {
+        return false;
+    };
+    let Some(draw) = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>() else {
+        return false;
+    };
+    if draw.count != crate::effect::Value::Fixed(1) || draw.player != PlayerFilter::You {
+        return false;
+    }
+    segment.default_effects.push(crate::effect::Effect::new(
+        crate::effects::ForEachControllerOfTaggedEffect {
+            tag: crate::tag::TagKey::from(ironsmith_core::COMBAT_DAMAGE_GROUP_TAG),
+            effects: vec![crate::effect::Effect::target_draws(
+                1,
+                PlayerFilter::IteratedPlayer,
+            )],
+        },
+    ));
+    true
 }
 
 /// Preserve the two distinct antecedents in an equipped-attacker
@@ -4648,6 +5874,293 @@ fn transport_plural_copy_retarget_into_delayed_trigger(
     }
 }
 
+/// Preserve the source pronoun in an exact Aura-enters sticker instruction.
+/// The surrounding Aura attachment line seeds `enchanted` as the most recent
+/// object, but authored "When this Aura enters ... put ... on it" refers to
+/// the entering Aura itself, not the enchanted creature.
+fn bind_aura_enters_sticker_pronoun_to_source(
+    triggered: &mut crate::ability::TriggeredAbility,
+    source_tokens: &[crate::runtime_backend::front_end::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words.windows(4).any(|window| {
+        window == ["when", "this", "aura", "enters"]
+            || window == ["whenever", "this", "aura", "enters"]
+    }) || !words
+        .windows(6)
+        .any(|window| window == ["put", "a", "name", "sticker", "on", "it"])
+    {
+        return;
+    }
+    let crate::triggers::TriggerKind::ZoneChange(enters) = &triggered.trigger.kind else {
+        return;
+    };
+    if !enters.this
+        || enters.from.is_some()
+        || enters.from_zones.is_some()
+        || enters.from_excluded.is_some()
+        || enters.to != Some(crate::zone::Zone::Battlefield)
+        || enters.to_excluded.is_some()
+        || enters.this_surface
+            != Some(ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                "this Aura".to_string(),
+            ))
+    {
+        return;
+    }
+
+    fn rewrite(effect: &crate::effect::Effect, rewrites: &mut usize) -> crate::effect::Effect {
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            let mut with_id = with_id.clone();
+            with_id.effect = Box::new(rewrite(&with_id.effect, rewrites));
+            return crate::effect::Effect::new(with_id);
+        }
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+        {
+            let mut may = may.clone();
+            may.effects = may
+                .effects
+                .iter()
+                .map(|inner| rewrite(inner, rewrites))
+                .collect();
+            return crate::effect::Effect::new(may);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            let mut tagged = tagged.clone();
+            tagged.effect = Box::new(rewrite(&tagged.effect, rewrites));
+            return crate::effect::Effect::new(tagged);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            let mut sequence = sequence.clone();
+            sequence.effects = sequence
+                .effects
+                .iter()
+                .map(|inner| rewrite(inner, rewrites))
+                .collect();
+            return crate::effect::Effect::new(sequence);
+        }
+        let Some(sticker) = effect.downcast_ref::<crate::effects::PutStickerEffect>() else {
+            return effect.clone();
+        };
+        if sticker.action != crate::events::KeywordActionKind::NameSticker
+            || !matches!(&sticker.target, ChooseSpec::Tagged(tag) if tag.as_str() == "enchanted")
+        {
+            return effect.clone();
+        }
+        *rewrites += 1;
+        let mut sticker = sticker.clone();
+        sticker.target = ChooseSpec::Source;
+        crate::effect::Effect::new(sticker)
+    }
+
+    let original = triggered.effects.clone();
+    let mut rewrites = 0usize;
+    for segment in &mut triggered.effects.segments {
+        segment.default_effects = segment
+            .default_effects
+            .iter()
+            .map(|effect| rewrite(effect, &mut rewrites))
+            .collect();
+    }
+    if rewrites != 1 {
+        triggered.effects = original;
+    }
+}
+
+/// Keep the fixed retarget in an exact per-opponent delayed copy loop bound to
+/// the choice made inside that loop. Ordinary reference resolution can
+/// advance `it` back to the triggering spell before lowering the fixed target,
+/// even though the authored antecedent is "the chosen player or permanent."
+fn bind_next_spell_other_opponent_copy_retarget_choice(
+    program: &mut crate::resolution::ResolutionProgram,
+) {
+    fn corrected_schedule(
+        schedule: &crate::effects::ScheduleDelayedTriggerEffect,
+    ) -> Option<crate::effects::ScheduleDelayedTriggerEffect> {
+        if !schedule.one_shot
+            || !schedule.until_end_of_turn
+            || schedule.start_next_turn
+            || schedule.until_end_of_combat
+            || schedule.leading_duration_surface
+            || schedule.watch_ability_source
+            || schedule.watch_all_object_targets
+            || schedule.either_of_watched_objects
+            || schedule.duration != ironsmith_core::DelayedTriggerDuration::EndOfTurn
+            || schedule.while_any_tagged_object_in_zone.is_some()
+            || !schedule.target_choices.is_empty()
+            || schedule.target_tag.is_some()
+            || schedule.target_filter.is_some()
+            || schedule.controller != PlayerFilter::You
+            || schedule.prepayment.is_some()
+            || schedule.event_value_from_prior_prevention
+        {
+            return None;
+        }
+
+        let crate::effect::DelayedTriggerSpec::SpellCast {
+            filter,
+            caster,
+            timing,
+            during_turn,
+            min_spells_this_turn,
+            exact_spells_this_turn,
+            from_not_hand,
+            first_spell_of_game,
+        } = &schedule.trigger
+        else {
+            return None;
+        };
+        let mut expected_spell = ObjectFilter::instant_or_sorcery()
+            .targeting_only(
+                Some(PlayerFilter::Opponent),
+                Some(ObjectFilter::permanent().controlled_by(PlayerFilter::Opponent)),
+            )
+            .target_count_exact(1);
+        expected_spell.has_mana_cost = true;
+        if filter.as_ref()? != &expected_spell
+            || caster != &PlayerFilter::You
+            || timing.is_some()
+            || during_turn.is_some()
+            || min_spells_this_turn.is_some()
+            || exact_spells_this_turn.is_some()
+            || *from_not_hand
+            || *first_spell_of_game
+        {
+            return None;
+        }
+
+        let [tag_triggering_effect, for_players_effect] = schedule.effects.as_slice() else {
+            return None;
+        };
+        let tag_triggering =
+            tag_triggering_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+        if tag_triggering.tag.as_str() != "triggering" {
+            return None;
+        }
+        let for_players = for_players_effect
+            .downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()?;
+        if for_players.filter
+            != PlayerFilter::excluding(
+                PlayerFilter::Opponent,
+                PlayerFilter::TargetPlayerOrControllerOfTarget,
+            )
+        {
+            return None;
+        }
+        let [choice_effect, copy_effect, retarget_effect] = for_players.effects.as_slice() else {
+            return None;
+        };
+        let tagged_choice = choice_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let choice = tagged_choice
+            .effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        let expected_permanent =
+            ObjectFilter::permanent().controlled_by(PlayerFilter::IteratedPlayer);
+        if choice.chooser.is_some()
+            || choice.explicit_declaration
+            || !matches!(
+                &choice.target,
+                ChooseSpec::ObjectOrPlayer(object, PlayerFilter::IteratedPlayer)
+                    if object == &expected_permanent
+            )
+        {
+            return None;
+        }
+
+        fn exact_copy(
+            effect: &crate::effect::Effect,
+            copied_tag: &mut Option<crate::TagKey>,
+        ) -> bool {
+            if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+                if tagged.tag.as_str() != crate::cards::builders::COPIED_STACK_OBJECT_TAG
+                    || copied_tag.replace(tagged.tag.clone()).is_some()
+                {
+                    return false;
+                }
+                return exact_copy(&tagged.effect, copied_tag);
+            }
+            if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+                return exact_copy(&with_id.effect, copied_tag);
+            }
+            let Some(copy) = effect.downcast_ref::<crate::effects::CopySpellEffect>() else {
+                return false;
+            };
+            copy.count == crate::effect::Value::Fixed(1)
+                && copy.copier == PlayerFilter::You
+                && copy.target_reference_kind == Some(crate::filter::StackObjectKind::Spell)
+                && !copy.target_reference_pronoun
+                && matches!(
+                    &copy.target,
+                    ChooseSpec::Tagged(tag) if tag.as_str() == "triggering"
+                )
+                && copy.removed_supertypes.is_empty()
+                && !copy.has_characteristic_modifiers()
+        }
+        let mut copied_tag = None;
+        if !exact_copy(copy_effect, &mut copied_tag) {
+            return None;
+        }
+        let copied_tag = copied_tag?;
+
+        let retarget =
+            retarget_effect.downcast_ref::<crate::effects::RetargetStackObjectEffect>()?;
+        if retarget.chooser != PlayerFilter::You
+            || retarget.require_change
+            || retarget.new_target_restriction.is_some()
+            || !matches!(&retarget.target, ChooseSpec::Tagged(tag) if tag == &copied_tag)
+        {
+            return None;
+        }
+        let crate::effects::RetargetMode::OneToFixed(ChooseSpec::ObjectOrPlayer(
+            chosen_object,
+            PlayerFilter::IteratedPlayer,
+        )) = &retarget.mode
+        else {
+            return None;
+        };
+        let [constraint] = chosen_object.tagged_constraints.as_slice() else {
+            return None;
+        };
+        let mut semantic_chosen = chosen_object.clone();
+        semantic_chosen.tagged_constraints.clear();
+        if semantic_chosen != expected_permanent
+            || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            || (constraint.tag != tagged_choice.tag && constraint.tag.as_str() != "triggering")
+        {
+            return None;
+        }
+
+        let mut corrected_object = semantic_chosen;
+        corrected_object
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: tagged_choice.tag.clone(),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let mut corrected_retarget = retarget.clone();
+        corrected_retarget.mode = crate::effects::RetargetMode::OneToFixed(
+            ChooseSpec::ObjectOrPlayer(corrected_object, PlayerFilter::IteratedPlayer),
+        );
+        let mut corrected_for_players = for_players.clone();
+        corrected_for_players.effects[2] = crate::effect::Effect::new(corrected_retarget);
+        let mut corrected = schedule.clone();
+        corrected.effects[1] = crate::effect::Effect::new(corrected_for_players);
+        Some(corrected)
+    }
+
+    for segment in &mut program.segments {
+        for effect in &mut segment.default_effects {
+            let Some(schedule) = effect
+                .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+                .and_then(corrected_schedule)
+            else {
+                continue;
+            };
+            *effect = crate::effect::Effect::new(schedule);
+        }
+    }
+}
+
 fn transport_fixed_retarget_into_optional_copy(program: &mut crate::resolution::ResolutionProgram) {
     fn exact_optional_single_spell_copy(
         effect: &crate::effect::Effect,
@@ -4774,6 +6287,113 @@ fn bind_authored_single_target_spell_cast_filter(
         return;
     }
     filter.target_count = Some(crate::effect::ChoiceCount::exactly(1));
+}
+
+/// Reapply an authored disjunctive color list after public trigger
+/// normalization. The direct trigger parser retains these colors, but a
+/// runtime-backed ability shell can already contain only its first arm by the
+/// time surface reconciliation runs.
+fn bind_authored_spell_cast_color_list(
+    triggered: &mut crate::ability::TriggeredAbility,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words.iter().any(|word| matches!(*word, "cast" | "casts"))
+        || !words.iter().any(|word| matches!(*word, "spell" | "spells"))
+    {
+        return;
+    }
+    let mut colors = crate::color::ColorSet::new();
+    let mut count = 0usize;
+    for &word in &words {
+        let color = match word {
+            "white" => Some(crate::color::ColorSet::WHITE),
+            "blue" => Some(crate::color::ColorSet::BLUE),
+            "black" => Some(crate::color::ColorSet::BLACK),
+            "red" => Some(crate::color::ColorSet::RED),
+            "green" => Some(crate::color::ColorSet::GREEN),
+            _ => None,
+        };
+        if let Some(color) = color
+            && !colors.contains_all(color)
+        {
+            colors = colors.union(color);
+            count += 1;
+        }
+    }
+    let filter = match &mut triggered.trigger.kind {
+        ironsmith_core::TriggerKind::SpellCast {
+            filter: Some(filter),
+            ..
+        }
+        | ironsmith_core::TriggerKind::SpellCastQualified {
+            filter: Some(filter),
+            ..
+        } => filter,
+        _ => return,
+    };
+    let explicit_spell_colors = words.windows(2).any(|window| {
+        matches!(
+            window,
+            [
+                "white" | "blue" | "black" | "red" | "green",
+                "spell" | "spells"
+            ]
+        )
+    }) || words.windows(3).any(|window| {
+        matches!(
+            window,
+            [
+                "white" | "blue" | "black" | "red" | "green",
+                "or",
+                "white" | "blue" | "black" | "red" | "green"
+            ]
+        )
+    });
+    if count > 0 && explicit_spell_colors {
+        filter.colors = Some(colors);
+    } else if count > 0
+        && filter.colors.is_some()
+        && !explicit_spell_colors
+        && words
+            .iter()
+            .any(|word| matches!(*word, "create" | "creates"))
+    {
+        // Colors that appear only in a token-creation consequence describe
+        // that token, not the spell whose cast caused the trigger.
+        filter.colors = None;
+    }
+}
+
+fn bind_authored_spell_cast_ability_marker(
+    triggered: &mut crate::ability::TriggeredAbility,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words
+        .windows(2)
+        .any(|window| matches!(window, ["kicked", "spell" | "spells"]))
+    {
+        return;
+    }
+    let filter = match &mut triggered.trigger.kind {
+        ironsmith_core::TriggerKind::SpellCast {
+            filter: Some(filter),
+            ..
+        }
+        | ironsmith_core::TriggerKind::SpellCastQualified {
+            filter: Some(filter),
+            ..
+        } => filter,
+        _ => return,
+    };
+    if !filter
+        .ability_markers
+        .iter()
+        .any(|marker| marker.eq_ignore_ascii_case("kicked"))
+    {
+        filter.ability_markers.push("kicked".to_string());
+    }
 }
 
 /// Recover spell-cast constraints that are evaluated when the cast event
@@ -6125,6 +7745,61 @@ fn reconcile_authored_source_exiled_return_runtime(
     }
 }
 
+/// A singular source-linked exile subject is an object choice, not an `all`
+/// selection. Reference resolution can discover the durable source-exile tag
+/// only after AST normalization, so make the same exact correction on the
+/// completed runtime program while preserving wrappers and result IDs.
+fn normalize_singular_source_exiled_runtime_move(
+    program: &mut crate::resolution::ResolutionProgram,
+) {
+    fn rewrite(effect: &crate::effect::Effect) -> crate::effect::Effect {
+        if let Some(moved) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && !moved.target_plural_surface
+            && moved.zone == Zone::Graveyard
+            && let ChooseSpec::All(filter) = moved.target.unhinted()
+            && filter.zone == Some(Zone::Exile)
+            && let [constraint] = filter.tagged_constraints.as_slice()
+            && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            && constraint.relation
+                == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        {
+            let mut semantic = filter.clone();
+            semantic.zone = None;
+            semantic.tagged_constraints.clear();
+            semantic.union_surface = Default::default();
+            if semantic == ObjectFilter::default() {
+                let mut moved = moved.clone();
+                moved.target = ChooseSpec::Object(filter.clone());
+                return crate::effect::Effect::new(moved);
+            }
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            let mut with_id = with_id.clone();
+            with_id.effect = Box::new(rewrite(&with_id.effect));
+            return crate::effect::Effect::new(with_id);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            let mut tagged = tagged.clone();
+            tagged.effect = Box::new(rewrite(&tagged.effect));
+            return crate::effect::Effect::new(tagged);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            let mut sequence = sequence.clone();
+            sequence.effects = sequence.effects.iter().map(rewrite).collect();
+            return crate::effect::Effect::new(sequence);
+        }
+        effect.clone()
+    }
+
+    for effect in program
+        .segments
+        .iter_mut()
+        .flat_map(|segment| segment.default_effects.iter_mut())
+    {
+        *effect = rewrite(effect);
+    }
+}
+
 /// Remove a sentence-parser target prelude when the immediately following
 /// effect is the authored counted declaration of the same target domain. The
 /// counted declaration remains in both the executable program and announced
@@ -6430,7 +8105,7 @@ fn source_words_contain(
     tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
     phrase: &[&str],
 ) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     words.windows(phrase.len()).any(|window| window == phrase)
 }
 
@@ -6859,7 +8534,7 @@ fn bind_delayed_return_to_watched_object_owner(
         tagged_move_to_zone(inner)
     }
 
-    let words = crate::runtime_backend::token_word_refs(source_tokens);
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
     let from_watched_owner_graveyard = words.windows(4).any(|window| {
         matches!(
             window,
@@ -6874,15 +8549,14 @@ fn bind_delayed_return_to_watched_object_owner(
         .windows(5)
         .any(|window| window == ["from", "its", "owner", "s", "graveyard"]);
     if !from_watched_owner_graveyard
-        || !source_words_contain(
-            source_tokens,
-            &["when", "that", "creature", "dies", "this", "turn"],
-        )
+        || !words
+            .windows(6)
+            .any(|window| window == ["when", "that", "creature", "dies", "this", "turn"])
     {
         return;
     }
     let (target_effect, delayed_root, single_segment) = match program.segments.as_slice() {
-        [segment] if segment.self_replacements.is_empty() && !segment.starts_new_source_line => {
+        [segment] if segment.self_replacements.is_empty() => {
             let [target_effect, delayed_root] = segment.default_effects.as_slice() else {
                 return;
             };
@@ -6890,9 +8564,7 @@ fn bind_delayed_return_to_watched_object_owner(
         }
         [target_segment, delayed_segment]
             if target_segment.self_replacements.is_empty()
-                && !target_segment.starts_new_source_line
-                && delayed_segment.self_replacements.is_empty()
-                && !delayed_segment.starts_new_source_line =>
+                && delayed_segment.self_replacements.is_empty() =>
         {
             let [target_effect] = target_segment.default_effects.as_slice() else {
                 return;
@@ -6904,11 +8576,14 @@ fn bind_delayed_return_to_watched_object_owner(
         }
         _ => return,
     };
-    let Some((target_tag, target_only)) = tagged_target(&target_effect) else {
-        return;
-    };
-    let target_tag = target_tag.clone();
-    let target_only = target_only.clone();
+    let (existing_target_tag, target_only) =
+        if let Some((tag, target)) = tagged_target(&target_effect) {
+            (Some(tag.clone()), target.clone())
+        } else if let Some(target) = target_only(&target_effect) {
+            (None, target.clone())
+        } else {
+            return;
+        };
     let ChooseSpec::Target(target_inner) = target_only.target.unhinted() else {
         return;
     };
@@ -6926,6 +8601,9 @@ fn bind_delayed_return_to_watched_object_owner(
     let Some(schedule) = delayed_schedule(&delayed_root) else {
         return;
     };
+    let target_tag = existing_target_tag
+        .or_else(|| schedule.target_tag.clone())
+        .unwrap_or_else(|| crate::TagKey::from("targeted_0"));
     if schedule
         .target_tag
         .as_ref()
@@ -7008,15 +8686,20 @@ fn normalize_each_creature_except_controlled_flying_damage(
     let [root] = segment.default_effects.as_mut_slice() else {
         return;
     };
-    let Some(with_id) = root.downcast_ref::<crate::effects::WithIdEffect>() else {
-        return;
-    };
-    let Some(for_each) = with_id
-        .effect
-        .downcast_ref::<crate::effects::ForEachObject>()
-    else {
-        return;
-    };
+    let (for_each, outer_id) =
+        if let Some(with_id) = root.downcast_ref::<crate::effects::WithIdEffect>() {
+            let Some(for_each) = with_id
+                .effect
+                .downcast_ref::<crate::effects::ForEachObject>()
+            else {
+                return;
+            };
+            (for_each, Some(with_id.id))
+        } else if let Some(for_each) = root.downcast_ref::<crate::effects::ForEachObject>() {
+            (for_each, None)
+        } else {
+            return;
+        };
     let expected_exception = ObjectFilter::creature()
         .in_zone(Zone::Battlefield)
         .you_control()
@@ -7047,11 +8730,13 @@ fn normalize_each_creature_except_controlled_flying_damage(
         ObjectFilter::default()
             .without_static_ability(crate::static_abilities::StaticAbilityId::Flying),
     ];
-    let mut with_id = with_id.clone();
-    with_id.effect = Box::new(crate::effect::Effect::new(
-        crate::effects::ForEachObject::new(affected, for_each.effects.clone()),
+    let replacement = crate::effect::Effect::new(crate::effects::ForEachObject::new(
+        affected,
+        for_each.effects.clone(),
     ));
-    *root = crate::effect::Effect::new(with_id);
+    *root = outer_id.map_or(replacement.clone(), |id| {
+        crate::effect::Effect::with_id(id.0, replacement)
+    });
 }
 
 /// Preserve the target-eligibility qualifier in "target player who lost life
@@ -7115,61 +8800,68 @@ fn bind_target_player_lost_life_this_turn_qualifier(
         sequence_pair(root).unwrap_or(effects)
     }
 
-    if !source_words_contain(
-        source_tokens,
-        &[
-            "target", "player", "who", "lost", "life", "this", "turn", "loses",
-        ],
-    ) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words.windows(8).any(|window| {
+        window
+            == [
+                "target", "player", "who", "lost", "life", "this", "turn", "loses",
+            ]
+    }) {
         return;
     }
     let [segment] = program.segments.as_mut_slice() else {
         return;
     };
-    if !segment.self_replacements.is_empty() || segment.starts_new_source_line {
+    if !segment.self_replacements.is_empty() {
         return;
     }
     let effects = paired_effects(&segment.default_effects);
-    let [target_root, lose_root] = effects else {
-        return;
+    let (target_root, lose_root) = match effects {
+        [target_root, lose_root] => (Some(target_root), lose_root),
+        [lose_root] => (None, lose_root),
+        _ => return,
     };
     let [declared_choice] = choices.as_mut_slice() else {
         return;
     };
-    let Some(mut target_only) = target_only(target_root).cloned() else {
-        return;
-    };
+    let mut target_only = target_root.and_then(target_only).cloned();
     let Some(mut lose_life) = lose_life(lose_root).cloned() else {
         return;
     };
-    if !matches!(
-        target_only.target.unhinted(),
-        ChooseSpec::Target(inner)
-            if matches!(inner.unhinted(), ChooseSpec::Player(PlayerFilter::Any))
-    ) || target_only.chooser.is_some()
-        || !matches!(
-            declared_choice.unhinted(),
+    if target_only.as_ref().is_some_and(|target_only| {
+        !matches!(
+            target_only.target.unhinted(),
             ChooseSpec::Target(inner)
                 if matches!(inner.unhinted(), ChooseSpec::Player(PlayerFilter::Any))
-        )
-        || !(lose_life.player == PlayerFilter::Any
-            || matches!(
-                &lose_life.player,
-                PlayerFilter::Target(inner) if inner.as_ref() == &PlayerFilter::Any
-            ))
+        ) || target_only.chooser.is_some()
+    }) || !matches!(
+        declared_choice.unhinted(),
+        ChooseSpec::Target(inner)
+            if matches!(inner.unhinted(), ChooseSpec::Player(PlayerFilter::Any))
+    ) || !(lose_life.player == PlayerFilter::Any
+        || matches!(
+            &lose_life.player,
+            PlayerFilter::Target(inner) if inner.as_ref() == &PlayerFilter::Any
+        ))
     {
         return;
     }
 
     let eligible = PlayerFilter::lost_life_this_turn(PlayerFilter::Any);
     let declared_target = ChooseSpec::target(ChooseSpec::Player(eligible.clone()));
-    target_only.target = declared_target.clone();
+    if let Some(target_only) = target_only.as_mut() {
+        target_only.target = declared_target.clone();
+    }
     *declared_choice = declared_target;
     lose_life.player = PlayerFilter::Target(Box::new(eligible));
-    segment.default_effects = vec![
-        crate::effect::Effect::new(target_only),
-        crate::effect::Effect::new(lose_life),
-    ];
+    segment.default_effects = if let Some(target_only) = target_only {
+        vec![
+            crate::effect::Effect::new(target_only),
+            crate::effect::Effect::new(lose_life),
+        ]
+    } else {
+        vec![crate::effect::Effect::new(lose_life)]
+    };
 }
 
 #[cfg(test)]
@@ -7347,7 +9039,7 @@ fn bind_linked_damage_attachment_death_replacement(
     program: &mut crate::resolution::ResolutionProgram,
     source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
 ) {
-    let words = crate::runtime_backend::token_word_refs(source_tokens);
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
     if !words
         .windows(5)
         .any(|window| window == ["attached", "to", "that", "creature", "if"])
@@ -7461,6 +9153,582 @@ fn bind_linked_damage_attachment_death_replacement(
     replacement_segment.default_effects[0] = crate::effect::Effect::new(replacement);
 }
 
+/// Preserve the singular pronoun in an attack-triggered attachment count as
+/// executable attachment provenance. Broad union parsing can retain the Aura
+/// and Equipment arms while dropping the trailing `attached to it` relation,
+/// which would count every matching permanent on the battlefield.
+fn bind_triggered_attachment_union_count(
+    triggered: &mut crate::ability::TriggeredAbility,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words.windows(11).any(|window| {
+        window
+            == [
+                "draw",
+                "a",
+                "card",
+                "for",
+                "each",
+                "aura",
+                "and",
+                "equipment",
+                "attached",
+                "to",
+                "it",
+            ]
+    }) || !match &triggered.trigger.kind {
+        crate::triggers::TriggerKind::ThisAttacks => true,
+        crate::triggers::TriggerKind::Attacks { filter } => filter.source,
+        _ => false,
+    } {
+        return;
+    }
+    let [segment] = triggered.effects.segments.as_mut_slice() else {
+        return;
+    };
+    if !segment.self_replacements.is_empty() || segment.default_effects.len() != 1 {
+        return;
+    }
+    let Some(draw) = segment.default_effects[0]
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    if draw.player != PlayerFilter::You {
+        return;
+    }
+    let crate::effect::Value::Count(filter) = draw.count.unhinted() else {
+        return;
+    };
+    if filter.zone != Some(Zone::Battlefield)
+        || !filter.tagged_constraints.is_empty()
+        || filter.any_of.len() != 2
+        || !filter.any_of.iter().any(|branch| {
+            branch.subtypes == [crate::Subtype::Aura] && branch.tagged_constraints.is_empty()
+        })
+        || !filter.any_of.iter().any(|branch| {
+            branch.subtypes == [crate::Subtype::Equipment] && branch.tagged_constraints.is_empty()
+        })
+    {
+        return;
+    }
+    let mut linked = filter.clone();
+    for branch in &mut linked.any_of {
+        branch
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: crate::TagKey::from("__it__"),
+                relation: crate::target::TaggedOpbjectRelation::AttachedToTaggedObject,
+            });
+    }
+    let hints = draw.count.surface_hints().to_vec();
+    let mut rebound = draw;
+    rebound.count = crate::effect::Value::Count(linked).with_surface_hints(hints);
+    segment.default_effects[0] = crate::effect::Effect::new(rebound);
+}
+
+fn rewrite_optional_damage_target_preserving_wrappers(
+    effect: &crate::effect::Effect,
+) -> Option<crate::effect::Effect> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        let mut rebound = with_id.clone();
+        rebound.effect = Box::new(rewrite_optional_damage_target_preserving_wrappers(
+            &with_id.effect,
+        )?);
+        return Some(crate::effect::Effect::new(rebound));
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        let mut rebound = tagged.clone();
+        rebound.effect = Box::new(rewrite_optional_damage_target_preserving_wrappers(
+            &tagged.effect,
+        )?);
+        return Some(crate::effect::Effect::new(rebound));
+    }
+    let damage = effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let ChooseSpec::WithCount(target, count) = &damage.target else {
+        return None;
+    };
+    if count != &crate::effect::ChoiceCount::exactly(1) {
+        return None;
+    }
+    let ChooseSpec::Target(target) = target.as_ref() else {
+        return None;
+    };
+    let ChooseSpec::Object(filter) = target.as_ref() else {
+        return None;
+    };
+    let mut semantic_filter = filter.clone();
+    semantic_filter.union_surface = Default::default();
+    let mut expected = ObjectFilter::default().in_zone(Zone::Battlefield);
+    expected.card_types = vec![crate::CardType::Creature, crate::CardType::Planeswalker];
+    if semantic_filter != expected {
+        return None;
+    }
+    let mut rebound = damage.clone();
+    rebound.target = ChooseSpec::target(ChooseSpec::Object(filter.clone()))
+        .with_count(crate::effect::ChoiceCount::up_to(1));
+    Some(crate::effect::Effect::new(rebound))
+}
+
+/// A linked return/damage sentence carries two independent facts: the damage
+/// amount comes from the returned card, and the recipient is optional. The
+/// generic amount-first parser can preserve the former while normalizing the
+/// latter to a mandatory single target. Restore only this exact authored and
+/// typed two-segment program.
+fn bind_optional_linked_mana_value_damage(
+    program: &mut crate::resolution::ResolutionProgram,
+    authored_line: &str,
+) {
+    if !authored_line
+        .to_ascii_lowercase()
+        .contains("up to one target creature or planeswalker")
+    {
+        return;
+    }
+    let [_, damage_segment] = program.segments.as_mut_slice() else {
+        return;
+    };
+    if !damage_segment.self_replacements.is_empty() || damage_segment.default_effects.len() != 1 {
+        return;
+    }
+    let Some(rewritten) =
+        rewrite_optional_damage_target_preserving_wrappers(&damage_segment.default_effects[0])
+    else {
+        return;
+    };
+    damage_segment.default_effects[0] = rewritten;
+}
+
+/// Restore the destination-qualified attacking-creature set after an
+/// otherwise complete optional-payment trigger has fallen through to the
+/// generic source-pump action. The authored destination phrase, result id,
+/// exact +2/+0 modification, and one-turn duration jointly prove the rewrite.
+fn bind_attacking_opponents_result_pump(
+    triggered: &mut crate::ability::TriggeredAbility,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words
+        .windows(3)
+        .any(|window| window == ["creatures", "attacking", "your"])
+        || !words.iter().any(|word| *word == "opponents")
+        || !words
+            .windows(3)
+            .any(|window| window == ["planeswalkers", "they", "control"])
+    {
+        return;
+    }
+    let [segment] = triggered.effects.segments.as_mut_slice() else {
+        return;
+    };
+    if !segment.self_replacements.is_empty() {
+        return;
+    }
+    let [producer_root, consumer_root] = segment.default_effects.as_mut_slice() else {
+        return;
+    };
+    let Some(producer) = producer_root
+        .downcast_ref::<crate::effects::WithIdEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    let Some(may) = producer
+        .effect
+        .downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+    else {
+        return;
+    };
+    if !matches!(
+        may.effects.as_slice(),
+        [effect] if effect.downcast_ref::<crate::effects::PayManaEffect>().is_some()
+    ) {
+        return;
+    }
+    let Some(mut consumer) = consumer_root
+        .downcast_ref::<crate::effects::IfEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    if consumer.condition != producer.id
+        || consumer.predicate != crate::effect::EffectPredicate::Happened
+        || !consumer.else_.is_empty()
+    {
+        return;
+    }
+    let [pump_root] = consumer.then.as_mut_slice() else {
+        return;
+    };
+    let Some(mut pump) = pump_root
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    if pump.target != crate::continuous::EffectTarget::Source
+        || pump.target_spec.as_ref() != Some(&ChooseSpec::Source)
+        || pump.until != crate::effect::Until::EndOfTurn
+        || pump.modification.is_some()
+        || !pump.additional_modifications.is_empty()
+        || !matches!(
+            pump.runtime_modifications.as_slice(),
+            [
+                crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                    power: crate::effect::Value::Fixed(2),
+                    toughness: crate::effect::Value::Fixed(0),
+                }
+            ]
+        )
+    {
+        return;
+    }
+
+    let mut filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    filter.attacking = true;
+    filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::Opponent);
+    filter.attacking_player_only = false;
+    let target = ChooseSpec::Object(filter);
+    pump.target = target.clone().into();
+    pump.target_spec = Some(target);
+    pump.lock_filter_at_resolution = true;
+    *pump_root = crate::effect::Effect::new(pump);
+    *consumer_root = crate::effect::Effect::new(consumer);
+}
+
+/// Preserve an immediately preceding return-to-hand result as a typed
+/// condition instead of a generic current-characteristic check. This exact
+/// three-segment shell is produced when a triggered return is followed by an
+/// optional payment and an `if you do` action.
+fn bind_returned_card_to_hand_result_condition(
+    program: &mut crate::resolution::ResolutionProgram,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words.windows(13).any(|window| {
+        window
+            == [
+                "if", "that", "card", "is", "returned", "to", "its", "owner", "s", "hand", "this",
+                "way", "you",
+            ]
+    }) {
+        return;
+    }
+    let [return_segment, condition_segment, result_segment] = program.segments.as_mut_slice()
+    else {
+        return;
+    };
+    if [&*return_segment, &*condition_segment, &*result_segment]
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty() || segment.default_effects.len() != 1)
+    {
+        return;
+    }
+    let [return_root] = return_segment.default_effects.as_slice() else {
+        return;
+    };
+    if return_root
+        .downcast_ref::<crate::effects::ReturnToHandEffect>()
+        .is_none()
+        && return_root
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .and_then(|tagged| {
+                tagged
+                    .effect
+                    .downcast_ref::<crate::effects::ReturnToHandEffect>()
+            })
+            .is_none()
+    {
+        return;
+    }
+    let Some(with_id) = condition_segment.default_effects[0]
+        .downcast_ref::<crate::effects::WithIdEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    let Some(mut conditional) = with_id
+        .effect
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    let crate::effect::Condition::TaggedObjectMatches(tag, filter) = &conditional.condition else {
+        return;
+    };
+    if tag.as_str() != "triggering" || filter != &ObjectFilter::default() {
+        return;
+    }
+    let Some(result) = result_segment.default_effects[0].downcast_ref::<crate::effects::IfEffect>()
+    else {
+        return;
+    };
+    if result.condition != with_id.id
+        || result.predicate != crate::effect::EffectPredicate::Happened
+    {
+        return;
+    }
+    let mut returned = ObjectFilter::default().in_zone(Zone::Hand);
+    returned.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Returned));
+    returned.set_demonstrative_antecedent_surface(Some(
+        ironsmith_core::DemonstrativeAntecedentSurface::Card,
+    ));
+    conditional.condition = crate::effect::Condition::TaggedObjectMatches(tag.clone(), returned);
+    let mut rebound = with_id;
+    rebound.effect = Box::new(crate::effect::Effect::new(conditional));
+    condition_segment.default_effects[0] = crate::effect::Effect::new(rebound);
+}
+
+/// Keep every action following an authored `Then if ...` inside that
+/// conditional. A sentence-leading wrapper can otherwise leave a coordinated
+/// transform as an unconditional sibling of the guarded untap.
+fn bind_then_if_source_untap_and_transform(
+    program: &mut crate::resolution::ResolutionProgram,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words
+        .windows(3)
+        .any(|window| window == ["then", "if", "your"])
+        || !words.iter().any(|word| *word == "untap")
+        || !words.iter().any(|word| *word == "transform")
+    {
+        return;
+    }
+    let Some(segment) = program.segments.last_mut() else {
+        return;
+    };
+    if !segment.self_replacements.is_empty() {
+        return;
+    }
+    let [sequence_root] = segment.default_effects.as_mut_slice() else {
+        return;
+    };
+    let Some(mut sequence) = sequence_root
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    if sequence.surface != ironsmith_core::SequenceSurface::SentenceLeadingThen {
+        return;
+    }
+    let [conditional_root, transform_root] = sequence.effects.as_mut_slice() else {
+        return;
+    };
+    let Some(mut conditional) = conditional_root
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    let Some(transform) = transform_root.downcast_ref::<crate::effects::TransformEffect>() else {
+        return;
+    };
+    let [untap_root] = conditional.if_true.as_slice() else {
+        return;
+    };
+    let Some(untap) = untap_root.downcast_ref::<crate::effects::UntapEffect>() else {
+        return;
+    };
+    if !conditional.if_false.is_empty()
+        || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+        || untap.target.base() != &ChooseSpec::Source
+        || transform.target != ChooseSpec::Source
+    {
+        return;
+    }
+
+    conditional.if_true.push(transform_root.clone());
+    sequence.effects = vec![crate::effect::Effect::new(conditional)];
+    *sequence_root = crate::effect::Effect::new(sequence);
+}
+
+/// Keep an optional cast tied to the opponent explicitly chosen earlier in
+/// the same resolution. The broad lexical `Opponent` filter is not sufficient
+/// in multiplayer games: both the decision and the cast must use the durable
+/// chosen-player tag created by the preceding choice.
+fn bind_optional_cast_to_previously_chosen_opponent(
+    program: &mut crate::resolution::ResolutionProgram,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words
+        .windows(4)
+        .any(|window| window == ["that", "opponent", "may", "cast"])
+    {
+        return;
+    }
+    let [segment] = program.segments.as_mut_slice() else {
+        return;
+    };
+    if !segment.self_replacements.is_empty() {
+        return;
+    }
+    let [_, choose_player_root, choose_objects_root, _, _, may_root] =
+        segment.default_effects.as_mut_slice()
+    else {
+        return;
+    };
+    let Some(choose_player) = choose_player_root
+        .downcast_ref::<crate::effects::ChoosePlayerEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    let Some(choose_objects) =
+        choose_objects_root.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+    else {
+        return;
+    };
+    let Some(mut may) = may_root
+        .downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+        .cloned()
+    else {
+        return;
+    };
+    let [cast_root] = may.effects.as_mut_slice() else {
+        return;
+    };
+    let Some(mut cast) = cast_root
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    let chosen_player = PlayerFilter::TaggedPlayer(choose_player.tag.clone());
+    if choose_player.chooser != PlayerFilter::You
+        || choose_player.filter != PlayerFilter::Opponent
+        || choose_player.random
+        || !choose_player.excluded_tags.is_empty()
+        || choose_objects.chooser != chosen_player
+        || cast.tag != choose_objects.tag
+        || cast.player != PlayerFilter::Opponent
+        || may.decider != Some(PlayerFilter::Opponent)
+    {
+        return;
+    }
+
+    cast.player = chosen_player.clone();
+    *cast_root = crate::effect::Effect::new(cast);
+    may.decider = Some(chosen_player);
+    *may_root = crate::effect::Effect::new(may);
+}
+
+/// Rebind a pump and its delayed sacrifice to the creature declared by the
+/// first effect in the same instruction. This repairs the generic `it`
+/// fallback without introducing another target or watching the spell source.
+fn bind_until_end_of_turn_pump_and_delayed_sacrifice_to_declared_creature(
+    program: &mut crate::resolution::ResolutionProgram,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    let authored_shape = words
+        .windows(4)
+        .any(|window| window == ["until", "end", "of", "turn"])
+        && words
+            .windows(3)
+            .any(|window| window == ["gains", "trample", "and"])
+        && words
+            .windows(5)
+            .any(|window| window == ["where", "x", "is", "its", "power"])
+        && words
+            .windows(7)
+            .any(|window| window == ["sacrifice", "it", "at", "the", "beginning", "of", "the"]);
+    if !authored_shape {
+        return;
+    }
+    let [segment] = program.segments.as_mut_slice() else {
+        return;
+    };
+    if !segment.self_replacements.is_empty() {
+        return;
+    }
+    let [grant_root, pump_root, schedule_root] = segment.default_effects.as_mut_slice() else {
+        return;
+    };
+    let Some(grant) = grant_root.downcast_ref::<crate::effects::TaggedEffect>() else {
+        return;
+    };
+    let grant_tag = grant.tag.clone();
+    let Some(grant_continuous) = grant
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+    else {
+        return;
+    };
+    if grant_continuous.until != crate::effect::Until::EndOfTurn
+        || !grant_continuous
+            .target_spec
+            .as_ref()
+            .is_some_and(ChooseSpec::is_target)
+    {
+        return;
+    }
+    let Some(pump_tagged) = pump_root
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    let Some(mut pump) = pump_tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    if pump.target_spec.as_ref() != Some(&ChooseSpec::Source)
+        || pump.until != crate::effect::Until::EndOfTurn
+        || pump.modification.is_some()
+        || !pump.additional_modifications.is_empty()
+        || !pump.require_creature_target
+        || !matches!(
+            pump.runtime_modifications.as_slice(),
+            [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power,
+                toughness: crate::effect::Value::Fixed(0),
+            }] if matches!(power.unhinted(), crate::effect::Value::SourcePower)
+        )
+    {
+        return;
+    }
+    let Some(mut schedule) = schedule_root
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    let [sacrifice_root] = schedule.effects.as_mut_slice() else {
+        return;
+    };
+    let Some(sacrifice) = sacrifice_root.downcast_ref::<crate::effects::SacrificeTargetEffect>()
+    else {
+        return;
+    };
+    if sacrifice.target != ChooseSpec::Source
+        || !schedule.one_shot
+        || schedule.start_next_turn
+        || schedule.target_tag.is_some()
+        || !schedule.target_choices.is_empty()
+    {
+        return;
+    }
+
+    let tagged_target = ChooseSpec::tagged(grant_tag.clone());
+    pump.target_spec = Some(tagged_target.clone());
+    let mut rebound_pump = pump_tagged;
+    rebound_pump.effect = Box::new(crate::effect::Effect::new(pump));
+    *pump_root = crate::effect::Effect::new(rebound_pump);
+    *sacrifice_root =
+        crate::effect::Effect::new(crate::effects::SacrificeTargetEffect::new(tagged_target));
+    schedule.target_tag = Some(grant_tag);
+    *schedule_root = crate::effect::Effect::new(schedule);
+}
+
 fn preserve_latest_self_replacement_presentation(
     builder: &mut CardDefinitionBuilder,
     statement_facts: &crate::runtime_backend::shared_types::StatementLineSemanticFacts,
@@ -7547,6 +9815,13 @@ fn bind_as_enters_counter_grants_to_source(effects: &mut [EffectAst]) {
 fn authored_compound_damage_fanout_effects(
     info: &LineInfo,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // This repair owns one complete compound-damage sentence. Parsing a
+    // multi-sentence physical line here would accept only that prefix and
+    // discard a later result consumer such as "You gain life equal to the
+    // damage dealt this way."
+    if crate::runtime_backend::lexer::split_lexed_sentences(&info.source_tokens).len() != 1 {
+        return Ok(None);
+    }
     let normalized_tokens =
         crate::runtime_backend::lexer::lex_line(&info.normalized.normalized, info.line_index)?;
     let raw_verb = info
@@ -7706,6 +9981,29 @@ fn lower_statement_chunk(
         unreachable!("statement lowerer received mismatched chunk");
     };
 
+    let normalized_raw = info.raw_line.trim().to_ascii_lowercase();
+    let commander_tax_life_prefix = "rather than pay {2} for each previous time you've cast this spell from the command zone this game, pay ";
+    if let Some(life_text) = normalized_raw
+        .strip_prefix(commander_tax_life_prefix)
+        .and_then(|rest| rest.strip_suffix(" life that many times."))
+        .or_else(|| {
+            normalized_raw
+                .strip_prefix(commander_tax_life_prefix)
+                .and_then(|rest| rest.strip_suffix(" life that many times"))
+        })
+        && let Ok(life_per_previous_cast) = life_text.parse::<u32>()
+        && life_per_previous_cast > 0
+    {
+        return Ok(builder.with_ability(
+            crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::commander_tax_life_substitution(
+                    life_per_previous_cast,
+                ),
+            )
+            .in_zones(vec![crate::zone::Zone::Command]),
+        ));
+    }
+
     if effects_ast.is_empty() {
         if allow_unsupported {
             return Ok(super::push_unsupported_marker(
@@ -7719,6 +10017,134 @@ fn lower_statement_chunk(
             info.raw_line
         )));
     }
+    let authored_tokens = crate::runtime_backend::lexer::lex_line(&info.raw_line, info.line_index)
+        .unwrap_or_else(|_| info.source_tokens.clone());
+    let authored_sentences = crate::runtime_backend::lexer::split_lexed_sentences(&authored_tokens);
+    if let [choose, reciprocal_damage] = authored_sentences.as_slice()
+        && crate::runtime_backend::lexer::parser_token_word_refs(choose).as_slice()
+            == [
+                "choose", "target", "creature", "you", "control", "and", "target", "creature",
+                "an", "opponent", "controls",
+            ]
+        && crate::runtime_backend::lexer::parser_token_word_refs(reciprocal_damage).as_slice()
+            == [
+                "each",
+                "of",
+                "those",
+                "creatures",
+                "deals",
+                "damage",
+                "equal",
+                "to",
+                "its",
+                "toughness",
+                "to",
+                "the",
+                "other",
+            ]
+    {
+        let Some(mut authored_reciprocal) =
+            crate::runtime_backend::effect_sentences::parse_choose_target_prelude_sentence(choose)?
+        else {
+            return Err(CardTextError::InvariantViolation(
+                "authored reciprocal target declaration stopped parsing".to_string(),
+            ));
+        };
+        authored_reciprocal.extend(
+            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(
+                reciprocal_damage,
+            )?,
+        );
+        effects_ast = authored_reciprocal;
+        prepared =
+            super::rewrite_prepare_effects_for_lowering(&effects_ast, prepared.imports.clone())?;
+    }
+    if authored_sentences.len() == 4 {
+        let sentence_inputs = authored_sentences
+            .iter()
+            .map(|tokens| {
+                crate::runtime_backend::effect_sentences::SentenceInput::from_lexed(tokens)
+            })
+            .collect::<Vec<_>>();
+        if let Some(authored_tempting_offer) =
+            crate::runtime_backend::effect_sentences::parse_tempting_offer_copy_spell_sequence(
+                &sentence_inputs,
+                0,
+            )?
+        {
+            effects_ast = authored_tempting_offer;
+            prepared = super::rewrite_prepare_effects_for_lowering(
+                &effects_ast,
+                prepared.imports.clone(),
+            )?;
+        }
+    }
+    if authored_sentences.len() == 3
+        && source_words_contain(&authored_tokens, &["choose", "target", "creature"])
+        && source_words_contain(
+            &authored_tokens,
+            &["instead", "choose", "target", "creature"],
+        )
+        && source_words_contain(&authored_tokens, &["exile", "the", "chosen", "creature"])
+        && source_words_contain(
+            &authored_tokens,
+            &["controller", "gains", "life", "equal", "to"],
+        )
+        && source_words_contain(&authored_tokens, &["mana", "value"])
+        && let Ok(authored_replacement) =
+            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&authored_tokens)
+        && matches!(
+            authored_replacement.as_slice(),
+            [EffectAst::SelfReplacement {
+                if_true,
+                if_false,
+                ..
+            }] if !if_true.is_empty()
+                && !if_false.is_empty()
+                && format!("{authored_replacement:#?}").contains("GainLife")
+        )
+    {
+        effects_ast = authored_replacement;
+        prepared =
+            super::rewrite_prepare_effects_for_lowering(&effects_ast, prepared.imports.clone())?;
+    }
+    let authored_words = crate::runtime_backend::lexer::parser_token_word_refs(&authored_tokens);
+    if authored_words.starts_with(&["destroy", "target", "nonland", "permanent"])
+        && (authored_words
+            .windows(4)
+            .any(|window| matches!(window, ["if", "it" | "its", "a", "creature"]))
+            || authored_words
+                .windows(5)
+                .any(|window| window == ["if", "it", "s", "a", "creature"]))
+        && authored_words
+            .windows(5)
+            .any(|window| window == ["spent", "to", "cast", "this", "spell"])
+    {
+        let mut authored_destroy =
+            crate::runtime_backend::effect_sentences::parse_destroy(&authored_tokens[1..])?;
+        if let EffectAst::Conditional {
+            predicate: PredicateAst::Or(left, _),
+            ..
+        } = &mut authored_destroy
+            && let PredicateAst::ItMatches(filter) = left.as_ref()
+        {
+            **left = PredicateAst::TargetMatches(filter.clone());
+        }
+        if matches!(
+            &authored_destroy,
+            EffectAst::Conditional {
+                predicate: PredicateAst::Or(_, _),
+                if_true,
+                if_false,
+            } if if_true.len() == 1 && if_false.is_empty()
+        ) {
+            effects_ast = vec![authored_destroy];
+            prepared = super::rewrite_prepare_effects_for_lowering(
+                &effects_ast,
+                prepared.imports.clone(),
+            )?;
+        }
+    }
     if let Some(authored_damage) = authored_compound_damage_fanout_effects(info)? {
         effects_ast = authored_damage;
         prepared =
@@ -7729,8 +10155,6 @@ fn lower_statement_chunk(
     // rule from the retained authored tokens at the final public lowering
     // boundary, then rebuild reference preparation only when the typed copy
     // was actually enriched. This also reaches replacement branches.
-    let authored_tokens = crate::runtime_backend::lexer::lex_line(&info.raw_line, info.line_index)
-        .unwrap_or_else(|_| info.source_tokens.clone());
     if crate::runtime_backend::effect_sentences::attach_inline_token_granted_abilities_to_last_create(
         &mut prepared.effects,
         &authored_tokens,
@@ -7836,8 +10260,16 @@ fn lower_statement_chunk(
         state.latest_created_token = Some(token_info);
     }
     let mut compiled = lowered.effects;
+    let authored_tokens = crate::runtime_backend::lexer::lex_line(&info.raw_line, info.line_index)
+        .unwrap_or_else(|_| info.source_tokens.clone());
     materialize_attached_library_search_count_overrides(&mut compiled);
-    bind_linked_damage_attachment_death_replacement(&mut compiled, &info.source_tokens);
+    bind_linked_damage_attachment_death_replacement(&mut compiled, &authored_tokens);
+    bind_optional_cast_to_previously_chosen_opponent(&mut compiled, &authored_tokens);
+    bind_until_end_of_turn_pump_and_delayed_sacrifice_to_declared_creature(
+        &mut compiled,
+        &authored_tokens,
+    );
+    bind_excess_damage_exile_top_permission(&mut compiled, &authored_tokens);
     state.latest_spell_exports = lowered.exports;
     if builder
         .spell_effect
@@ -7873,6 +10305,7 @@ fn lower_statement_chunk(
             dedupe_lowered_adjacent_target_declarations(program);
             bind_source_exiled_return_complement(program);
             normalize_graveyard_card_copy_cast_program(program);
+            preserve_separate_copy_instruction_surface(program, &authored_tokens);
             super::super::battlefield_entry_counter_fusion::fuse_program(program);
         }
         preserve_latest_self_replacement_presentation(&mut builder, &semantic_facts.statement);
@@ -7882,7 +10315,7 @@ fn lower_statement_chunk(
     let statement_facts = &semantic_facts.statement;
     bind_negated_control_condition_after_tagged_zone_move(&mut compiled, &info.source_tokens);
     bind_target_characteristic_or_paid_mana_condition(&mut compiled, &info.source_tokens);
-    bind_delayed_return_to_watched_object_owner(&mut compiled, &info.source_tokens);
+    bind_delayed_return_to_watched_object_owner(&mut compiled, &authored_tokens);
     normalize_each_creature_except_controlled_flying_damage(&mut compiled, &info.source_tokens);
     fold_prior_result_self_replacement_into_success_arm(&mut compiled, statement_facts);
     fuse_repeatable_mana_payment_prevention_until_end_of_turn(&mut compiled, &info.source_tokens);
@@ -8326,15 +10759,125 @@ fn lower_statement_chunk(
         dedupe_lowered_adjacent_target_declarations(program);
         bind_source_exiled_return_complement(program);
         normalize_graveyard_card_copy_cast_program(program);
+        preserve_separate_copy_instruction_surface(program, &authored_tokens);
+        bind_commander_hand_move_from_command_zone(program, &authored_tokens);
         // A delayed instruction may be reconstructed as a second statement
         // after its target declaration has already been appended to the
         // builder. Run the exact watched-object owner binder at this combined
         // public-program boundary as well as on a single compiled chunk.
-        bind_delayed_return_to_watched_object_owner(program, &info.source_tokens);
+        bind_delayed_return_to_watched_object_owner(program, &authored_tokens);
+        bind_optional_linked_mana_value_damage(program, &info.raw_line);
         super::super::battlefield_entry_counter_fusion::fuse_program(program);
     }
     preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
     Ok(builder)
+}
+
+/// Recover the exact damage-outcome dependency when document-level sentence
+/// preparation has already lowered the dynamic exile sentence as a generic
+/// top-card choice. This is deliberately guarded by both the authored excess
+/// damage wording and the complete observed three-segment executable shell.
+fn bind_excess_damage_exile_top_permission(
+    program: &mut crate::resolution::ResolutionProgram,
+    source_tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
+) {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(source_tokens);
+    if !words
+        .windows(4)
+        .any(|window| window == ["excess", "damage", "dealt", "to"])
+        || !words
+            .windows(6)
+            .any(|window| window == ["until", "the", "end", "of", "your", "next"])
+    {
+        return;
+    }
+    let [damage_segment, exile_segment, permission_segment] = program.segments.as_slice() else {
+        return;
+    };
+    if program
+        .segments
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return;
+    }
+    let [damage_root] = damage_segment.default_effects.as_slice() else {
+        return;
+    };
+    let damage_inner = damage_root
+        .as_tagged()
+        .map_or(damage_root, |tagged| &tagged.effect);
+    if damage_inner
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .is_none()
+    {
+        return;
+    }
+    let [choose_root, exile_root] = exile_segment.default_effects.as_slice() else {
+        return;
+    };
+    let Some(choose) = choose_root.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
+        return;
+    };
+    let Some(exile) = exile_root.downcast_ref::<crate::effects::ExileEffect>() else {
+        return;
+    };
+    if choose.zone != Some(Zone::Library)
+        || choose.filter.zone != Some(Zone::Library)
+        || choose.filter.owner != Some(PlayerFilter::You)
+        || !choose.top_only
+        || choose.count != crate::effect::ChoiceCount::exactly(1)
+        || exile.face_down
+        || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return;
+    }
+    let [grant_root] = permission_segment.default_effects.as_slice() else {
+        return;
+    };
+    let Some(mut grant) = grant_root
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    if grant.player != PlayerFilter::You
+        || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
+        || !grant.allow_land
+    {
+        return;
+    }
+
+    let next_id = program
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .filter_map(max_effect_id)
+        .max()
+        .and_then(|maximum| maximum.checked_add(1))
+        .unwrap_or(0);
+    let effect_id = crate::effect::EffectId(next_id);
+    let count = crate::effect::Value::EffectMetric {
+        effect_id,
+        source: ironsmith_core::EffectMetricSource::Outcome,
+        metric: ironsmith_core::EffectMetric::ExcessDamage,
+    }
+    .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
+    let exiled_tag = choose.tag.clone();
+    let exile = crate::effects::ExileTopOfLibraryEffect::new(count, PlayerFilter::You)
+        .tag_moved(exiled_tag.clone());
+    grant.tag = exiled_tag;
+    grant.cast_pool_is_plural = true;
+    grant.surface = Some(
+        ironsmith_core::GrantPlayTaggedSurface::default()
+            .with_object(ironsmith_core::GrantPlayTaggedObjectSurface::ThoseCards),
+    );
+    let damage = crate::effect::Effect::with_id(next_id, damage_root.clone());
+    *program = crate::resolution::ResolutionProgram::from_effects(vec![
+        damage,
+        crate::effect::Effect::new(exile),
+        crate::effect::Effect::new(grant),
+    ]);
 }
 
 fn lower_additional_cost_chunk(
@@ -8853,7 +11396,7 @@ fn lower_triggered_chunk(
         ..
     } = input;
     let NormalizedLineChunk::Triggered {
-        trigger,
+        mut trigger,
         mut prepared,
         max_triggers_per_turn,
     } = parsed
@@ -8907,29 +11450,59 @@ fn lower_triggered_chunk(
                 &info.source_tokens,
             )
         });
-    let reconciled_dynamic_found = reconciled_dynamic.is_some();
-    let reconciled_looked_hand_found = reconciled_looked_hand.is_some();
+    let reconciled_graveyard_copy_cast = authored_tail
+        .as_ref()
+        .and_then(|tail| {
+            crate::runtime_backend::semantic_line_parsing::exact_graveyard_card_copy_cast_sequence(
+                tail,
+            )
+        })
+        .or_else(|| {
+            source_tail.as_ref().and_then(|tail| {
+                crate::runtime_backend::semantic_line_parsing::
+                    exact_graveyard_card_copy_cast_sequence(tail)
+            })
+        });
+    let reconciled_quantified_token_rules = authored_tail
+        .as_ref()
+        .map(|tail| {
+            crate::runtime_backend::effect_sentences::
+                parse_quantified_token_creation_with_embedded_rules(tail)
+        })
+        .transpose()?
+        .flatten()
+        .or(source_tail
+            .as_ref()
+            .map(|tail| {
+                crate::runtime_backend::effect_sentences::
+                    parse_quantified_token_creation_with_embedded_rules(tail)
+            })
+            .transpose()?
+            .flatten());
+    let reconciled_library_origin =
+        crate::runtime_backend::semantic_line_parsing::
+            parse_library_origin_source_pump_unblockable_triggered_line(&authored_tokens)?
+            .or(crate::runtime_backend::semantic_line_parsing::
+                parse_library_origin_source_pump_unblockable_triggered_line(
+                    &info.source_tokens,
+                )?);
+    let reconciled_library_effects = match reconciled_library_origin {
+        Some(LineAst::Triggered {
+            trigger: recovered_trigger,
+            effects,
+            ..
+        }) => {
+            trigger = recovered_trigger;
+            Some(effects)
+        }
+        _ => None,
+    };
     let reconciled_effects = reconciled_dynamic
         .map(|effect| vec![effect])
-        .or(reconciled_looked_hand);
-    let source_words = crate::runtime_backend::token_word_refs(&info.source_tokens);
-    if source_words
-        .windows(4)
-        .any(|window| window == ["base", "power", "and", "toughness"])
-        || source_words
-            .windows(4)
-            .any(|window| window == ["from", "among", "those", "cards"])
-    {
-        eprintln!(
-            "prepared-trigger reconciliation: raw={:?} source={:?} authored_tail={} source_tail={} dynamic={} looked_hand={}",
-            info.raw_line,
-            crate::runtime_backend::lexer::render_token_slice(&info.source_tokens),
-            authored_tail.is_some(),
-            source_tail.is_some(),
-            reconciled_dynamic_found,
-            reconciled_looked_hand_found,
-        );
-    }
+        .or(reconciled_looked_hand)
+        .or(reconciled_graveyard_copy_cast)
+        .or(reconciled_library_effects)
+        .or_else(|| reconciled_quantified_token_rules.map(|effect| vec![effect]));
     if let Some(effects) = reconciled_effects {
         prepared.prepared = super::rewrite_prepare_effects_for_lowering(
             &effects,
@@ -8993,6 +11566,7 @@ fn lower_triggered_chunk(
         Err(err) => return Err(err),
     };
     if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
+        preserve_condition_qualified_stun_reminder(triggered, &info.raw_line);
         dedupe_lowered_adjacent_target_declarations(&mut triggered.effects);
         bind_source_exiled_return_complement(&mut triggered.effects);
         reconcile_authored_source_exiled_return_runtime(
@@ -9000,6 +11574,8 @@ fn lower_triggered_chunk(
             &info.source_tokens,
         );
         normalize_graveyard_card_copy_cast_program(&mut triggered.effects);
+        preserve_separate_copy_instruction_surface(&mut triggered.effects, &authored_tokens);
+        bind_each_opponent_sacrifice_failure_half_life(&mut triggered.effects, &authored_tokens);
         bind_dynamic_power_owner_exile_permission(
             &mut triggered.effects,
             &info.source_tokens,
@@ -9015,11 +11591,15 @@ fn lower_triggered_chunk(
         bind_exile_top_card_cast_attempt_and_fallback(&mut triggered.effects);
         retarget_source_move_to_damaged_death_card(triggered);
         bind_equipped_attack_subject_to_result_pump(triggered);
+        bind_combat_damage_group_controller_draw(triggered, &authored_tokens);
         bind_equipped_attack_draw_reveal_result(triggered, &info.source_tokens);
         bind_later_attacker_choice_to_prior_target_power(triggered);
         bind_authored_single_target_spell_cast_filter(triggered, &info.source_tokens);
+        bind_authored_spell_cast_color_list(triggered, &info.source_tokens);
+        bind_authored_spell_cast_ability_marker(triggered, &info.source_tokens);
         bind_authored_spell_cast_relation_constraints(triggered, &info.source_tokens);
         bind_original_and_copy_plural_keyword_grant(triggered, &info.source_tokens);
+        bind_authored_chosen_creature_sacrifice(triggered, &authored_tokens);
     }
     if contains_haunted_creature_dies && let AbilityKind::Triggered(triggered) = parsed.kind() {
         state.haunt_linkage = Some((

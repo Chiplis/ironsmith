@@ -118,7 +118,10 @@ fn is_reserved_short_alias(alias: &str) -> bool {
     if super::super::sentence_markers::parse_keyword_marker_text(&lower).is_some() {
         return true;
     }
-    if matches!(lower.as_str(), "prototype" | "dredge") {
+    if matches!(
+        lower.as_str(),
+        "prototype" | "dredge" | "enchanted" | "equipped"
+    ) {
         return true;
     }
     if super::super::leaf::parse_leaf_card_type_complete(&lower).is_ok() {
@@ -354,6 +357,11 @@ mod tests {
             "Turn Static Boundary Variant"
         );
         assert_eq!(parse_short_self_reference_name("Ajani Vengeant"), "Ajani");
+        assert_eq!(
+            parse_short_self_reference_name("Enchanted River's Grasp"),
+            "Enchanted River's Grasp",
+            "an attached-object adjective must not become a source alias"
+        );
 
         for name in [
             "Craft Variant",

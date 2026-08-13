@@ -343,6 +343,18 @@ pub(crate) fn parse_sentence_destroy_multi_target(
 pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_sentence_reveal_selected_cards_in_hand_for_player(
+        clause,
+        PlayerAst::You,
+        PlayerFilter::You,
+    )
+}
+
+fn parse_sentence_reveal_selected_cards_in_hand_for_player(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    player: PlayerAst,
+    owner: PlayerFilter,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = choice_shapes::parse_reveal_selected_hand_shape(clause.tokens()) else {
         return Ok(None);
     };
@@ -413,7 +425,7 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
         }
     };
     filter.zone = Some(Zone::Hand);
-    filter.owner = Some(PlayerFilter::You);
+    filter.owner = Some(owner);
 
     let tag = helper_tag_for_tokens(clause.tokens(), "revealed");
     Ok(Some(vec![
@@ -421,11 +433,36 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
             filter,
             count,
             count_value: None,
-            player: PlayerAst::You,
+            player,
             tag: tag.clone(),
         },
         EffectAst::subject_verb_reveal_tagged(tag),
     ]))
+}
+
+pub(crate) fn parse_sentence_each_player_may_reveal_selected_cards_in_their_hand(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) =
+        choice_shapes::parse_each_player_may_reveal_selected_hand_shape(clause.tokens())
+    else {
+        return Ok(None);
+    };
+    let Some(effects) = parse_sentence_reveal_selected_cards_in_hand_for_player(
+        SubjectVerbPrimitiveClause::new(shape.action_tokens),
+        PlayerAst::That,
+        PlayerFilter::IteratedPlayer,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(vec![EffectAst::ForEachPlayer {
+        effects: vec![EffectAst::MayByPlayer {
+            player: PlayerAst::That,
+            effects,
+        }],
+    }]))
 }
 
 pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand(

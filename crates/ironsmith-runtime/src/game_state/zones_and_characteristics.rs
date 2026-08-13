@@ -1810,6 +1810,7 @@ impl GameState {
                     if let Some(name) = &result.copy_name_override {
                         copiable_values.name = name.clone();
                     }
+                    copiable_values.colors = copiable_values.colors.union(result.added_colors);
                     for card_type in &result.added_card_types {
                         if !copiable_values.card_types.contains(card_type) {
                             copiable_values.card_types.push(*card_type);
@@ -1890,6 +1891,11 @@ impl GameState {
             }
         }
         if temporary_copy_duration.is_none() {
+            if !result.added_colors.is_empty()
+                && let Some(new_obj) = self.object_mut(new_id)
+            {
+                new_obj.color_override = Some(new_obj.colors().union(result.added_colors));
+            }
             if !result.added_card_types.is_empty()
                 && let Some(new_obj) = self.object_mut(new_id)
             {

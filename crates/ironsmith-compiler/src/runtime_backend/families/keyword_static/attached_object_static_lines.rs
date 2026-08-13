@@ -1414,7 +1414,7 @@ pub(crate) fn lower_remove_counter_prevention_spec(
             counters_per_removed: follow_up.counters_per_removed,
         }
     });
-    let ability = StaticAbilityAst::Static(if spec.one_damage_per_counter {
+    let mut lowered = if spec.one_damage_per_counter {
         StaticAbility::prevent_one_damage_to_self_per_removed_counter(spec.counter_type)
     } else {
         StaticAbility::prevent_damage_to_self_remove_counter_with_follow_up(
@@ -1422,7 +1422,11 @@ pub(crate) fn lower_remove_counter_prevention_spec(
             amount,
             follow_up,
         )
-    });
+    };
+    if spec.separate_removal_sentence {
+        lowered = lowered.with_separate_counter_removal_sentence();
+    }
+    let ability = StaticAbilityAst::Static(lowered);
     Ok(if let Some(condition_tokens) = spec.condition_tokens {
         StaticAbilityAst::ConditionalStaticAbility {
             ability: Box::new(ability),

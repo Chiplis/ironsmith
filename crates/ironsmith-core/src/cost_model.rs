@@ -779,6 +779,102 @@ mod tests {
     }
 }
 
+/// Which authored reference to a verified alternative casting method should
+/// be used when describing a later "that cost was paid" condition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AlternativeCostReferenceSurface {
+    ManaCost,
+    NamedCost,
+    ThatCost,
+}
+
+/// A condition reference correlated with an actual alternative casting
+/// method on the same card.
+///
+/// The mana string is canonicalized from a typed `ManaCost` at construction;
+/// callers cannot smuggle arbitrary oracle text into this executable key.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AlternativeCostReference {
+    method_name: String,
+    mana_cost: Option<String>,
+    surface: AlternativeCostReferenceSurface,
+}
+
+impl AlternativeCostReference {
+    fn new(
+        method_name: impl Into<String>,
+        mana_cost: Option<&ManaCost>,
+        surface: AlternativeCostReferenceSurface,
+    ) -> Self {
+        Self {
+            method_name: method_name.into(),
+            mana_cost: mana_cost.map(ManaCost::to_oracle),
+            surface,
+        }
+    }
+
+    pub fn by_mana_cost(method_name: impl Into<String>, mana_cost: &ManaCost) -> Self {
+        Self::new(
+            method_name,
+            Some(mana_cost),
+            AlternativeCostReferenceSurface::ManaCost,
+        )
+    }
+
+    pub fn by_name(method_name: impl Into<String>, mana_cost: Option<&ManaCost>) -> Self {
+        Self::new(
+            method_name,
+            mana_cost,
+            AlternativeCostReferenceSurface::NamedCost,
+        )
+    }
+
+    pub fn as_that_cost(method_name: impl Into<String>, mana_cost: Option<&ManaCost>) -> Self {
+        Self::new(
+            method_name,
+            mana_cost,
+            AlternativeCostReferenceSurface::ThatCost,
+        )
+    }
+
+    /// Canonical storage key recorded when the corresponding casting method
+    /// is selected. Query matching intentionally ignores this storage surface.
+    pub fn paid_marker(method_name: impl Into<String>, mana_cost: Option<&ManaCost>) -> Self {
+        Self::new(
+            method_name,
+            mana_cost,
+            AlternativeCostReferenceSurface::NamedCost,
+        )
+    }
+
+    pub fn method_name(&self) -> &str {
+        &self.method_name
+    }
+
+    pub fn mana_cost_text(&self) -> Option<&str> {
+        self.mana_cost.as_deref()
+    }
+
+    pub fn surface(&self) -> AlternativeCostReferenceSurface {
+        self.surface
+    }
+
+    fn matches_query(&self, query: &Self) -> bool {
+        match query.surface {
+            AlternativeCostReferenceSurface::ManaCost => {
+                query.mana_cost.is_some() && self.mana_cost == query.mana_cost
+            }
+            AlternativeCostReferenceSurface::NamedCost => {
+                self.method_name.eq_ignore_ascii_case(&query.method_name)
+            }
+            AlternativeCostReferenceSurface::ThatCost => {
+                self.method_name.eq_ignore_ascii_case(&query.method_name)
+                    && self.mana_cost == query.mana_cost
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum OptionalCostKind {
     Kicker,
@@ -805,6 +901,8 @@ pub enum OptionalCostKind {
     Surge,
     Spectacle,
     Additional,
+    /// A later condition referring to a verified alternative casting method.
+    AlternativeCast(AlternativeCostReference),
     CustomUnsupported(String),
 }
 
@@ -878,12 +976,17 @@ impl OptionalCostKind {
             Self::Surge => "Surge",
             Self::Spectacle => "Spectacle",
             Self::Additional => "Additional",
+            Self::AlternativeCast(reference) => reference.method_name(),
             Self::CustomUnsupported(label) => label.as_str(),
         }
     }
 
     pub fn is_query_for(&self, stored: &Self) -> bool {
         self == stored
+            || matches!((self, stored),
+                (Self::AlternativeCast(query), Self::AlternativeCast(stored))
+                    if stored.matches_query(query)
+            )
             || matches!(
                 (self, stored),
                 (Self::Kicker, Self::Kicker)
@@ -971,6 +1074,18 @@ impl OptionalCostRef {
     }
 
     pub fn display_label(&self) -> String {
+        if let OptionalCostKind::AlternativeCast(reference) = &self.kind {
+            return match reference.surface() {
+                AlternativeCostReferenceSurface::ManaCost => reference
+                    .mana_cost_text()
+                    .unwrap_or("alternative")
+                    .to_string(),
+                AlternativeCostReferenceSurface::NamedCost => {
+                    reference.method_name().to_string()
+                }
+                AlternativeCostReferenceSurface::ThatCost => "That".to_string(),
+            };
+        }
         match self.discriminator.as_deref() {
             Some(discriminator)
                 if matches!(
@@ -1252,5 +1367,61 @@ impl OptionalCostsPaid {
 
     pub fn was_entwined(&self) -> bool {
         self.was_paid_label("Entwine")
+    }
+}
+
+#[cfg(test)]
+mod alternative_cost_reference_tests {
+    use super::*;
+    use crate::ManaSymbol;
+
+    fn mastery_cost() -> ManaCost {
+        ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(2),
+            ManaSymbol::Blue,
+        ])
+    }
+
+    #[test]
+    fn selected_alternative_cost_matches_typed_name_mana_and_that_references() {
+        let cost = mastery_cost();
+        let stored = OptionalCostRef::new(OptionalCostKind::AlternativeCast(
+            AlternativeCostReference::paid_marker("Sneak", Some(&cost)),
+        ));
+        let mut paid = OptionalCostsPaid::default();
+        paid.mark_label_paid(stored);
+
+        for query in [
+            AlternativeCostReference::by_name("Sneak", Some(&cost)),
+            AlternativeCostReference::by_mana_cost("Parsed alternative cost", &cost),
+            AlternativeCostReference::as_that_cost("Sneak", Some(&cost)),
+        ] {
+            assert!(paid.was_paid_label(OptionalCostRef::new(
+                OptionalCostKind::AlternativeCast(query)
+            )));
+        }
+    }
+
+    #[test]
+    fn alternative_cost_reference_near_misses_do_not_cross_correlate() {
+        let cost = mastery_cost();
+        let other_cost = ManaCost::from_symbols(vec![ManaSymbol::Generic(3), ManaSymbol::Blue]);
+        let mut paid = OptionalCostsPaid::default();
+        paid.mark_label_paid(OptionalCostRef::new(OptionalCostKind::AlternativeCast(
+            AlternativeCostReference::paid_marker("Sneak", Some(&cost)),
+        )));
+
+        assert!(!paid.was_paid_label(OptionalCostRef::new(
+            OptionalCostKind::AlternativeCast(AlternativeCostReference::by_name(
+                "Mastery",
+                Some(&cost),
+            )),
+        )));
+        assert!(!paid.was_paid_label(OptionalCostRef::new(
+            OptionalCostKind::AlternativeCast(AlternativeCostReference::by_mana_cost(
+                "Sneak",
+                &other_cost,
+            )),
+        )));
     }
 }

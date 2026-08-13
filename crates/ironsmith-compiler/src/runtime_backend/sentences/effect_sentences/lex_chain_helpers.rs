@@ -97,6 +97,7 @@ fn lower_chain_verb(kind: chain_grammar::ChainVerbKind) -> Verb {
         chain_grammar::ChainVerbKind::Unattach => Verb::Unattach,
         chain_grammar::ChainVerbKind::Attach => Verb::Attach,
         chain_grammar::ChainVerbKind::Untap => Verb::Untap,
+        chain_grammar::ChainVerbKind::Unlock => Verb::Unlock,
         chain_grammar::ChainVerbKind::Scry => Verb::Scry,
         chain_grammar::ChainVerbKind::Discard => Verb::Discard,
         chain_grammar::ChainVerbKind::Transform => Verb::Transform,

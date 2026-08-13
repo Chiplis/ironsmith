@@ -1336,6 +1336,8 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
+        | Value::ColorPairsAmong(filter)
+        | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => {
             collect_object_filter_player_target_choices(filter, choices);

@@ -35,6 +35,40 @@ fn apply_anywhere_other_than_hand_origin(filter: &mut ObjectFilter) {
     .collect();
 }
 
+/// Parse a shared first-spell subject that receives both a cost reduction and
+/// flash timing. The same typed filter drives both capabilities, including the
+/// per-turn ordinal, spell type, and caster restriction.
+pub(crate) fn parse_first_spell_cost_reduction_and_flash_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    const TAIL: [&str; 9] = [
+        "and", "can", "be", "cast", "as", "though", "it", "had", "flash",
+    ];
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !words.ends_with(&TAIL) {
+        return Ok(None);
+    }
+    // The ordinary reducer deliberately tolerates trailing coordination and
+    // already proves the complete first-spell cost shape. Reuse that exact
+    // proven reduction rather than maintaining a second token-boundary model.
+    let Some(reduction) = parse_spells_cost_modifier_line(tokens)? else {
+        return Ok(None);
+    };
+    let ironsmith_core::StaticAbilityPayload::CostReduction(reduction_spec) = &reduction.payload
+    else {
+        return Ok(None);
+    };
+    if !reduction_spec.filter.first_spell_cast_each_turn
+        || reduction_spec.filter.cast_by != Some(PlayerFilter::You)
+    {
+        return Ok(None);
+    }
+    let flash = StaticAbility::grants(crate::grant::GrantSpec::flash_to_spells_matching(
+        reduction_spec.filter.clone(),
+    ));
+    Ok(Some(vec![reduction.into(), flash.into()]))
+}
+
 /// Lower a source-card graveyard permission with a dynamic generic surcharge
 /// into the two reusable static capabilities that enforce it. Keeping these
 /// in one static source-line chunk preserves both runtime behavior and the
@@ -395,6 +429,9 @@ pub(crate) fn parse_spells_cost_modifier_line(
     };
 
     let first_spell_fact = static_mid_facts::parse_first_spell_each_turn_cost_fact(tokens);
+    let second_spell_each_turn = clause_words
+        .windows(6)
+        .any(|words| words == ["second", "spell", "you", "cast", "each", "turn"]);
 
     let (prefix_condition, subject_start) =
         parse_cost_modifier_prefix_condition(tokens, spells_token_idx)?;
@@ -422,6 +459,9 @@ pub(crate) fn parse_spells_cost_modifier_line(
     };
     if first_spell_fact.is_some() && !is_this_spell {
         filter.first_spell_cast_each_turn = true;
+    }
+    if second_spell_each_turn && !is_this_spell {
+        filter.spell_cast_ordinal_each_turn = Some(2);
     }
 
     let between_tokens = &tokens[spells_token_idx + 1..cost_token_idx];
@@ -3789,6 +3829,123 @@ pub(crate) fn parse_draw_replacement_skip_empty_library_line(
 pub(crate) fn parse_conditional_draw_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    let always = || Condition::ValueComparison {
+        left: Value::Fixed(1),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: Value::Fixed(1),
+    };
+
+    if words.as_slice()
+        == [
+            "if",
+            "you",
+            "would",
+            "draw",
+            "a",
+            "card",
+            "you",
+            "may",
+            "put",
+            "a",
+            "study",
+            "counter",
+            "on",
+            "this",
+            "enchantment",
+            "instead",
+        ]
+    {
+        return Ok(Some(
+            StaticAbility::conditional_draw_replacement_with_optional(
+                always(),
+                vec![Effect::put_counters_on_source(CounterType::Study, 1)],
+                true,
+                render_token_slice(tokens),
+            ),
+        ));
+    }
+
+    if words.as_slice()
+        == [
+            "if", "you", "would", "draw", "a", "card", "you", "may", "instead", "search", "your",
+            "library", "for", "a", "card", "put", "that", "card", "into", "your", "hand", "then",
+            "shuffle",
+        ]
+    {
+        let mut card = ObjectFilter::default();
+        card.set_explicit_card_noun(true);
+        return Ok(Some(
+            StaticAbility::conditional_draw_replacement_with_optional(
+                always(),
+                vec![Effect::search_library_to_hand(card, false)],
+                true,
+                render_token_slice(tokens),
+            ),
+        ));
+    }
+
+    if words.as_slice()
+        == [
+            "if", "you", "would", "draw", "a", "card", "you", "may", "instead", "choose", "land",
+            "or", "nonland", "and", "reveal", "cards", "from", "the", "top", "of", "your",
+            "library", "until", "you", "reveal", "a", "card", "of", "the", "chosen", "kind", "put",
+            "that", "card", "into", "your", "hand", "and", "put", "all", "other", "cards",
+            "revealed", "this", "way", "on", "the", "bottom", "of", "your", "library", "in", "any",
+            "order",
+        ]
+    {
+        let mode = |label: &str, filter: ObjectFilter, suffix: &str| {
+            let all_tag = TagKey::from(format!("draw_replacement_{suffix}_all"));
+            let match_tag = TagKey::from(format!("draw_replacement_{suffix}_match"));
+            crate::effect::EffectMode::new(
+                label,
+                vec![
+                    Effect::consult_top_of_library(
+                        PlayerFilter::You,
+                        crate::effects::LibraryConsultMode::Reveal,
+                        filter,
+                        crate::effects::ConsultTopOfLibraryStopRule::FirstMatch,
+                        all_tag.clone(),
+                        match_tag.clone(),
+                    ),
+                    Effect::move_to_zone(ChooseSpec::Tagged(match_tag.clone()), Zone::Hand, false),
+                    Effect::put_tagged_remainder_on_library_bottom(
+                        all_tag,
+                        Some(match_tag),
+                        crate::effects::LibraryBottomOrder::ChooserChooses,
+                        PlayerFilter::You,
+                    ),
+                ],
+            )
+        };
+        let mut land = ObjectFilter {
+            card_types: vec![CardType::Land],
+            ..Default::default()
+        };
+        land.set_explicit_card_type_noun(Some(CardType::Land));
+        let mut nonland = ObjectFilter {
+            excluded_card_types: vec![CardType::Land],
+            ..Default::default()
+        };
+        nonland.set_explicit_card_noun(true);
+        let choose_kind = Effect::new(
+            crate::effects::ChooseModeEffect::choose_one(vec![
+                mode("land", land, "land"),
+                mode("nonland", nonland, "nonland"),
+            ])
+            .with_chooser(PlayerFilter::You),
+        );
+        return Ok(Some(
+            StaticAbility::conditional_draw_replacement_with_optional(
+                always(),
+                vec![choose_kind],
+                true,
+                render_token_slice(tokens),
+            ),
+        ));
+    }
+
     if is_draw_replacement_win_empty_library_line_lexed(tokens) {
         return Ok(Some(StaticAbility::conditional_draw_replacement(
             Condition::ValueComparison {
@@ -3955,6 +4112,19 @@ pub(crate) fn parse_keyword_action_replacement_line(
             ],
             display,
         ),
+        keyword_static_lines::KeywordActionReplacementShape::LearnReturnThisFromGraveyard => {
+            StaticAbility::keyword_action_replacement_for_player_with_optional(
+                crate::events::KeywordActionKind::Learn,
+                PlayerFilter::You,
+                vec![Effect::move_to_zone(
+                    ChooseSpec::Source,
+                    Zone::Battlefield,
+                    false,
+                )],
+                true,
+                display,
+            )
+        }
     }))
 }
 
@@ -3971,6 +4141,51 @@ pub(crate) fn parse_exile_to_countered_exile_instead_of_graveyard_line(
             spec.counter_type,
         ),
     ))
+}
+
+#[cfg(test)]
+mod optional_draw_replacement_regression_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn parse(text: &str) -> Option<StaticAbility> {
+        let tokens = lex_line(text, 0).expect("draw replacement should lex");
+        parse_conditional_draw_replacement_line(&tokens)
+            .expect("draw replacement parser should not error")
+    }
+
+    #[test]
+    fn strict_optional_draw_replacement_families_lower_to_event_replacements() {
+        for text in [
+            "If you would draw a card, you may put a study counter on this enchantment instead.",
+            "If you would draw a card, you may instead search your library for a card, put that card into your hand, then shuffle.",
+            "If you would draw a card, you may instead choose land or nonland and reveal cards from the top of your library until you reveal a card of the chosen kind. Put that card into your hand and put all other cards revealed this way on the bottom of your library in any order.",
+        ] {
+            let ability =
+                parse(text).unwrap_or_else(|| panic!("expected typed replacement: {text}"));
+            let crate::static_abilities::StaticAbilityPayload::ConditionalDrawReplacement {
+                optional,
+                replacement_effects,
+                ..
+            } = ability.payload
+            else {
+                panic!("expected draw replacement payload: {ability:#?}");
+            };
+            assert!(optional, "{text}");
+            assert!(!replacement_effects.is_empty(), "{text}");
+        }
+    }
+
+    #[test]
+    fn similar_nonreplacement_instructions_are_not_claimed() {
+        for text in [
+            "Whenever you draw a card, you may put a study counter on this enchantment.",
+            "If you would draw a card, search your library for a card, put that card into your hand, then shuffle.",
+            "If you would draw a card, you may instead choose land and reveal the top card of your library.",
+        ] {
+            assert!(parse(text).is_none(), "near miss was overclaimed: {text}");
+        }
+    }
 }
 
 pub(crate) fn parse_exile_to_exile_instead_of_graveyard_line(
@@ -5331,5 +5546,66 @@ mod tests {
         assert_eq!(reduction.filter.excluded_subtypes, [Subtype::Lemur]);
         assert_eq!(reduction.filter.static_abilities, [StaticAbilityId::Flying]);
         assert_eq!(reduction.condition, Some(crate::ConditionExpr::YourTurn));
+    }
+
+    #[test]
+    fn second_spell_each_turn_cost_reduction_keeps_exact_ordinal() {
+        let tokens = lex_line(
+            "The second spell you cast each turn costs {2} less to cast.",
+            0,
+        )
+        .expect("second-spell reduction should lex");
+        let ability = parse_spells_cost_modifier_line(&tokens)
+            .expect("second-spell reduction should not error")
+            .expect("second-spell reduction should parse");
+        let ironsmith_core::StaticAbilityPayload::CostReduction(reduction) = &ability.payload
+        else {
+            panic!("expected typed cost reduction: {ability:#?}");
+        };
+        assert_eq!(reduction.filter.spell_cast_ordinal_each_turn, Some(2));
+        assert!(!reduction.filter.first_spell_cast_each_turn);
+        assert_eq!(reduction.filter.cast_by, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn first_spell_cost_reduction_and_flash_share_one_typed_filter() {
+        let tokens = lex_line(
+            "The first creature spell you cast each turn costs {2} less to cast and can be cast as though it had flash.",
+            0,
+        )
+        .expect("compound first-spell line should lex");
+        let parsed = parse_first_spell_cost_reduction_and_flash_line(&tokens)
+            .expect("compound first-spell line should not error")
+            .expect("compound first-spell line should parse");
+        let [
+            StaticAbilityAst::Static(reduction),
+            StaticAbilityAst::Static(flash),
+        ] = parsed.as_slice()
+        else {
+            panic!("expected two typed static capabilities: {parsed:#?}");
+        };
+        let ironsmith_core::StaticAbilityPayload::CostReduction(reduction) = &reduction.payload
+        else {
+            panic!("expected cost reduction: {reduction:#?}");
+        };
+        let ironsmith_core::StaticAbilityPayload::Grants(flash) = &flash.payload else {
+            panic!("expected hand-zone flash grant: {flash:#?}");
+        };
+        assert!(reduction.filter.first_spell_cast_each_turn);
+        assert_eq!(reduction.filter.cast_by, Some(PlayerFilter::You));
+        assert_eq!(flash.filter, reduction.filter);
+        assert_eq!(flash.zone, Zone::Hand);
+
+        let near_miss = lex_line(
+            "The first creature spell you cast each turn costs {2} less to cast and has flash.",
+            0,
+        )
+        .expect("near miss should lex");
+        assert!(
+            parse_first_spell_cost_reduction_and_flash_line(&near_miss)
+                .expect("near miss should not error")
+                .is_none(),
+            "a granted keyword is not the authored cast-as-though permission"
+        );
     }
 }

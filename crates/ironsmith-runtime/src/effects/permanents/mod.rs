@@ -42,6 +42,7 @@ mod turn_face_up;
 mod umbra_armor;
 mod unattach_objects;
 mod unearth;
+mod unlock_room_door;
 mod untap;
 
 pub(crate) fn attachment_can_attach_to_target(
@@ -235,4 +236,5 @@ pub use turn_face_up::TurnFaceUpEffect;
 pub use umbra_armor::UmbraArmorEffect;
 pub use unattach_objects::UnattachObjectsEffect;
 pub use unearth::UnearthEffect;
+pub use unlock_room_door::UnlockRoomDoorEffect;
 pub use untap::UntapEffect;

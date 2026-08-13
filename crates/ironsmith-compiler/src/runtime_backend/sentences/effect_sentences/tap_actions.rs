@@ -39,6 +39,51 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     if let Some(effect) = parse_tap_or_untap_all(tokens)? {
         return Ok(effect);
     }
+    for (index, token) in tokens.iter().enumerate() {
+        if token.as_word() != Some("and") {
+            continue;
+        }
+        let Some(choice) =
+            crate::runtime_backend::front_end::grammar::choices::parse_possessive_object_choice_tokens(
+                &tokens[index + 1..],
+            )
+        else {
+            continue;
+        };
+        if choice.actor
+            != crate::runtime_backend::front_end::grammar::choices::PossessiveObjectChoiceActor::Opponent
+        {
+            continue;
+        }
+        let first_tokens = trim_commas(&tokens[..index]);
+        let first = parse_target_phrase(&first_tokens)?;
+        let second = parse_target_phrase(&choice.object_tokens)?;
+        let target_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            &tokens[index + 1..],
+            "opponent_chosen_target",
+        );
+        return Ok(EffectAst::Coordinated {
+            effects: vec![
+                EffectAst::subject_verb_tap(first),
+                EffectAst::Sequence {
+                    effects: vec![
+                        EffectAst::TagAffected {
+                            effect: Box::new(
+                                EffectAst::subject_verb_explicit_target_only_for_chooser(
+                                    second,
+                                    PlayerAst::Opponent,
+                                ),
+                            ),
+                            tag: target_tag.clone(),
+                        },
+                        EffectAst::subject_verb_tap(TargetAst::Tagged(target_tag, None)),
+                    ],
+                },
+            ],
+            leading_duration: false,
+            result_conjunction: false,
+        });
+    }
     if let Some(filter_tokens) = parse_chosen_object_set_filter_tokens(tokens) {
         let mut filter = parse_object_filter(filter_tokens, false)?;
         filter.tagged_constraints.push(TaggedObjectConstraint {

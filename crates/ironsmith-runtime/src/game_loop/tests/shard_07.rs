@@ -2043,6 +2043,7 @@ pub(super) fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
+                    added_colors: crate::color::ColorSet::new(),
                     added_card_types: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -2104,6 +2105,7 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_obje
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
+                    added_colors: crate::color::ColorSet::new(),
                     added_card_types: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -2158,6 +2160,7 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stac
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
+                    added_colors: crate::color::ColorSet::new(),
                     added_card_types: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -2206,6 +2209,7 @@ pub(super) fn test_static_source_can_make_matching_creatures_enter_as_copy_of_it
                     copy_source_self: true,
                     copy_source_enchanted: false,
                     name_override: None,
+                    added_colors: crate::color::ColorSet::new(),
                     added_card_types: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -2246,6 +2250,7 @@ pub(super) fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myria
     let alice = PlayerId::from_index(0);
 
     let legendary_source = CardDefinitionBuilder::new(CardId::new(), "Legendary Copy Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
         .card_types(vec![CardType::Creature])
         .supertypes(vec![Supertype::Legendary])
         .power_toughness(PowerToughness::fixed(3, 3))
@@ -2267,6 +2272,7 @@ pub(super) fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myria
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
+                    added_colors: crate::color::ColorSet::BLACK,
                     added_card_types: vec![CardType::Artifact],
                     removed_supertypes: vec![Supertype::Legendary],
                     added_subtypes: Vec::new(),
@@ -2317,6 +2323,11 @@ pub(super) fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myria
         copied.card_types.contains(&CardType::Artifact),
         "copied permanent should be an artifact in addition to copied types"
     );
+    assert_eq!(
+        game.current_colors(result.new_id),
+        Some(crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLACK)),
+        "copy exception colors should be added to, rather than replace, copied colors"
+    );
     let abilities_debug = format!("{:?}", copied.abilities);
     assert!(
         abilities_debug.contains("CreateTokenCopyEffect")
@@ -2350,6 +2361,7 @@ pub(super) fn test_enter_as_copy_with_no_candidates_keeps_original_characteristi
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
+                    added_colors: crate::color::ColorSet::new(),
                     added_card_types: vec![CardType::Artifact],
                     removed_supertypes: vec![Supertype::Legendary],
                     added_subtypes: Vec::new(),

@@ -40,6 +40,9 @@ pub enum CastStage {
     AnnouncingCost,
     /// Need to choose targets.
     ChoosingTargets,
+    /// The controller must choose which eligible player will make the next
+    /// target choice assigned by the spell.
+    ChoosingTargetChooser,
     /// Need to divide an amount among the chosen targets.
     ChoosingDistribution,
     /// The caster may choose another player to assist with a generic cost.
@@ -72,6 +75,7 @@ impl CastStage {
             CastStage::ChoosingOptionalCosts => "choosing optional costs",
             CastStage::AnnouncingCost => "announcing costs",
             CastStage::ChoosingTargets => "choosing targets",
+            CastStage::ChoosingTargetChooser => "choosing target chooser",
             CastStage::ChoosingDistribution => "choosing distribution",
             CastStage::ChoosingAssistPlayer => "choosing assisting player",
             CastStage::ChoosingAssistContribution => "choosing assist contribution",
@@ -130,6 +134,10 @@ pub struct PendingCast {
     pub pending_target_distributions: std::collections::VecDeque<PendingTargetDistribution>,
     /// Target requirements that still need to be fulfilled.
     pub remaining_requirements: Vec<TargetRequirement>,
+    /// Number of leading target requirements represented by the active prompt.
+    pub active_target_requirement_count: usize,
+    /// Candidate players for an unresolved delegated target choice.
+    pub pending_target_chooser_candidates: Vec<PlayerId>,
     /// The casting method (normal or alternative like flashback).
     pub casting_method: CastingMethod,
     /// Whether an effect instructs the player to cast this spell without
@@ -236,6 +244,8 @@ impl PendingCast {
             target_distributions: Vec::new(),
             pending_target_distributions: std::collections::VecDeque::new(),
             remaining_requirements,
+            active_target_requirement_count: 0,
+            pending_target_chooser_candidates: Vec::new(),
             casting_method,
             base_mana_cost_waived: false,
             effect_mana_cost_reduction: None,
@@ -303,6 +313,9 @@ pub enum ActivationStage {
     AnnouncingCost,
     /// Need to choose ability targets.
     ChoosingTargets,
+    /// The controller must choose which eligible player will make the next
+    /// target choice assigned by the ability.
+    ChoosingTargetChooser,
     /// Need to divide an amount among the chosen targets.
     ChoosingDistribution,
     /// Need to choose the next remaining cost to pay.
@@ -327,6 +340,7 @@ impl ActivationStage {
             ActivationStage::ChoosingX => "choosing X",
             ActivationStage::AnnouncingCost => "announcing costs",
             ActivationStage::ChoosingTargets => "choosing targets",
+            ActivationStage::ChoosingTargetChooser => "choosing target chooser",
             ActivationStage::ChoosingDistribution => "choosing distribution",
             ActivationStage::ChoosingNextCost => "choosing next cost",
             ActivationStage::ProcessingCosts => "processing costs",
@@ -783,6 +797,10 @@ pub struct PendingActivation {
     pub pending_target_distributions: std::collections::VecDeque<PendingTargetDistribution>,
     /// Target requirements that still need to be fulfilled.
     pub remaining_requirements: Vec<TargetRequirement>,
+    /// Number of leading target requirements represented by the active prompt.
+    pub active_target_requirement_count: usize,
+    /// Candidate players for an unresolved delegated target choice.
+    pub pending_target_chooser_candidates: Vec<PlayerId>,
     /// The computed mana cost to pay.
     pub mana_cost_to_pay: Option<crate::mana::ManaCost>,
     /// Complete alternative activation-cost branches locked before targets.
@@ -888,6 +906,8 @@ impl PendingActivation {
             target_distributions: Vec::new(),
             pending_target_distributions: std::collections::VecDeque::new(),
             remaining_requirements,
+            active_target_requirement_count: 0,
+            pending_target_chooser_candidates: Vec::new(),
             mana_cost_to_pay,
             alternative_cost_branches,
             selected_alternative_cost: None,

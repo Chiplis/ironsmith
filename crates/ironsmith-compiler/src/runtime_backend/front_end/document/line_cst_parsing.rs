@@ -126,6 +126,8 @@ fn parse_triggered_line_cst_inner(
             effect_tokens,
         ) || crate::runtime_backend::semantic_line_parsing::is_authored_look_hand_optional_cast_bundle(
             effect_tokens,
+        ) || crate::runtime_backend::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
+            effect_tokens,
         ))
         && let Some(candidate) = render_triggered_split_candidate(
             &leading_tokens[1..],
@@ -146,9 +148,11 @@ fn parse_triggered_line_cst_inner(
     if let Some((leading_tokens, effect_tokens)) =
         grammar::split_lexed_once_on_comma(tokens_without_cap)
         && leading_tokens.len() > 1
-        && crate::runtime_backend::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(
+        && (crate::runtime_backend::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(
             effect_tokens,
-        )
+        ) || crate::runtime_backend::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
+            effect_tokens,
+        ))
         && let Some(candidate) = render_triggered_split_candidate(
             &leading_tokens[1..],
             effect_tokens,

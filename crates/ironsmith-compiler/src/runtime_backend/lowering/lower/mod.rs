@@ -41,6 +41,7 @@ pub(crate) use rewrite_text_helpers::*;
 use super::compile_support::{
     collect_tag_spans_from_effects_with_context, compile_condition_from_predicate_ast_with_env,
     effect_references_tag, materialize_prepared_effects_with_trigger_context,
+    rebind_returned_attachment_history_to_triggering_object,
     trigger_binds_player_reference_context as rewrite_trigger_binds_player_reference_context,
 };
 use super::effect_pipeline::{

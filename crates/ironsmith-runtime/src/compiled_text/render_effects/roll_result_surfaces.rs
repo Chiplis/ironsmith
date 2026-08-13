@@ -302,6 +302,16 @@ pub(in crate::compiled_text) fn describe_sequenced_d20_numeric_result_table_prog
 pub(super) fn describe_roll_result_damage_then_random_source_attachment(
     effects: &[Effect],
 ) -> Option<String> {
+    fn transparent_single(effect: &Effect) -> &Effect {
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+            && let [inner] = sequence.effects.as_slice()
+        {
+            return transparent_single(inner);
+        }
+        effect
+    }
+
+    let mut damage_source_surface = None;
     let (roll_effect, damage_effect, attachment_target) = match effects {
         [
             roll_effect,
@@ -319,7 +329,8 @@ pub(super) fn describe_roll_result_damage_then_random_source_attachment(
                 return None;
             }
 
-            let attach = attach_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+            let attach = transparent_single(attach_effect)
+                .downcast_ref::<crate::effects::AttachObjectsEffect>()?;
             if !matches!(attach.objects.base(), ChooseSpec::Source)
                 || !matches!(
                     attach.target.base(),
@@ -335,7 +346,8 @@ pub(super) fn describe_roll_result_damage_then_random_source_attachment(
             )
         }
         [roll_effect, damage_effect, attach_effect] => {
-            let attach = attach_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+            let attach = transparent_single(attach_effect)
+                .downcast_ref::<crate::effects::AttachObjectsEffect>()?;
             let count = attach.target.count();
             let ChooseSpec::Player(filter) = attach.target.base() else {
                 return None;
@@ -356,6 +368,17 @@ pub(super) fn describe_roll_result_damage_then_random_source_attachment(
         .effect
         .downcast_ref::<crate::effects::RollDieEffect>()?;
 
+    let damage_effect = if let Some(execute) =
+        damage_effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+    {
+        if !matches!(execute.source.base(), ChooseSpec::Source) {
+            return None;
+        }
+        damage_source_surface = Some(describe_choose_spec(&execute.source));
+        execute.effect.as_ref()
+    } else {
+        damage_effect
+    };
     let damage = damage_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
     if damage.source_is_combat
         || damage.unpreventable
@@ -372,6 +395,17 @@ pub(super) fn describe_roll_result_damage_then_random_source_attachment(
         .trim_end_matches('.')
         .to_string();
     let damage_target = describe_choose_spec(&damage.target);
+    if damage_source_surface.as_deref() == Some("this Aura")
+        && matches!(
+            damage.target.base(),
+            ChooseSpec::Player(PlayerFilter::AliasedControllerOf(crate::target::ObjectRef::Tagged(tag)))
+                if tag.as_str() == "triggering"
+        )
+    {
+        return Some(format!(
+            "{roll}. This Aura deals that much damage to that player. Then attach this Aura to {attachment_target} chosen at random"
+        ));
+    }
     Some(format!(
         "{roll}. Deal damage to {damage_target} equal to the result. Then attach this source to {attachment_target} chosen at random"
     ))

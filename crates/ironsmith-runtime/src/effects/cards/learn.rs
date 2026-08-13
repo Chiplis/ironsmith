@@ -6,6 +6,10 @@ use crate::effects::{
     SequenceEffect, execute_effect,
 };
 use crate::game_state::GameState;
+use crate::events::processing::{
+    TraitEventResult, process_trait_event_with_dm_and_applied_effects,
+};
+use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::Subtype;
 use crate::zone::Zone;
@@ -24,6 +28,36 @@ impl EffectExecutor for LearnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let would_event = Event::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Learn, ctx.controller, ctx.source, 1),
+            ctx.provenance,
+        );
+        let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
+        let applied_effect_keys = ctx.replacement.suppressed_replacement_effect_keys.clone();
+        if applied_effects.is_empty() && applied_effect_keys.is_empty() {
+            game.update_replacement_effects();
+        }
+        match process_trait_event_with_dm_and_applied_effects(
+            game,
+            would_event,
+            ctx.decision_maker,
+            &applied_effects,
+            &applied_effect_keys,
+        ) {
+            TraitEventResult::Replaced {
+                effects, effect_id, ..
+            } => {
+                return crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects(
+                    game, ctx, effects, effect_id, None,
+                );
+            }
+            TraitEventResult::Prevented => return Ok(EffectOutcome::count(0)),
+            TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+                return Ok(EffectOutcome::count(0));
+            }
+            TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
+        }
+
         // CR 701.48a offers the discard first. Only a player who did not
         // actually discard a card gets the later Lesson choice.
         let discard_outcome = execute_effect(
@@ -33,7 +67,12 @@ impl EffectExecutor for LearnEffect {
         )?;
         if discard_outcome.count_or_zero() > 0 {
             let draw_outcome = execute_effect(game, &Effect::draw(1), ctx)?;
-            return Ok(EffectOutcome::aggregate([discard_outcome, draw_outcome]));
+            return Ok(EffectOutcome::aggregate([discard_outcome, draw_outcome]).with_event(
+                crate::triggers::TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(KeywordActionKind::Learn, ctx.controller, ctx.source, 1),
+                    ctx.provenance,
+                ),
+            ));
         }
 
         let lesson_filter = ObjectFilter::default()
@@ -56,14 +95,19 @@ impl EffectExecutor for LearnEffect {
                 Effect::move_to_zone(ChooseSpec::tagged(LEARN_LESSON_TAG), Zone::Hand, false),
             ]);
             let lesson_outcome = execute_effect(game, &Effect::new(reveal_and_put), ctx)?;
-            return Ok(EffectOutcome::aggregate([
-                discard_outcome,
-                choose_outcome,
-                lesson_outcome,
-            ]));
+            return Ok(EffectOutcome::aggregate([discard_outcome, choose_outcome, lesson_outcome])
+                .with_event(crate::triggers::TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(KeywordActionKind::Learn, ctx.controller, ctx.source, 1),
+                    ctx.provenance,
+                )));
         }
 
-        Ok(EffectOutcome::aggregate([discard_outcome, choose_outcome]))
+        Ok(EffectOutcome::aggregate([discard_outcome, choose_outcome]).with_event(
+            crate::triggers::TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(KeywordActionKind::Learn, ctx.controller, ctx.source, 1),
+                ctx.provenance,
+            ),
+        ))
     }
 }
 
@@ -119,6 +163,22 @@ mod tests {
                 .iter()
                 .find(|candidate| candidate.legal)
                 .map(|candidate| vec![candidate.id])
+                .unwrap_or_default()
+        }
+    }
+
+    struct ChooseReplacementNamed(&'static str);
+
+    impl DecisionMaker for ChooseReplacementNamed {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .find(|option| option.legal && option.description.contains(self.0))
+                .map(|option| vec![option.index])
                 .unwrap_or_default()
         }
     }
@@ -195,5 +255,42 @@ mod tests {
                 object.zone == Zone::Hand && object.name == "Intro to Annihilation"
             })
         }));
+    }
+
+    #[test]
+    fn learn_replacement_returns_its_graveyard_source_before_learning() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let phoenix = game.create_object_from_card(
+            &card("Retriever", CardType::Creature),
+            alice,
+            Zone::Graveyard,
+        );
+        game.object_mut(phoenix)
+            .expect("phoenix exists")
+            .abilities_mut()
+            .push(
+                crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::keyword_action_replacement_with_performer(
+                        KeywordActionKind::Learn,
+                        ObjectFilter::default(),
+                        Some(PlayerFilter::You),
+                        vec![Effect::move_to_zone(ChooseSpec::Source, Zone::Battlefield, false)],
+                        true,
+                        "Return Retriever instead of learning",
+                    ),
+                )
+                .in_zones(vec![Zone::Graveyard]),
+            );
+        let source = game.new_object_id();
+        let mut dm = ChooseReplacementNamed("Return Retriever");
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+
+        LearnEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("learn replacement should resolve");
+
+        assert!(has_named_object_in_zone(&game, Zone::Battlefield, "Retriever"));
+        assert!(game.player(alice).unwrap().hand.is_empty());
     }
 }

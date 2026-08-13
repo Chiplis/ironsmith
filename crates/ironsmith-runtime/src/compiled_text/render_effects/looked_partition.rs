@@ -160,6 +160,122 @@ fn is_plain_disjoint_looked_choice(
         && exact_tagged_library_filter(&choose.filter, expected)
 }
 
+fn opponent_revealed_partition_destination(
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> Option<&'static str> {
+    if move_to_zone.to_top
+        || move_to_zone.library_order.is_some()
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+        || move_to_zone.enters_transformed
+        || move_to_zone.transfer_exiled_with_source_links
+        || !move_to_zone.enters_with_counters.is_empty()
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
+    {
+        return None;
+    }
+    match move_to_zone.zone {
+        Zone::Hand => Some("into your hand"),
+        Zone::Graveyard => Some("into your graveyard"),
+        Zone::Battlefield => Some("onto the battlefield"),
+        _ => None,
+    }
+}
+
+/// Render an opponent-selected public-card partition only when the typed
+/// program proves all three relationships: the opponent actually makes the
+/// choice, the selected card belongs to the revealed pool, and the remainder
+/// is exactly that pool minus the selected tag.
+fn describe_opponent_revealed_card_partition(effects: &[&Effect]) -> Option<(String, usize)> {
+    let [
+        look_effect,
+        choose_player_effect,
+        choose_object_effect,
+        tag_remainder_effect,
+        move_selected_effect,
+        move_remainder_effect,
+    ] = effects.get(..6)?
+    else {
+        return None;
+    };
+    let look = structural_unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose_player = structural_unwrap_render_wrappers(choose_player_effect)
+        .downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let choose = structural_unwrap_render_wrappers(choose_object_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let remainder = structural_unwrap_render_wrappers(tag_remainder_effect)
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let move_selected = unwrap_basic_tag_wrappers(move_selected_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_remainder = unwrap_basic_tag_wrappers(move_remainder_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+
+    if !look.reveal
+        || look.player != PlayerFilter::You
+        || choose_player.chooser != PlayerFilter::You
+        || choose_player.filter != PlayerFilter::Opponent
+        || choose_player.random
+        || !choose_player.excluded_tags.is_empty()
+        || choose_player.remember_as_chosen_player
+        || choose.chooser != PlayerFilter::TaggedPlayer(choose_player.tag.clone())
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.additional_zones.is_empty()
+        || choose.count != ChoiceCount::exactly(1)
+        || choose.count_value.is_some()
+        || choose.aggregate_constraint.is_some()
+        || choose.is_search
+        || choose.top_only
+        || choose.bottom_only
+        || choose.replace_tagged_objects
+        || choose.filter.tagged_constraints.len() != 1
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == look.tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+        || remainder.zone != Some(Zone::Library)
+        || !remainder.additional_zones.is_empty()
+        || !remainder.source_tags.is_empty()
+        || !exact_tagged_library_filter(
+            &remainder.filter,
+            &[
+                (
+                    &look.tag,
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                ),
+                (
+                    &choose.tag,
+                    crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+                ),
+            ],
+        )
+        || !move_targets_exact_tag(move_selected, &choose.tag)
+        || !move_targets_exact_tag(move_remainder, &remainder.tag)
+    {
+        return None;
+    }
+
+    let mut selection_filter = choose.filter.clone();
+    selection_filter.zone = None;
+    selection_filter.tagged_constraints.clear();
+    let selection = if selection_filter == ObjectFilter::default() {
+        "one of them".to_string()
+    } else {
+        let card = describe_revealed_selection_with_cards(&selection_filter.description());
+        format!("{} from among them", with_indefinite_article(&card))
+    };
+    let selected_destination = opponent_revealed_partition_destination(move_selected)?;
+    let remainder_destination = opponent_revealed_partition_destination(move_remainder)?;
+    let (count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    Some((
+        format!(
+            "Reveal the top {count} {noun} of your library{where_clause}. An opponent chooses {selection}. Put that card {selected_destination} and the rest {remainder_destination}"
+        ),
+        6,
+    ))
+}
+
 /// Compacts three independently chosen cards from one looked-at pool. Each
 /// later choice must exclude every earlier choice, which is the structural
 /// proof that the hand/top/bottom or hand/graveyard/bottom destinations are
@@ -326,6 +442,9 @@ pub(super) fn describe_self_look_reorder(effects: &[&Effect]) -> Option<(String,
 pub(super) fn describe_looked_card_selected_partition(
     effects: &[&Effect],
 ) -> Option<(String, usize)> {
+    if let Some(compact) = describe_opponent_revealed_card_partition(effects) {
+        return Some(compact);
+    }
     let (target_only, offset) = if let Some(target) = effects
         .first()
         .and_then(|effect| effect.downcast_ref::<crate::effects::TargetOnlyEffect>())
@@ -1873,7 +1992,6 @@ fn exact_tagged_remainder_to_zone_surface(
         return None;
     };
     let exact_membership = membership.tagged_constraints.len() == 1
-        && membership.tagged_constraints[0].tag.as_str() == "__it__"
         && membership.tagged_constraints[0].relation
             == crate::filter::TaggedOpbjectRelation::SameStableId
         && {
@@ -1881,8 +1999,16 @@ fn exact_tagged_remainder_to_zone_surface(
             plain.tagged_constraints.clear();
             plain == ObjectFilter::default()
         };
+    // Reference lowering can express the same stable-ID membership in either
+    // direction: selected-set contains the current iterator, or the current
+    // iterator matches the selected set. Both are exact only when the two
+    // tags are the looked-loop iterator and this selection producer.
+    let exact_tag_pair = (condition_tag == selected_tag
+        && membership.tagged_constraints[0].tag.as_str() == "__it__")
+        || (condition_tag.as_str() == "__it__"
+            && membership.tagged_constraints[0].tag == *selected_tag);
     (for_each.tag == *looked_tag
-        && condition_tag == selected_tag
+        && exact_tag_pair
         && exact_membership
         && conditional.if_true.is_empty()
         && move_to_zone.zone == destination
@@ -2046,6 +2172,9 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_graveyard(
     let remainder = match remainder_surface {
         ironsmith_core::LibraryRemainderSurface::Rest
         | ironsmith_core::LibraryRemainderSurface::RestBare => "Put the rest into your graveyard",
+        ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => {
+            "Then put the rest into your graveyard"
+        }
         ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {
             "Then put the rest of the cards revealed this way into your graveyard"
         }
@@ -3104,6 +3233,91 @@ mod tests {
                 describe_pre_clause_structural_effect_list(&effects).as_deref(),
                 Some(expected)
             );
+        }
+    }
+
+    fn opponent_revealed_partition_effects(filtered: bool) -> Vec<Effect> {
+        let revealed = crate::TagKey::from("revealed_pool");
+        let opponent = crate::TagKey::from("choosing_opponent");
+        let selected = crate::TagKey::from("selected_card");
+        let remainder = crate::TagKey::from("remainder_cards");
+        let mut selected_filter = ObjectFilter::tagged(revealed.clone()).in_zone(Zone::Library);
+        if filtered {
+            selected_filter.card_types.push(CardType::Creature);
+        }
+        vec![
+            Effect::new(crate::effects::LookAtTopCardsEffect::revealing(
+                PlayerFilter::You,
+                if filtered {
+                    Value::Fixed(5)
+                } else {
+                    Value::Fixed(3)
+                },
+                revealed.clone(),
+            )),
+            Effect::new(crate::effects::ChoosePlayerEffect::new(
+                PlayerFilter::You,
+                PlayerFilter::Opponent,
+                opponent.clone(),
+            )),
+            Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    selected_filter,
+                    ChoiceCount::exactly(1),
+                    PlayerFilter::TaggedPlayer(opponent),
+                    selected.clone(),
+                )
+                .in_zone(Zone::Library),
+            ),
+            Effect::new(
+                crate::effects::TagMatchingObjectsEffect::new(
+                    ObjectFilter::tagged(revealed)
+                        .not_tagged(selected.clone())
+                        .in_zone(Zone::Library),
+                    remainder.clone(),
+                )
+                .in_zone(Zone::Library),
+            ),
+            Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(selected),
+                if filtered {
+                    Zone::Battlefield
+                } else {
+                    Zone::Graveyard
+                },
+                false,
+            )),
+            Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(remainder),
+                if filtered {
+                    Zone::Graveyard
+                } else {
+                    Zone::Hand
+                },
+                false,
+            )),
+        ]
+    }
+
+    #[test]
+    fn renders_opponent_choice_with_exact_revealed_complement() {
+        for (filtered, expected) in [
+            (
+                false,
+                "Reveal the top three cards of your library. An opponent chooses one of them. Put that card into your graveyard and the rest into your hand",
+            ),
+            (
+                true,
+                "Reveal the top five cards of your library. An opponent chooses a creature card from among them. Put that card onto the battlefield and the rest into your graveyard",
+            ),
+        ] {
+            let effects = opponent_revealed_partition_effects(filtered);
+            let refs = effects.iter().collect::<Vec<_>>();
+            assert_eq!(
+                describe_looked_card_selected_partition(&refs),
+                Some((expected.to_string(), 6))
+            );
+            assert_eq!(describe_effect_list(&effects), expected);
         }
     }
 

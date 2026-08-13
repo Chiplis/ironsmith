@@ -1206,6 +1206,21 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     }
 }
 
+#[cfg(test)]
+mod create_for_each_player_count_surface_tests {
+    use super::*;
+
+    #[test]
+    fn opponent_count_with_for_each_surface_is_a_singular_iteration_basis() {
+        let count = Value::CountPlayers(PlayerFilter::Opponent)
+            .with_surface_hint(ValueSurfaceHint::ForEach);
+        assert_eq!(
+            describe_create_for_each_count(&count).as_deref(),
+            Some("opponent you have")
+        );
+    }
+}
+
 fn factor_positive_for_each_value(value: Value) -> Option<(i32, Value)> {
     match value {
         Value::SurfaceHinted { value, hints } => {
@@ -1519,6 +1534,11 @@ pub(crate) fn should_render_token_count_with_where_x(value: &Value) -> bool {
 }
 
 pub(crate) fn describe_compact_token_count(value: &Value, token_name: &str) -> String {
+    if value.has_surface_hint(ValueSurfaceHint::ForEach)
+        && let Some(basis) = describe_create_for_each_count(value)
+    {
+        return format!("a {token_name} token for each {basis}");
+    }
     if value.has_surface_hint(ValueSurfaceHint::DamageDealt) {
         return format!("a number of {token_name} tokens equal to the damage dealt this way");
     }
@@ -3932,6 +3952,11 @@ pub(super) fn describe_exile_top_clause(
         .as_ref()
         .is_some_and(|(multiplier, _)| *multiplier == 1)
         || matches!(exile_top.count, Value::Fixed(1));
+    let face_down = if exile_top.face_down {
+        " face down"
+    } else {
+        ""
+    };
     let exile_clause = if let Some((multiplier, basis)) = for_each_count {
         let cards = if multiplier == 1 {
             "a card".to_string()
@@ -3939,16 +3964,11 @@ pub(super) fn describe_exile_top_clause(
             let count = number_word(multiplier).unwrap_or_else(|| multiplier.to_string());
             format!("{count} cards")
         };
-        let face_down = if exile_top.face_down {
-            " face down"
-        } else {
-            ""
-        };
         format!("Exile {cards} from the top of {owner} library{face_down} for each {basis}")
     } else if let Some(backref) = describe_effect_count_backref(&exile_top.count) {
-        format!("Exile {backref} cards from the top of {owner} library")
+        format!("Exile {backref} cards from the top of {owner} library{face_down}")
     } else if let Some(basis) = dynamic_count_basis {
-        format!("Exile cards equal to {basis} from the top of {owner} library")
+        format!("Exile cards equal to {basis} from the top of {owner} library{face_down}")
     } else if let Value::Fixed(n) = &exile_top.count {
         if *n < 0 {
             return None;
@@ -3960,16 +3980,16 @@ pub(super) fn describe_exile_top_clause(
             let word = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
             (format!("{word} "), "cards")
         };
-        format!("Exile the top {count_text}{noun} of {owner} library")
+        format!("Exile the top {count_text}{noun} of {owner} library{face_down}")
     } else {
         let value_text = describe_value(&exile_top.count);
         if value_text == "X"
             || (suppress_count_where_clause
                 && value_has_surface_hint(&exile_top.count, ValueSurfaceHint::WhereXIs))
         {
-            format!("Exile the top X cards of {owner} library")
+            format!("Exile the top X cards of {owner} library{face_down}")
         } else {
-            format!("Exile the top X cards of {owner} library, where X is {value_text}")
+            format!("Exile the top X cards of {owner} library{face_down}, where X is {value_text}")
         }
     };
     let exile_clause =
@@ -3995,6 +4015,21 @@ pub(super) fn describe_exile_top_clause(
 #[cfg(test)]
 mod exile_top_for_each_surface_tests {
     use super::*;
+
+    #[test]
+    fn fixed_top_card_preserves_face_down_surface() {
+        let exile =
+            crate::effects::ExileTopOfLibraryEffect::new(Value::Fixed(1), PlayerFilter::You)
+                .face_down();
+
+        assert_eq!(
+            describe_exile_top_clause(&exile, false),
+            Some((
+                "Exile the top card of your library face down".to_string(),
+                true,
+            ))
+        );
+    }
 
     #[test]
     fn typed_player_count_renders_one_top_card_per_opponent_with_face_state() {
@@ -4102,7 +4137,11 @@ pub(in crate::compiled_text) fn describe_exile_top_choose_one_then_play(
         || !filter_is_exactly_tagged_in_zone(&choose.filter, exiled_tag, Zone::Exile)
         || grant_play.tag != choose.tag
         || grant_play.player != PlayerFilter::You
-        || grant_play.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        || !matches!(
+            grant_play.duration,
+            crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+                | crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
+        )
         || grant_play.allow_any_color_for_cast
         || grant_play.while_on_top_of_library
         || grant_play.filter.is_some()
@@ -4120,6 +4159,11 @@ pub(in crate::compiled_text) fn describe_exile_top_choose_one_then_play(
     } else {
         "cast"
     };
+    if grant_play.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd {
+        return Some(format!(
+            "{exile_clause}. Choose one of them. Until the end of your next turn, you may {verb} that card"
+        ));
+    }
     if grant_play
         .surface
         .as_ref()

@@ -631,6 +631,7 @@ impl EffectAst {
         chooser: PlayerAst,
         allow_colorless: bool,
         allow_artifacts: bool,
+        choose_card_type: bool,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -640,6 +641,7 @@ impl EffectAst {
                 chooser,
                 allow_colorless,
                 allow_artifacts,
+                choose_card_type,
             },
         )
     }
@@ -1832,6 +1834,7 @@ impl EffectAst {
                 library_order_chooser: PlayerAst::Implicit,
                 verb_surface: ironsmith_core::MoveToZoneVerbSurface::Put,
                 target_plural_surface: false,
+                target_reference_surface: None,
                 destination_player_surface: None,
                 destination_player_reference_surface: None,
                 exiled_with_source_surface: None,
@@ -1867,6 +1870,7 @@ impl EffectAst {
                 library_order_chooser: PlayerAst::Implicit,
                 verb_surface: ironsmith_core::MoveToZoneVerbSurface::Put,
                 target_plural_surface: true,
+                target_reference_surface: None,
                 destination_player_surface: None,
                 destination_player_reference_surface: None,
                 exiled_with_source_surface: None,
@@ -1984,6 +1988,21 @@ impl EffectAst {
         } else {
             self
         }
+    }
+
+    pub(crate) fn with_move_to_zone_target_reference_surface(
+        mut self,
+        surface: ironsmith_core::SearchResultReferenceSurface,
+    ) -> Self {
+        if let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::MoveToZone {
+                target_reference_surface,
+                ..
+            } = &mut subject_verb.action
+        {
+            *target_reference_surface = Some(surface);
+        }
+        self
     }
 
     pub(crate) fn with_move_to_zone_transformed(mut self) -> Self {
@@ -5282,6 +5301,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::PutSticker { target, action },
+        )
+    }
+
+    pub(crate) fn subject_verb_unlock_room_door(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::UnlockRoomDoor,
         )
     }
 

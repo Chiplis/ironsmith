@@ -671,6 +671,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Whether this creature may ignore shadow on the attacking creature.
+    fn blocks_as_though_no_shadow(&self) -> bool {
+        false
+    }
+
     /// Returns the maximum number of creatures that can attack in a combat.
     fn max_creatures_can_attack_each_combat(&self) -> Option<usize> {
         None
@@ -724,6 +729,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     /// Returns true if this grants flash.
     fn has_flash(&self) -> bool {
         false
+    }
+
+    /// Returns the condition governing a conditional flash permission.
+    fn conditional_flash_condition(&self) -> Option<&ironsmith_core::Condition> {
+        None
     }
 
     /// Returns true if this grants reach.
@@ -1253,6 +1263,7 @@ pub struct EnterAsCopyAsEntersSpec {
     pub copy_source_self: bool,
     pub copy_source_enchanted: bool,
     pub name_override: Option<String>,
+    pub added_colors: crate::color::ColorSet,
     pub added_card_types: Vec<crate::types::CardType>,
     pub removed_supertypes: Vec<crate::types::Supertype>,
     pub added_subtypes: Vec<crate::types::Subtype>,
@@ -1806,6 +1817,10 @@ impl StaticAbility {
         self.0.can_block_as_though_reach_subtype()
     }
 
+    pub fn blocks_as_though_no_shadow(&self) -> bool {
+        self.0.blocks_as_though_no_shadow()
+    }
+
     pub fn max_creatures_can_attack_each_combat(&self) -> Option<usize> {
         self.0.max_creatures_can_attack_each_combat()
     }
@@ -1848,6 +1863,10 @@ impl StaticAbility {
 
     pub fn has_flash(&self) -> bool {
         self.0.has_flash()
+    }
+
+    pub fn conditional_flash_condition(&self) -> Option<&ironsmith_core::Condition> {
+        self.0.conditional_flash_condition()
     }
 
     pub fn has_reach(&self) -> bool {
@@ -2397,6 +2416,16 @@ impl StaticAbility {
         Self::new(CanBlockSubtypeAsThoughReach::new(subtype))
     }
 
+    pub fn can_block_as_though_no_shadow() -> Self {
+        Self::new(CanBlockAsThoughNoShadow)
+    }
+
+    pub fn targeting_as_though_no_ability(
+        spec: ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec,
+    ) -> Self {
+        Self::new(TargetingAsThoughNoAbility { spec })
+    }
+
     pub fn can_block_additional_creature_each_combat(additional: usize) -> Self {
         Self::new(CanBlockAdditionalCreatureEachCombat::new(additional))
     }
@@ -2505,6 +2534,10 @@ impl StaticAbility {
 
     pub fn can_attack_as_though_no_defender() -> Self {
         Self::new(CanAttackAsThoughNoDefender)
+    }
+
+    pub fn can_attack_players_who_attacked_controller_last_turn_as_though_no_defender() -> Self {
+        Self::new(CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender)
     }
 
     pub fn can_attack_as_though_haste() -> Self {
@@ -3775,11 +3808,13 @@ impl StaticAbility {
     pub fn conditional_draw_replacement(
         condition: crate::effect::Condition,
         replacement_effects: Vec<crate::effect::Effect>,
+        optional: bool,
         display: impl Into<String>,
     ) -> Self {
         Self::new(ConditionalDrawReplacement::new(
             condition,
             replacement_effects,
+            optional,
             display,
         ))
     }
@@ -3822,6 +3857,7 @@ impl StaticAbility {
             source_filter,
             None,
             replacement_effects,
+            false,
             display,
         )
     }
@@ -3831,6 +3867,7 @@ impl StaticAbility {
         source_filter: crate::target::ObjectFilter,
         performer_filter: Option<crate::target::PlayerFilter>,
         replacement_effects: Vec<crate::effect::Effect>,
+        optional: bool,
         display: impl Into<String>,
     ) -> Self {
         Self::new(KeywordActionReplacement::new(
@@ -3838,6 +3875,7 @@ impl StaticAbility {
             source_filter,
             performer_filter,
             replacement_effects,
+            optional,
             display,
         ))
     }

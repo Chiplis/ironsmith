@@ -1298,6 +1298,19 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
             && window[4].as_word() == Some("enters")
     });
     for effect in effects.iter_mut().rev() {
+        // A pronoun rule sentence that mixes an ordinary keyword, a quoted
+        // attached-object rule, and a trailing activation must be parsed as
+        // one ability list. The compact equipment-reminder facts understand
+        // the activation but cannot carry the quoted sibling, so give the
+        // complete typed grant parser first refusal for exactly this shape.
+        if crate::runtime_backend::sentences::effect_sentences::mixed_pronoun_token_rule_list(
+            tokens,
+        )
+        .is_some()
+            && append_token_granted_ability_to_effect(Some(effect), tokens)?
+        {
+            return Ok(true);
+        }
         // A separately authored `It has "This token's power and toughness
         // ..."` sentence is a characteristic-defining ability of the token,
         // not a one-time base-P/T assignment made by the create effect. Give
@@ -1346,7 +1359,15 @@ fn append_token_granted_ability_to_effect(
             else {
                 return Ok(false);
             };
-            let Some(ability_tokens) = crate::runtime_backend::grammar::effects::dispatch_entry_shapes::parse_token_granted_ability_tokens(tokens) else {
+            let Some(ability_tokens) =
+                crate::runtime_backend::sentences::effect_sentences::mixed_pronoun_token_rule_list(
+                    tokens,
+                )
+                .or_else(|| {
+                    crate::runtime_backend::grammar::effects::dispatch_entry_shapes::
+                        parse_token_granted_ability_tokens(tokens)
+                })
+            else {
                 return Ok(false);
             };
             let Ok(parsed) = crate::runtime_backend::sentences::effect_sentences::parse_granted_abilities_for_token_definition(

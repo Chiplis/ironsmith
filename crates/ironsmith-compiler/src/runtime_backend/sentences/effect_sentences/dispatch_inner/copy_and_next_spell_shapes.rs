@@ -285,11 +285,146 @@ fn parse_next_cast_spell_or_loyalty_delayed_sentence(
     }]))
 }
 
+/// Preserve the correlated choice loop in
+/// "When you next cast an instant or sorcery spell that targets only a
+/// single opponent or a single permanent an opponent controls this turn,
+/// for each other opponent, choose that player or a permanent they control,
+/// copy that spell, and the copy targets the chosen player or permanent."
+///
+/// The broad delayed-trigger route sees each `or` independently and can turn
+/// the trigger into unrelated spell-filter arms.  Worse, its ordinary copy
+/// parser treats the entire quantified tail as copy-target surface and drops
+/// the per-opponent choice.  Claim only the complete authored grammar here so
+/// the target relation, loop exclusion, choice, copy, and fixed retarget stay
+/// in one executable delayed program.
+fn parse_next_cast_single_opponent_or_permanent_copy_loop(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words
+        != [
+            "when",
+            "you",
+            "next",
+            "cast",
+            "an",
+            "instant",
+            "or",
+            "sorcery",
+            "spell",
+            "that",
+            "targets",
+            "only",
+            "a",
+            "single",
+            "opponent",
+            "or",
+            "a",
+            "single",
+            "permanent",
+            "an",
+            "opponent",
+            "controls",
+            "this",
+            "turn",
+            "for",
+            "each",
+            "other",
+            "opponent",
+            "choose",
+            "that",
+            "player",
+            "or",
+            "a",
+            "permanent",
+            "they",
+            "control",
+            "copy",
+            "that",
+            "spell",
+            "and",
+            "the",
+            "copy",
+            "targets",
+            "the",
+            "chosen",
+            "player",
+            "or",
+            "permanent",
+        ]
+    {
+        return None;
+    }
+
+    let mut spell_filter = ObjectFilter::instant_or_sorcery()
+        .targeting_only(
+            Some(PlayerFilter::Opponent),
+            Some(ObjectFilter::permanent().controlled_by(PlayerFilter::Opponent)),
+        )
+        .target_count_exact(1);
+    spell_filter.has_mana_cost = true;
+
+    let choice = TargetAst::ObjectOrPlayer(
+        ObjectFilter::permanent().controlled_by(PlayerFilter::IteratedPlayer),
+        PlayerFilter::IteratedPlayer,
+        None,
+    );
+    let chosen_destination = TargetAst::ObjectOrPlayer(
+        ObjectFilter::permanent()
+            .controlled_by(PlayerFilter::IteratedPlayer)
+            .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject),
+        PlayerFilter::IteratedPlayer,
+        None,
+    );
+    let copy = EffectAst::subject_verb_copy_spell(
+        TargetAst::Tagged(TagKey::from("triggering"), None),
+        Value::Fixed(1),
+        PlayerAst::You,
+        false,
+        false,
+        Vec::new(),
+    );
+    let retarget = EffectAst::subject_verb_retarget_stack_object(
+        PlayerAst::You,
+        TargetAst::Tagged(TagKey::from("__copied_stack_object__"), None),
+        crate::cards::builders::RetargetModeAst::OneToFixed {
+            target: chosen_destination,
+        },
+        false,
+    );
+
+    Some(vec![EffectAst::DelayedTriggerThisTurn {
+        trigger: TriggerSpec::SpellCast {
+            filter: Some(spell_filter),
+            mana_source_filter: None,
+            caster: PlayerFilter::You,
+            timing: None,
+            during_turn: None,
+            min_spells_this_turn: None,
+            exact_spells_this_turn: None,
+            from_not_hand: false,
+        },
+        effects: vec![EffectAst::ForEachPlayersFiltered {
+            filter: PlayerFilter::excluding(
+                PlayerFilter::Opponent,
+                PlayerFilter::TargetPlayerOrControllerOfTarget,
+            ),
+            effects: vec![EffectAst::subject_verb_target_only(choice), copy, retarget],
+        }],
+        one_shot: true,
+        until_end_of_combat: false,
+        attach_to_previous_ability: false,
+    }])
+}
+
 pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
     let clause_display = crate::runtime_backend::lexer::render_token_slice(clause.tokens());
+    if let Some(effects) = parse_next_cast_single_opponent_or_permanent_copy_loop(tokens) {
+        return Ok(Some(effects));
+    }
     if delayed_shapes::parse_delayed_dies_shape(tokens).is_some() {
         return parse_delayed_when_that_dies_this_turn_sentence(tokens);
     }
@@ -1074,6 +1209,80 @@ mod copy_and_next_spell_shape_tests {
         assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
         assert!(debug.contains("YouDrawCard"), "{debug}");
         assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn next_single_opponent_or_permanent_copy_keeps_each_other_opponent_choice() {
+        let tokens = crate::runtime_backend::lex_line(
+            "When you next cast an instant or sorcery spell that targets only a single opponent or a single permanent an opponent controls this turn, for each other opponent, choose that player or a permanent they control, copy that spell, and the copy targets the chosen player or permanent.",
+            0,
+        )
+        .expect("correlated next-spell copy text should lex");
+
+        let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
+            .expect("correlated next-spell copy parser should not error")
+            .expect("correlated next-spell copy parser should match");
+        let [
+            EffectAst::DelayedTriggerThisTurn {
+                trigger:
+                    TriggerSpec::SpellCast {
+                        filter: Some(filter),
+                        caster: PlayerFilter::You,
+                        ..
+                    },
+                effects: delayed,
+                one_shot: true,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one exact delayed spell watcher: {effects:#?}");
+        };
+        assert_eq!(filter.card_types, [CardType::Instant, CardType::Sorcery]);
+        assert_eq!(filter.target_count, Some(ChoiceCount::exactly(1)));
+        assert_eq!(filter.targets_only_player, Some(PlayerFilter::Opponent));
+        assert!(filter.targets_only_any_of);
+        assert_eq!(
+            filter
+                .targets_only_object
+                .as_deref()
+                .and_then(|target| target.controller.as_ref()),
+            Some(&PlayerFilter::Opponent)
+        );
+        let [
+            EffectAst::ForEachPlayersFiltered {
+                filter: player_filter,
+                effects: per_opponent,
+            },
+        ] = delayed.as_slice()
+        else {
+            panic!("expected one per-other-opponent loop: {delayed:#?}");
+        };
+        assert_eq!(
+            player_filter,
+            &PlayerFilter::excluding(
+                PlayerFilter::Opponent,
+                PlayerFilter::TargetPlayerOrControllerOfTarget,
+            )
+        );
+        let debug = format!("{per_opponent:#?}");
+        assert!(debug.contains("ObjectOrPlayer"), "{debug}");
+        assert!(debug.contains("CopySpell"), "{debug}");
+        assert!(debug.contains("RetargetStackObject"), "{debug}");
+    }
+
+    #[test]
+    fn next_copy_loop_does_not_claim_a_broader_target_or_missing_choice() {
+        for text in [
+            "When you next cast an instant or sorcery spell that targets an opponent or a permanent an opponent controls this turn, for each other opponent, choose that player or a permanent they control, copy that spell, and the copy targets the chosen player or permanent.",
+            "When you next cast an instant or sorcery spell that targets only a single opponent or a single permanent an opponent controls this turn, copy that spell.",
+        ] {
+            let tokens = crate::runtime_backend::lex_line(text, 0).expect("near miss should lex");
+            assert!(
+                parse_next_cast_single_opponent_or_permanent_copy_loop(&tokens).is_none(),
+                "near miss must not use the exact correlated route: {text}"
+            );
+        }
     }
 
     #[test]

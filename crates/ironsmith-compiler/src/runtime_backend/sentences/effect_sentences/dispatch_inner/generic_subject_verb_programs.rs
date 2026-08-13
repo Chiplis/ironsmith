@@ -1604,7 +1604,7 @@ fn parse_generic_mana_any_type_cast_tagged_this_way(tokens: &[OwnedLexToken]) ->
     })
 }
 
-fn parse_source_gets_unblockable_subject_verb(
+pub(crate) fn parse_source_gets_unblockable_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
@@ -1732,9 +1732,63 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
     }]))
 }
 
-fn parse_target_gets_unblockable_subject_verb(
+pub(crate) fn parse_target_gets_unblockable_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // The public lexer keeps a signed P/T modifier as one token, but quote
+    // normalization can represent `can't` differently from the declarative
+    // sequence pattern below. Prove the same exact clause from its stable
+    // verb/duration boundaries before consulting that surface-sensitive
+    // pattern. This is still deliberately narrow: one target subject, one
+    // P/T modifier, and the complete same-turn blocking restriction.
+    let gets_idx = tokens
+        .iter()
+        .position(|token| token.is_word("get") || token.is_word("gets"));
+    let until_idx = gets_idx.and_then(|gets_idx| {
+        tokens[gets_idx + 1..]
+            .iter()
+            .position(|token| token.is_word("until"))
+            .map(|offset| gets_idx + 1 + offset)
+    });
+    if let (Some(gets_idx), Some(until_idx)) = (gets_idx, until_idx) {
+        let subject_tokens = trim_edge_punctuation(&tokens[..gets_idx]);
+        let modifier_tokens = trim_edge_punctuation(&tokens[gets_idx + 1..until_idx]);
+        let tail_words =
+            crate::runtime_backend::front_end::shared::util::words(&tokens[until_idx..]);
+        let tail_text = tail_words.join(" ").replace("can't", "cant");
+        let exact_tail = matches!(
+            tail_text.as_str(),
+            "until end of turn and cant be blocked this turn"
+                | "until end of turn and can t be blocked this turn"
+        );
+        if exact_tail
+            && starts_with_target_indicator(&subject_tokens)
+            && let Some((power, toughness)) =
+                parse_pt_modifier_capture(LexedClause::new(&modifier_tokens))
+        {
+            let target = parse_target_phrase(&subject_tokens)?;
+            let Some(mut blocked_filter) = target_ast_to_object_filter(target.clone()) else {
+                return Ok(None);
+            };
+            if !blocked_filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == IT_TAG)
+            {
+                blocked_filter = blocked_filter
+                    .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+            }
+            return Ok(Some(vec![
+                EffectAst::subject_verb_pump(power, toughness, target, Until::EndOfTurn, None),
+                EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::be_blocked(blocked_filter),
+                    Until::EndOfTurn,
+                    None,
+                ),
+            ]));
+        }
+    }
+
     let clause = LexedClause::new(tokens).trimmed();
     let Some(matched) = SOURCE_GETS_UNBLOCKABLE_PATTERN.parse_full(clause) else {
         return Ok(None);
@@ -3132,7 +3186,10 @@ pub(crate) fn parse_for_each_type_slot_choice_clause(
             return Ok(None);
         }
         choices.push(EffectAst::ChooseObjects {
-            filter: merge_filters(&base_filter, &slot_filter).not_tagged(keep_tag.clone()),
+            // A multitype permanent may represent more than one slot. The
+            // shared tag is an accumulating kept set for the later
+            // complement action, not an exclusion from subsequent choices.
+            filter: merge_filters(&base_filter, &slot_filter),
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: chooser.clone(),

@@ -99,6 +99,33 @@ fn generic_mana_amount_from_symbol(symbol: ManaSymbol) -> Option<i32> {
 pub(crate) fn parse_counter_target_phrase(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        [
+            "all",
+            "spells",
+            "your",
+            "opponents",
+            "control",
+            "and",
+            "all",
+            "abilities",
+            "your",
+            "opponents",
+            "control"
+        ]
+    ) {
+        let mut spells = ObjectFilter::spell();
+        spells.controller = Some(PlayerFilter::Opponent);
+        let mut abilities = ObjectFilter::ability();
+        abilities.controller = Some(PlayerFilter::Opponent);
+        let mut union = ObjectFilter::default();
+        union.any_of = vec![spells, abilities];
+        union.set_union_connective(crate::filter::ObjectFilterUnionConnective::Or);
+        union.set_conjunctive_set_surface(true);
+        return Ok(TargetAst::Object(union, None, None));
+    }
     if let Some(target) = parse_counter_ability_target_phrase(tokens)? {
         return Ok(target);
     }
@@ -594,6 +621,31 @@ pub(crate) fn parse_reveal(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let words = crate::runtime_backend::token_word_refs(tokens);
+    // Revealing every card in a library is a collection operation, not the
+    // ordinary singular `RevealTop` fallback. Tag the exact zone contents so
+    // later chooser and movement clauses can consume the same stable set.
+    if matches!(
+        words.as_slice(),
+        ["cards", "in", "your", "library"]
+            | ["the", "cards", "in", "your", "library"]
+            | ["reveal", "the", "cards", "in", "your", "library"]
+    )
+    {
+        let tag = TagKey::from("__revealed_library__");
+        let filter = ObjectFilter::default()
+            .in_zone(Zone::Library)
+            .owned_by(PlayerFilter::You);
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_tag_matching_objects(
+                    filter,
+                    vec![Zone::Library],
+                    tag.clone(),
+                ),
+                EffectAst::subject_verb_reveal_tagged(tag),
+            ],
+        });
+    }
     // Many effects split "reveal it/that card/those cards" into a standalone clause.
     // The engine does not model hidden information, so this compiles to a semantic no-op
     // that still allows parsing and auditing to proceed.
@@ -1374,5 +1426,33 @@ mod reveal_hand_count_tests {
             "{debug}"
         );
         assert!(!debug.contains("RevealTaggedEffect"), "{debug}");
+    }
+
+    #[test]
+    fn coordinated_all_spells_and_all_abilities_keeps_both_stack_domains() {
+        let tokens = lex_line(
+            "all spells your opponents control and all abilities your opponents control",
+            0,
+        )
+        .expect("coordinated stack domain should lex");
+        let parsed =
+            parse_counter_target_phrase(&tokens).expect("coordinated stack domain should parse");
+        let TargetAst::Object(filter, None, None) = parsed else {
+            panic!("expected one object-filter union, got {parsed:#?}");
+        };
+        assert_eq!(filter.any_of.len(), 2);
+        assert_eq!(
+            filter.union_connective(),
+            crate::filter::ObjectFilterUnionConnective::Or
+        );
+        assert!(filter.has_conjunctive_set_surface());
+        assert!(filter.any_of.iter().any(|arm| {
+            arm.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+                && arm.controller == Some(PlayerFilter::Opponent)
+        }));
+        assert!(filter.any_of.iter().any(|arm| {
+            arm.stack_kind == Some(crate::filter::StackObjectKind::Ability)
+                && arm.controller == Some(PlayerFilter::Opponent)
+        }));
     }
 }

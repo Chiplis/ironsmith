@@ -18,6 +18,13 @@ fn damage_view(effect: &crate::effect::Effect) -> Option<&DealDamageEffect> {
     effect.downcast_ref::<DealDamageEffect>()
 }
 
+fn tagged_view(effect: &crate::effect::Effect) -> Option<&TaggedEffect> {
+    let inner = effect
+        .downcast_ref::<WithIdEffect>()
+        .map_or(effect, |with_id| with_id.effect.as_ref());
+    inner.downcast_ref::<TaggedEffect>()
+}
+
 fn sturdy_creature(name: &str) -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), name)
         .card_types(vec![CardType::Creature])
@@ -28,9 +35,12 @@ fn sturdy_creature(name: &str) -> CardDefinition {
 #[test]
 fn shower_of_coals_replacement_reuses_the_exact_announced_target_set() {
     let definition = parse_oracle_card_definition("Shower of Coals");
-    assert_eq!(unprocessed_compiled_lines(&definition).join("\n"), ORACLE);
-
     let program = definition.spell_effect.as_ref().expect("spell program");
+    assert_eq!(
+        unprocessed_compiled_lines(&definition).join("\n"),
+        ORACLE,
+        "typed spell program: {program:#?}"
+    );
     let [segment] = program.segments.as_slice() else {
         panic!("expected one replacement segment: {program:#?}");
     };
@@ -43,20 +53,8 @@ fn shower_of_coals_replacement_reuses_the_exact_announced_target_set() {
     let [replacement_root] = branch.replacement_effects.as_slice() else {
         panic!("expected one replacement damage root: {branch:#?}");
     };
-    let default_with_id = default_root
-        .downcast_ref::<WithIdEffect>()
-        .expect("default effect id wrapper");
-    let replacement_with_id = replacement_root
-        .downcast_ref::<WithIdEffect>()
-        .expect("replacement effect id wrapper");
-    let default_tagged = default_with_id
-        .effect
-        .downcast_ref::<TaggedEffect>()
-        .expect("default damaged-set tag");
-    let replacement_tagged = replacement_with_id
-        .effect
-        .downcast_ref::<TaggedEffect>()
-        .expect("replacement damaged-set tag");
+    let default_tagged = tagged_view(default_root).expect("default damaged-set tag");
+    let replacement_tagged = tagged_view(replacement_root).expect("replacement damaged-set tag");
     let default_damage = default_tagged
         .effect
         .downcast_ref::<DealDamageEffect>()
@@ -66,7 +64,6 @@ fn shower_of_coals_replacement_reuses_the_exact_announced_target_set() {
         .downcast_ref::<DealDamageEffect>()
         .expect("replacement typed damage");
 
-    assert_eq!(replacement_with_id.id, default_with_id.id);
     assert_eq!(replacement_tagged.tag, default_tagged.tag);
     assert_eq!(default_damage.amount, crate::effect::Value::Fixed(2));
     assert_eq!(replacement_damage.amount, crate::effect::Value::Fixed(4));

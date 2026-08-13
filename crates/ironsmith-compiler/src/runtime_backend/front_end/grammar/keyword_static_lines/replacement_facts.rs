@@ -40,6 +40,7 @@ pub(crate) enum KeywordActionReplacementShape<'a> {
     ExploreAfterScry { value_tokens: &'a [OwnedLexToken] },
     AssembleRiggerTwice,
     PlaneswalkAfterPlanarDeckChoice { count: u32 },
+    LearnReturnThisFromGraveyard,
 }
 
 pub(crate) fn parse_noncombat_damage_minus_counter_replacement_tokens(
@@ -115,6 +116,7 @@ pub(crate) fn parse_keyword_action_replacement_tokens(
     primitives::parse_all(
         tokens,
         alt((
+            parse_learn_return_from_graveyard_replacement_lexed,
             parse_planeswalk_planar_deck_replacement_lexed,
             parse_proliferate_you_replacement_lexed,
             parse_proliferate_opponent_replacement_lexed,
@@ -124,6 +126,24 @@ pub(crate) fn parse_keyword_action_replacement_tokens(
         "keyword-action replacement",
     )
     .ok()
+}
+
+fn parse_learn_return_from_graveyard_replacement_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<KeywordActionReplacementShape<'a>> {
+    primitives::phrase(&[
+        "as", "long", "as", "this", "card", "is", "in", "your", "graveyard",
+    ])
+    .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["if", "you", "would", "learn"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&[
+        "you", "may", "instead", "return", "this", "card", "to", "the", "battlefield",
+    ])
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordActionReplacementShape::LearnReturnThisFromGraveyard)
 }
 
 fn parse_planeswalk_planar_deck_replacement_lexed<'a>(
@@ -261,6 +281,32 @@ fn parse_assemble_rigger_replacement_lexed<'a>(
     primitives::phrase(&["it", "assembles", "two", "contraptions", "instead"]).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordActionReplacementShape::AssembleRiggerTwice)
+}
+
+#[cfg(test)]
+mod learn_replacement_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn parse(text: &str) -> Option<KeywordActionReplacementShape<'_>> {
+        let tokens = Box::leak(Box::new(lex_line(text, 0).expect("line should lex")));
+        parse_keyword_action_replacement_tokens(tokens)
+    }
+
+    #[test]
+    fn graveyard_learn_replacement_is_exact_and_optional_surface_is_required() {
+        assert!(matches!(
+            parse("As long as this card is in your graveyard, if you would learn, you may instead return this card to the battlefield."),
+            Some(KeywordActionReplacementShape::LearnReturnThisFromGraveyard)
+        ));
+        for near_miss in [
+            "As long as this card is in your hand, if you would learn, you may instead return this card to the battlefield.",
+            "As long as this card is in your graveyard, whenever you learn, return this card to the battlefield.",
+            "As long as this card is in your graveyard, if you would learn, instead return this card to the battlefield.",
+        ] {
+            assert!(parse(near_miss).is_none(), "overclaimed: {near_miss}");
+        }
+    }
 }
 
 fn parse_energy_counter_replacement(tokens: &[OwnedLexToken]) -> bool {

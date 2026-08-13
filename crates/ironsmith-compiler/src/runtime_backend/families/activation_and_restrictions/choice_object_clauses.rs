@@ -56,6 +56,7 @@ pub(crate) fn parse_target_player_choose_objects_clause_with_count_value(
     let mut chooser = match parsed.actor {
         TargetPlayerChoiceActor::TargetPlayer => PlayerAst::Target,
         TargetPlayerChoiceActor::TargetOpponent => PlayerAst::TargetOpponent,
+        TargetPlayerChoiceActor::Opponent => PlayerAst::Opponent,
         TargetPlayerChoiceActor::ThatPlayer | TargetPlayerChoiceActor::Voter => PlayerAst::That,
     };
     let mut choose_filter = parsed.filter;
@@ -88,6 +89,7 @@ pub(crate) fn parse_target_player_choose_objects_clause_with_count_value(
     {
         choose_filter.controller = Some(match chooser {
             PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+            PlayerAst::Opponent => PlayerFilter::Opponent,
             PlayerAst::That => PlayerFilter::IteratedPlayer,
             PlayerAst::ItsController => {
                 PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))

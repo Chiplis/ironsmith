@@ -22,7 +22,7 @@ use crate::object::AuraAttachmentFilter;
 pub use crate::payload::{IfResultPredicate, KeywordAction};
 use crate::resolution::ResolutionProgram;
 pub(crate) use crate::runtime_backend::semantic::{
-    GiftTimingAst, LineAst, ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst,
+    ConditionalModeSelection, GiftTimingAst, LineAst, ParsedAbility, ParsedCardItem, ParsedConditionalModeChange, ParsedLevelAbilityAst,
     ParsedLevelAbilityItemAst, ParsedLevelActivatedAbilityAst, ParsedLineAst,
     ParsedModalActivatedHeader, ParsedModalAst, ParsedModalGate, ParsedModalHeader,
     ParsedModalModeAst, ParsedRestrictions,

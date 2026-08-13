@@ -1103,6 +1103,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::CastCardTypeThisTurn(_)
             | PlayerFilter::AttackedBySourceThisTurn
             | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+            | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
             | PlayerFilter::LostLifeThisTurn { .. }
             | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
             | PlayerFilter::Teammate
@@ -1666,6 +1667,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::StaticAbilitiesAmong { .. }
         | Value::ColorsAmong(_)
         | Value::ColorPairsAmong(_)
+        | Value::DistinctCounterTypesAmong(_)
         | Value::DistinctNames(_)
         | Value::DistinctPowers(_)
         | Value::TurnHistoryCount(_)

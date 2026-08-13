@@ -1002,6 +1002,26 @@ pub(super) fn compile_subject_verb_early(
                 identity_tags.all(|tag| tag == first).then(|| first.clone())
             });
             if !individual_targets
+                && ctx.auto_tag_object_targets
+                && target.is_target()
+                && target.count().is_single()
+                && selected_object_filter(&target).is_some()
+            {
+                // Keep an explicitly targeted Attach destination available to
+                // later clauses such as "that creature".  Tagging the Attach
+                // effect itself would export the attached objects (its
+                // affected set), not the destination, so declare the target
+                // once and make the executable Attach consume that identity.
+                let tag =
+                    TagKey::from(reserved_or_next_object_tag(ctx, "attachment_target").as_str());
+                effects.push(
+                    Effect::new(crate::effects::TargetOnlyEffect::new(target.clone()))
+                        .tag(tag.clone()),
+                );
+                target =
+                    with_target_reference_surface_hint(ChooseSpec::Tagged(tag.clone()), target_ast);
+                ctx.last_object_tag = Some(tag.as_str().to_string());
+            } else if !individual_targets
                 && !target.is_target()
                 && target.count().is_single()
                 && let Some(tag) = exact_identity_tag
@@ -1706,6 +1726,7 @@ pub(super) fn compile_subject_verb_early(
             chooser,
             allow_colorless,
             allow_artifacts,
+            choose_card_type,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1743,26 +1764,54 @@ pub(super) fn compile_subject_verb_early(
                     )],
                 });
             }
-            for (name, color) in [
-                ("White", crate::color::Color::White),
-                ("Blue", crate::color::Color::Blue),
-                ("Black", crate::color::Color::Black),
-                ("Red", crate::color::Color::Red),
-                ("Green", crate::color::Color::Green),
-            ] {
-                let ability = StaticAbility::protection(crate::ability::ProtectionFrom::Color(
-                    ColorSet::from(color),
-                ));
-                modes.push(EffectMode {
-                    source_text: name.to_string(),
-                    effects: vec![Effect::new(
-                        crate::effects::GrantAbilitiesTargetEffect::new(
-                            spec.clone(),
-                            vec![ability],
-                            crate::effect::Until::EndOfTurn,
-                        ),
-                    )],
-                });
+            if *choose_card_type {
+                for card_type in [
+                    crate::types::CardType::Artifact,
+                    crate::types::CardType::Battle,
+                    crate::types::CardType::Creature,
+                    crate::types::CardType::Enchantment,
+                    crate::types::CardType::Instant,
+                    crate::types::CardType::Kindred,
+                    crate::types::CardType::Land,
+                    crate::types::CardType::Planeswalker,
+                    crate::types::CardType::Sorcery,
+                ] {
+                    let ability = StaticAbility::protection(
+                        crate::ability::ProtectionFrom::CardType(card_type),
+                    );
+                    modes.push(EffectMode {
+                        source_text: card_type.name().to_string(),
+                        effects: vec![Effect::new(
+                            crate::effects::GrantAbilitiesTargetEffect::new(
+                                spec.clone(),
+                                vec![ability],
+                                crate::effect::Until::EndOfTurn,
+                            ),
+                        )],
+                    });
+                }
+            } else {
+                for (name, color) in [
+                    ("White", crate::color::Color::White),
+                    ("Blue", crate::color::Color::Blue),
+                    ("Black", crate::color::Color::Black),
+                    ("Red", crate::color::Color::Red),
+                    ("Green", crate::color::Color::Green),
+                ] {
+                    let ability = StaticAbility::protection(crate::ability::ProtectionFrom::Color(
+                        ColorSet::from(color),
+                    ));
+                    modes.push(EffectMode {
+                        source_text: name.to_string(),
+                        effects: vec![Effect::new(
+                            crate::effects::GrantAbilitiesTargetEffect::new(
+                                spec.clone(),
+                                vec![ability],
+                                crate::effect::Until::EndOfTurn,
+                            ),
+                        )],
+                    });
+                }
             }
             let effect = tag_object_target_effect(
                 Effect::new(

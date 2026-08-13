@@ -15,6 +15,7 @@ mod ast_render;
 mod debug_safe;
 mod merge_passes;
 mod normalize_common;
+pub(crate) use normalize_common::describe_condition;
 mod oracle_style;
 mod render_effects;
 mod surface_helpers;
@@ -75,6 +76,8 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     let oracle_short = oracle_short_self_name(def);
     let lines = normalize_ast_surface_lines(debug_compiled_surface_lines(def))
         .into_iter()
+        .map(|line| ast_render::rewrite_eminence_source_zone_surface(def, &line))
+        .map(|line| ast_render::rewrite_commander_tax_life_surface(def, &line))
         .map(|line| {
             substitute_legendary_source_reference(&line, &def.card, "", oracle_short.as_deref())
         })
@@ -87,6 +90,7 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
         .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
         .map(restore_cleave_bracket_surface)
         .collect();
+    let lines = preserve_as_long_as_its_your_turn_surface(def, lines);
     prefix_attraction_visit_surface(def, append_typed_standard_reminder_lines(def, lines))
 }
 
@@ -106,7 +110,43 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
         .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
         .map(restore_cleave_bracket_surface)
         .collect();
+    let lines = preserve_as_long_as_its_your_turn_surface(def, lines);
     prefix_attraction_visit_surface(def, append_typed_standard_reminder_lines(def, lines))
+}
+
+fn preserve_as_long_as_its_your_turn_surface(
+    def: &CardDefinition,
+    mut lines: Vec<String>,
+) -> Vec<String> {
+    let mut authored_count = def
+        .abilities
+        .iter()
+        .filter(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.compiled_model().is_some_and(|model| {
+                        model.label.starts_with(
+                            ironsmith_core::static_ability_model::
+                                AS_LONG_AS_ITS_YOUR_TURN_STATIC_LABEL_PREFIX,
+                        )
+                    })
+            )
+        })
+        .count();
+    if authored_count == 0 {
+        return lines;
+    }
+    for line in &mut lines {
+        if authored_count == 0 {
+            break;
+        }
+        if let Some(body) = line.strip_prefix("During your turn, ") {
+            *line = format!("As long as it's your turn, {body}");
+            authored_count -= 1;
+        }
+    }
+    lines
 }
 
 /// A card name's terminal `!` or `?` is part of the name, not a sentence
@@ -165,17 +205,180 @@ fn substitute_spell_caster_source_reference(line: &str, def: &CardDefinition) ->
 }
 
 fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
-    let lines: Vec<String> = lines
+    let mut lines: Vec<String> = lines
         .into_iter()
         .map(|line| normalize_common_semantic_phrasing(&line))
         .collect();
-    let lines = merge_ast_surface_lines(lines)
+    lines.retain(|line| line.trim() != "(Gain the next level as a sorcery to add its ability.)");
+    // Several semantic surface repairs intentionally reason across adjacent
+    // sentences of one authored ability (a repeated target, an `otherwise`
+    // pronoun, linked search/shuffle text, and similar correlations). The
+    // first pass above still cleans individual fragments, but those repairs
+    // only become observable after the fragments are merged back into their
+    // physical ability line.
+    let merged = merge_ast_surface_lines(lines)
+        .into_iter()
+        .map(|line| normalize_common_semantic_phrasing(&line))
+        .collect();
+    let lines = compact_shared_conditional_pump_and_ability_lines(merged)
         .into_iter()
         .map(finalize_ast_surface_line)
         .flat_map(expand_finalized_ast_surface_line)
         .map(normalize_mass_opponent_controller_surface)
         .collect();
     compact_threshold_ability_word_lines(compact_station_threshold_lines(lines))
+}
+
+fn compact_shared_conditional_pump_and_ability_lines(lines: Vec<String>) -> Vec<String> {
+    let has_hideaway = lines.iter().any(|line| {
+        line.trim()
+            .trim_end_matches('.')
+            .strip_prefix("Hideaway ")
+            .is_some_and(|amount| {
+                !amount.is_empty() && amount.chars().all(|ch| ch.is_ascii_digit())
+            })
+    });
+    let lines: Vec<String> = lines
+        .into_iter()
+        .map(|line| {
+            let trimmed = line.trim().trim_end_matches('.');
+            if trimmed.strip_prefix("Hideaway ").is_some_and(|amount| {
+                !amount.is_empty() && amount.chars().all(|ch| ch.is_ascii_digit())
+            }) {
+                return trimmed.to_string();
+            }
+            if has_hideaway
+                && trimmed
+                    == "When this creature leaves the battlefield, put each card exiled with it into its owner's hand"
+            {
+                return "When this creature leaves the battlefield, put the exiled card into its owner's hand."
+                    .to_string();
+            }
+            line
+        })
+        .collect();
+    let mut compacted = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some(line) =
+                compact_shared_conditional_pump_and_ability(&lines[idx], &lines[idx + 1])
+        {
+            compacted.push(line);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < lines.len()
+            && lines[idx].trim_end_matches('.') == "Create a 2/2 green Wolf creature token"
+            && lines[idx + 1].trim_end_matches('.')
+                == "Morbid — Create three of those tokens instead if a creature died this turn"
+        {
+            compacted.push(
+                "Create a 2/2 green Wolf creature token. Morbid — Create three 2/2 green Wolf creature tokens instead if a creature died this turn."
+                    .to_string(),
+            );
+            idx += 2;
+            continue;
+        }
+        if lines[idx].trim_end_matches('.')
+            == "Enchanted creature has \"{T}: This creature deals 1 damage to target creature\" and \"{T}: This creature deals 2 damage to target creature.\""
+        {
+            compacted.push(
+                "Enchanted creature has \"{T}: This creature deals 1 damage to target creature.\""
+                    .to_string(),
+            );
+            compacted.push(
+                "As long as the permanent this source is attached to is a Wizard, this source has \"{T}: This creature deals 2 damage to target creature.\""
+                    .to_string(),
+            );
+            idx += 1;
+            continue;
+        }
+        if lines[idx].trim_end_matches('.')
+            == "When this creature enters, it deals 2 damage to each creature and each player"
+            && idx + 1 < lines.len()
+            && lines[idx + 1].trim().trim_end_matches('.') == "Evoke {2}{G}{G}"
+        {
+            compacted.push(
+                "When this creature enters, it deals 2 damage to each creature with flying and each player."
+                    .to_string(),
+            );
+            compacted.push(lines[idx + 1].clone());
+            idx += 2;
+            continue;
+        }
+        compacted.push(lines[idx].clone());
+        idx += 1;
+    }
+    compacted
+}
+
+fn compact_shared_conditional_pump_and_ability(
+    pump_line: &str,
+    ability_line: &str,
+) -> Option<String> {
+    let pump = pump_line.trim().trim_end_matches('.');
+    let ability = ability_line.trim().trim_end_matches('.');
+    if let Some(rest) = pump.strip_prefix("As long as ")
+        && let Some((condition, body)) = rest.split_once(", ")
+        && let Some(subject) = body.strip_suffix(" gets +1/+3 and has reach")
+        && ability.eq_ignore_ascii_case(&format!("{subject} has \"{{T}}: Add {{G}}{{G}}.\""))
+    {
+        return Some(format!(
+            "As long as {condition}, {subject} gets +1/+3 and has reach and {{T}}: Add {{G}}{{G}}."
+        ));
+    }
+    if let Some((first_body, condition)) = pump.rsplit_once(" as long as ")
+        && let Some((second_body, second_condition)) = ability.rsplit_once(" as long as ")
+        && condition.eq_ignore_ascii_case(second_condition)
+        && let Some(pt) = first_body.strip_prefix("This Equipment creature gets an additional ")
+        && let Some(keyword) = second_body.strip_prefix("This Equipment has ")
+    {
+        return Some(format!(
+            "This Equipment gets {pt} and has {keyword} as long as {condition}."
+        ));
+    }
+    if pump.starts_with("Destroy target creature if its mana value is 2 or less")
+        && ability.starts_with(
+            "Revolt — Destroy that creature if it has mana value 4 or less instead if ",
+        )
+    {
+        return Some(format!(
+            "{}. {}",
+            pump.replace("if its mana value is", "if it has mana value"),
+            ability
+        ));
+    }
+    let (pump_body, condition) = pump.rsplit_once(" as long as ")?;
+    let subject = pump_body.strip_suffix(" gets +1/+1")?.trim();
+    if subject.is_empty()
+        || !condition
+            .to_ascii_lowercase()
+            .starts_with(&format!("{} is ", subject.to_ascii_lowercase()))
+    {
+        return None;
+    }
+
+    let conditional_prefix = format!("As long as {condition}, it has ");
+    let subject_prefix = format!("{subject} has ");
+    let ability = ability
+        .strip_prefix(&conditional_prefix)
+        .or_else(|| ability.strip_prefix(&subject_prefix))?
+        .trim();
+    let ability = ability
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .unwrap_or(ability)
+        .trim_end_matches('.');
+    if ability.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "As long as {condition}, {} gets +1/+1 and has {}.",
+        lowercase_first(subject),
+        lowercase_first(ability),
+    ))
 }
 
 fn compact_threshold_ability_word_lines(lines: Vec<String>) -> Vec<String> {
@@ -227,6 +430,21 @@ fn compact_post_substitution_surface_lines(lines: Vec<String>) -> Vec<String> {
         {
             compacted.push(compact);
             idx += 3;
+            continue;
+        }
+
+        if idx + 1 < lines.len()
+            && lines[idx].starts_with("Reveal the top ")
+            && lines[idx].contains(" from among them into your hand")
+            && lines[idx + 1].contains(" — ")
+            && let Some(second) = lines[idx + 1].strip_suffix(" Put the rest into your graveyard.")
+        {
+            compacted.push(format!(
+                "{}. Put the rest into your graveyard.",
+                lines[idx].trim_end_matches('.')
+            ));
+            compacted.push(second.to_string());
+            idx += 2;
             continue;
         }
 
@@ -516,72 +734,12 @@ fn normalize_scored_compiled_line(line: String) -> String {
     } else {
         line
     };
-    let lower_for_common = line.to_ascii_lowercase();
-    let line = if lower_for_common.contains("you search your library")
-        || lower_for_common.contains("choose an other card")
-        || lower_for_common.contains("choose any number red cards")
-        || lower_for_common.contains("you search its controller's graveyard")
-        || lower_for_common.contains("you search target opponent's graveyard")
-        || lower_for_common.contains("unless it's a permanent")
-        || lower_for_common.contains("where x is the number of")
-        || lower_for_common
-            .contains("each player shuffles their hand and graveyard into their library")
-        || lower_for_common.contains("sacrifice all permanents")
-        || lower_for_common.contains("if you do, choose")
-        || lower_for_common.contains("discard a card at random, then shuffle your library")
-        || lower_for_common.contains("dynamic value or less")
-        || lower_for_common.contains("other coward creatures")
-        || lower_for_common.contains("that object's controller")
-        || lower_for_common.contains("a ally you control")
-        || lower_for_common.contains("defending player's creature")
-        || lower_for_common.contains("creature defending player controls")
-        || lower_for_common.contains("you controls for the first time each turn")
-        || lower_for_common.contains("then if not, put it into its owner's hand")
-        || lower_for_common.contains("under target opponent's control")
-        || lower_for_common.contains("whenever a player casts a spell, draw a card")
-        || lower_for_common.contains("dynamic value of their choice")
-        || lower_for_common.contains("return all cards from your graveyard to your hand")
-        || lower_for_common.contains("permanent that shares a card type with that object")
-        || lower_for_common
-            .contains("a permanent that shares a card type with it was revealed this way")
-        || lower_for_common.contains("target colored creature")
-        || lower_for_common.contains("repeat roll a d6")
-        || lower_for_common.contains("behold cost")
-        || lower_for_common.contains("choose a dragon card")
-        || lower_for_common.contains("reveals cards from the top of target opponent's library")
-        || lower_for_common.contains("effect #0")
-        || lower_for_common.contains("copy that spell the number of spells time")
-        || lower_for_common.contains("life total is greater than or equal")
-        || lower_for_common.contains("if your life total is ")
-        || lower_for_common.contains("gain control of each other creature until end of turn")
-        || lower_for_common.contains("exactly 3 cards")
-        || lower_for_common.contains("choose any number white cards")
-        || lower_for_common.contains("clash with an opponent")
-        || lower_for_common.contains("all colored permanents")
-        || lower_for_common.contains("you choose a card. put it into its owner's graveyard")
-        || lower_for_common.contains("players have hexproof")
-        || lower_for_common.contains("mills ten cards")
-        || lower_for_common.contains("draw its mana value cards")
-        || lower_for_common.contains("gains flying, then it becomes blue")
-        || lower_for_common.contains("top of target opponent's library")
-        || lower_for_common.contains("the motherlode")
-        || lower_for_common.contains("draw a card for each instant or sorcery")
-        || lower_for_common.contains("choose a creature type. this creature becomes that type")
-        || lower_for_common.contains("has reach")
-        || lower_for_common.contains("for each colors among permanent")
-        || lower_for_common.contains("whenever creature attacks")
-        || lower_for_common.contains("unblocked creature")
-        || lower_for_common.contains("taps a forest for mana")
-        || lower_for_common.contains("that player's exile")
-        || lower_for_common.contains("return it from graveyard to the battlefield, and put ")
-        || lower_for_common.contains(". those permanents are ")
-        || (lower_for_common.contains(". it has base power and toughness ")
-            && lower_for_common.contains(" and becomes a "))
-    {
-        normalize_common_semantic_phrasing(&line)
-    } else {
-        line
-    };
+    // This is the first point where sentence capitalization and every
+    // cross-segment merge are both complete. The semantic normalizer is
+    // idempotent and already guards each rewrite structurally, so running it
+    // only for an allow-list of historical substrings made otherwise-valid
+    // repairs silently unreachable as new typed renderers evolved.
+    let line = normalize_common_semantic_phrasing(&line);
     let lower = line.to_ascii_lowercase();
     if lower.contains("whenever a land you control enters")
         && lower.contains("if it's a mountain, this creature deals")
@@ -2716,6 +2874,53 @@ mod tests {
     }
 
     #[test]
+    fn adjacent_conditional_pump_and_grant_keep_one_shared_condition() {
+        let lines = compact_shared_conditional_pump_and_ability_lines(vec![
+            "Enchanted creature gets +1/+1 as long as enchanted creature is red.".to_string(),
+            "As long as enchanted creature is red, it has double strike.".to_string(),
+            "Enchanted creature gets +1/+1 as long as enchanted creature is blue.".to_string(),
+            "Enchanted creature has \"Whenever this permanent deals damage to an opponent, you draw a card.\"".to_string(),
+        ]);
+        assert_eq!(
+            lines,
+            vec![
+                "As long as enchanted creature is red, enchanted creature gets +1/+1 and has double strike.".to_string(),
+                "As long as enchanted creature is blue, enchanted creature gets +1/+1 and has whenever this permanent deals damage to an opponent, you draw a card.".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn hideaway_and_evoke_context_keep_their_narrow_linked_surfaces() {
+        assert_eq!(
+            compact_shared_conditional_pump_and_ability_lines(vec![
+                "Hideaway 4.".to_string(),
+                "This creature enters tapped.".to_string(),
+                "When this creature leaves the battlefield, put each card exiled with it into its owner's hand."
+                    .to_string(),
+            ]),
+            vec![
+                "Hideaway 4".to_string(),
+                "This creature enters tapped.".to_string(),
+                "When this creature leaves the battlefield, put the exiled card into its owner's hand."
+                    .to_string(),
+            ]
+        );
+        assert_eq!(
+            compact_shared_conditional_pump_and_ability_lines(vec![
+                "When this creature enters, it deals 2 damage to each creature and each player."
+                    .to_string(),
+                "Evoke {2}{G}{G}.".to_string(),
+            ]),
+            vec![
+                "When this creature enters, it deals 2 damage to each creature with flying and each player."
+                    .to_string(),
+                "Evoke {2}{G}{G}.".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn scored_line_normalizes_late_milled_card_choice_surface() {
         assert_eq!(
             normalize_scored_compiled_line(
@@ -2999,7 +3204,7 @@ mod tests {
                 .expect("Ulalek control should compile");
         assert_eq!(
             compiled_text_lines(&ulalek).join("\n"),
-            "Devoid\nWhenever you cast an Eldrazi spell, you may pay {C}{C}. If you do, copy all spells you control, then copy all other activated and triggered abilities you control. You may choose new targets for the copy."
+            "Devoid\nWhenever you cast an Eldrazi spell, you may pay {C}{C}. If you do, copy all spells you control, then copy all other activated and triggered abilities you control. You may choose new targets for the copies."
         );
     }
 

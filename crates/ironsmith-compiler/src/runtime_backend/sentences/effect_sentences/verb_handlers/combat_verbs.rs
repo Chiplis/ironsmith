@@ -400,6 +400,17 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
     Ok(effect)
 }
 
+fn parse_damage_each_filter(
+    filter_tokens: &[OwnedLexToken],
+) -> Result<ObjectFilter, CardTextError> {
+    let mut filter = parse_object_filter(filter_tokens, false)?;
+    let words = crate::runtime_backend::token_word_refs(filter_tokens);
+    if words.first() == Some(&"those") || words.starts_with(&["of", "those"]) {
+        filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those));
+    }
+    Ok(filter)
+}
+
 fn parse_deal_damage_inner(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let shape = combat_grammar::parse_combat_damage_head_shape_lexed(tokens);
     let tokens = shape.body_tokens;
@@ -573,7 +584,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
                 "missing damage target filter after 'each'".to_string(),
             ));
         }
-        let filter = parse_object_filter(&shape.target_tokens[1..], false)?;
+        let filter = parse_damage_each_filter(&shape.target_tokens[1..])?;
         return Ok(Some(EffectAst::subject_verb_damage_each(amount, filter)));
     }
     let target = preserve_optional_single_damage_target(
@@ -644,7 +655,7 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
                 "missing damage target filter after 'each'".to_string(),
             ));
         }
-        let filter = parse_object_filter(&shape.target_tokens[1..], false)?;
+        let filter = parse_damage_each_filter(&shape.target_tokens[1..])?;
         return Ok(Some(EffectAst::subject_verb_damage_each(amount, filter)));
     }
     let target = preserve_optional_single_damage_target(
@@ -717,7 +728,7 @@ fn parse_divided_damage_with_amount(
         })?;
     match shape {
         combat_grammar::CombatDividedAmountShape::EvenlyEach { filter_tokens } => {
-            let filter = parse_object_filter(filter_tokens, false)?;
+            let filter = parse_damage_each_filter(filter_tokens)?;
             Ok(EffectAst::subject_verb_damage_each(amount, filter))
         }
         combat_grammar::CombatDividedAmountShape::Distributed {
@@ -952,7 +963,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             })
         }
         combat_grammar::CombatDamageTargetShape::EachFilter { filter_tokens } => {
-            let filter = parse_object_filter(filter_tokens, false)?;
+            let filter = parse_damage_each_filter(filter_tokens)?;
             Ok(EffectAst::subject_verb_damage_each(amount, filter))
         }
         combat_grammar::CombatDamageTargetShape::DelayedEndOfCombat { target_tokens } => {
@@ -1025,6 +1036,25 @@ mod equal_to_damage_surface_tests {
             "object domain missing: {debug}"
         );
         assert_eq!(debug.matches("DealDamage").count(), 2, "{debug}");
+    }
+
+    #[test]
+    fn damage_to_each_of_those_preserves_the_demonstrative_set_surface() {
+        let tokens = lex_line("X damage to each of those creatures", 0)
+            .expect("demonstrative damage clause should lex");
+        let effect = parse_deal_damage(&tokens).expect("demonstrative damage clause should parse");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected typed damage fanout: {effect:#?}");
+        };
+
+        assert_eq!(
+            filter.set_quantifier_surface(),
+            Some(ironsmith_core::SetQuantifierSurface::Those)
+        );
     }
 
     #[test]

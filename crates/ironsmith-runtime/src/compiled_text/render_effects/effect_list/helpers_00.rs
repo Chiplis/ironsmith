@@ -724,7 +724,10 @@ pub(crate) fn describe_return_then_conditional_animation(effects: &[Effect]) -> 
             && apply.additional_modifications.is_empty()
             && matches!(
                 &apply.modification,
-                Some(crate::continuous::Modification::AddCardTypes(card_types))
+                Some(
+                    crate::continuous::Modification::AddCardTypes(card_types)
+                        | crate::continuous::Modification::SetCardTypes(card_types)
+                )
                     if card_types.as_slice() == [CardType::Artifact, CardType::Creature]
             )
         {
@@ -746,6 +749,16 @@ pub(crate) fn describe_return_then_conditional_animation(effects: &[Effect]) -> 
 /// cast that consumes that exact target. The target tag is executable
 /// provenance; unrelated graveyard choices or free casts must not match.
 pub(crate) fn describe_target_same_name_graveyard_may_cast(effects: &[Effect]) -> Option<String> {
+    let effects = match effects {
+        [triggering, rest @ ..]
+            if triggering
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some_and(|tag| tag.tag.as_str() == "triggering") =>
+        {
+            rest
+        }
+        _ => effects,
+    };
     let [target_effect, may_effect] = effects else {
         return None;
     };
@@ -3764,6 +3777,23 @@ pub(crate) fn goad_view(effect: &Effect) -> Option<&crate::effects::GoadEffect> 
 }
 
 pub(crate) fn describe_put_counters_then_goad(effects: &[&Effect]) -> Option<String> {
+    if let [tag_triggering, sequence] = effects
+        && tag_triggering
+            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+            .is_some()
+        && let Some(sequence) = sequence.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+    {
+        let nested = sequence.effects.iter().collect::<Vec<_>>();
+        return describe_put_counters_then_goad(&nested);
+    }
+    if let [sequence] = effects
+        && let Some(sequence) = sequence.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+    {
+        let nested = sequence.effects.iter().collect::<Vec<_>>();
+        return describe_put_counters_then_goad(&nested);
+    }
     let (put_effect, goad_effect) = match effects {
         [put_effect, goad_effect] => (*put_effect, *goad_effect),
         [tag_triggering, put_effect, goad_effect]
@@ -4245,9 +4275,14 @@ pub(crate) fn describe_shape_anew_like_bundle(effects: &[&Effect]) -> Option<Str
         return None;
     }
     let consult = consult_effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    let controller_reference_matches = matches!(
+        &consult.player,
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+            | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Target)
+    );
     if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
         || consult.stop_rule != crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
-        || consult.player != PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+        || !controller_reference_matches
         || consult.filter.card_types != vec![CardType::Artifact]
     {
         return None;
@@ -4261,7 +4296,21 @@ pub(crate) fn describe_shape_anew_like_bundle(effects: &[&Effect]) -> Option<Str
         return None;
     }
     let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
-    if shuffle.player != consult.player {
+    let shuffle_returns_to_consulting_player = matches!(
+        (&consult.player, &shuffle.player),
+        (
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+                | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Target),
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+                | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Target),
+        )
+    ) || matches!(
+        &shuffle.player,
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
+            | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(tag))
+            if tag == &consult.match_tag
+    );
+    if !shuffle_returns_to_consulting_player {
         return None;
     }
     Some(
@@ -6098,7 +6147,7 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
     }
 
     let for_players =
-        unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
+        unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
     if for_players.filter != PlayerFilter::Any
         || for_players.starting_with_controller
         || for_players.stop_after_first_happened
@@ -6108,8 +6157,11 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
     let per_player_effects = if let [effect] = for_players.effects.as_slice()
         && let Some(sequence) =
             unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::SequenceEffect>()
-        && sequence.surface == ironsmith_core::SequenceSurface::CommaThen
-    {
+        && matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::CommaThen
+                | ironsmith_core::SequenceSurface::RepeatedCommaThen
+        ) {
         sequence.effects.as_slice()
     } else {
         for_players.effects.as_slice()

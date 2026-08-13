@@ -38,7 +38,7 @@ mod local_rewrite;
 mod mana_restricted;
 mod mana_retained;
 mod may;
-mod mechanic_actions;
+pub(crate) mod mechanic_actions;
 mod reflexive_trigger;
 mod repeat_effects;
 mod repeat_process;

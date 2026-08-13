@@ -3,9 +3,10 @@ use crate::cards::builders::{
     CardDefinitionBuilder, CarryContext, ChooseOneModeAst, EffectAst, PlayerAst, PredicateAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbSubjectAst, TargetAst,
 };
-use crate::effect::Value;
+use crate::effect::{ChoiceCount, Value};
 use crate::ids::CardId;
 use crate::target::PlayerFilter;
+use crate::target::TaggedOpbjectRelation;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
@@ -20,6 +21,54 @@ use super::{
     preserve_coordinated_effect_chain_surface, starts_like_create_fragment_lexed,
 };
 use crate::runtime_backend::front_end::shared::util::with_source_reference_context;
+
+#[test]
+fn each_player_optional_hand_reveal_preserves_selected_collection() {
+    let tokens = lex_line(
+        "Each player may reveal any number of creature cards from their hand.",
+        0,
+    )
+    .expect("each-player reveal should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("each-player reveal should parse");
+    let [
+        EffectAst::ForEachPlayer {
+            effects: player_effects,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one each-player loop: {effects:#?}");
+    };
+    let [
+        EffectAst::MayByPlayer {
+            player: PlayerAst::That,
+            effects: optional_effects,
+        },
+    ] = player_effects.as_slice()
+    else {
+        panic!("expected an iterated player's optional action: {player_effects:#?}");
+    };
+    let [
+        EffectAst::ChooseObjects {
+            filter,
+            count,
+            player: PlayerAst::That,
+            tag,
+            ..
+        },
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::RevealTagged { tag: reveal_tag },
+            ..
+        }),
+    ] = optional_effects.as_slice()
+    else {
+        panic!("expected a linked hand choice and reveal: {optional_effects:#?}");
+    };
+    assert_eq!(*count, ChoiceCount::any_number());
+    assert_eq!(filter.zone, Some(Zone::Hand));
+    assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert_eq!(reveal_tag, tag);
+}
 
 #[test]
 fn shared_target_player_graveyard_x_draw_and_loss_declares_one_target() {
@@ -3093,6 +3142,92 @@ fn top_cards_then_put_counted_into_hand_rest_graveyard_chain_parses() {
         }
         other => panic!("expected composed looked-cards split effects, got {other:?}"),
     }
+}
+
+#[test]
+fn inline_looked_any_number_battlefield_move_preserves_tapped_entry() {
+    let tokens = lex_line(
+        "Look at the top twenty cards of your library, put any number of land cards from among them onto the battlefield tapped, then shuffle.",
+        0,
+    )
+    .expect("inline looked-card chain should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("inline looked-card chain should parse");
+    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
+        panic!("expected one typed comma-then program: {effects:#?}");
+    };
+    let move_effect = sequence
+        .iter()
+        .find_map(|effect| match effect {
+            EffectAst::ForEachTagged { effects, .. } => effects.first(),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!("selected looked cards should move as a tagged set: {sequence:#?}")
+        });
+    assert!(
+        matches!(
+            move_effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::MoveToZone {
+                    zone: Zone::Battlefield,
+                    battlefield_tapped: true,
+                    ..
+                },
+                ..
+            })
+        ),
+        "the authored tapped entry must survive the inline chain: {sequence:#?}"
+    );
+}
+
+#[test]
+fn inline_mill_then_put_all_matching_uses_the_exact_milled_collection() {
+    let tokens = lex_line(
+        "Mill four cards, then put all Elf cards from among them into your hand.",
+        0,
+    )
+    .expect("inline mill partition should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("inline mill partition should parse");
+    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
+        panic!("expected one typed comma-then program: {effects:#?}");
+    };
+    let [
+        tagged_mill,
+        EffectAst::SubjectVerb(tag_matching),
+        EffectAst::ForEachTagged { tag, effects },
+    ] = sequence.as_slice()
+    else {
+        panic!("expected tagged mill, exact matching capture, and tagged move: {sequence:#?}");
+    };
+    let milled_tag = match tagged_mill {
+        EffectAst::TagAffected { tag, .. } => tag,
+        other => panic!("expected the mill to preserve an affected-card tag: {other:#?}"),
+    };
+    let SubjectVerbActionAst::TagMatchingObjects {
+        filter,
+        zones,
+        tag: matching_tag,
+        ..
+    } = &tag_matching.action
+    else {
+        panic!("expected an exact matching capture: {tag_matching:#?}");
+    };
+    assert_eq!(zones, &[Zone::Graveyard]);
+    assert_eq!(tag, matching_tag);
+    assert!(filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == *milled_tag
+            && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+    }));
+    assert!(matches!(
+        effects.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::MoveToZone {
+                zone: Zone::Hand,
+                ..
+            },
+            ..
+        })]
+    ));
 }
 
 #[test]

@@ -198,7 +198,23 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::AnyOf(branches) => {
             Trigger::any_of(branches.into_iter().map(compile_trigger_spec).collect())
         }
+        TriggerSpec::ConditionQualified {
+            trigger,
+            condition,
+            surface,
+        } => {
+            let condition = super::compile_condition_from_predicate_ast(
+                &condition,
+                &mut super::EffectLoweringContext::new(),
+                &None,
+            )
+            .expect("grammar-proven trigger qualification must lower");
+            Trigger::condition_qualified(compile_trigger_spec(*trigger), condition, surface)
+        }
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
+        TriggerSpec::ThisAttacksWhileYouControl(filter) => {
+            Trigger::this_attacks_while_you_control(filter)
+        }
         TriggerSpec::ThisAndAnotherAttackDifferentPlayers => {
             Trigger::this_and_another_attack_different_players()
         }
@@ -239,6 +255,11 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             filter,
             total_attackers,
         } => Trigger::attacks_one_or_more_with_exact_total(filter, total_attackers as usize),
+        TriggerSpec::AttacksOneOrMoreWithAggregate {
+            filter,
+            metric,
+            comparison,
+        } => Trigger::attacks_one_or_more_with_aggregate(filter, metric, comparison),
         TriggerSpec::AttacksAlone(filter) => Trigger::attacks_alone(filter),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter) => Trigger::attacks_you(filter),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(filter) => {
@@ -1200,6 +1221,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         }
         TriggerSpec::AttacksOneOrMoreWithMinTotal { filter, .. }
         | TriggerSpec::AttacksOneOrMoreWithExactTotal { filter, .. }
+        | TriggerSpec::AttacksOneOrMoreWithAggregate { filter, .. }
             if filter
                 .attacking_player_or_planeswalker_controlled_by
                 .is_some() =>
@@ -1339,6 +1361,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::AttacksOneOrMore(_)
             | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
             | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
+            | TriggerSpec::AttacksOneOrMoreWithAggregate { .. }
             | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
             | TriggerSpec::KeywordAction { .. }
             | TriggerSpec::KeywordActionTaggedObject { .. }

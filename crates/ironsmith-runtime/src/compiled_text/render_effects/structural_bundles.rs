@@ -1,5 +1,174 @@
 use super::*;
 
+/// Render a single source-linked exiled creature-card copy whose copiable
+/// values are replaced by a fixed P/T, one color, card/subtype identity, and
+/// one keyword. All of these fields affect the created token at runtime; this
+/// helper only restores the compact Oracle `except it's ... with ...` surface.
+pub(super) fn describe_source_exiled_retyped_keyword_token_copy(
+    copy: &crate::effects::CreateTokenCopyEffect,
+) -> Option<String> {
+    if !copy.target.is_target()
+        || copy.count.unhinted() != &Value::Fixed(1)
+        || copy.controller != PlayerFilter::You
+        || copy.enters_tapped
+        || copy.has_haste
+        || copy.haste_followup_reference_surface.is_some()
+        || copy.enters_attacking
+        || copy.attack_target_mode.is_some()
+        || copy.exile_at_end_of_combat
+        || copy.exile_at_end_of_combat_reference_surface.is_some()
+        || copy.loses_soulbond
+        || copy.sacrifice_at_next_end_step
+        || copy.sacrifice_at_next_end_step_reference_surface.is_some()
+        || copy.sacrifice_at_next_end_step_ability_text.is_some()
+        || copy.exile_at_next_end_step
+        || copy.exile_at_next_end_step_reference_surface.is_some()
+        || copy.next_end_step_player != PlayerFilter::Any
+        || copy.pt_adjustment.is_some()
+        || copy.clear_mana_cost
+        || !copy.added_card_types.is_empty()
+        || !copy.added_subtypes.is_empty()
+        || !copy.removed_supertypes.is_empty()
+        || copy.set_base_power_toughness_value.is_some()
+        || copy.starting_loyalty.is_some()
+        || copy.granted_static_abilities.len() != 1
+    {
+        return None;
+    }
+
+    let ChooseSpec::Object(filter) = copy.target.base() else {
+        return None;
+    };
+    if filter.zone != Some(Zone::Exile)
+        || filter.tagged_constraints.len() != 1
+        || filter.tagged_constraints[0].relation
+            != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        || filter.tagged_constraints[0].tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+    {
+        return None;
+    }
+    let mut creature_card = filter.clone();
+    creature_card.zone = None;
+    creature_card.tagged_constraints.clear();
+    creature_card.union_surface = Default::default();
+    if creature_card
+        != (ObjectFilter {
+            card_types: vec![CardType::Creature],
+            ..ObjectFilter::default()
+        })
+    {
+        return None;
+    }
+
+    let (power, toughness) = copy.set_base_power_toughness?;
+    let colors = copy.set_colors?;
+    let color = if colors == crate::color::ColorSet::WHITE {
+        "white"
+    } else if colors == crate::color::ColorSet::BLUE {
+        "blue"
+    } else if colors == crate::color::ColorSet::BLACK {
+        "black"
+    } else if colors == crate::color::ColorSet::RED {
+        "red"
+    } else if colors == crate::color::ColorSet::GREEN {
+        "green"
+    } else {
+        return None;
+    };
+    let card_types = copy.set_card_types.as_deref()?;
+    let subtypes = copy.set_subtypes.as_deref()?;
+    if card_types.is_empty() || subtypes.is_empty() {
+        return None;
+    }
+    let keyword = &copy.granted_static_abilities[0];
+    let keyword_model = keyword.compiled_model()?;
+    let keyword_id = keyword_model.id?;
+    if !keyword_id.is_keyword()
+        || !matches!(
+            keyword_model.payload,
+            ironsmith_core::StaticAbilityPayload::None
+        )
+    {
+        return None;
+    }
+    let identity = std::iter::once(format!("{power}/{toughness}"))
+        .chain(std::iter::once(color.to_string()))
+        .chain(subtypes.iter().map(ToString::to_string))
+        .chain(
+            card_types
+                .iter()
+                .map(|card_type| card_type.name().to_string()),
+        )
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(format!(
+        "Create a token that's a copy of target creature card exiled with this artifact, except it's {} with {}",
+        format!("a {identity}"),
+        keyword_model.label.to_ascii_lowercase()
+    ))
+}
+
+#[cfg(test)]
+mod source_exiled_retyped_keyword_token_copy_tests {
+    use super::*;
+
+    fn dino_copy() -> crate::effects::CreateTokenCopyEffect {
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Exile),
+            card_types: vec![CardType::Creature],
+            ..ObjectFilter::default()
+        };
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let mut copy = crate::effects::CreateTokenCopyEffect::one(ChooseSpec::target(
+            ChooseSpec::Object(filter),
+        ));
+        copy.set_base_power_toughness = Some((6, 6));
+        copy.set_colors = Some(crate::color::ColorSet::GREEN);
+        copy.set_card_types = Some(vec![CardType::Creature]);
+        copy.set_subtypes = Some(vec![Subtype::Dinosaur]);
+        copy.granted_static_abilities = vec![crate::static_abilities::StaticAbility::from_model(
+            ironsmith_core::StaticAbility {
+                id: Some(crate::static_abilities::StaticAbilityId::Trample),
+                label: "Trample".to_string(),
+                payload: ironsmith_core::StaticAbilityPayload::None,
+            },
+        )];
+        copy
+    }
+
+    #[test]
+    fn compacts_only_the_exact_source_exiled_retyped_keyword_copy() {
+        let copy = dino_copy();
+        assert_eq!(
+            describe_source_exiled_retyped_keyword_token_copy(&copy).as_deref(),
+            Some(
+                "Create a token that's a copy of target creature card exiled with this artifact, except it's a 6/6 green Dinosaur creature with trample"
+            )
+        );
+
+        let mut wrong_tag = copy.clone();
+        let ChooseSpec::Target(inner) = &mut wrong_tag.target else {
+            panic!("fixture should be targeted")
+        };
+        let ChooseSpec::Object(filter) = inner.as_mut() else {
+            panic!("fixture should target an object filter")
+        };
+        filter.tagged_constraints[0].tag = TagKey::from("unrelated");
+        assert!(describe_source_exiled_retyped_keyword_token_copy(&wrong_tag).is_none());
+
+        let mut two_keywords = copy;
+        two_keywords
+            .granted_static_abilities
+            .push(crate::static_abilities::StaticAbility::haste());
+        assert!(describe_source_exiled_retyped_keyword_token_copy(&two_keywords).is_none());
+    }
+}
+
 /// Render a copied token whose copiable exception replaces all card types,
 /// assigns a subtype, and grants one authored activated ability. These typed
 /// fields are executable; the compactor only restores the canonical `with`
@@ -3311,7 +3480,7 @@ pub(in crate::compiled_text) fn describe_return_then_linked_enter_return_pair(
     )
 }
 
-pub(super) fn choose_search_zones(
+pub(crate) fn choose_search_zones(
     choose: &crate::effects::ChooseObjectsEffect,
 ) -> Option<Vec<Zone>> {
     let primary_zone = choose.filter.zone.or(choose.zone)?;
@@ -6225,15 +6394,38 @@ pub(crate) fn describe_reveal_hand_choose_discard_then_random_effects(
 pub(crate) fn describe_choose_sacrifice_then_source_damage_effects(
     effects: &[Effect],
 ) -> Option<String> {
+    if let [effect] = effects
+        && let Some(sequence) = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+        && matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::Sequential
+                | ironsmith_core::SequenceSurface::Coordinated
+        )
+    {
+        return describe_choose_sacrifice_then_source_damage_effects(&sequence.effects);
+    }
     let [choose_effect, sacrifice_effect, damage_effect] = effects else {
         return None;
     };
 
-    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let sacrifice = sacrifice_view(sacrifice_effect)?;
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifice = sacrifice_view(structural_unwrap_render_wrappers(sacrifice_effect))?;
     describe_choose_then_sacrifice(choose, sacrifice)?;
 
-    let damage = damage_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let damage_root = structural_unwrap_render_wrappers(damage_effect);
+    let damage_root = if let Some(with_source) =
+        damage_root.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+    {
+        if !matches!(with_source.source.base(), ChooseSpec::Source) {
+            return None;
+        }
+        structural_unwrap_render_wrappers(&with_source.effect)
+    } else {
+        damage_root
+    };
+    let damage = damage_root.downcast_ref::<crate::effects::DealDamageEffect>()?;
     if damage.source_is_combat
         || damage.unpreventable
         || !matches!(damage.target, ChooseSpec::SourceController)
@@ -6251,6 +6443,42 @@ pub(crate) fn describe_choose_sacrifice_then_source_damage_effects(
     let damage_text = lowercase_first(&describe_effect(damage_effect));
 
     Some(format!("Sacrifice {sacrificed} and {damage_text}"))
+}
+
+pub(crate) fn describe_damaged_player_discard_then_untap_lands(
+    effects: &[Effect],
+) -> Option<String> {
+    let [discard_effect, tag_effect, untap_effect] = effects else {
+        return None;
+    };
+    let discard = structural_unwrap_render_wrappers(discard_effect)
+        .downcast_ref::<crate::effects::DiscardEffect>()?;
+    if discard.player != PlayerFilter::DamagedPlayer
+        || discard.count != Value::Fixed(1)
+        || discard.random
+        || discard.any_number
+        || discard.card_filter.is_some()
+    {
+        return None;
+    }
+    let tagged = structural_unwrap_render_wrappers(tag_effect)
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let untap = structural_unwrap_render_wrappers(untap_effect)
+        .downcast_ref::<crate::effects::UntapEffect>()?;
+    let ChooseSpec::All(untap_filter) = &untap.target else {
+        return None;
+    };
+    let expected = ObjectFilter::land()
+        .you_control()
+        .in_zone(Zone::Battlefield);
+    if tagged.filter != expected
+        || tagged.zone.is_some()
+        || !tagged.additional_zones.is_empty()
+        || untap_filter != &expected
+    {
+        return None;
+    }
+    Some("that player discards a card and you untap all lands you control".to_string())
 }
 
 pub(super) fn normalize_reflexive_sacrifice_setup(setup: String) -> String {
@@ -8375,6 +8603,73 @@ fn describe_quantified_player_life_total(
     ))
 }
 
+fn describe_quantified_player_optional_hand_reveal(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.starting_with_controller || for_players.stop_after_first_happened {
+        return None;
+    }
+    let [may_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [choose_effect, reveal_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    if may.decider != Some(PlayerFilter::IteratedPlayer)
+        || may.fallback != crate::decision::FallbackStrategy::Decline
+        || choose.chooser != PlayerFilter::IteratedPlayer
+        || !choose.count.is_any_number()
+        || choose.count_value.is_some()
+        || choose.aggregate_constraint.is_some()
+        || choose.zone != Some(Zone::Hand)
+        || !choose.additional_zones.is_empty()
+        || choose.filter.zone != Some(Zone::Hand)
+        || choose.filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || choose.is_search
+        || choose.reveal
+        || choose.top_only
+        || choose.bottom_only
+        || reveal.tag != choose.tag
+    {
+        return None;
+    }
+
+    let subject = quantified_player_subject(&for_players.filter);
+    if !matches!(
+        for_players.filter,
+        PlayerFilter::Any | PlayerFilter::Opponent
+    ) {
+        return None;
+    }
+    let mut filter = choose.filter.clone();
+    filter.zone = None;
+    filter.owner = None;
+    filter.controller = None;
+    filter.tagged_constraints.clear();
+    let described = filter.description();
+    let described = described
+        .strip_suffix(" in their hand")
+        .or_else(|| described.strip_suffix(" from their hand"))
+        .unwrap_or(&described);
+    let mut selection = pluralize_noun_phrase(described);
+    if let Some(rest) = selection.strip_prefix("of ") {
+        selection = rest.to_string();
+    }
+    if let Some(rest) = selection.strip_prefix("creatures ") {
+        selection = format!("creature cards {rest}");
+    } else if selection == "creatures" {
+        selection = "creature cards".to_string();
+    } else if !selection.contains("card") {
+        selection.push_str(" cards");
+    }
+    Some(format!(
+        "{subject} may reveal any number of {selection} from their hand"
+    ))
+}
+
 pub(super) fn describe_quantified_player_effect(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -8401,6 +8696,7 @@ pub(super) fn describe_quantified_player_effect(
         .or_else(|| describe_quantified_player_damage(for_players))
         .or_else(|| describe_quantified_player_conditional(for_players))
         .or_else(|| describe_quantified_player_life_total(for_players))
+        .or_else(|| describe_quantified_player_optional_hand_reveal(for_players))
         .or_else(|| describe_for_players_simple_iterated_action(for_players))
         .or_else(|| describe_for_players_iterated_action_sequence(for_players))
 }
@@ -9602,6 +9898,19 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
             move_to_hand_with_id,
             move_to_hand,
             if_effect,
+        )
+    {
+        return Some(compact);
+    }
+    if let [first, second, third] = effects
+        && let Some((source_tag, mill)) = mill_with_collection_tag(first)
+        && let Some(matching) = second.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+        && let Some((_, move_matching)) = for_each_tagged_for_compaction(third)
+        && let Some(compact) = describe_tagged_mill_then_put_all_matching_milled_cards(
+            source_tag.as_str(),
+            mill,
+            matching,
+            move_matching,
         )
     {
         return Some(compact);
@@ -11668,11 +11977,37 @@ pub(super) fn is_all_attacking_creatures(spec: &ChooseSpec) -> bool {
 pub(super) fn describe_untap_attacking_then_additional_combat(
     effects: &[Effect],
 ) -> Option<String> {
-    let [untap_effect, phases_effect] = effects else {
-        return None;
+    let (untap_effect, phases_effect) = match effects {
+        [untap_effect, phases_effect] => (untap_effect, phases_effect),
+        [tag_effect, untap_effect, phases_effect] => {
+            let tagged = structural_unwrap_render_wrappers(tag_effect)
+                .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+            if tagged.zone.is_some() || !tagged.additional_zones.is_empty() {
+                return None;
+            }
+            let untap = structural_unwrap_render_wrappers(untap_effect)
+                .downcast_ref::<crate::effects::UntapEffect>()?;
+            let ChooseSpec::All(untap_filter) = untap.target.base() else {
+                return None;
+            };
+            let mut tagged_filter = tagged.filter.clone();
+            let mut untap_filter = untap_filter.clone();
+            tagged_filter.union_surface = Default::default();
+            untap_filter.union_surface = Default::default();
+            if untap_filter != tagged_filter {
+                return None;
+            }
+            let mut semantic_filter = tagged_filter;
+            semantic_filter.attacking = false;
+            if semantic_filter != ObjectFilter::creature() || !tagged.filter.attacking {
+                return None;
+            }
+            (untap_effect, phases_effect)
+        }
+        _ => return None,
     };
     let untap = untap_effect.downcast_ref::<crate::effects::UntapEffect>()?;
-    if !is_all_attacking_creatures(&untap.target) {
+    if effects.len() == 2 && !is_all_attacking_creatures(&untap.target) {
         return None;
     }
     let additional_phases =
@@ -11682,6 +12017,45 @@ pub(super) fn describe_untap_attacking_then_additional_combat(
     }
     Some(
         "Untap each attacking creature. After this phase, there is an additional combat phase"
+            .to_string(),
+    )
+}
+
+pub(super) fn describe_tagged_untap_all_then_additional_combat(
+    effects: &[Effect],
+) -> Option<String> {
+    let [tag_effect, untap_effect, phases_effect] = effects else {
+        return None;
+    };
+    let tagged = structural_unwrap_render_wrappers(tag_effect)
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    if tagged.zone.is_some() || !tagged.additional_zones.is_empty() {
+        return None;
+    }
+    let untap = structural_unwrap_render_wrappers(untap_effect)
+        .downcast_ref::<crate::effects::UntapEffect>()?;
+    let ChooseSpec::All(untap_filter) = untap.target.base() else {
+        return None;
+    };
+    if untap_filter != &tagged.filter {
+        return None;
+    }
+    let mut semantic_filter = tagged.filter.clone();
+    semantic_filter.union_surface = Default::default();
+    if semantic_filter
+        != ObjectFilter::creature()
+            .you_control()
+            .in_zone(Zone::Battlefield)
+    {
+        return None;
+    }
+    let additional = structural_unwrap_render_wrappers(phases_effect)
+        .downcast_ref::<crate::effects::AdditionalPhasesEffect>()?;
+    if additional.phases != [crate::effects::AdditionalPhase::Combat] {
+        return None;
+    }
+    Some(
+        "Untap all creatures you control and after this phase, there is an additional combat phase"
             .to_string(),
     )
 }

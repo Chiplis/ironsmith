@@ -1212,6 +1212,11 @@ pub(crate) fn spell_has_active_flash_with_view(
 ) -> bool {
     spell.abilities.iter().any(|a| {
         if let crate::ability::AbilityKind::Static(s) = &a.kind {
+            if let Some(condition) = s.conditional_flash_condition() {
+                return crate::condition_eval::evaluate_condition_cast_time(
+                    game, condition, player, spell_id,
+                );
+            }
             if s.has_flash() {
                 return true;
             }
@@ -1598,6 +1603,36 @@ pub(crate) fn face_down_cast_mana_cost() -> crate::mana::ManaCost {
     crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(3)]])
 }
 
+fn commander_tax_life_per_previous_cast(spell: &crate::object::Object) -> Option<u32> {
+    spell.abilities.iter().find_map(|ability| {
+        if !ability.functions_in(&Zone::Command) {
+            return None;
+        }
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        match &static_ability.compiled_model()?.payload {
+            ironsmith_core::StaticAbilityPayload::CommanderTaxLifeSubstitution {
+                life_per_previous_cast,
+            } => Some(*life_per_previous_cast),
+            _ => None,
+        }
+    })
+}
+
+pub(crate) fn commander_tax_life_payment_amount(
+    game: &GameState,
+    spell: &crate::object::Object,
+    from_zone: Zone,
+) -> u32 {
+    if from_zone != Zone::Command {
+        return 0;
+    }
+    commander_tax_life_per_previous_cast(spell)
+        .unwrap_or(0)
+        .saturating_mul(game.commander_cast_count(spell.id))
+}
+
 pub(crate) fn spell_can_be_cast_face_down(spell: &crate::object::Object) -> bool {
     spell.abilities.iter().any(|ability| {
         matches!(
@@ -1710,7 +1745,11 @@ pub fn spell_mana_cost_for_cast(
     };
 
     if from_zone == Zone::Command {
-        let tax = game.commander_cast_count(spell.id).saturating_mul(2);
+        let tax = if commander_tax_life_per_previous_cast(spell).is_some() {
+            0
+        } else {
+            game.commander_cast_count(spell.id).saturating_mul(2)
+        };
         base_cost.map(|cost| cost.add_generic(tax))
     } else {
         base_cost
@@ -2433,6 +2472,19 @@ pub(crate) fn can_cast_spell_with_context(
         );
     ctx.add_target_legality_ms(target_started_at.elapsed_ms());
     if !has_legal_targets {
+        ctx.add_total_ms(total_started_at.elapsed_ms());
+        return false;
+    }
+
+    let commander_tax_life = commander_tax_life_payment_amount(game, spell, spell.zone);
+    if commander_tax_life > 0
+        && !can_pay_cost_with_spell_exclusion(
+            game,
+            player,
+            &crate::costs::Cost::life(commander_tax_life),
+            Some(spell.id),
+        )
+    {
         ctx.add_total_ms(total_started_at.elapsed_ms());
         return false;
     }

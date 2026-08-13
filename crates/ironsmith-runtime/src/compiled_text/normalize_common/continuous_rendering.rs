@@ -117,6 +117,9 @@ pub(crate) fn describe_spells_cast_this_turn_each(filter: &PlayerFilter) -> Stri
 }
 
 pub(crate) fn describe_signed_value(value: &Value) -> String {
+    if value.has_surface_hint(ValueSurfaceHint::WhereXIs) {
+        return "+X".to_string();
+    }
     match value {
         Value::Fixed(n) if *n >= 0 => format!("+{n}"),
         Value::Scaled(value, factor) if *factor > 0 => {
@@ -2557,6 +2560,10 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         effect.type_retention_surface,
         Some(ironsmith_core::TypeRetentionSurface::StillALand)
     );
+    let explicitly_still_card_type = match effect.type_retention_surface {
+        Some(ironsmith_core::TypeRetentionSurface::StillACardType(card_type)) => Some(card_type),
+        _ => None,
+    };
     let explicitly_in_addition = matches!(
         effect.type_retention_surface,
         Some(
@@ -2831,6 +2838,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         });
     let render_as_addition_to_other_types = !replaces_other_types
         && !explicitly_still_a_land
+        && explicitly_still_card_type.is_none()
         && !returned_artifact_creature_animation
         && (explicitly_in_addition
             || returned_permanent_animation
@@ -2869,6 +2877,15 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     if let Some(where_clause) = pt_where_clause {
         text.push_str(", where X is ");
         text.push_str(&where_clause);
+    }
+    if let Some(card_type) = explicitly_still_card_type {
+        if plural_target {
+            text.push_str(" that are still ");
+            text.push_str(card_type.plural_name());
+        } else {
+            text.push_str(" that's still a ");
+            text.push_str(describe_card_type_word_local(card_type));
+        }
     }
     if preserves_land_types && !render_as_addition_to_other_types {
         if plural_target {
@@ -2991,6 +3008,27 @@ pub(crate) fn describe_apply_continuous_effect(
     }
     if let Some(text) = describe_triggered_creature_entry_replacement_grant(effect) {
         return Some(text);
+    }
+    if effect.condition.is_none()
+        && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && matches!(effect.target, crate::continuous::EffectTarget::Source)
+        && effect.target_spec.as_ref().is_some_and(|spec| matches!(spec.base(), ChooseSpec::Source))
+        && matches!(effect.until, Until::EndOfTurn)
+        && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
+        && let Some(model) = ability.compiled_model()
+        && let ironsmith_core::StaticAbilityPayload::TargetingAsThoughNoAbility(spec) =
+            &model.payload
+    {
+        let display = spec
+            .display
+            .strip_prefix("this can ")
+            .map(|tail| format!("{} can {tail}", lowercase_first(&target)))
+            .unwrap_or_else(|| spec.display.clone());
+        return Some(format!(
+            "Until end of turn, {}",
+            lowercase_first(&display)
+        ));
     }
     if effect.condition.is_none()
         && effect.additional_modifications.is_empty()

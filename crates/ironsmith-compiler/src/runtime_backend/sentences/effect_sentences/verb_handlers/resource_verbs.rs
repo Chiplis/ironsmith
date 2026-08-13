@@ -62,6 +62,9 @@ pub(crate) fn parse_effect_with_verb(
         }
         Verb::Put => {
             let has_onto = crate::runtime_backend::lexer::contains_token_word(tokens, "onto");
+            let has_from_into_zone_move =
+                crate::runtime_backend::lexer::contains_token_word(tokens, "from")
+                    && crate::runtime_backend::lexer::contains_token_word(tokens, "into");
             let has_counter_words = crate::runtime_backend::lexer::contains_token_any_word(
                 tokens,
                 &["counter", "counters"],
@@ -70,7 +73,7 @@ pub(crate) fn parse_effect_with_verb(
             // Prefer zone moves like "... onto the battlefield" over counter placement because
             // "counter(s)" may appear in subordinate clauses (e.g. "mana value equal to the number
             // of charge counters on this artifact").
-            if has_onto {
+            if has_onto || has_from_into_zone_move {
                 if let Ok(effect) = parse_put_into_hand(tokens, subject) {
                     Ok(effect)
                 } else if has_counter_words {
@@ -100,6 +103,7 @@ pub(crate) fn parse_effect_with_verb(
         }
         Verb::Unattach => parse_unattach(tokens),
         Verb::Untap => parse_untap(tokens),
+        Verb::Unlock => parse_unlock_room_door(tokens, subject),
         Verb::Scry => parse_scry(tokens, subject),
         Verb::Discard => parse_discard(tokens, subject),
         Verb::Transform => parse_transform(tokens),
@@ -116,10 +120,10 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Remove => parse_remove(tokens),
         Verb::Return => {
             let player = extract_subject_player(subject);
-            // "return target creature card of an opponent's choice from your
-            // graveyard to your hand" delegates the target choice to an
-            // opponent: declare the target with that chooser, then return
-            // the declared object.
+            // An explicit target "of an opponent's choice" is declared by
+            // that opponent during announcement. An untargeted object "of an
+            // opponent's choice" is chosen during resolution instead (for
+            // example, Tasigur's graveyard return).
             if let Some(choice_shape) =
                 crate::runtime_backend::front_end::grammar::choices::parse_possessive_object_choice_tokens(
                     tokens,
@@ -137,11 +141,33 @@ pub(crate) fn parse_effect_with_verb(
                         | SubjectVerbActionAst::ReturnToHand { target, .. },
                     ..
                 }) = &mut effect
-                    && matches!(
-                        target,
-                        TargetAst::Object(..) | TargetAst::WithCount(..)
-                    )
                 {
+                    if let Some((filter, count, count_value)) =
+                        untargeted_object_choice_parts(target)
+                    {
+                        let object_tag =
+                            crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                                tokens,
+                                "chosen",
+                            );
+                        *target = TargetAst::Tagged(object_tag.clone(), None);
+                        return Ok(EffectAst::Sequence {
+                            effects: vec![
+                                EffectAst::ChooseObjects {
+                                    filter,
+                                    count,
+                                    count_value,
+                                    player: PlayerAst::Opponent,
+                                    tag: object_tag,
+                                },
+                                effect,
+                            ],
+                        });
+                    }
+
+                    if !matches!(target, TargetAst::Object(..) | TargetAst::WithCount(..)) {
+                        return Ok(effect);
+                    }
                     let declared = std::mem::replace(
                         target,
                         TargetAst::Tagged(crate::host::IT_TAG.into(), None),
@@ -183,6 +209,57 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Note => parse_note(tokens),
         Verb::End => parse_end(tokens, subject),
     }
+}
+
+fn untargeted_object_choice_parts(
+    target: &TargetAst,
+) -> Option<(ObjectFilter, ChoiceCount, Option<Value>)> {
+    match target {
+        TargetAst::Object(filter, explicit_target_span, _) if explicit_target_span.is_none() => {
+            Some((filter.clone(), ChoiceCount::exactly(1), None))
+        }
+        TargetAst::WithCount(inner, count) => {
+            let TargetAst::Object(filter, explicit_target_span, _) = inner.as_ref() else {
+                return None;
+            };
+            explicit_target_span
+                .is_none()
+                .then(|| (filter.clone(), count.clone(), None))
+        }
+        TargetAst::WithCountValue(inner, count, value) => {
+            let TargetAst::Object(filter, explicit_target_span, _) = inner.as_ref() else {
+                return None;
+            };
+            explicit_target_span
+                .is_none()
+                .then(|| (filter.clone(), count.clone(), Some(value.clone())))
+        }
+        _ => None,
+    }
+}
+
+fn parse_unlock_room_door(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = if words
+        .first()
+        .is_some_and(|word| matches!(*word, "unlock" | "unlocks"))
+    {
+        &words[1..]
+    } else {
+        words.as_slice()
+    };
+    if words != ["a", "locked", "door", "of", "a", "room", "you", "control"] {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported unlock clause (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+    Ok(EffectAst::subject_verb_unlock_room_door(
+        extract_subject_player(subject).unwrap_or(PlayerAst::You),
+    ))
 }
 
 fn parse_reverse(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -585,4 +662,31 @@ pub(crate) fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     }
 
     Ok(EffectAst::subject_verb_suspect(target))
+}
+
+#[cfg(test)]
+mod counter_qualified_zone_move_tests {
+    use super::*;
+
+    #[test]
+    fn counter_in_source_filter_does_not_turn_zone_move_into_counter_placement() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "a card you own with a silver counter on it from exile into your hand",
+            0,
+        )
+        .expect("zone move should lex");
+        let effect = parse_effect_with_verb(Verb::Put, None, &tokens)
+            .expect("counter-qualified zone move should parse");
+
+        assert!(matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::MoveToZone {
+                    zone: Zone::Hand,
+                    ..
+                },
+                ..
+            })
+        ));
+    }
 }

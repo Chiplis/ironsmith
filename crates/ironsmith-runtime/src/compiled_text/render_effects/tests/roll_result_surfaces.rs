@@ -207,6 +207,39 @@ fn d20_result_conjunction_preserves_explicit_controller_draw_subject() {
 }
 
 #[test]
+fn d20_single_card_result_conjunction_keeps_both_controller_subjects() {
+    let roll_id = crate::effect::EffectId(31);
+    let branch = Effect::if_then(
+        roll_id,
+        crate::effect::EffectPredicate::Value(crate::effect::Comparison::BetweenInclusive(1, 9)),
+        vec![Effect::new(
+            crate::effects::SequenceEffect::result_conjunction(
+                vec![
+                    Effect::draw(Value::Fixed(1)),
+                    Effect::new(crate::effects::LoseLifeEffect::you(1)),
+                ],
+                false,
+            ),
+        )],
+    );
+    let table = vec![
+        Effect::with_id(roll_id.0, Effect::roll_die(20, PlayerFilter::You)),
+        branch,
+        Effect::if_then(
+            roll_id,
+            crate::effect::EffectPredicate::Value(crate::effect::Comparison::BetweenInclusive(
+                10, 20,
+            )),
+            vec![Effect::gain_life(1)],
+        ),
+    ];
+    assert_eq!(
+        describe_roll_die_with_numeric_result_table(&table).as_deref(),
+        Some("Roll a d20.\n1—9 | You draw a card and you lose 1 life.\n10—20 | You gain 1 life.")
+    );
+}
+
+#[test]
 fn numeric_result_table_renders_only_typed_authored_branch_labels() {
     let roll_id = crate::effect::EffectId(30);
     let labeled = Effect::new(crate::effects::SequenceEffect::result_labeled(

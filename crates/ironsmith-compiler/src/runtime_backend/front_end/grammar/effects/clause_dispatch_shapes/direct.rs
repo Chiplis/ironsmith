@@ -300,6 +300,7 @@ pub(crate) enum ProtectionChoiceChooserShape {
 pub(crate) struct ProtectionChoiceShape {
     pub(crate) includes_colorless: bool,
     pub(crate) includes_artifacts: bool,
+    pub(crate) chooses_card_type: bool,
     pub(crate) chooser: ProtectionChoiceChooserShape,
 }
 
@@ -312,12 +313,14 @@ pub(crate) fn parse_protection_choice_shape(
         winnow::combinator::empty.value((false, false)),
     ));
     let choice = alt((
+        primitives::phrase(&["the", "card", "type", "of", "your", "choice"])
+            .value((ProtectionChoiceChooserShape::You, true)),
         primitives::phrase(&["the", "color", "of", "your", "choice"])
-            .value(ProtectionChoiceChooserShape::You),
+            .value((ProtectionChoiceChooserShape::You, false)),
         primitives::phrase(&["the", "color", "of", "its", "controller's", "choice"])
-            .value(ProtectionChoiceChooserShape::TargetController),
+            .value((ProtectionChoiceChooserShape::TargetController, false)),
         primitives::phrase(&["the", "color", "of", "its", "controllers", "choice"])
-            .value(ProtectionChoiceChooserShape::TargetController),
+            .value((ProtectionChoiceChooserShape::TargetController, false)),
     ));
     primitives::parse_all(
         tokens,
@@ -329,10 +332,17 @@ pub(crate) fn parse_protection_choice_shape(
             primitives::sentence_end(),
         )
             .map(
-                |(_, (includes_colorless, includes_artifacts), chooser, _, _)| {
+                |(
+                    _,
+                    (includes_colorless, includes_artifacts),
+                    (chooser, chooses_card_type),
+                    _,
+                    _,
+                )| {
                     ProtectionChoiceShape {
                         includes_colorless,
                         includes_artifacts,
+                        chooses_card_type,
                         chooser,
                     }
                 },

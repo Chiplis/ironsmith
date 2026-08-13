@@ -157,7 +157,12 @@ pub(crate) fn can_block_with_view(
     }
 
     // Shadow: can only block/be blocked by creatures with shadow
-    if attacker_has(StaticAbilityId::Shadow) && !blocker_has(StaticAbilityId::Shadow) {
+    if attacker_has(StaticAbilityId::Shadow)
+        && !blocker_has(StaticAbilityId::Shadow)
+        && !blocker_abilities
+            .iter()
+            .any(|ability| ability.blocks_as_though_no_shadow())
+    {
         return false;
     }
     // Creatures with shadow can only block creatures with shadow
@@ -977,6 +982,32 @@ mod tests {
         // Shadow can't block normal
         let normal_attacker = make_creature("Normal Attacker", 2, 2);
         assert!(!can_block(&normal_attacker, &shadow_blocker, &game));
+    }
+
+    #[test]
+    fn typed_no_shadow_permission_ignores_only_the_attackers_shadow() {
+        let game = test_game_state();
+        let mut shadow_attacker = make_creature("Shadow Attacker", 2, 2);
+        add_ability(&mut shadow_attacker, StaticAbility::shadow());
+
+        let mut permitted_blocker = make_creature("Permitted Blocker", 2, 2);
+        add_ability(
+            &mut permitted_blocker,
+            StaticAbility::can_block_as_though_no_shadow(),
+        );
+        assert!(can_block(&shadow_attacker, &permitted_blocker, &game));
+
+        let normal_attacker = make_creature("Normal Attacker", 2, 2);
+        let mut shadow_blocker = make_creature("Shadow Blocker", 2, 2);
+        add_ability(&mut shadow_blocker, StaticAbility::shadow());
+        add_ability(
+            &mut shadow_blocker,
+            StaticAbility::can_block_as_though_no_shadow(),
+        );
+        assert!(
+            !can_block(&normal_attacker, &shadow_blocker, &game),
+            "the permission does not erase shadow from the blocker itself"
+        );
     }
 
     #[test]

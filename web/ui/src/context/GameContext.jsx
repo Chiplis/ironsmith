@@ -393,6 +393,20 @@ function serializeMultiplayerCommand(command, _currentState) {
     };
   }
 
+  if (command.type === "mana_payment") {
+    return {
+      type: "mana_payment",
+      response: {
+        ...(command.response || {}),
+        plan_id: command.response?.plan_id == null ? undefined : String(command.response.plan_id),
+        request_hash: command.response?.request_hash == null ? undefined : String(command.response.request_hash),
+        required_source_ids: (command.response?.required_source_ids || []).map(String),
+        excluded_source_ids: (command.response?.excluded_source_ids || []).map(String),
+        preserved_source_ids: (command.response?.preserved_source_ids || []).map(String),
+      },
+    };
+  }
+
   if (command.type === "select_objects") {
     const objectIds = (command.object_ids || []).map((objectId) => Number(objectId));
     const { stableIds, hiddenRefs } = selectObjectSyncMetadataForCommand(
@@ -523,6 +537,20 @@ function resolveSyncedCommand(command) {
     return {
       type: "select_options",
       option_indices: command.option_indices.map((optionIndex) => Number(optionIndex)),
+    };
+  }
+
+  if (command.type === "mana_payment" && command.response) {
+    return {
+      type: "mana_payment",
+      response: {
+        ...command.response,
+        plan_id: command.response.plan_id == null ? undefined : String(command.response.plan_id),
+        request_hash: command.response.request_hash == null ? undefined : String(command.response.request_hash),
+        required_source_ids: (command.response.required_source_ids || []).map(String),
+        excluded_source_ids: (command.response.excluded_source_ids || []).map(String),
+        preserved_source_ids: (command.response.preserved_source_ids || []).map(String),
+      },
     };
   }
 

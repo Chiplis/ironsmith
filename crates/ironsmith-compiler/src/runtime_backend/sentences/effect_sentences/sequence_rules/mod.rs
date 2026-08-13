@@ -114,8 +114,16 @@ fn first_word_exile(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "exile")
 }
 
+fn first_word_counter(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "counter")
+}
+
 fn first_word_exile_or_target(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_in(sentences, sentence_idx, &["exile", "target"])
+}
+
+fn first_word_exile_target_or_shuffle(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["exile", "target", "shuffle"])
 }
 
 fn first_word_look_or_reveal(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
@@ -271,7 +279,20 @@ fn for_each_tagged_copy_window(sentences: &[SentenceInput], sentence_idx: usize)
         && sentence_head_word_is(sentences, sentence_idx + 1, "the")
 }
 
+fn damage_excess_exile_permission_window(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx + 1, "exile")
+        && sentence_head_word_is(sentences, sentence_idx + 2, "you")
+}
+
 const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
+    SequenceRuleDef {
+        name: "damage-excess-exile-top-play-until-next-turn",
+        feature_tag: Some("damage-outcome-exile-permission"),
+        priority: 455,
+        consumed_sentences: 3,
+        predicate: damage_excess_exile_permission_window,
+        parser: generic_subject_verb_sequences::triples::parse_damage_then_excess_exile_top_then_play_until_next_turn,
+    },
     SequenceRuleDef {
         name: "destroy-set-no-regeneration-rider",
         feature_tag: Some("destroy-no-regeneration"),
@@ -335,6 +356,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_you,
         parser: generic_subject_verb_sequences::pairs::parse_controller_defending_loot_then_greatest_mana_value_followup,
+    },
+    SequenceRuleDef {
+        name: "counter-spell-artifact-creature-battlefield-replacement",
+        feature_tag: Some("counter-zone-control-replacement"),
+        priority: 449,
+        consumed_sentences: 2,
+        predicate: first_word_counter,
+        parser: generic_subject_verb_sequences::pairs::parse_counter_spell_then_artifact_or_creature_enters_under_your_control,
     },
     SequenceRuleDef {
         name: "resolving-card-exile-return-next-end-step",
@@ -405,7 +434,7 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         feature_tag: Some("exiled-collection-cast-partition"),
         priority: 444,
         consumed_sentences: 3,
-        predicate: first_word_exile_or_target,
+        predicate: first_word_exile_target_or_shuffle,
         parser: generic_subject_verb_sequences::exiled_collections::parse_exile_top_cast_collection_then_partition,
     },
     SequenceRuleDef {
@@ -413,7 +442,7 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         feature_tag: Some("exiled-collection-cast-choice"),
         priority: 443,
         consumed_sentences: 2,
-        predicate: first_word_exile_or_target,
+        predicate: first_word_exile_target_or_shuffle,
         parser: generic_subject_verb_sequences::exiled_collections::parse_exile_top_then_cast_collection_free,
     },
     SequenceRuleDef {
@@ -688,6 +717,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         predicate: first_word_look,
         parser:
             generic_subject_verb_sequences::quads::parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle,
+    },
+    SequenceRuleDef {
+        name: "reveal-top-opponent-chooses-then-exact-partition",
+        feature_tag: Some("revealed-card-opponent-partition"),
+        priority: 345,
+        consumed_sentences: 3,
+        predicate: first_word_reveal,
+        parser:
+            generic_subject_verb_sequences::triples::parse_reveal_top_opponent_chooses_then_partition,
     },
     SequenceRuleDef {
         name: "look-at-top-optional-one-top-remainder-bottom",

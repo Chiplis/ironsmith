@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, peek, repeat_till};
+use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;
@@ -13,6 +13,7 @@ use super::{ChoiceObjectClauseSyntaxError, word_phrase};
 pub(crate) enum TargetPlayerChoiceActor {
     TargetPlayer,
     TargetOpponent,
+    Opponent,
     ThatPlayer,
     Voter,
 }
@@ -169,6 +170,8 @@ fn parse_target_player_choice_head(input: &mut LexStream<'_>) -> WResult<TargetP
             alt((primitives::kw("opponent"), primitives::kw("opponents"))),
         )
             .value(TargetPlayerChoiceActor::TargetOpponent),
+        (opt(primitives::kw("an")), primitives::kw("opponent"))
+            .value(TargetPlayerChoiceActor::Opponent),
         (
             primitives::kw("that"),
             alt((primitives::kw("player"), primitives::kw("players"))),
@@ -277,6 +280,13 @@ mod tests {
             "creatures"
         );
         assert!(parsed.filter_facts.graveyard_and_hand);
+
+        let opponent = lex("An opponent chooses up to two nonland permanents they control.");
+        let opponent = parse_target_player_choice_tokens(&opponent)
+            .unwrap()
+            .expect("indefinite opponent choice should use the same typed grammar");
+        assert_eq!(opponent.actor, TargetPlayerChoiceActor::Opponent);
+        assert_eq!(opponent.count, ChoiceCount::up_to(2));
 
         let article_tokens = lex("Target opponent chooses a card.");
         let article = parse_target_player_choice_tokens(&article_tokens)

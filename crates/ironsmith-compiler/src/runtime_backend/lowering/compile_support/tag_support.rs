@@ -725,6 +725,8 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
+        | Value::ColorPairsAmong(filter)
+        | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => filter
             .tagged_constraints
@@ -1269,6 +1271,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
         | SubjectVerbActionAst::AdditionalPhases { .. }
         | SubjectVerbActionAst::Learn
+        | SubjectVerbActionAst::UnlockRoomDoor
         | SubjectVerbActionAst::ReverseTurnOrder
         | SubjectVerbActionAst::TurnFaceUp { .. }
         | SubjectVerbActionAst::ShuffleLibrary => None,

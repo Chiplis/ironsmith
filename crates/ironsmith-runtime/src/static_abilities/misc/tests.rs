@@ -1814,6 +1814,49 @@ fn test_prevent_damage_to_self_remove_counter_generates_replacement() {
 }
 
 #[test]
+fn separate_sentence_surface_keeps_counter_removal_prevention_executable() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let phantom_card = CardBuilder::new(CardId::new(), "Phantom Surface Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let damage_source_card = CardBuilder::new(CardId::new(), "Damage Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let phantom = game.create_object_from_card(&phantom_card, alice, Zone::Battlefield);
+    let damage_source = game.create_object_from_card(&damage_source_card, bob, Zone::Battlefield);
+    game.add_counters(phantom, CounterType::PlusOnePlusOne, 2);
+
+    let ability = PreventDamageToSelfRemoveCounter::new(CounterType::PlusOnePlusOne, 1)
+        .with_surface(ironsmith_core::CounterRemovalPreventionSurface::SeparateSentences);
+    assert_eq!(
+        ability.display(),
+        "If damage would be dealt to this creature, prevent that damage. Remove a +1/+1 counter from this creature."
+    );
+    game.effect_store.replacement_effects.add_resolution_effect(
+        ability
+            .generate_replacement_effect(phantom, alice)
+            .expect("separate-sentence prevention should generate a replacement"),
+    );
+
+    let result = process_damage_assignments_with_event(
+        &mut game,
+        damage_source,
+        DamageTarget::Object(phantom),
+        5,
+        false,
+        EventCause::from_effect(damage_source, bob),
+    );
+
+    assert!(result.replacement_prevented);
+    assert!(result.assignments.is_empty());
+    assert_eq!(game.counter_count(phantom, CounterType::PlusOnePlusOne), 1);
+}
+
+#[test]
 fn counter_prevention_followup_uses_actual_removed_count_for_each_player() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);

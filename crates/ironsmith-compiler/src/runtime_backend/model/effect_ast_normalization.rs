@@ -1,5 +1,6 @@
 use crate::cards::builders::{
-    CHOSEN_OBJECTS_TAG, EffectAst, IT_TAG, PredicateAst, SubjectVerbActionAst, TargetAst,
+    CHOSEN_OBJECTS_TAG, EffectAst, IT_TAG, PredicateAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, TargetAst,
 };
 use crate::effect::Value;
 use ironsmith_core::ValueSurfaceHint;
@@ -133,6 +134,7 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
 fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     for effect in effects.iter_mut() {
         normalize_nested_effects(effect);
+        normalize_singular_source_exiled_move(effect);
     }
     // A full-card parse can normalize a named source reference only after the
     // narrow removal/damage sentence recognizer has run. Recover the same
@@ -140,6 +142,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     // producer is provably a source-bound counter removal and every following
     // member belongs to the damage fanout.
     crate::runtime_backend::effect_sentences::bind_removed_counter_damage_fanout(effects);
+    correlate_delegated_subsets_with_prior_target_collections(effects);
     bind_explicit_chosen_object_followups(effects);
     correlate_conditional_quantified_choice_followups(effects);
     correlate_split_for_each_player_choice_complements(effects);
@@ -147,6 +150,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     bind_all_players_subtype_choices_to_return_inclusion(effects);
     bind_quantified_choice_collections_to_destroy_followups(effects);
     bind_counted_set_followups(effects);
+    bind_until_next_turn_permissions_to_prior_exiled_collection(effects);
     if let Some(rewritten) = rewrite_repeat_process(effects) {
         *effects = rewritten;
     }
@@ -160,6 +164,494 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
         *effects = rewritten;
     }
     effects.retain(|effect| !is_noop_effect(effect));
+}
+
+/// Bind a later temporary play permission to the exact collection produced by
+/// a prior top-of-library exile, including when that producer lives inside a
+/// delayed or quantified wrapper.
+///
+/// Standalone permission sentences initially use `IT_TAG`.  Resolving that
+/// through the generic last-object channel is wrong when the intervening
+/// producer is wrapped: the wrapper's watched/iterated object remains the
+/// generic antecedent even though "it" / "those cards" refers to the newly
+/// exiled collection.  Preserve explicit tags and require one unambiguous
+/// exile collection before carrying the tag across the boundary.
+fn bind_until_next_turn_permissions_to_prior_exiled_collection(effects: &mut [EffectAst]) {
+    fn collect_exiled_tags(effect: &EffectAst, tags: &mut Vec<crate::tag::TagKey>) {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ExileTopOfLibrary {
+                    tags: moved_tags,
+                    accumulated_tags,
+                    ..
+                },
+            ..
+        }) = effect
+        {
+            for tag in moved_tags.iter().chain(accumulated_tags) {
+                if !tags.contains(tag) {
+                    tags.push(tag.clone());
+                }
+            }
+        }
+        super::effect_ast_traversal::for_each_nested_effects(effect, true, |nested| {
+            for child in nested {
+                collect_exiled_tags(child, tags);
+            }
+        });
+    }
+
+    fn rebind_unresolved_permissions(effect: &mut EffectAst, exiled_tag: &crate::tag::TagKey) {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. },
+            ..
+        }) = effect
+            && (tag.as_str() == IT_TAG
+                || tag.as_str().starts_with("damaged_")
+                || tag.as_str().starts_with("pumped_"))
+        {
+            *tag = exiled_tag.clone();
+        }
+        super::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |nested| {
+            for child in nested {
+                rebind_unresolved_permissions(child, exiled_tag);
+            }
+        });
+    }
+
+    let mut prior_exiled_tag = None;
+    for effect in effects {
+        if let Some(tag) = prior_exiled_tag.as_ref() {
+            rebind_unresolved_permissions(effect, tag);
+        }
+
+        let mut tags = Vec::new();
+        collect_exiled_tags(effect, &mut tags);
+        prior_exiled_tag = match tags.as_slice() {
+            [tag] => Some(tag.clone()),
+            [] => prior_exiled_tag,
+            _ => None,
+        };
+    }
+}
+
+fn target_only_collection_tag_mut(effect: &mut EffectAst) -> Option<&mut crate::tag::TagKey> {
+    match effect {
+        EffectAst::ChooseObjects { tag, .. }
+        | EffectAst::ChooseObjectsWithAggregateConstraint { tag, .. }
+        | EffectAst::ChooseObjectsBottomOfLibrary { tag, .. }
+        | EffectAst::ChooseObjectsTopOfLibrary { tag, .. }
+        | EffectAst::ChooseTaggedObjectsInZone { tag, .. }
+        | EffectAst::ChooseObjectsAcrossZones { tag, .. } => Some(tag),
+        EffectAst::TagAffected { effect, tag }
+            if matches!(
+                effect.as_ref(),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::TargetOnly { .. },
+                    ..
+                })
+            ) =>
+        {
+            Some(tag)
+        }
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::LookAtTopCards { tag, .. },
+            ..
+        }) => Some(tag),
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::SourceSentence { effects, .. } => {
+            let [effect] = effects.as_mut_slice() else {
+                return None;
+            };
+            target_only_collection_tag_mut(effect)
+        }
+        _ => None,
+    }
+}
+
+fn is_delegated_subset_chooser(player: crate::cards::builders::PlayerAst) -> bool {
+    matches!(
+        player,
+        crate::cards::builders::PlayerAst::Opponent
+            | crate::cards::builders::PlayerAst::Chosen
+            | crate::cards::builders::PlayerAst::That
+    )
+}
+
+fn delegated_subset_choice_mut(
+    effect: &mut EffectAst,
+) -> Option<(&mut crate::filter::ObjectFilter, &mut crate::tag::TagKey)> {
+    match effect {
+        EffectAst::ChooseObjects {
+            filter,
+            player,
+            tag,
+            ..
+        } if is_delegated_subset_chooser(*player) =>
+        {
+            Some((filter, tag))
+        }
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::SourceSentence { effects, .. } => {
+            let [effect] = effects.as_mut_slice() else {
+                return None;
+            };
+            delegated_subset_choice_mut(effect)
+        }
+        EffectAst::Conditional { if_false, .. } => {
+            if_false.iter_mut().find_map(delegated_subset_choice_mut)
+        }
+        _ => None,
+    }
+}
+
+fn effect_has_conditional_delegated_subset(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::Conditional { if_false, .. } => if_false.iter().any(|effect| match effect {
+            EffectAst::ChooseObjects { player, .. } => is_delegated_subset_chooser(*player),
+            _ => effect_has_conditional_delegated_subset(effect),
+        }),
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::SourceSentence { effects, .. } => {
+            effects.iter().any(effect_has_conditional_delegated_subset)
+        }
+        _ => false,
+    }
+}
+
+fn bind_choice_filter_to_collection(
+    filter: &mut crate::filter::ObjectFilter,
+    collection_tag: &crate::tag::TagKey,
+) -> bool {
+    let mut found = false;
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && matches!(constraint.tag.as_str(), IT_TAG)
+        {
+            constraint.tag = collection_tag.clone();
+            found = true;
+        } else if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == *collection_tag
+        {
+            found = true;
+        }
+    }
+    found
+}
+
+fn delegated_subset_collection_tag(effect: &EffectAst) -> Option<crate::tag::TagKey> {
+    match effect {
+        EffectAst::ChooseObjects { filter, player, .. }
+            if is_delegated_subset_chooser(*player) =>
+        {
+            filter
+                .tagged_constraints
+                .iter()
+                .find(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        && constraint.tag.as_str() != IT_TAG
+                })
+                .map(|constraint| constraint.tag.clone())
+        }
+        EffectAst::Conditional { if_false, .. } => {
+            if_false.iter().find_map(delegated_subset_collection_tag)
+        }
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::SourceSentence { effects, .. } => {
+            effects.iter().find_map(delegated_subset_collection_tag)
+        }
+        _ => None,
+    }
+}
+
+fn target_is_other_of_prior_collection(target: &TargetAst) -> bool {
+    matches!(target, TargetAst::AnyOtherTarget(_))
+}
+
+fn effect_targets_delegated_subset(effect: &EffectAst, subset_tag: &crate::tag::TagKey) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => {
+            let target = match &subject_verb.action {
+                SubjectVerbActionAst::ReturnToBattlefield { target, .. }
+                | SubjectVerbActionAst::ReturnToHand { target, .. }
+                | SubjectVerbActionAst::MoveToZone { target, .. }
+                | SubjectVerbActionAst::Exile { target, .. } => target,
+                _ => return false,
+            };
+            matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG || tag == subset_tag)
+        }
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::SourceSentence { effects, .. } => effects
+            .iter()
+            .any(|effect| effect_targets_delegated_subset(effect, subset_tag)),
+        _ => false,
+    }
+}
+
+fn bind_source_exile_to_collection_difference(
+    effect: &mut EffectAst,
+    collection_tag: &crate::tag::TagKey,
+    subset_tag: &crate::tag::TagKey,
+) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Exile {
+                    target: target @ TargetAst::Source(_),
+                    ..
+                },
+            ..
+        }) => {
+            *target = TargetAst::Object(
+                crate::filter::ObjectFilter::tagged(collection_tag.clone())
+                    .not_tagged(subset_tag.clone()),
+                None,
+                None,
+            );
+            true
+        }
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::SourceSentence { effects, .. } => effects.iter_mut().any(|effect| {
+            bind_source_exile_to_collection_difference(effect, collection_tag, subset_tag)
+        }),
+        _ => false,
+    }
+}
+
+fn bind_source_counter_to_latest_exiled_object(effect: &mut EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PutCounters {
+                    target: target @ TargetAst::Source(_),
+                    ..
+                },
+            ..
+        }) => {
+            *target = TargetAst::Tagged(
+                crate::tag::TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                None,
+            );
+            true
+        }
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::SourceSentence { effects, .. } => effects
+            .iter_mut()
+            .any(bind_source_counter_to_latest_exiled_object),
+        _ => false,
+    }
+}
+
+fn bind_other_target_to_collection_difference(
+    effect: &mut EffectAst,
+    collection_tag: &crate::tag::TagKey,
+    subset_tag: &crate::tag::TagKey,
+) -> bool {
+    if let EffectAst::Sequence { effects }
+    | EffectAst::CommaThen { effects }
+    | EffectAst::Coordinated { effects, .. }
+    | EffectAst::SourceSentence { effects, .. } = effect
+    {
+        if effects
+            .iter()
+            .any(|effect| effect_targets_delegated_subset(effect, subset_tag))
+            && effects.iter_mut().any(|effect| {
+                bind_source_exile_to_collection_difference(effect, collection_tag, subset_tag)
+            })
+        {
+            effects
+                .iter_mut()
+                .any(bind_source_counter_to_latest_exiled_object);
+            return true;
+        }
+        return effects.iter_mut().any(|effect| {
+            bind_other_target_to_collection_difference(effect, collection_tag, subset_tag)
+        });
+    }
+    let EffectAst::SubjectVerb(subject_verb) = effect else {
+        return false;
+    };
+    let target = match &mut subject_verb.action {
+        SubjectVerbActionAst::ReturnToBattlefield { target, .. }
+        | SubjectVerbActionAst::ReturnToHand { target, .. }
+        | SubjectVerbActionAst::MoveToZone { target, .. }
+        | SubjectVerbActionAst::Exile { target, .. } => target,
+        _ => return false,
+    };
+    if !target_is_other_of_prior_collection(target) {
+        return false;
+    }
+    *target = TargetAst::Object(
+        crate::filter::ObjectFilter::tagged(collection_tag.clone()).not_tagged(subset_tag.clone()),
+        None,
+        None,
+    );
+    true
+}
+
+fn literal_rest_move_zone(effect: &EffectAst) -> Option<crate::zone::Zone> {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::MoveToZone {
+                    target: TargetAst::Tagged(tag, _),
+                    zone,
+                    ..
+                },
+            ..
+        }) if tag.as_str() == "rest" => Some(*zone),
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::SourceSentence { effects, .. } => {
+            let [effect] = effects.as_slice() else {
+                return None;
+            };
+            literal_rest_move_zone(effect)
+        }
+        _ => None,
+    }
+}
+
+fn append_to_conditional_false_branch(effect: &mut EffectAst, remainder: EffectAst) -> bool {
+    match effect {
+        EffectAst::Conditional { if_false, .. } => {
+            if_false.push(remainder);
+            true
+        }
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::SourceSentence { effects, .. } => {
+            let [effect] = effects.as_mut_slice() else {
+                return false;
+            };
+            append_to_conditional_false_branch(effect, remainder)
+        }
+        _ => false,
+    }
+}
+
+/// Preserve the two set identities in procedures of the form “choose up to N
+/// targets; an opponent chooses one/two of them; ... the other/rest ...”. The
+/// broad choice grammar initially uses `__it__` for both collections; without
+/// distinct tags, the delegated subset replaces the original pool and the
+/// complement becomes a fresh target or an unbound `rest` marker.
+fn correlate_delegated_subsets_with_prior_target_collections(effects: &mut Vec<EffectAst>) {
+    let mut pool_tag = None;
+    for index in 0..effects.len() {
+        if let Some(tag) = target_only_collection_tag_mut(&mut effects[index]) {
+            if tag.as_str() == IT_TAG {
+                *tag = crate::tag::TagKey::from(format!("__delegated_collection_pool_{index}"));
+            }
+            pool_tag = Some(tag.clone());
+            continue;
+        }
+        let Some(pool_tag) = pool_tag
+            .clone()
+            .or_else(|| delegated_subset_collection_tag(&effects[index]))
+        else {
+            continue;
+        };
+
+        let conditional_subset = effect_has_conditional_delegated_subset(&effects[index]);
+        let delegated_subset = if let Some((filter, tag)) =
+            delegated_subset_choice_mut(&mut effects[index])
+            && bind_choice_filter_to_collection(filter, &pool_tag)
+        {
+            if tag.as_str() == IT_TAG {
+                *tag = crate::tag::TagKey::from(format!(
+                    "{}__delegated_subset",
+                    pool_tag.as_str()
+                ));
+            }
+            Some(tag.clone())
+        } else {
+            None
+        };
+        let Some(subset_tag) = delegated_subset else {
+            continue;
+        };
+        let bound_complement = effects[index + 1..]
+            .iter_mut()
+            .take(3)
+            .any(|next| bind_other_target_to_collection_difference(next, &pool_tag, &subset_tag));
+        if bound_complement {
+            continue;
+        }
+        if conditional_subset
+            && let Some(zone) = effects.get(index + 1).and_then(literal_rest_move_zone)
+        {
+            let remainder = EffectAst::subject_verb(
+                crate::cards::builders::SubjectVerbRoleAst::Actor,
+                crate::cards::builders::PlayerAst::Implicit,
+                SubjectVerbActionAst::PutTaggedRemainderInZone {
+                    tag: pool_tag,
+                    keep_tagged: subset_tag,
+                    zone,
+                    surface: ironsmith_core::LibraryRemainderSurface::Rest,
+                },
+            );
+            if append_to_conditional_false_branch(&mut effects[index], remainder) {
+                effects.remove(index + 1);
+                return;
+            }
+        }
+    }
+}
+
+/// A singular card reference linked to this source's exiled collection is a
+/// one-object move even though the generic non-target subject path defaults
+/// object filters to `all`. The explicit singular surface plus the typed
+/// source-exile identity are both required before removing that broadening.
+fn normalize_singular_source_exiled_move(effect: &mut EffectAst) {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::MoveToZone {
+                target: TargetAst::Object(filter, ..),
+                zone,
+                target_plural_surface,
+                all,
+                ..
+            },
+        ..
+    }) = effect
+        && *all
+        && !*target_plural_surface
+        && *zone == crate::zone::Zone::Graveyard
+        && let [constraint] = filter.tagged_constraints.as_slice()
+        && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    {
+        let mut remainder = filter.clone();
+        remainder.zone = None;
+        remainder.tagged_constraints.clear();
+        remainder.union_surface = Default::default();
+        if remainder == crate::filter::ObjectFilter::default() {
+            *all = false;
+        }
+        return;
+    }
+
+    super::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |nested| {
+        for child in nested {
+            normalize_singular_source_exiled_move(child);
+        }
+    });
 }
 
 fn single_subtype_choice_family(effect: &EffectAst) -> Option<crate::types::SubtypeFamily> {
@@ -465,14 +957,28 @@ fn bind_explicit_chosen_object_followups(effects: &mut [EffectAst]) {
         if !super::compile_support::effect_references_tag(
             &effects[consumer_index],
             CHOSEN_OBJECTS_TAG,
-        ) || !choice_collection_producer_has_accumulating_tags(&effects[consumer_index - 1])
-        {
+        ) {
             continue;
         }
-        retag_choice_collection_producer(
-            &mut effects[consumer_index - 1],
-            &crate::tag::TagKey::from(CHOSEN_OBJECTS_TAG),
-        );
+        if choice_collection_producer_has_accumulating_tags(&effects[consumer_index - 1]) {
+            retag_choice_collection_producer(
+                &mut effects[consumer_index - 1],
+                &crate::tag::TagKey::from(CHOSEN_OBJECTS_TAG),
+            );
+            continue;
+        }
+
+        // Explicit target declarations are also choice producers. A later
+        // "the chosen cards" consumer can be separated by an additional cost
+        // and its result branch, so bind the nearest preceding declaration
+        // rather than requiring adjacency.
+        if let Some(tag) = effects[..consumer_index]
+            .iter_mut()
+            .rev()
+            .find_map(target_only_collection_tag_mut)
+        {
+            *tag = crate::tag::TagKey::from(CHOSEN_OBJECTS_TAG);
+        }
     }
 }
 
@@ -1011,16 +1517,19 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         }
         EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
             normalize_nested_effects(effect);
+            normalize_singular_source_exiled_move(effect);
             normalize_effects_vec(otherwise);
         }
         EffectAst::IfEffectResult {
             effect, if_true, ..
         } => {
             normalize_nested_effects(effect);
+            normalize_singular_source_exiled_move(effect);
             normalize_effects_vec(if_true);
         }
         EffectAst::TagAffected { effect, .. } => {
             normalize_nested_effects(effect);
+            normalize_singular_source_exiled_move(effect);
         }
         _ => {}
     }
@@ -1798,6 +2307,218 @@ mod tests {
                 if count.unhinted() == &Value::Fixed(2)
                     && count.has_surface_hint(ValueSurfaceHint::RepeatThisProcessOnce)
                     && effects.len() == 1
+        ));
+    }
+
+    fn tagged_target_pool(tag: &str) -> EffectAst {
+        EffectAst::TagAffected {
+            effect: Box::new(EffectAst::subject_verb(
+                crate::cards::builders::SubjectVerbRoleAst::Actor,
+                PlayerAst::You,
+                SubjectVerbActionAst::TargetOnly {
+                    target: TargetAst::WithCount(
+                        Box::new(TargetAst::Object(
+                            ObjectFilter::creature().in_zone(Zone::Graveyard),
+                            Some(crate::cards::TextSpan::synthetic()),
+                            None,
+                        )),
+                        ChoiceCount::up_to(2),
+                    ),
+                    explicit_declaration: true,
+                },
+            )),
+            tag: TagKey::from(tag),
+        }
+    }
+
+    fn opponent_subset_choice() -> EffectAst {
+        EffectAst::ChooseObjects {
+            filter: ObjectFilter::tagged(IT_TAG),
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::Opponent,
+            tag: TagKey::from(IT_TAG),
+        }
+    }
+
+    #[test]
+    fn normalize_binds_other_to_prior_pool_minus_delegated_subset() {
+        let normalized = normalize_effects_ast(&[
+            tagged_target_pool("target_pool"),
+            opponent_subset_choice(),
+            EffectAst::subject_verb_return_to_hand(
+                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                false,
+            ),
+            EffectAst::subject_verb_return_to_battlefield(
+                TargetAst::AnyOtherTarget(None),
+                false,
+                false,
+                false,
+                crate::cards::builders::ReturnControllerAst::You,
+                None,
+            ),
+        ]);
+
+        let EffectAst::ChooseObjects { filter, tag, .. } = &normalized[1] else {
+            panic!("expected delegated subset choice");
+        };
+        assert_eq!(tag.as_str(), "target_pool__delegated_subset");
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "target_pool"
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        let EffectAst::SubjectVerb(subject_verb) = &normalized[3] else {
+            panic!("expected complement return");
+        };
+        let SubjectVerbActionAst::ReturnToBattlefield { target, .. } = &subject_verb.action else {
+            panic!("expected return-to-battlefield action");
+        };
+        let TargetAst::Object(filter, ..) = target else {
+            panic!("the other must lower as an exact set difference: {target:#?}");
+        };
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "target_pool"
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "target_pool__delegated_subset"
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        }));
+    }
+
+    #[test]
+    fn normalize_keeps_conditional_remainder_inside_subset_branch() {
+        let conditional = EffectAst::Conditional {
+            predicate: PredicateAst::PlayerControls {
+                player: PlayerAst::You,
+                filter: ObjectFilter::creature(),
+            },
+            if_true: Vec::new(),
+            if_false: vec![opponent_subset_choice()],
+        };
+        let rest_to_hand = EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::Actor,
+            PlayerAst::You,
+            SubjectVerbActionAst::MoveToZone {
+                target: TargetAst::Tagged(TagKey::from("rest"), None),
+                source_top_only: false,
+                zone: Zone::Hand,
+                to_top: false,
+                library_order: None,
+                library_order_chooser: PlayerAst::Implicit,
+                verb_surface: ironsmith_core::MoveToZoneVerbSurface::Canonical,
+                target_plural_surface: true,
+                target_reference_surface: None,
+                destination_player_surface: None,
+                destination_player_reference_surface: None,
+                exiled_with_source_surface: None,
+                battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                battlefield_attacking: false,
+                battlefield_attack_target_player_or_planeswalker_controlled_by: None,
+                battlefield_face_down: false,
+                battlefield_transformed: false,
+                attached_to: None,
+                all: false,
+            },
+        );
+
+        let normalized = normalize_effects_ast(&[
+            tagged_target_pool("conditional_pool"),
+            conditional,
+            rest_to_hand,
+        ]);
+        assert_eq!(
+            normalized.len(),
+            2,
+            "remainder must not run after true branch"
+        );
+        let EffectAst::Conditional { if_false, .. } = &normalized[1] else {
+            panic!("expected conditional");
+        };
+        assert!(matches!(
+            if_false.as_slice(),
+            [
+                EffectAst::ChooseObjects { tag, .. },
+                EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::PutTaggedRemainderInZone {
+                        tag: pool,
+                        keep_tagged,
+                        zone: Zone::Hand,
+                        ..
+                    },
+                    ..
+                })
+            ] if tag.as_str() == "conditional_pool__delegated_subset"
+                && pool.as_str() == "conditional_pool"
+                && keep_tagged == tag
+        ));
+    }
+
+    #[test]
+    fn normalize_binds_next_turn_permission_to_exile_inside_delayed_trigger() {
+        let exiled_tag = TagKey::from("delayed_exiled_cards");
+        let delayed = EffectAst::DelayedTriggerForDuration {
+            trigger: crate::cards::builders::TriggerSpec::Dies(ObjectFilter::creature()),
+            effects: vec![EffectAst::subject_verb_exile_top_of_library(
+                PlayerAst::You,
+                Value::Fixed(1),
+                vec![exiled_tag.clone()],
+                Vec::new(),
+            )],
+            one_shot: false,
+            duration: Until::EndOfTurn,
+            either_of_watched_objects: false,
+            while_any_tagged_object_in_zone: None,
+        };
+        let grant = EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+            TagKey::from(IT_TAG),
+            PlayerAst::You,
+            true,
+            false,
+        );
+
+        let normalized = normalize_effects_ast(&[delayed, grant]);
+        assert!(matches!(
+            normalized.get(1),
+            Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. },
+                ..
+            })) if tag == &exiled_tag
+        ));
+    }
+
+    #[test]
+    fn normalize_keeps_explicit_next_turn_permission_tag() {
+        let delayed = EffectAst::DelayedTriggerForDuration {
+            trigger: crate::cards::builders::TriggerSpec::Dies(ObjectFilter::creature()),
+            effects: vec![EffectAst::subject_verb_exile_top_of_library(
+                PlayerAst::You,
+                Value::Fixed(1),
+                vec![TagKey::from("delayed_exiled_cards")],
+                Vec::new(),
+            )],
+            one_shot: false,
+            duration: Until::EndOfTurn,
+            either_of_watched_objects: false,
+            while_any_tagged_object_in_zone: None,
+        };
+        let explicit_tag = TagKey::from("explicit_permission_pool");
+        let grant = EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+            explicit_tag.clone(),
+            PlayerAst::You,
+            true,
+            false,
+        );
+
+        let normalized = normalize_effects_ast(&[delayed, grant]);
+        assert!(matches!(
+            normalized.get(1),
+            Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. },
+                ..
+            })) if tag == &explicit_tag
         ));
     }
 }

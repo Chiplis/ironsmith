@@ -130,6 +130,7 @@ fn parses_protection_choice_shapes() {
         Some(ProtectionChoiceShape {
             includes_colorless: false,
             includes_artifacts: false,
+            chooses_card_type: false,
             chooser: ProtectionChoiceChooserShape::You,
         })
     );
@@ -144,6 +145,7 @@ fn parses_protection_choice_shapes() {
         Some(ProtectionChoiceShape {
             includes_colorless: true,
             includes_artifacts: false,
+            chooses_card_type: false,
             chooser: ProtectionChoiceChooserShape::You,
         })
     );
@@ -158,6 +160,7 @@ fn parses_protection_choice_shapes() {
         Some(ProtectionChoiceShape {
             includes_colorless: false,
             includes_artifacts: true,
+            chooses_card_type: false,
             chooser: ProtectionChoiceChooserShape::You,
         })
     );
@@ -172,7 +175,23 @@ fn parses_protection_choice_shapes() {
         Some(ProtectionChoiceShape {
             includes_colorless: false,
             includes_artifacts: false,
+            chooses_card_type: false,
             chooser: ProtectionChoiceChooserShape::TargetController,
+        })
+    );
+
+    let card_type = lex_line(
+        "Protection from the card type of your choice until end of turn.",
+        0,
+    )
+    .unwrap();
+    assert_eq!(
+        parse_protection_choice_shape(&card_type),
+        Some(ProtectionChoiceShape {
+            includes_colorless: false,
+            includes_artifacts: false,
+            chooses_card_type: true,
+            chooser: ProtectionChoiceChooserShape::You,
         })
     );
 }

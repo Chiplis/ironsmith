@@ -218,6 +218,7 @@ pub enum ReplacementAction {
         linked_exile_objects: Vec<ObjectId>,
         additional_counters: Vec<(CounterType, u32)>,
         name_override: Option<String>,
+        added_colors: crate::color::ColorSet,
         added_card_types: Vec<CardType>,
         removed_supertypes: Vec<Supertype>,
         added_subtypes: Vec<Subtype>,

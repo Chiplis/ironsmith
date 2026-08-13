@@ -8,6 +8,8 @@ export function decisionKey(decision) {
     decision.description || "",
     decision.context_text || "",
     decision.consequence_text || "",
+    decision.plan_id || "",
+    decision.request_hash || "",
   ].join("|");
   if (decision.attacker_options) {
     return decision.attacker_options

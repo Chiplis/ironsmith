@@ -2019,6 +2019,98 @@ pub(super) fn format_mana_symbol_for_choice(sym: &crate::mana::ManaSymbol) -> St
 /// Continue to target selection or mana payment.
 ///
 /// Called after hybrid/Phyrexian choices are made (or when none are needed).
+fn target_chooser_candidates(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    chooser: &crate::target::PlayerFilter,
+) -> Vec<PlayerId> {
+    let filter_ctx = game
+        .filter_context_for(controller, Some(source))
+        .with_active_player(game.turn.active_player);
+    game.players
+        .iter()
+        .filter(|player| player.is_in_game())
+        .filter_map(|player| {
+            crate::filter::player_filter_matches_game(chooser, player.id, game, &filter_ctx)
+                .then_some(player.id)
+        })
+        .collect()
+}
+
+fn target_chooser_context(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    subject: String,
+    candidates: &[PlayerId],
+) -> crate::decisions::context::SelectOptionsContext {
+    let options = candidates
+        .iter()
+        .enumerate()
+        .map(|(index, player)| {
+            crate::decisions::context::SelectableOption::new(
+                index,
+                game.player(*player)
+                    .map(|candidate| candidate.name.to_string())
+                    .unwrap_or_else(|| format!("Player {}", player.0)),
+            )
+        })
+        .collect();
+    crate::decisions::context::SelectOptionsContext::new(
+        controller,
+        Some(source),
+        format!("Choose a player to choose a target for {subject}"),
+        options,
+        1,
+        1,
+    )
+}
+
+fn resolved_next_target_chooser(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    requirement: &TargetRequirement,
+) -> Result<Result<PlayerId, Vec<PlayerId>>, GameLoopError> {
+    let Some(filter) = requirement.chooser.as_ref() else {
+        return Ok(Ok(controller));
+    };
+    let candidates = target_chooser_candidates(game, controller, source, filter);
+    match candidates.as_slice() {
+        [chooser] => Ok(Ok(*chooser)),
+        [] => Err(GameLoopError::InvalidState(
+            "No eligible player can make the delegated target choice".to_string(),
+        )),
+        _ => Ok(Err(candidates)),
+    }
+}
+
+fn specialize_target_requirement_for_chooser(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    chooser: PlayerId,
+    requirement: &mut TargetRequirement,
+) {
+    requirement.spec =
+        super::targeting::specialize_iterated_player_choose_spec(&requirement.spec, chooser);
+    requirement.legal_targets =
+        compute_legal_targets(game, &requirement.spec, controller, Some(source));
+    requirement.legal_target_sets = crate::targeting::legal_target_sets_for_spec(
+        game,
+        &requirement.spec,
+        &requirement.legal_targets,
+    );
+    requirement.aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
+        game,
+        &requirement.spec,
+        controller,
+        Some(source),
+        &requirement.legal_targets,
+    );
+}
+
 pub(super) fn continue_to_targets_or_mana_payment(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -2067,8 +2159,7 @@ pub(super) fn continue_to_targets_or_mana_payment(
     } else {
         // Need to select targets
         let mut pending = pending;
-        pending.stage = CastStage::ChoosingTargets;
-        let requirements = pending.remaining_requirements.clone();
+        let requirement = pending.remaining_requirements[0].clone();
         let player = pending.caster;
         let source = pending.spell_id;
         let context = game
@@ -2076,11 +2167,44 @@ pub(super) fn continue_to_targets_or_mana_payment(
             .map(|o| o.name.to_string())
             .unwrap_or_else(|| "spell".to_string());
 
+        let chooser = match resolved_next_target_chooser(game, player, source, &requirement)? {
+            Ok(chooser) => chooser,
+            Err(candidates) => {
+                pending.stage = CastStage::ChoosingTargetChooser;
+                pending.pending_target_chooser_candidates = candidates.clone();
+                let ctx = target_chooser_context(game, player, source, context, &candidates);
+                state.pending_cast = Some(pending);
+                return Ok(GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::SelectOptions(ctx),
+                ));
+            }
+        };
+        let requirement_count = pending
+            .remaining_requirements
+            .iter()
+            .take_while(|candidate| {
+                matches!(
+                    resolved_next_target_chooser(game, player, source, candidate),
+                    Ok(Ok(candidate_chooser)) if candidate_chooser == chooser
+                )
+            })
+            .count();
+        for requirement in pending
+            .remaining_requirements
+            .iter_mut()
+            .take(requirement_count)
+        {
+            specialize_target_requirement_for_chooser(game, player, source, chooser, requirement);
+        }
+        let requirements = pending.remaining_requirements[..requirement_count].to_vec();
+        pending.stage = CastStage::ChoosingTargets;
+        pending.active_target_requirement_count = requirements.len();
+
         state.pending_cast = Some(pending);
 
         // Convert to TargetsContext
         let ctx = crate::decisions::context::TargetsContext::new(
-            player,
+            chooser,
             source,
             context,
             requirements
@@ -3152,6 +3276,7 @@ pub(super) fn continue_to_mana_payment(
             &pending.splice_costs,
             pending.chosen_modes.as_deref(),
             pending.chosen_targets.len(),
+            pending.from_zone,
         );
         if game
             .object(pending.spell_id)
@@ -3804,6 +3929,7 @@ pub(super) fn collect_spell_cost_steps(
     splice_costs: &[crate::cost::TotalCost],
     chosen_modes: Option<&[usize]>,
     chosen_target_count: usize,
+    from_zone: Zone,
 ) -> Vec<ActivationCostStep> {
     let mut cost_steps = Vec::new();
     let extend_non_mana = |out: &mut Vec<ActivationCostStep>, total: &crate::cost::TotalCost| {
@@ -3932,6 +4058,14 @@ pub(super) fn collect_spell_cost_steps(
         if total_life > 0 {
             append_activation_cost_steps_from_components(
                 &[crate::costs::Cost::life(total_life)],
+                &mut cost_steps,
+            );
+        }
+        let commander_tax_life =
+            crate::decision::commander_tax_life_payment_amount(game, obj, from_zone);
+        if commander_tax_life > 0 {
+            append_activation_cost_steps_from_components(
+                &[crate::costs::Cost::life(commander_tax_life)],
                 &mut cost_steps,
             );
         }
@@ -5105,7 +5239,7 @@ pub(super) fn continue_activation(
                     pending.stage = activation_stage_after_targets(&pending);
                     continue;
                 } else {
-                    let requirements = pending.remaining_requirements.clone();
+                    let requirement = pending.remaining_requirements[0].clone();
                     let player = pending.activator;
                     let source = pending.source;
                     let context = game
@@ -5113,11 +5247,57 @@ pub(super) fn continue_activation(
                         .map(|o| format!("{}'s ability", o.name))
                         .unwrap_or_else(|| "ability".to_string());
 
+                    let chooser =
+                        match resolved_next_target_chooser(game, player, source, &requirement)? {
+                            Ok(chooser) => chooser,
+                            Err(candidates) => {
+                                pending.stage = ActivationStage::ChoosingTargetChooser;
+                                pending.pending_target_chooser_candidates = candidates.clone();
+                                let ctx = target_chooser_context(
+                                    game,
+                                    player,
+                                    source,
+                                    context,
+                                    &candidates,
+                                );
+                                state.pending_activation = Some(pending);
+                                return Ok(GameProgress::NeedsDecisionCtx(
+                                    crate::decisions::context::DecisionContext::SelectOptions(ctx),
+                                ));
+                            }
+                        };
+                    let requirement_count = pending
+                        .remaining_requirements
+                        .iter()
+                        .take_while(|candidate| {
+                            matches!(
+                                resolved_next_target_chooser(game, player, source, candidate),
+                                Ok(Ok(candidate_chooser)) if candidate_chooser == chooser
+                            )
+                        })
+                        .count();
+                    for requirement in pending
+                        .remaining_requirements
+                        .iter_mut()
+                        .take(requirement_count)
+                    {
+                        specialize_target_requirement_for_chooser(
+                            game,
+                            player,
+                            source,
+                            chooser,
+                            requirement,
+                        );
+                    }
+                    let requirements = pending.remaining_requirements[..requirement_count].to_vec();
+                    pending.stage = ActivationStage::ChoosingTargets;
+                    pending.active_target_requirement_count = requirements.len();
+
                     state.pending_activation = Some(pending);
 
                     // Convert to TargetsContext
                     let ctx = crate::decisions::context::TargetsContext::new(
-                        player,
+                        chooser,
                         source,
                         context,
                         requirements
@@ -5137,6 +5317,23 @@ pub(super) fn continue_activation(
                         crate::decisions::context::DecisionContext::Targets(ctx),
                     ));
                 }
+            }
+            ActivationStage::ChoosingTargetChooser => {
+                let context = game
+                    .object(pending.source)
+                    .map(|object| format!("{}'s ability", object.name))
+                    .unwrap_or_else(|| "ability".to_string());
+                let ctx = target_chooser_context(
+                    game,
+                    pending.activator,
+                    pending.source,
+                    context,
+                    &pending.pending_target_chooser_candidates,
+                );
+                state.pending_activation = Some(pending);
+                return Ok(GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::SelectOptions(ctx),
+                ));
             }
             ActivationStage::ChoosingDistribution => {
                 let requirement =

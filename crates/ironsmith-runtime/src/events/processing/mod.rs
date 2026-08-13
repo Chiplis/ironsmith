@@ -356,6 +356,7 @@ fn push_enter_as_copy_effects_for_spec(
                             linked_exile_objects: vec![copy_candidate, counter_candidate],
                             additional_counters: vec![(linked_pair.counter_type, counter_count)],
                             name_override: spec.name_override.clone(),
+                            added_colors: spec.added_colors,
                             added_card_types: spec.added_card_types.clone(),
                             removed_supertypes: spec.removed_supertypes.clone(),
                             added_subtypes: spec.added_subtypes.clone(),
@@ -395,6 +396,7 @@ fn push_enter_as_copy_effects_for_spec(
                     linked_exile_objects: Vec::new(),
                     additional_counters: Vec::new(),
                     name_override: spec.name_override.clone(),
+                    added_colors: spec.added_colors,
                     added_card_types: spec.added_card_types.clone(),
                     removed_supertypes: spec.removed_supertypes.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
@@ -2100,6 +2102,14 @@ fn process_zone_change_inner(
             let final_zone = if let Some(zone_change) = downcast_event::<ZoneChangeEvent>(e.inner())
             {
                 zone_change.to
+            } else if downcast_event::<crate::events::EnterBattlefieldEvent>(e.inner()).is_some() {
+                // Entry modifiers can promote an evolving Stack/other-zone
+                // change into the ETB event carrier (for example, a
+                // destination replacement followed by "under your control").
+                // The carrier itself proves that the rewritten destination is
+                // the battlefield; falling back to the originally requested
+                // graveyard here would discard the earlier destination change.
+                Zone::Battlefield
             } else {
                 requested_to
             };
@@ -2735,6 +2745,8 @@ pub struct EtbEventResult {
     /// Duration of a temporary as-enters copy effect, if any.
     pub copy_duration: Option<crate::effect::Until>,
     pub copy_name_override: Option<String>,
+    /// Colors added by an ETB copy choice.
+    pub added_colors: crate::color::ColorSet,
     /// Additional card types granted by an ETB copy choice.
     pub added_card_types: Vec<crate::types::CardType>,
     /// Supertypes removed by an ETB copy choice.
@@ -3937,18 +3949,31 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
         }
         let controller = entering_controller.unwrap_or_else(|| game.controller_of(obj));
         let view = crate::derived_view::DerivedGameView::new(game);
-        let current_static_abilities = view.static_abilities_rc(object).unwrap_or_else(|| {
-            std::rc::Rc::new(
-                obj.abilities
-                    .iter()
-                    .filter_map(|ability| match &ability.kind {
-                        AbilityKind::Static(s) => Some(s.clone()),
-                        _ => None,
-                    })
-                    .collect(),
-            )
-        });
-        for s in current_static_abilities.iter() {
+        let mut current_static_abilities = view
+            .static_abilities_rc(object)
+            .map(|abilities| abilities.as_ref().clone())
+            .unwrap_or_default();
+        // The object has not entered yet, so the derived view correctly omits
+        // battlefield-only static abilities.  Its own as-enters replacement
+        // abilities still need to inspect the proposed zone change, however.
+        // Supplement the derived set with the object's printed abilities and
+        // deduplicate by stable static-ability instance identity.
+        for static_ability in obj
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability),
+                _ => None,
+            })
+        {
+            if !current_static_abilities
+                .iter()
+                .any(|existing| existing.instance_id() == static_ability.instance_id())
+            {
+                current_static_abilities.push(static_ability.clone());
+            }
+        }
+        for s in &current_static_abilities {
             // Check for unified replacement effects
             if let Some(effect) = s.generate_replacement_effect(object, controller) {
                 object_etb_effects.push(effect);
@@ -4056,6 +4081,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
             enters_as_copy_of: None,
             copy_duration: None,
             copy_name_override: None,
+            added_colors: crate::color::ColorSet::new(),
             added_card_types: Vec::new(),
             removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
@@ -4161,6 +4187,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                         enters_as_copy_of: etb.enters_as_copy_of,
                         copy_duration: etb.copy_duration.clone(),
                         copy_name_override: etb.copy_name_override.clone(),
+                        added_colors: etb.added_colors,
                         added_card_types: etb.added_card_types.clone(),
                         removed_supertypes: etb.removed_supertypes.clone(),
                         added_subtypes: etb.added_subtypes.clone(),
@@ -4921,6 +4948,7 @@ mod tests {
                 copy_source_self: true,
                 copy_source_enchanted: false,
                 name_override: None,
+                added_colors: crate::color::ColorSet::new(),
                 added_card_types: Vec::new(),
                 removed_supertypes: Vec::new(),
                 added_subtypes: Vec::new(),
@@ -5060,6 +5088,7 @@ mod tests {
                         copy_source_self: false,
                         copy_source_enchanted: false,
                         name_override: None,
+                        added_colors: crate::color::ColorSet::new(),
                         added_card_types: Vec::new(),
                         removed_supertypes: Vec::new(),
                         added_subtypes: Vec::new(),

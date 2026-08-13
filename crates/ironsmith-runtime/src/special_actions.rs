@@ -1494,6 +1494,20 @@ fn can_unlock_room_door(
     .map_err(cost_error_to_action_error)
 }
 
+/// Apply the Room state transition shared by the paid special action and
+/// resolution-time effects that instruct a player to unlock a door.
+pub(crate) fn apply_room_door_unlock(game: &mut GameState, room_id: ObjectId) -> bool {
+    let Some(locked_door) = room_locked_door_definition(game, room_id) else {
+        return false;
+    };
+    let Some(room) = game.object_mut(room_id) else {
+        return false;
+    };
+    room.apply_fused_split_spell_overlay(&locked_door);
+    game.mark_room_fully_unlocked(room_id);
+    true
+}
+
 fn perform_unlock_room_door(
     game: &mut GameState,
     player: PlayerId,
@@ -1501,8 +1515,6 @@ fn perform_unlock_room_door(
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     validate_unlock_room_door_common(game, player, room_id)?;
-    let locked_door =
-        room_locked_door_definition(game, room_id).ok_or(ActionError::NoSuchAbility)?;
     let cost = adjusted_room_unlock_cost(game, player, room_id)?;
     let action_provenance = game.provenance_graph_mut().alloc_root(
         crate::provenance::ProvenanceNodeKind::EffectExecution {
@@ -1521,10 +1533,9 @@ fn perform_unlock_room_door(
     )
     .map_err(cost_error_to_action_error)?;
 
-    if let Some(room) = game.object_mut(room_id) {
-        room.apply_fused_split_spell_overlay(&locked_door);
+    if !apply_room_door_unlock(game, room_id) {
+        return Err(ActionError::NoSuchAbility);
     }
-    game.mark_room_fully_unlocked(room_id);
 
     let event_provenance = game
         .alloc_child_event_provenance(action_provenance, crate::events::EventKind::KeywordAction);

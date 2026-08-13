@@ -253,6 +253,8 @@ pub(crate) struct ParsedModalHeader {
     pub(crate) mode_must_be_unchosen_this_turn: bool,
     pub(crate) distinct_player_targets_per_mode: bool,
     pub(crate) if_kicked_choose_any_number: bool,
+    pub(crate) conditional_mode_change: Option<ParsedConditionalModeChange>,
+    pub(crate) presentation_label: Option<crate::ability::PresentationLabel>,
     pub(crate) commander_allows_both: bool,
     pub(crate) choose_both_control_card_types: Vec<crate::types::CardType>,
     pub(crate) choose_both_exact_life_total: Option<i32>,
@@ -268,6 +270,20 @@ pub(crate) struct ParsedModalHeader {
     pub(crate) common_suffix_effects_ast: Vec<EffectAst>,
     pub(crate) modal_gate: Option<ParsedModalGate>,
     pub(crate) line_text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConditionalModeSelection {
+    BothOrTwo,
+    AnyNumber,
+    OneOrMore,
+    One,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ParsedConditionalModeChange {
+    pub(crate) condition: crate::cards::builders::PredicateAst,
+    pub(crate) selection: ConditionalModeSelection,
 }
 
 #[derive(Debug, Clone)]

@@ -597,7 +597,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
 #[derive(Debug, Clone)]
 enum CompoundDamagePart {
     Target(TargetAst),
-    OpponentChosenTarget(TargetAst),
+    OpponentChosenTarget { target: TargetAst, tag: TagKey },
     EachObject(ObjectFilter),
     EachPlayer(PlayerFilter),
 }
@@ -606,8 +606,14 @@ fn target_context_for_damage_part(part: &CompoundDamagePart) -> Option<PlayerFil
     match part {
         CompoundDamagePart::Target(TargetAst::Player(filter, span))
         | CompoundDamagePart::Target(TargetAst::PlayerOrPlaneswalker(filter, span))
-        | CompoundDamagePart::OpponentChosenTarget(TargetAst::Player(filter, span))
-        | CompoundDamagePart::OpponentChosenTarget(TargetAst::PlayerOrPlaneswalker(filter, span)) => {
+        | CompoundDamagePart::OpponentChosenTarget {
+            target: TargetAst::Player(filter, span),
+            ..
+        }
+        | CompoundDamagePart::OpponentChosenTarget {
+            target: TargetAst::PlayerOrPlaneswalker(filter, span),
+            ..
+        } => {
             if span.is_some() {
                 Some(PlayerFilter::Target(Box::new(filter.clone())))
             } else {
@@ -671,9 +677,13 @@ fn lower_damage_part_shape(
                 && choice.actor
                     == crate::runtime_backend::front_end::grammar::choices::PossessiveObjectChoiceActor::Opponent
             {
-                return Ok(Some(CompoundDamagePart::OpponentChosenTarget(
-                    parse_target_phrase(&choice.object_tokens)?,
-                )));
+                return Ok(Some(CompoundDamagePart::OpponentChosenTarget {
+                    target: parse_target_phrase(&choice.object_tokens)?,
+                    tag: crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                        &tokens,
+                        "opponent_chosen_target",
+                    ),
+                }));
             }
             let mut target = parse_target_phrase(&tokens)?;
             if let Some(controller) = controller
@@ -731,16 +741,16 @@ fn damage_player_iteration_effect(filter: PlayerFilter, effects: Vec<EffectAst>)
 fn compound_damage_part_to_effect(part: CompoundDamagePart, amount: Value) -> EffectAst {
     match part {
         CompoundDamagePart::Target(target) => EffectAst::subject_verb_damage(amount, target),
-        CompoundDamagePart::OpponentChosenTarget(target) => EffectAst::Sequence {
+        CompoundDamagePart::OpponentChosenTarget { target, tag } => EffectAst::Sequence {
             effects: vec![
-                EffectAst::subject_verb_explicit_target_only_for_chooser(
-                    target,
-                    PlayerAst::Opponent,
-                ),
-                EffectAst::subject_verb_damage(
-                    amount,
-                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                ),
+                EffectAst::TagAffected {
+                    effect: Box::new(EffectAst::subject_verb_explicit_target_only_for_chooser(
+                        target,
+                        PlayerAst::Opponent,
+                    )),
+                    tag: tag.clone(),
+                },
+                EffectAst::subject_verb_damage(amount, TargetAst::Tagged(tag, None)),
             ],
         },
         CompoundDamagePart::EachObject(filter) => {
@@ -1377,11 +1387,17 @@ mod coordinated_target_tests {
             panic!("the second damage must retain its delegated choice: {effects:#?}");
         };
         let [
-            EffectAst::SubjectVerb(target_only),
+            EffectAst::TagAffected {
+                effect: target_only,
+                tag: chosen_tag,
+            },
             EffectAst::SubjectVerb(damage),
         ] = chosen.as_slice()
         else {
             panic!("expected target declaration followed by damage: {chosen:#?}");
+        };
+        let EffectAst::SubjectVerb(target_only) = target_only.as_ref() else {
+            panic!("expected tagged target declaration: {target_only:#?}");
         };
         assert_eq!(target_only.subject.role, SubjectVerbRoleAst::Chooser);
         assert_eq!(target_only.subject.player, PlayerAst::Opponent);
@@ -1393,12 +1409,12 @@ mod coordinated_target_tests {
             }
         ));
         assert!(matches!(
-            damage.action,
+            &damage.action,
             SubjectVerbActionAst::DealDamage {
-                target: TargetAst::Tagged(_, _),
+                target: TargetAst::Tagged(tag, _),
                 amount: Value::Fixed(7),
                 ..
-            }
+            } if tag == chosen_tag
         ));
     }
 

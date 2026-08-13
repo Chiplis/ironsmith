@@ -1,5 +1,87 @@
 use super::*;
 
+#[test]
+fn semantic_phrasing_runs_cross_sentence_regression_repairs() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "{U}{B}{R}, Sacrifice a Snail: For each opponent, wick deals damage to that creature's power equal to the sacrificed creature's power to that player. Then you draw cards equal."
+        ),
+        "{U}{B}{R}, Sacrifice a Snail: Wick deals damage equal to the sacrificed creature's power to each opponent. Then draw cards equal to the sacrificed creature's power."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Whenever this creature attacks, you may sacrifice another creature. When you do, this creature deals damage to any target instead equal to the sacrificed creature's power to any target. If the sacrificed creature was a Giant, this creature deals twice X damage."
+        ),
+        "Whenever this creature attacks, you may sacrifice another creature. When you do, this creature deals damage equal to the sacrificed creature's power to any target. If the sacrificed creature was a Giant, this creature deals twice that much damage instead."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "{T}: Draw a card. You exile a card from your hand, then put a number of time counters on the exiled card equal to its mana value. The exiled card gains \"When the last time counter is removed from this card, if that object is a permanent, you may cast it without paying its mana cost. If you cast a creature this way, it gains haste until end of turn.\" For each other card in your exile, remove a time counter from it."
+        ),
+        "{T}: Draw a card, then exile a card from your hand and put a number of time counters on it equal to its mana value. It gains \"When the last time counter is removed from this card, if it's exiled, you may cast it without paying its mana cost. If you cast a creature spell this way, it gains haste until end of turn.\" Then remove a time counter from each other card you own in exile."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Exile target instant card from your graveyard and copy it. You may cast the copy."
+        ),
+        "Exile target instant card from your graveyard and copy it. You may cast the copy."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Untap all attacking creatures. After this phase, there is an additional combat phase."
+        ),
+        "Untap all attacking creatures. After this phase, there is an additional combat phase."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "You may sacrifice a Food. If you do, target creature gets +4/+4 until end of turn. Otherwise, target creature gets +2/+2 until end of turn."
+        ),
+        "You may sacrifice a Food. If you do, target creature gets +4/+4 until end of turn. Otherwise, that creature gets +2/+2 until end of turn."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Each opponent reveals cards from the top of their library until they reveal X land cards and puts them into their graveyard."
+        ),
+        "Each opponent reveals cards from the top of their library until they reveal X land cards, then puts them into their graveyard."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "{1}{R}, Sacrifice this enchantment: For each player, this enchantment deals 3 damage to that player and 3 damage to each tapped creature that player controls."
+        ),
+        "{1}{R}, Sacrifice this enchantment: This enchantment deals 3 damage to each tapped creature and each player."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this creature enters, create Zabu, a legendary 2/2 green Cat creature token with \"Whenever a land you control enters, put a +1/+1 counter on this token.\""
+        ),
+        "When this creature enters, create Zabu, a legendary 2/2 green Cat creature token with \"Landfall — Whenever a land you control enters, put a +1/+1 counter on Zabu.\""
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Target player chooses three cards and puts those cards on top of their library in any order."
+        ),
+        "Target player chooses three cards from their hand and puts them on top of their library in any order."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this creature enters, it deals 2 damage to each creature and each player."
+        ),
+        "When this creature enters, it deals 2 damage to each creature and each player."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "{T}: Choose target creature an opponent controls and creature. Flip a coin. If you win the flip, destroy that creature. If you lose the flip, destroy the creature your opponent chose."
+        ),
+        "{T}: You choose target creature an opponent controls, and that opponent chooses target creature. Flip a coin. If you win the flip, destroy the creature you chose. If you lose the flip, destroy the creature your opponent chose."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Choose two target creatures controlled by the same player. Exile the creature you chose and put two +1/+1 counters on any other target."
+        ),
+        "Choose two target creatures controlled by the same player. Exile one of those creatures and put two +1/+1 counters on the other."
+    );
+}
+
 fn triggering_spell_ordinal_condition(
     mut filter: ObjectFilter,
     exclude_source: bool,
@@ -370,6 +452,23 @@ fn all_filter_renders_relation_exception_before_additional_sets() {
     assert_eq!(
         describe_choose_spec(&ChooseSpec::All(union)),
         "all creatures except those that share a creature type with a creature that convoked this spell, all artifacts, and all enchantments"
+    );
+}
+
+#[test]
+fn all_conjunctive_union_keeps_singular_source_and_each_branch_quantifier() {
+    let source = ObjectFilter::source_with_surface(
+        ironsmith_core::SourceReferenceSurface::ShortName("Gideon".to_string()),
+    );
+    let mut creatures = ObjectFilter::creature().controlled_by(PlayerFilter::Opponent);
+    creatures.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+    let mut union = ObjectFilter::default();
+    union.any_of = vec![source, creatures];
+    union.set_conjunctive_set_surface(true);
+
+    assert_eq!(
+        describe_choose_spec(&ChooseSpec::All(union)),
+        "Gideon and each creature your opponents control"
     );
 }
 
@@ -922,6 +1021,148 @@ fn scry_event_amount_can_preserve_cards_looked_at_this_way_surface() {
     assert_eq!(
         describe_value(&value),
         "the number of cards looked at while scrying this way"
+    );
+}
+
+#[test]
+fn dynamic_pt_delta_with_where_x_surface_renders_x_not_its_basis() {
+    let value = Value::Count(ObjectFilter::default().with_subtype(Subtype::Eldrazi))
+        .with_surface_hint(ValueSurfaceHint::WhereXIs);
+
+    assert_eq!(describe_signed_value(&value), "+X");
+}
+
+#[test]
+fn per_player_exile_sacrifice_return_scaffold_keeps_shared_exiled_set() {
+    let expanded = "For each player, exile all creature cards from that player's graveyard, that player sacrifices all creatures that player controls, then put it onto the battlefield.";
+
+    assert_eq!(
+        normalize_common_semantic_phrasing(expanded),
+        "Each player exiles all creature cards from their graveyard, then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield."
+    );
+}
+
+#[test]
+fn distributed_player_damage_recovers_each_creature_and_each_player_surface() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this creature enters, it deals 2 damage to each player and each creature they control."
+        ),
+        "When this creature enters, it deals 2 damage to each creature and each player."
+    );
+}
+
+#[test]
+fn destroyed_land_and_artifact_controller_keep_typed_nouns() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Destroy target land. If it was a nonbasic permanent, Molten Rain deals 2 damage to that object's controller."
+        ),
+        "Destroy target land. If that land was nonbasic, Molten Rain deals 2 damage to that land's controller."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Destroy target artifact. Smash to Smithereens deals 3 damage to that object's controller."
+        ),
+        "Destroy target artifact. Smash to Smithereens deals 3 damage to that artifact's controller."
+    );
+}
+
+#[test]
+fn equal_damage_names_the_recipient_before_the_amount() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "At the beginning of each player's upkeep, this enchantment deals damage equal to the number of artifacts they control to that player."
+        ),
+        "At the beginning of each player's upkeep, this enchantment deals damage to that player equal to the number of artifacts they control."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "This artifact deals damage equal to the number of charge counters on it to target player and that much damage to up to one target creature."
+        ),
+        "This artifact deals damage equal to the number of charge counters on it to target player and that much damage to up to one target creature."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Target creature deals damage equal to its power to itself. If that creature is attacking, this deals 2 damage to that creature's controller."
+        ),
+        "Target creature deals damage equal to its power to itself. If that creature is attacking, this deals 2 damage to that creature's controller."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "That creature deals damage equal to its power to up to one target creature."
+        ),
+        "That creature deals damage equal to its power to up to one target creature."
+    );
+}
+
+#[test]
+fn shared_draw_does_not_leak_the_synthetic_target_choice() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this creature enters, draw a card, choose target opponent, and target opponent draws a card."
+        ),
+        "When this creature enters, you and target opponent each draw a card."
+    );
+}
+
+#[test]
+fn large_fixed_token_counts_use_scored_numeric_surface() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Create five 1/1 white Human creature tokens. If this spell was cast from a graveyard, create ten 1/1 white Human creature tokens instead."
+        ),
+        "Create 5 1/1 white Human creature tokens. If this spell was cast from a graveyard, create 10 1/1 white Human creature tokens instead."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing("Create five cards."),
+        "Create five cards."
+    );
+}
+
+#[test]
+fn inline_lowering_only_target_choice_is_removed_when_action_names_target() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this creature dies, choose any target, it deals 1 damage to any target, and you gain 1 life."
+        ),
+        "When this creature dies, it deals 1 damage to any target, and you gain 1 life."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "{3}{W}{W}: Draw a card, choose target opponent, and target opponent gains 3 life."
+        ),
+        "{3}{W}{W}: Draw a card and target opponent gains 3 life."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing("Choose target player, target player gains 7 life."),
+        "Choose target player, target player gains 7 life."
+    );
+}
+
+#[test]
+fn generic_exile_wording_recovers_the_source_linked_collection() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "{R}, Discard your hand, Sacrifice this creature: Put those cards in exile into their owners' hands."
+        ),
+        "{R}, Discard your hand, Sacrifice this creature: Put all cards exiled with this creature into their owners' hands."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this creature leaves the battlefield, put those cards in exile into their owners' hands."
+        ),
+        "When this creature leaves the battlefield, put each card exiled with them into their owners' hand."
+    );
+}
+
+#[test]
+fn revealed_any_number_selection_keeps_the_explicit_remainder_set() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Reveal the top X cards of your library. You may put any number of permanent cards with mana value X or less from among them onto the battlefield. Put the rest into your graveyard."
+        ),
+        "Reveal the top X cards of your library. Put any number of permanent cards with mana value X or less from among them onto the battlefield. Then put all cards revealed this way that weren't put onto the battlefield into your graveyard."
     );
 }
 
@@ -4280,6 +4521,12 @@ fn normalize_recent_regression_surfaces() {
     assert_eq!(
         normalize_common_semantic_phrasing(
             "Target creature gets +2/+2 until end of turn. If it's a Human, it gets +3/+3 and gains indestructible until end of turn instead."
+        ),
+        "Target creature gets +2/+2 until end of turn. If it's a Human, instead it gets +3/+3 and gains indestructible until end of turn."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Target creature gets +2/+2 until end of turn. If the target is a Human, instead it gets +3/+3 until end of turn and it gains indestructible until end of turn."
         ),
         "Target creature gets +2/+2 until end of turn. If it's a Human, instead it gets +3/+3 and gains indestructible until end of turn."
     );

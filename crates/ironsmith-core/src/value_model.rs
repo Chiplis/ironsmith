@@ -507,6 +507,10 @@ pub enum Value {
     /// that are exactly two colors ("the number of different color pairs
     /// among permanents you control that are exactly two colors").
     ColorPairsAmong(ObjectFilter),
+    /// The number of distinct counter types present among matching objects.
+    /// Multiple counters of one type and the same type on multiple objects
+    /// each contribute only one to this value.
+    DistinctCounterTypesAmong(ObjectFilter),
     DistinctNames(ObjectFilter),
     DistinctPowers(ObjectFilter),
     TurnHistoryCount(TurnHistoryCount),

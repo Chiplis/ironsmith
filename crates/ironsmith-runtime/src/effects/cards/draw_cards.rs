@@ -468,6 +468,7 @@ mod tests {
                 right: crate::effect::Value::Fixed(0),
             },
             vec![crate::effect::Effect::win_the_game()],
+            false,
             "If you would draw a card while your library has no cards in it, you win the game instead.",
         )
     }
@@ -842,6 +843,57 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn optional_conditional_draw_replacement_can_be_applied_or_declined() {
+        fn always() -> crate::effect::Condition {
+            crate::effect::Condition::ValueComparison {
+                left: crate::effect::Value::Fixed(1),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: crate::effect::Value::Fixed(1),
+            }
+        }
+
+        for (choice, expected_hand, expected_counters) in [
+            ("Pursuit-style replacement", 0, 1),
+            ("Do not apply Pursuit-style replacement", 1, 0),
+        ] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            add_cards_to_library(&mut game, alice, 1);
+            let source = add_static_source(
+                &mut game,
+                alice,
+                "Replacement Source",
+                crate::static_abilities::StaticAbility::conditional_draw_replacement(
+                    always(),
+                    vec![crate::effect::Effect::put_counters_on_source(
+                        crate::object::CounterType::Study,
+                        1,
+                    )],
+                    true,
+                    "Pursuit-style replacement",
+                ),
+            );
+            let mut dm = ChooseReplacementNamed(choice);
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+
+            DrawCardsEffect::you(1)
+                .execute(&mut game, &mut ctx)
+                .expect("optional draw replacement should resolve");
+
+            assert_eq!(game.player(alice).unwrap().hand.len(), expected_hand);
+            assert_eq!(
+                game.object(source)
+                    .unwrap()
+                    .counters
+                    .get(&crate::object::CounterType::Study)
+                    .copied()
+                    .unwrap_or(0),
+                expected_counters,
+            );
+        }
     }
 
     #[test]

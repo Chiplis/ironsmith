@@ -723,6 +723,7 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub copy_source_self: bool,
     pub copy_source_enchanted: bool,
     pub name_override: Option<String>,
+    pub added_colors: ColorSet,
     pub added_card_types: Vec<CardType>,
     pub removed_supertypes: Vec<Supertype>,
     pub added_subtypes: Vec<Subtype>,

@@ -230,9 +230,18 @@ fn compile_delayed_effects_preserving_outer_context(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    compile_delayed_effects_preserving_outer_context_with_event_value(effects, ctx, false)
+}
+
+fn compile_delayed_effects_preserving_outer_context_with_event_value(
+    effects: &[EffectAst],
+    ctx: &mut EffectLoweringContext,
+    allow_event_value: bool,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let saved_frame = ctx.lowering_frame();
     let mut delayed_frame = saved_frame.clone();
     delayed_frame.last_effect_id = None;
+    delayed_frame.allow_life_event_value = allow_event_value;
     let mut id_gen = ctx.id_gen_context();
     let (compiled, choices, mut frame_out) =
         compile_effects_with_explicit_frame(effects, &mut id_gen, delayed_frame)?;
@@ -522,7 +531,11 @@ pub(super) fn try_compile_timing_and_control_effect(
                 }
             }
             let (delayed_effects, choices) =
-                compile_delayed_effects_preserving_outer_context(&effects, ctx)?;
+                compile_delayed_effects_preserving_outer_context_with_event_value(
+                    &effects,
+                    ctx,
+                    uses_prior_prevention_amount,
+                )?;
             let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
                 ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player.clone()),
                 delayed_effects,

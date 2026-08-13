@@ -1,6 +1,6 @@
 use crate::{
-    CauseFilter, ChooseSpec, CounterType, KeywordActionKind, ObjectFilter, PlayerFilter,
-    SourceReferenceSurface, TagKey, Zone, filter_model::Comparison,
+    CauseFilter, ChoiceAggregateMetric, ChooseSpec, Condition, CounterType, KeywordActionKind,
+    ObjectFilter, PlayerFilter, SourceReferenceSurface, TagKey, Zone, filter_model::Comparison,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,7 +111,19 @@ pub enum TriggerKind {
     },
     /// "Whenever A or B" — fires when any branch's event occurs.
     AnyOf(Vec<Trigger>),
+    /// An event trigger with an event-time board/state qualification introduced
+    /// by "while". Unlike an intervening-if clause, this condition is checked
+    /// only while matching the event and is not rechecked on resolution.
+    ConditionQualified {
+        trigger: Box<Trigger>,
+        condition: Condition,
+        surface: String,
+        stun_counter_reminder_surface: bool,
+    },
     ThisAttacks,
+    ThisAttacksWhileYouControl {
+        filter: ObjectFilter,
+    },
     ThisAndAnotherAttackDifferentPlayers,
     ThisAttacksPlayerWhoControlsAtLeast {
         count: usize,
@@ -156,6 +168,15 @@ pub enum TriggerKind {
     AttacksOneOrMoreWithExactTotal {
         filter: ObjectFilter,
         total_attackers: usize,
+    },
+    /// One grouped attack declaration whose matching attackers satisfy an
+    /// aggregate characteristic comparison, such as "creatures with total
+    /// power 12 or greater." This is distinct from a per-attacker power
+    /// filter and therefore fires once for the declaration.
+    AttacksOneOrMoreWithAggregate {
+        filter: ObjectFilter,
+        metric: ChoiceAggregateMetric,
+        comparison: Comparison,
     },
     AttacksAlone {
         filter: ObjectFilter,
@@ -675,6 +696,27 @@ impl Trigger {
     pub fn this_attacks() -> Self {
         Self::typed("this_attacks", TriggerKind::ThisAttacks)
     }
+    pub fn condition_qualified(
+        trigger: Trigger,
+        condition: Condition,
+        surface: impl Into<String>,
+    ) -> Self {
+        Self::typed(
+            "condition_qualified",
+            TriggerKind::ConditionQualified {
+                trigger: Box::new(trigger),
+                condition,
+                surface: surface.into(),
+                stun_counter_reminder_surface: false,
+            },
+        )
+    }
+    pub fn this_attacks_while_you_control(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "this_attacks_while_you_control",
+            TriggerKind::ThisAttacksWhileYouControl { filter },
+        )
+    }
     pub fn this_and_another_attack_different_players() -> Self {
         Self::typed(
             "this_and_another_attack_different_players",
@@ -810,6 +852,20 @@ impl Trigger {
             TriggerKind::AttacksOneOrMoreWithExactTotal {
                 filter,
                 total_attackers,
+            },
+        )
+    }
+    pub fn attacks_one_or_more_with_aggregate(
+        filter: ObjectFilter,
+        metric: ChoiceAggregateMetric,
+        comparison: Comparison,
+    ) -> Self {
+        Self::typed(
+            "attacks_one_or_more_with_aggregate",
+            TriggerKind::AttacksOneOrMoreWithAggregate {
+                filter,
+                metric,
+                comparison,
             },
         )
     }

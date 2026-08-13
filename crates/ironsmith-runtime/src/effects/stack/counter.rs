@@ -266,6 +266,53 @@ mod tests {
     }
 
     #[test]
+    fn counter_spell_can_replace_destination_and_battlefield_controller_in_one_event() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature = CardBuilder::new(CardId::new(), "Creature Spell")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let target_spell = game.create_object_from_card(&creature, bob, Zone::Stack);
+        let stable_id = game.object(target_spell).unwrap().stable_id;
+        game.stack.push(StackEntry::new(target_spell, bob));
+        let counter_source = create_instant(&mut game, alice, Zone::Stack, "Counter Source");
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(counter_source, alice, &mut dm);
+
+        for register in [
+            Effect::new(crate::effects::RegisterZoneReplacementEffect::new(
+                ChooseSpec::SpecificObject(target_spell),
+                Some(Zone::Stack),
+                Some(Zone::Graveyard),
+                Zone::Battlefield,
+                crate::effects::ReplacementApplyMode::OneShot,
+            )),
+            Effect::new(crate::effects::RegisterEnterUnderControlReplacementEffect::new(
+                ObjectFilter::specific(target_spell),
+                crate::effects::ReplacementApplyMode::UntilEndOfTurn,
+            )),
+        ] {
+            execute_effect(&mut game, &register, &mut ctx).unwrap();
+        }
+        execute_effect(
+            &mut game,
+            &Effect::new(CounterEffect::new(ChooseSpec::SpecificObject(target_spell))),
+            &mut ctx,
+        )
+        .expect("counter should resolve through both replacements");
+
+        let moved = game.find_object_by_stable_id(stable_id).unwrap();
+        let object = game.object(moved).unwrap();
+        assert_eq!(object.zone, Zone::Battlefield);
+        assert_eq!(game.controller_of(object), alice);
+        assert!(
+            !game.player(bob).unwrap().graveyard.contains(&moved),
+            "the card must never visit its owner's graveyard"
+        );
+    }
+
+    #[test]
     fn counter_spell_honors_own_from_anywhere_exile_replacement_on_stack() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

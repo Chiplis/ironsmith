@@ -192,6 +192,44 @@ pub(crate) fn parse_choose_target_and_verb_clause(
 pub(crate) fn parse_copy_spell_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    fn parse_copy_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, CardTextError> {
+        let words = crate::runtime_backend::token_word_refs(tokens);
+        let among = words.iter().position(|word| *word == "among");
+        if let Some(among) = among
+            && matches!(
+                &words[..among],
+                ["kind", "of", "counter"] | ["kinds", "of", "counters"]
+            )
+        {
+            let filter_tokens = LexedClause::new(tokens)
+                .after_words(among + 1)
+                .unwrap_or_else(|| LexedClause::new(tokens).from(tokens.len()))
+                .trimmed();
+            if filter_tokens.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "missing object filter after 'counter among' in copy clause".to_string(),
+                ));
+            }
+            return Ok(Value::DistinctCounterTypesAmong(parse_object_filter(
+                filter_tokens.tokens(),
+                false,
+            )?));
+        }
+        if let Some(history_count) =
+            crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
+        {
+            Ok(history_count)
+        } else if let Some(player) =
+            crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_commander_cast_count_player(
+                &crate::runtime_backend::token_word_refs(tokens),
+            )
+        {
+            Ok(Value::CommanderCastCount(player))
+        } else {
+            Ok(Value::Count(parse_object_filter(tokens, false)?))
+        }
+    }
+
     // A token-copy creation has an inner copular `copies` phrase, but its
     // executable verb is the leading `create`.  This tolerant recognizer may
     // scan past surrounding words to find a copy action, so explicitly leave
@@ -404,7 +442,7 @@ pub(crate) fn parse_copy_spell_clause(
         } else {
             copy_clause_tail
         };
-        let (copy_target_tail, explicit_count) = strip_copy_count_suffix(copy_target_tail);
+        let (mut copy_target_tail, explicit_count) = strip_copy_count_suffix(copy_target_tail);
         if let Some(count_value) = explicit_count {
             count = count_value;
         }
@@ -422,15 +460,8 @@ pub(crate) fn parse_copy_spell_clause(
                     clause_text
                 )));
             }
-            count = if let Some(history_count) =
-                crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(
-                    count_filter_clause.tokens(),
-                )
-            {
-                history_count
-            } else {
-                Value::Count(parse_object_filter(count_filter_clause.tokens(), false)?)
-            };
+            count = parse_copy_for_each_count(count_filter_clause.tokens())?;
+            copy_target_tail = &copy_target_tail[..for_each_idx];
         }
         let target = target_from_shape(clause_shapes::parse_copy_target_shape_tokens(
             copy_target_tail,
@@ -523,15 +554,7 @@ pub(crate) fn parse_copy_spell_clause(
                 clause_text
             )));
         }
-        count = if let Some(history_count) =
-            crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(
-                count_filter_clause.tokens(),
-            )
-        {
-            history_count
-        } else {
-            Value::Count(parse_object_filter(count_filter_clause.tokens(), false)?)
-        };
+        count = parse_copy_for_each_count(count_filter_clause.tokens())?;
         copy_target_tail = &copy_target_tail[..for_each_idx];
     }
 
@@ -618,6 +641,56 @@ fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Optio
 mod copy_all_tests {
     use super::*;
     use crate::runtime_backend::ast::{PredicateAst, SubjectVerbEffectAst};
+
+    #[test]
+    fn copy_for_each_kind_of_counter_uses_a_distinct_counter_type_value() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Copy it for each kind of counter among permanents you control.",
+            0,
+        )
+        .expect("distinct-counter copy clause should lex");
+        let parsed = parse_copy_spell_clause(&tokens)
+            .expect("distinct-counter copy clause should parse")
+            .expect("distinct-counter copy clause should match");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    target,
+                    count,
+                    target_reference_pronoun,
+                    ..
+                },
+            ..
+        }) = parsed
+        else {
+            panic!("expected one typed copy action: {parsed:#?}");
+        };
+        assert!(matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG));
+        assert!(target_reference_pronoun);
+        let Value::DistinctCounterTypesAmong(filter) = count else {
+            panic!("expected a distinct counter-type count: {count:#?}");
+        };
+        assert_eq!(
+            filter,
+            ObjectFilter::permanent_card()
+                .in_zone(Zone::Battlefield)
+                .you_control()
+        );
+
+        let ordinary =
+            crate::runtime_backend::lex_line("Copy it for each permanent you control.", 0)
+                .expect("ordinary per-permanent copy should lex");
+        assert!(
+            format!(
+                "{:#?}",
+                parse_copy_spell_clause(&ordinary)
+                    .expect("ordinary copy should parse")
+                    .expect("ordinary copy should match")
+            )
+            .contains("Count("),
+            "an ordinary object count must remain a reusable Count value"
+        );
+    }
 
     #[test]
     fn create_token_copies_are_not_claimed_as_spell_copy_actions() {
@@ -1689,6 +1762,19 @@ mod choose_target_prelude_tests {
             };
             assert_eq!(filter.card_types.as_slice(), [expected_type], "{filter:#?}");
         }
+    }
+
+    #[test]
+    fn preserves_two_repeated_target_slots_with_controller_qualifiers() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Choose target creature you control and target creature an opponent controls.",
+            0,
+        )
+        .expect("repeated target prelude should lex");
+        let effects = parse_choose_target_prelude_sentence(&tokens)
+            .expect("repeated target prelude should parse")
+            .expect("choose-target prelude parser should match");
+        assert_eq!(effects.len(), 2, "{effects:#?}");
     }
 }
 

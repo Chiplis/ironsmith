@@ -105,6 +105,7 @@ fn pluralize_cost_noun_phrase(phrase: &str) -> String {
         }
     }
     match phrase {
+        "Elf" => "Elves".to_string(),
         "artifact" => "artifacts".to_string(),
         "creature" => "creatures".to_string(),
         "enchantment" => "enchantments".to_string(),
@@ -1039,6 +1040,19 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 )),
             )
         }
+        Value::CommanderCastCount(player) => {
+            let subject = match player {
+                PlayerFilter::You => "you've cast your commander",
+                PlayerFilter::Opponent => "an opponent has cast their commander",
+                _ => "that player has cast their commander",
+            };
+            (
+                "{1}".to_string(),
+                Some(format!(
+                    "for each time {subject} from the command zone this game"
+                )),
+            )
+        }
         Value::SpellsCastThisTurnMatching {
             player,
             filter,
@@ -1386,6 +1400,9 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         description.push_str(" with mana value ");
         description.push_str(&describe_comparison(mana_value));
     }
+    if filter.has_x_in_cost {
+        description.push_str(" with {X} in its mana cost");
+    }
     let mut target_descriptions = Vec::new();
     if let Some(player_filter) = &filter.targets_player {
         target_descriptions.push(describe_player_filter_for_spell_target(player_filter));
@@ -1604,7 +1621,6 @@ impl StaticAbilityKind for CostReduction {
         if self.filter.first_spell_cast_each_turn
             && self.characteristic_intersection.is_none()
             && !self.per_target
-            && tail.is_none()
             && matches!(
                 self.condition.as_ref(),
                 None | Some(crate::ConditionExpr::YourTurn)
@@ -1618,7 +1634,33 @@ impl StaticAbilityKind for CostReduction {
             } else {
                 "each turn"
             };
-            return format!("The first {subject} {turn_window} costs {amount_text} less to cast");
+            let mut line =
+                format!("The first {subject} {turn_window} costs {amount_text} less to cast");
+            if let Some(tail) = tail {
+                append_cost_modifier_tail(&mut line, &tail);
+            }
+            return line;
+        }
+        if let Some(ordinal) = self.filter.spell_cast_ordinal_each_turn
+            && self.characteristic_intersection.is_none()
+            && !self.per_target
+            && self.condition.is_none()
+        {
+            let mut base = self.filter.clone();
+            base.spell_cast_ordinal_each_turn = None;
+            let subject = describe_spell_filter(&base).replacen("spells", "spell", 1);
+            let ordinal = match ordinal {
+                1 => "first".to_string(),
+                2 => "second".to_string(),
+                3 => "third".to_string(),
+                other => format!("{other}th"),
+            };
+            let mut line =
+                format!("The {ordinal} {subject} each turn costs {amount_text} less to cast");
+            if let Some(tail) = tail {
+                append_cost_modifier_tail(&mut line, &tail);
+            }
+            return line;
         }
         if self
             .filter
@@ -3219,6 +3261,14 @@ mod tests {
     }
 
     #[test]
+    fn affinity_uses_irregular_subtype_plural() {
+        let affinity = ThisSpellCostReduction::new(Value::Fixed(1), Always)
+            .with_affinity_filter(ObjectFilter::default().with_subtype(Subtype::Elf));
+
+        assert_eq!(affinity.display(), "Affinity for Elves");
+    }
+
+    #[test]
     fn test_delve() {
         let delve = Delve;
         assert_eq!(delve.id(), StaticAbilityId::Delve);
@@ -3290,6 +3340,20 @@ mod tests {
         assert_eq!(
             reduction.display(),
             "This spell costs {1} less to cast for each card type among cards in your graveyard"
+        );
+    }
+
+    #[test]
+    fn commander_cast_count_cost_reduction_names_command_zone_history() {
+        let filter = ObjectFilter::default()
+            .with_type(CardType::Instant)
+            .with_type(CardType::Sorcery)
+            .cast_by(PlayerFilter::You);
+        let reduction = CostReduction::new(filter, Value::CommanderCastCount(PlayerFilter::You));
+
+        assert_eq!(
+            reduction.display(),
+            "instant and sorcery spells you cast cost {1} less to cast for each time you've cast your commander from the command zone this game"
         );
     }
 
@@ -3545,6 +3609,43 @@ mod tests {
         assert_eq!(
             reduction.display(),
             "The first non-Lemur creature spell with flying you cast during each of your turns costs {1} less to cast"
+        );
+    }
+
+    #[test]
+    fn first_x_spell_reduction_keeps_x_qualifier_and_dynamic_tail() {
+        let mut filter = ObjectFilter::default();
+        filter.cast_by = Some(PlayerFilter::You);
+        filter.first_spell_cast_each_turn = true;
+        filter.has_x_in_cost = true;
+        let reduction = CostReduction::new(
+            filter,
+            Value::CountersOn(
+                Box::new(crate::target::ChooseSpec::Source),
+                Some(crate::CounterType::PlusOnePlusOne),
+            )
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+        );
+
+        assert_eq!(
+            reduction.display(),
+            "The first spell you cast with {X} in its mana cost each turn costs {1} less to cast for each +1/+1 counter on this source"
+        );
+
+        let ordinary = CostReduction::new(ObjectFilter::default(), Value::Fixed(1));
+        assert_eq!(ordinary.display(), "spells cost {1} less to cast");
+    }
+
+    #[test]
+    fn second_spell_cost_reduction_renders_exact_ordinal() {
+        let mut filter = ObjectFilter::default();
+        filter.cast_by = Some(PlayerFilter::You);
+        filter.spell_cast_ordinal_each_turn = Some(2);
+        let reduction = CostReduction::new(filter, Value::Fixed(2));
+
+        assert_eq!(
+            reduction.display(),
+            "The second spell you cast each turn costs {2} less to cast"
         );
     }
 

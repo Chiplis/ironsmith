@@ -27,8 +27,19 @@ fn exact_face_up_graveyard_move_to_exile(
 }
 
 fn describe_graveyard_exile(inner: &Effect) -> String {
-    describe_effect(inner)
-        .replace(" in your graveyard", " from your graveyard")
+    let text = describe_effect(inner);
+    if text.contains("put there from") {
+        return text
+            .replace(
+                " from your graveyard that was put there",
+                " in your graveyard that was put there",
+            )
+            .replace(
+                " from a graveyard that was put there",
+                " in a graveyard that was put there",
+            );
+    }
+    text.replace(" in your graveyard", " from your graveyard")
         .replace(" in a graveyard", " from a graveyard")
 }
 
@@ -167,11 +178,33 @@ pub(in crate::compiled_text) fn render_graveyard_exile_copy_cast_pair(
     if cast.without_paying_mana_cost {
         may_cast.push_str(" without paying its mana cost");
     }
-    let mut rendered = format!(
-        "{} and copy it. {may_cast}",
-        describe_graveyard_exile(exile_inner).trim_end_matches('.')
-    );
+    let exile_text = describe_graveyard_exile(exile_inner);
+    let exile_text = exile_text.trim_end_matches('.');
+    let mut rendered = match cast.copy_instruction_surface {
+        Some(ironsmith_core::effect::CopyInstructionSurface::SeparateIt) => {
+            format!("{exile_text}. Copy it. {may_cast}")
+        }
+        Some(ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard) => {
+            format!("{exile_text}. Copy that card. {may_cast}")
+        }
+        Some(
+            ironsmith_core::effect::CopyInstructionSurface::SeparateItThen
+            | ironsmith_core::effect::CopyInstructionSurface::SeparateItThenPermanentCopyReminder,
+        ) => {
+            let may_cast = may_cast.strip_prefix("You ").unwrap_or(may_cast.as_str());
+            format!("{exile_text}. Copy it, then you {may_cast}")
+        }
+        None => format!("{exile_text} and copy it. {may_cast}"),
+    };
     append_standard_copy_cast_reminder(&mut rendered, cast);
+    if cast.copy_instruction_surface
+        == Some(ironsmith_core::effect::CopyInstructionSurface::SeparateItThenPermanentCopyReminder)
+    {
+        rendered.push_str(". ");
+        rendered.push_str(STANDARD_REMINDER_OPEN_SENTINEL);
+        rendered.push_str("A copy of a permanent spell becomes a token.");
+        rendered.push_str(STANDARD_REMINDER_CLOSE_SENTINEL);
+    }
     Some(rendered)
 }
 
@@ -267,6 +300,40 @@ mod tests {
             render_graveyard_exile_copy_cast_pair(&exile, &may).as_deref(),
             Some(expected.as_str())
         );
+    }
+
+    #[test]
+    fn graveyard_copy_cast_keeps_typed_authored_instruction_boundaries() {
+        let tag = "__sentence_helper_exiled_l0_s0_e40";
+        for (surface, expected) in [
+            (
+                ironsmith_core::effect::CopyInstructionSurface::SeparateIt,
+                "Exile target instant or sorcery card from a graveyard. Copy it. You may cast the copy without paying its mana cost",
+            ),
+            (
+                ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard,
+                "Exile target instant or sorcery card from a graveyard. Copy that card. You may cast the copy without paying its mana cost",
+            ),
+            (
+                ironsmith_core::effect::CopyInstructionSurface::SeparateItThen,
+                "Exile target instant or sorcery card from a graveyard. Copy it, then you may cast the copy without paying its mana cost",
+            ),
+        ] {
+            let [exile, may] = graveyard_copy_cast(tag, tag).try_into().unwrap();
+            let may = may
+                .downcast_ref::<crate::effects::MayEffect>()
+                .expect("fixture has an optional cast");
+            let mut cast = may.effects[0]
+                .downcast_ref::<crate::effects::CastTaggedEffect>()
+                .expect("fixture has a typed tagged cast")
+                .clone();
+            cast.copy_instruction_surface = Some(surface);
+            let may = Effect::new(crate::effects::MayEffect::new(vec![Effect::new(cast)]));
+            assert_eq!(
+                render_graveyard_exile_copy_cast_pair(&exile, &may).as_deref(),
+                Some(expected)
+            );
+        }
     }
 
     #[test]

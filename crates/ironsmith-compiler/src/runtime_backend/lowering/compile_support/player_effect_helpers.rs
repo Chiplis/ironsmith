@@ -14,6 +14,7 @@ pub(crate) struct LoweredSubject {
     role: SubjectRole,
     player_filter: PlayerFilter,
     choices: Vec<ChooseSpec>,
+    resolution_prelude: Vec<Effect>,
 }
 
 impl LoweredSubject {
@@ -22,6 +23,7 @@ impl LoweredSubject {
             role: SubjectRole::Actor,
             player_filter,
             choices,
+            resolution_prelude: Vec::new(),
         }
     }
 
@@ -44,7 +46,39 @@ impl LoweredSubject {
             role,
             player_filter,
             choices,
+            resolution_prelude: Vec::new(),
         })
+    }
+
+    pub(crate) fn resolve_resolution_chooser(
+        player: PlayerAst,
+        ctx: &mut EffectLoweringContext,
+        allow_target: bool,
+        allow_target_opponent: bool,
+        track_last_player_filter: bool,
+    ) -> Result<Self, CardTextError> {
+        let mut subject = Self::resolve_chooser(
+            player,
+            ctx,
+            allow_target,
+            allow_target_opponent,
+            track_last_player_filter,
+        )?;
+        if player == PlayerAst::Opponent {
+            let tag = TagKey::from(ctx.next_tag("choosing_opponent").as_str());
+            subject.player_filter = PlayerFilter::TaggedPlayer(tag.clone());
+            subject
+                .resolution_prelude
+                .push(Effect::new(crate::effects::ChoosePlayerEffect::new(
+                    PlayerFilter::You,
+                    PlayerFilter::Opponent,
+                    tag,
+                )));
+            if track_last_player_filter {
+                ctx.last_player_filter = Some(subject.player_filter.clone());
+            }
+        }
+        Ok(subject)
     }
 
     pub(crate) fn resolve_actor(
@@ -296,7 +330,7 @@ impl LoweredSubject {
     }
 
     pub(crate) fn prepend_target_prelude_if_needed(&self, effect: Effect) -> Vec<Effect> {
-        let mut effects = Vec::new();
+        let mut effects = self.resolution_prelude.clone();
         if effect.target_spec().is_none() {
             effects.extend(self.target_prelude());
         }

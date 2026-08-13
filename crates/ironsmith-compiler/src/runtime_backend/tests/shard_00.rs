@@ -2052,6 +2052,175 @@ pub(super) fn rewrite_modal_header_parser_keeps_choose_one_when_later_choose_bot
 }
 
 #[test]
+pub(super) fn refreshed_instead_modal_header_parses_typed_conditional_selection_ranges_and_labels() {
+    use crate::runtime_backend::semantic::ConditionalModeSelection;
+
+    for (text, expected, label) in [
+        (
+            "Choose one. If you descended this turn, you may choose both instead.",
+            ConditionalModeSelection::BothOrTwo,
+            None,
+        ),
+        (
+            "Delirium — Choose one. If there are four or more card types among cards in your graveyard, choose one or more instead.",
+            ConditionalModeSelection::OneOrMore,
+            Some("Delirium"),
+        ),
+        (
+            "Choose one. If this spell was kicked, choose any number instead.",
+            ConditionalModeSelection::AnyNumber,
+            None,
+        ),
+    ] {
+        let header = parse_modal_header_for_test(text)
+            .expect("modal header should parse")
+            .expect("modal header should be recognized");
+        assert_eq!(
+            header.conditional_mode_change.as_ref().map(|change| change.selection),
+            Some(expected),
+            "{text}: {header:#?}"
+        );
+        assert_eq!(
+            header.presentation_label.as_ref().and_then(|label| label.display_prefix()).as_deref(),
+            label,
+            "{text}: {header:#?}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn refreshed_instead_modal_header_near_misses_do_not_invent_conditional_selection() {
+    for text in [
+        "Choose one. If you descended this turn, draw a card instead.",
+        "Choose one. When you descend, choose both.",
+        "Choose one. If you descended this turn, choose a target instead.",
+    ] {
+        let header = parse_modal_header_for_test(text)
+            .expect("modal header should parse")
+            .expect("modal header should be recognized");
+        assert!(header.conditional_mode_change.is_none(), "{text}: {header:#?}");
+    }
+}
+
+#[test]
+pub(super) fn refreshed_instead_mastery_alternative_cost_conditions_correlate_without_unsupported_predicates() {
+    for (name, text, condition_surface) in [
+        (
+            "Ingenious Mastery",
+            "You may pay {2}{U} rather than pay this spell's mana cost.\nIf the {2}{U} cost was paid, you draw three cards, then an opponent creates two Treasure tokens and they scry 2. If that cost wasn't paid, you draw X cards.",
+            "ManaCost",
+        ),
+        (
+            "Fervent Mastery",
+            "You may pay {2}{R}{R} rather than pay this spell's mana cost.\nIf the {2}{R}{R} cost was paid, an opponent discards any number of cards, then draws that many cards.\nSearch your library for up to three cards, put them into your hand, shuffle, then discard three cards at random.",
+            "ManaCost",
+        ),
+        (
+            "Devastating Mastery",
+            "You may pay {2}{W}{W} rather than pay this spell's mana cost.\nIf the {2}{W}{W} cost was paid, an opponent chooses up to two nonland permanents they control and returns them to their owner's hand.\nDestroy all nonland permanents.",
+            "ManaCost",
+        ),
+        (
+            "The Last Ronin's Technique",
+            "Sneak {1}{W} (You may cast this spell for {1}{W} if you also return an unblocked attacker you control to hand during the declare blockers step.)\nCreate three 1/1 white Ninja Turtle Spirit creature tokens. If this spell's sneak cost was paid, they enter tapped and attacking.",
+            "NamedCost",
+        ),
+    ] {
+        let compiled = super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::new(), name),
+            text,
+            false,
+        )
+        .unwrap_or_else(|error| panic!("{name} should compile: {error}"));
+        let debug = format!("{:#?}", compiled.definition);
+        assert!(debug.contains("AlternativeCast"), "{name}: {debug}");
+        assert!(debug.contains(condition_surface), "{name}: {debug}");
+        assert!(!debug.contains("CustomUnsupported"), "{name}: {debug}");
+    }
+}
+
+#[test]
+pub(super) fn refreshed_instead_conditional_token_entry_followup_branches_the_typed_token_producer_only() {
+    let tokens = lex_line(
+        "Create three 1/1 white Ninja Turtle Spirit creature tokens. If this spell's sneak cost was paid, they enter tapped and attacking.",
+        0,
+    )
+    .expect("conditional token-entry fixture should lex");
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("conditional token-entry fixture should parse");
+    let [EffectAst::Conditional {
+        if_true,
+        if_false,
+        ..
+    }] = effects.as_slice()
+    else {
+        panic!("expected one executable conditional token creation: {effects:#?}");
+    };
+
+    let creation_flags = |branch: &[EffectAst]| {
+        let [EffectAst::SubjectVerb(subject_verb)] = branch else {
+            panic!("expected one token creation branch: {branch:#?}");
+        };
+        let super::super::ast::SubjectVerbActionAst::CreateTokenWithMods {
+            tapped,
+            attacking,
+            ..
+        } = &subject_verb.action
+        else {
+            panic!("expected a typed token producer: {subject_verb:#?}");
+        };
+        (*tapped, *attacking)
+    };
+    assert_eq!(creation_flags(if_true), (true, true));
+    assert_eq!(creation_flags(if_false), (false, false));
+
+    let near_miss = lex_line(
+        "Create three 1/1 white Ninja Turtle Spirit creature tokens. If this spell's sneak cost was paid, they gain haste until end of turn.",
+        0,
+    )
+    .expect("conditional token-grant near miss should lex");
+    let near_miss = super::super::clause_support::parse_effect_sentences_lexed(&near_miss)
+        .expect("conditional token-grant near miss should use the ordinary parser");
+    assert!(
+        matches!(near_miss.first(), Some(EffectAst::SubjectVerb(_))),
+        "a different modifier must not replace the prior creation: {near_miss:#?}"
+    );
+}
+
+#[test]
+pub(super) fn refreshed_instead_opponent_choice_then_return_preserves_chooser_filter_and_chosen_set() {
+    let tokens = lex_line(
+        "An opponent chooses up to two nonland permanents they control and returns them to their owner's hand.",
+        0,
+    )
+    .expect("opponent return-choice fixture should lex");
+    let parsed = super::super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("opponent return-choice fixture should parse");
+    let debug = format!("{parsed:#?}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("player: Opponent"), "{debug}");
+    assert!(debug.contains("excluded_card_types"), "{debug}");
+    assert!(debug.contains("Land"), "{debug}");
+    assert!(debug.contains("IteratedPlayer"), "{debug}");
+    assert!(debug.contains("ReturnAllToHand"), "{debug}");
+    assert!(debug.contains("IsTaggedObject"), "{debug}");
+
+    let near_miss = lex_line(
+        "An opponent chooses up to two nonland permanents they control and returns a creature to its owner's hand.",
+        0,
+    )
+    .expect("different-return-object near miss should lex");
+    let near_miss = super::super::clause_support::parse_effect_sentences_lexed(&near_miss);
+    assert!(
+        match &near_miss {
+            Err(_) => true,
+            Ok(effects) => !format!("{effects:#?}").contains("ReturnAllToHand"),
+        },
+        "a different return object must not be correlated to the chosen set: {near_miss:#?}"
+    );
+}
+
+#[test]
 pub(super) fn rewrite_modal_header_parser_tracks_x_replacement_without_word_view_scan() {
     let text = "Choose one. X is the number of spells you've cast this turn —";
     let header = parse_modal_header_for_test(text)

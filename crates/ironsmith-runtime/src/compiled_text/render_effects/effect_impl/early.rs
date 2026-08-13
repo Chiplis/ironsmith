@@ -29,6 +29,16 @@
         return String::new();
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        if let Some(compact) =
+            super::describe_delegated_partition_conditional_without_leading_then(sequence)
+        {
+            return compact;
+        }
+        if let Some(compact) = super::describe_delegated_collection_partition_moves(
+            &sequence.effects,
+        ) {
+            return compact;
+        }
         if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
             && let Some(compact) = super::describe_fixed_counter_and_counter_choice_same_target(
                 &sequence.effects,
@@ -350,7 +360,14 @@
                         .as_str()
                         .starts_with("animated_creature")
             });
-            let filter_text = if animated_result {
+            let captured_attacking_group =
+                for_each.filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        && constraint.tag.as_str() == ironsmith_core::ATTACKING_GROUP_TAG
+                });
+            let filter_text = if captured_attacking_group {
+                "of those creatures".to_string()
+            } else if animated_result {
                 let mut antecedent = for_each.filter.clone();
                 antecedent.zone = None;
                 antecedent
@@ -613,6 +630,16 @@
         return "Ascend".to_string();
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        if matches!(
+            for_players.effects.as_slice(),
+            [effect]
+                if effect
+                    .downcast_ref::<crate::effects::SequenceEffect>()
+                    .is_some_and(|sequence| sequence.surface == ironsmith_core::SequenceSurface::RepeatedCommaThen)
+        ) && let Some(compact) = describe_for_players_iterated_action_sequence(for_players)
+        {
+            return compact;
+        }
         // "Each player may draw a card, then each player who drew a card this
         // way gains N life." — must run before the broad may-clause arms,
         // which would expose the WithId/If scaffolding.
@@ -1194,6 +1221,17 @@
             describe_choose_spec(&put_sticker.target)
         );
     }
+    if let Some(unlock) = effect.downcast_ref::<crate::effects::UnlockRoomDoorEffect>() {
+        if unlock.player == PlayerFilter::You {
+            return "Unlock a locked door of a Room you control".to_string();
+        }
+        let player = describe_player_filter(&unlock.player);
+        return format!(
+            "{} {} a locked door of a Room they control",
+            player,
+            player_verb(&player, "unlock", "unlocks")
+        );
+    }
     if let Some(choose_spell) =
         effect.downcast_ref::<crate::effects::ChooseSpellCastHistoryEffect>()
     {
@@ -1431,8 +1469,16 @@
             return rendered;
         }
         if let Some(surface) = &move_to_zone.exiled_with_source_surface {
+            let mut semantic_surface = surface.clone();
+            if semantic_surface.subject
+                == ironsmith_core::ExiledWithSourceSubjectSurface::EachCard
+                && move_to_zone.target.count().is_single()
+            {
+                semantic_surface.subject =
+                    ironsmith_core::ExiledWithSourceSubjectSurface::OneCard;
+            }
             let mut rendered = describe_exiled_with_source_move(
-                surface,
+                &semantic_surface,
                 move_to_zone.zone,
                 move_to_zone.destination_player_surface.as_ref(),
                 Some(&move_to_zone.battlefield_controller),
@@ -1443,11 +1489,11 @@
                 ChooseSpec::Object(filter) | ChooseSpec::All(filter)
                     if filter.other
                         && matches!(
-                            surface.subject,
+                            semantic_surface.subject,
                             ironsmith_core::ExiledWithSourceSubjectSurface::AllCards
                         )
                         && matches!(
-                            surface.source,
+                            semantic_surface.source,
                             ironsmith_core::ExiledWithSourceReferenceSurface::Source(_)
                         )
             );
@@ -1575,6 +1621,15 @@
                 }
             }
             Zone::Hand => {
+                if matches!(
+                    move_to_zone.target.base(),
+                    ChooseSpec::Object(filter)
+                        if filter.zone == Some(Zone::Command)
+                            && filter.is_commander
+                            && filter.owner == Some(PlayerFilter::You)
+                ) {
+                    return "Put your commander into your hand from the command zone".to_string();
+                }
                 if let Some(owner) = graveyard_owner_from_spec(&move_to_zone.target) {
                     let target_text =
                         describe_choose_spec_without_graveyard_zone(&move_to_zone.target);
@@ -3007,6 +3062,35 @@
         );
     }
     if let Some(unless_action) = effect.downcast_ref::<crate::effects::UnlessActionEffect>() {
+        if unless_action.player == PlayerFilter::You
+            && let [return_effect] = unless_action.effects.as_slice()
+            && let Some(return_to_hand) = return_effect
+                .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
+            && !return_to_hand.random
+            && return_to_hand.target.count().is_single()
+            && let ChooseSpec::Object(return_filter) = return_to_hand.target.base()
+            && let [unlock_effect] = unless_action.alternative.as_slice()
+            && let Some(unlock) =
+                unlock_effect.downcast_ref::<crate::effects::UnlockRoomDoorEffect>()
+            && unlock.player == PlayerFilter::You
+        {
+            let mut actual_return_filter = return_filter.clone();
+            actual_return_filter.union_surface = Default::default();
+            let expected_return_filter = ObjectFilter::enchantment()
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You);
+            let mut actual_room_filter = unlock.room_filter.clone();
+            actual_room_filter.union_surface = Default::default();
+            let expected_room_filter = ObjectFilter::default()
+                .with_subtype(crate::types::Subtype::Room)
+                .you_control()
+                .in_zone(Zone::Battlefield);
+            if actual_return_filter == expected_return_filter
+                && actual_room_filter == expected_room_filter
+            {
+                return "Return an enchantment card from your graveyard to your hand or unlock a locked door of a Room you control".to_string();
+            }
+        }
         if let Some(compact) = describe_typed_unless_source_damage(unless_action) {
             return compact;
         }
@@ -4505,6 +4589,11 @@
         {
             return "Attach it to the token".to_string();
         }
+        if attach.objects == ChooseSpec::Source
+            && matches!(&attach.target, ChooseSpec::Tagged(tag) if tag.as_str().starts_with("amassed_"))
+        {
+            return "Attach this source to the amassed Army".to_string();
+        }
         let target = describe_choose_spec(&attach.target);
         let target = if attach.individual_targets {
             pluralize_noun_phrase(&target)
@@ -4532,6 +4621,30 @@
         return describe_sacrifice_effect(sacrifice);
     }
     if let Some(sacrifice_target) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>() {
+        if let ChooseSpec::Object(filter) = sacrifice_target.target.unhinted() {
+            let mut chosen_creature = filter.clone();
+            let chosen_constraints = chosen_creature
+                .tagged_constraints
+                .iter()
+                .filter(|constraint| {
+                    constraint.tag.as_str() == ironsmith_core::CHOSEN_OBJECTS_TAG
+                        && constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
+                .count();
+            chosen_creature.tagged_constraints.retain(|constraint| {
+                constraint.tag.as_str() != ironsmith_core::CHOSEN_OBJECTS_TAG
+                    || constraint.relation
+                        != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            });
+            chosen_creature.union_surface = Default::default();
+            if chosen_constraints == 1
+                && chosen_creature
+                    == ObjectFilter::creature().in_zone(crate::zone::Zone::Battlefield)
+            {
+                return "Sacrifice the chosen creature".to_string();
+            }
+        }
         if sacrifice_target.target.is_target()
             && sacrifice_target.target.count().is_single()
             && matches!(
@@ -5921,6 +6034,9 @@
             return compact;
         }
         if let Some(compact) = describe_conditional_damage_instead(conditional) {
+            return compact;
+        }
+        if let Some(compact) = describe_conditional_token_entry_modification(conditional) {
             return compact;
         }
         if let Some(compact) = describe_conditional_choose_both_instead(conditional) {

@@ -226,9 +226,13 @@ fn scars_delays_one_counter_per_point_actually_prevented() {
         .flat_map(|segment| &segment.default_effects)
         .find_map(find_nested::<crate::effects::ConditionalEffect>)
         .expect("only a creature target should register the delayed counters");
+    let mut creature_characteristic = crate::filter::ObjectFilter::default();
+    creature_characteristic
+        .card_types
+        .push(crate::types::CardType::Creature);
     assert_eq!(
         conditional.condition,
-        crate::effect::Condition::TargetMatches(crate::filter::ObjectFilter::creature())
+        crate::effect::Condition::TargetMatches(creature_characteristic)
     );
     let put = schedule
         .effects

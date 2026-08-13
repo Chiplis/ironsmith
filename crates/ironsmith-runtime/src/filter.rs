@@ -212,8 +212,27 @@ fn first_matching_spell_cast_each_turn_matches(
     game: &GameState,
     fallback_cast_player: Option<PlayerId>,
 ) -> bool {
+    matching_spell_cast_ordinal_each_turn_matches(
+        filter,
+        1,
+        object_id,
+        ctx,
+        game,
+        fallback_cast_player,
+    )
+}
+
+fn matching_spell_cast_ordinal_each_turn_matches(
+    filter: &ObjectFilter,
+    ordinal: u32,
+    object_id: ObjectId,
+    ctx: &FilterContext,
+    game: &GameState,
+    fallback_cast_player: Option<PlayerId>,
+) -> bool {
     let mut matching_filter = filter.clone();
     matching_filter.first_spell_cast_each_turn = false;
+    matching_filter.spell_cast_ordinal_each_turn = None;
 
     let cast_origin_zone = matching_filter.zone.filter(|zone| *zone != Zone::Stack);
     let excluded_cast_origin_zone = matching_filter.excluded_cast_origin_zone.take();
@@ -247,6 +266,7 @@ fn first_matching_spell_cast_each_turn_matches(
     });
 
     let mut saw_current_spell_cast = false;
+    let mut matching_ordinal = 0u32;
     for record in game.turn_store.turn_history.projected_records() {
         let Some(event) = record
             .event
@@ -269,7 +289,10 @@ fn first_matching_spell_cast_each_turn_matches(
         let mut history_ctx = ctx.clone();
         history_ctx.caster = Some(event.caster);
         if matching_filter.matches_snapshot(snapshot, &history_ctx, game) {
-            return event.spell == object_id;
+            matching_ordinal = matching_ordinal.saturating_add(1);
+            if event.spell == object_id {
+                return matching_ordinal == ordinal;
+            }
         }
     }
 
@@ -282,7 +305,7 @@ fn first_matching_spell_cast_each_turn_matches(
     }
 
     if let Some(current_live_match) = current_live_match {
-        return current_live_match;
+        return current_live_match && matching_ordinal.saturating_add(1) == ordinal;
     }
 
     let cast_order = fallback_cast_player
@@ -292,7 +315,7 @@ fn first_matching_spell_cast_each_turn_matches(
                 .spell_cast_order_for_player(object_id, player)
         })
         .or_else(|| game.turn_store.turn_history.spell_cast_order(object_id));
-    cast_order == Some(1)
+    cast_order == Some(ordinal)
 }
 
 pub(crate) trait TaggedConstraintSubject {
@@ -1708,6 +1731,15 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i32)
         }
+        Value::DistinctCounterTypesAmong(filter) => {
+            let mut seen = std::collections::HashSet::new();
+            for object in game.objects_in_deterministic_order() {
+                if filter.matches(object, ctx, game) {
+                    seen.extend(object.counters.keys().copied());
+                }
+            }
+            Some(seen.len() as i32)
+        }
         Value::GreatestPower(filter) => aggregate_pt(filter, game, ctx, true, true),
         Value::GreatestToughness(filter) => aggregate_pt(filter, game, ctx, false, true),
         Value::GreatestManaValue(filter) => aggregate_mana_value(filter, game, ctx, true),
@@ -2061,6 +2093,9 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
                 base.matches_player(player, ctx)
             }
+            PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, .. } => {
+                base.matches_player(player, ctx)
+            }
             PlayerFilter::LostLifeThisTurn { base } => base.matches_player(player, ctx),
             PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, .. } => {
                 base.matches_player(player, ctx)
@@ -2165,6 +2200,29 @@ pub(crate) fn player_filter_matches_game(
             };
             player_filter_matches_game(base, player, game, ctx)
                 && game.source_dealt_damage_to_player_this_game(source, player)
+        }
+        PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => {
+            if !player_filter_matches_game(base, player, game, ctx) {
+                return false;
+            }
+            game.players.iter().any(|involved| {
+                game.action_history_for_player(involved.id).any(|record| {
+                    let Some(damage) = record.event.downcast::<crate::events::DamageEvent>() else {
+                        return false;
+                    };
+                    if !damage.is_combat
+                        || damage.amount == 0
+                        || damage.target != crate::events::DamageTarget::Player(player)
+                    {
+                        return false;
+                    }
+                    record
+                        .source_snapshot
+                        .as_ref()
+                        .or(record.object_snapshot.as_ref())
+                        .is_some_and(|snapshot| sources.matches_snapshot(snapshot, ctx, game))
+                })
+            })
         }
         PlayerFilter::LostLifeThisTurn { base } => {
             player_filter_matches_game(base, player, game, ctx)
@@ -3342,6 +3400,18 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if let Some(ordinal) = self.spell_cast_ordinal_each_turn
+            && !matching_spell_cast_ordinal_each_turn_matches(
+                self,
+                ordinal,
+                object.id,
+                ctx,
+                game,
+                resolved_cast_player,
+            )
+        {
+            return false;
+        }
 
         // Owner check
         if let Some(owner_filter) = &self.owner
@@ -4287,6 +4357,18 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if let Some(ordinal) = self.spell_cast_ordinal_each_turn
+            && !matching_spell_cast_ordinal_each_turn_matches(
+                self,
+                ordinal,
+                snapshot.object_id,
+                ctx,
+                game,
+                None,
+            )
+        {
+            return false;
+        }
 
         // LKI filters must retain the same damage-history semantics as live
         // object filters. Death triggers are matched against the departing
@@ -5148,6 +5230,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::LostLifeThisTurn { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -5302,6 +5387,9 @@ impl ObjectFilterExt for ObjectFilter {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::LostLifeThisTurn { .. } => {

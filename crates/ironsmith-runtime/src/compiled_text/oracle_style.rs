@@ -4,6 +4,8 @@ pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
     let oracle_short = super::ast_render::oracle_short_self_name(def);
     let lines = super::normalize_ast_surface_lines(super::debug_compiled_surface_lines(def))
         .into_iter()
+        .map(|line| super::ast_render::rewrite_eminence_source_zone_surface(def, &line))
+        .map(|line| super::ast_render::rewrite_commander_tax_life_surface(def, &line))
         .map(|line| {
             super::substitute_legendary_source_reference(
                 &line,

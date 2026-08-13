@@ -2101,6 +2101,22 @@ pub struct PutStickerEffect {
     pub action: crate::event_model::KeywordActionKind,
 }
 
+/// Unlock a locked door of a Room matching `room_filter` during resolution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnlockRoomDoorEffect {
+    pub player: PlayerFilter,
+    pub room_filter: ObjectFilter,
+}
+
+impl UnlockRoomDoorEffect {
+    pub fn new(player: PlayerFilter, room_filter: ObjectFilter) -> Self {
+        Self {
+            player,
+            room_filter,
+        }
+    }
+}
+
 impl PutStickerEffect {
     pub fn new(target: ChooseSpec, action: crate::event_model::KeywordActionKind) -> Self {
         Self { target, action }
@@ -3630,6 +3646,19 @@ impl TransformEffect {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyInstructionSurface {
+    /// `Copy it. You may cast the copy.`
+    SeparateIt,
+    /// `Copy that card. You may cast the copy.`
+    SeparateThatCard,
+    /// `Copy it, then you may cast the copy.`
+    SeparateItThen,
+    /// `Copy it, then you may cast the copy. (A copy of a permanent spell
+    /// becomes a token.)`
+    SeparateItThenPermanentCopyReminder,
+}
+
 #[derive(Debug, Clone)]
 pub struct CastTaggedEffect {
     pub tag: TagKey,
@@ -3641,6 +3670,9 @@ pub struct CastTaggedEffect {
     /// tokens. This is presentation metadata; `as_copy` owns the executable
     /// semantics.
     pub copy_cast_reminder_surface: bool,
+    /// The authored copy instruction was separate from the exile action.
+    /// This is presentation-only; `as_copy` owns the executable semantics.
+    pub copy_instruction_surface: Option<CopyInstructionSurface>,
     pub without_paying_mana_cost: bool,
     /// A mandatory mana cost imposed by the resolving instruction in
     /// addition to the spell's ordinary costs.
@@ -3670,6 +3702,7 @@ impl CastTaggedEffect {
             allow_land: false,
             as_copy: false,
             copy_cast_reminder_surface: false,
+            copy_instruction_surface: None,
             without_paying_mana_cost: false,
             additional_mana_cost: None,
             cost_reduction: None,
@@ -3689,6 +3722,11 @@ impl CastTaggedEffect {
 
     pub fn with_copy_cast_reminder_surface(mut self) -> Self {
         self.copy_cast_reminder_surface = true;
+        self
+    }
+
+    pub fn with_separate_copy_instruction_surface(mut self) -> Self {
+        self.copy_instruction_surface = Some(CopyInstructionSurface::SeparateThatCard);
         self
     }
 
@@ -3729,6 +3767,8 @@ pub enum LibraryRemainderSurface {
     /// Authored bare "the rest" ("then put the rest on the bottom of your
     /// library in a random order").
     RestBare,
+    /// A new authored sentence beginning "Then put the rest ...".
+    SentenceLeadingThenRest,
     /// "the rest of the cards revealed this way"
     RestOfCardsRevealedThisWay,
     /// "the cards you revealed this way"
@@ -4132,6 +4172,10 @@ pub enum SequenceSurface {
     /// It executes in ordinary sequential scope; the distinction exists so
     /// compiled text does not normalize the connective to `and`.
     CommaThen,
+    /// Every boundary in a three-or-more-action sequence was authored as
+    /// `, then`. This is distinct from `CommaThen`, which can also represent
+    /// a single trailing `, then` after an ordinary comma-separated list.
+    RepeatedCommaThen,
     Coordinated,
     CoordinatedLeadingDuration,
     ResultConjunction {
@@ -4181,6 +4225,14 @@ impl<E> SequenceEffect<E> {
         Self {
             effects,
             surface: SequenceSurface::CommaThen,
+            result_label: None,
+        }
+    }
+
+    pub fn repeated_comma_then(effects: Vec<E>) -> Self {
+        Self {
+            effects,
+            surface: SequenceSurface::RepeatedCommaThen,
             result_label: None,
         }
     }

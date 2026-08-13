@@ -1841,6 +1841,83 @@ pub(crate) fn rewrite_prepare_effects_for_lowering(
     )
 }
 
+/// Whether a statement's terminal result must remain executable across an
+/// independently lowered source boundary.
+///
+/// Ordinary object references already cross that boundary through durable
+/// tags.  The extra result ID is needed only when the next statement must
+/// recover a participant-scoped outcome (for example, "the creature they
+/// exiled" after an instruction performed by each opponent).  Exporting an
+/// ID for every memory-producing statement wraps otherwise self-contained
+/// coordinated effects in `WithIdEffect`, obscuring their structural render
+/// shape without providing any executable dependency.
+fn statement_terminal_needs_participant_result_export(effect: &EffectAst) -> bool {
+    fn is_damage_aggregate_member(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => matches!(
+                action,
+                SubjectVerbActionAst::DealDamage { .. }
+                    | SubjectVerbActionAst::DealDamageEach { .. }
+                    | SubjectVerbActionAst::DealDamageEqualToPower { .. }
+                    | SubjectVerbActionAst::DealDistributedDamage { .. }
+            ),
+            EffectAst::TagAffected { effect, .. } => is_damage_aggregate_member(effect),
+            EffectAst::ForEachObject { effects, .. } | EffectAst::ForEachTagged { effects, .. } => {
+                !effects.is_empty() && effects.iter().all(is_damage_aggregate_member)
+            }
+            _ => false,
+        }
+    }
+
+    match effect {
+        EffectAst::ForEachOpponent { .. }
+        | EffectAst::ForEachPlayersFiltered { .. }
+        | EffectAst::ForEachPlayer { .. }
+        | EffectAst::AnyPlayerMay { .. }
+        | EffectAst::ForEachTargetPlayers { .. }
+        | EffectAst::ForEachTaggedPlayer { .. } => true,
+        EffectAst::Coordinated { effects, .. }
+            if effects.len() > 1 && effects.iter().all(is_damage_aggregate_member) =>
+        {
+            true
+        }
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ResultBranchLabel { effects, .. }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::TrailingIf { effects, .. }
+        | EffectAst::TrailingUnless { effects, .. } => effects
+            .last()
+            .is_some_and(statement_terminal_needs_participant_result_export),
+        EffectAst::TagAffected { effect, .. } => {
+            statement_terminal_needs_participant_result_export(effect)
+        }
+        _ => false,
+    }
+}
+
+fn effect_consumes_prior_damage_metric(effect: &EffectAst) -> bool {
+    let direct = matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GainLife { amount: value },
+            ..
+        }) if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::DamageDealt)
+    );
+    if direct {
+        return true;
+    }
+
+    let mut nested_match = false;
+    for_each_nested_effects(effect, true, |nested| {
+        nested_match |= nested.iter().any(effect_consumes_prior_damage_metric);
+    });
+    nested_match
+}
+
 /// Prepare one independently authored resolution statement while retaining a
 /// result producer for a following statement on the same spell or ability.
 ///
@@ -1855,13 +1932,25 @@ pub(crate) fn rewrite_prepare_statement_effects_for_lowering(
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let imports = imports.into();
     let normalized = normalize_effects_ast(effects);
+    let force_export_last_memory_effect_id = normalized
+        .last()
+        .is_some_and(statement_terminal_needs_participant_result_export)
+        || normalized
+            .iter()
+            .enumerate()
+            .any(|(producer_index, producer)| {
+                statement_terminal_needs_participant_result_export(producer)
+                    && normalized[producer_index + 1..]
+                        .iter()
+                        .any(effect_consumes_prior_damage_metric)
+            });
     rewrite_prepare_effects_from_normalized(
         normalized.clone(),
         &normalized,
         imports,
         EffectReferenceResolutionConfig {
             force_auto_tag_object_targets: true,
-            force_export_last_memory_effect_id: true,
+            force_export_last_memory_effect_id,
             ..Default::default()
         },
         None,
@@ -3421,6 +3510,7 @@ fn rewrite_validate_no_unresolved_dynamic_values<T: std::fmt::Debug + ?Sized>(
 
 fn rewrite_validate_choose_specs_for_iterated_player(
     choices: &[ChooseSpec],
+    effects: &[Effect],
     iterated_player_bound: bool,
     context: &str,
 ) -> Result<(), CardTextError> {
@@ -3428,6 +3518,23 @@ fn rewrite_validate_choose_specs_for_iterated_player(
         return Ok(());
     }
     for choice in choices {
+        let bound_by_delegated_target = effects.iter().any(|effect| {
+            fn binds(effect: &Effect, choice: &ChooseSpec) -> bool {
+                if let Some(target) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
+                    && target.chooser.is_some()
+                    && target.target.base() == choice.base()
+                {
+                    return true;
+                }
+                let mut found = false;
+                effect.visit_child_effects(&mut |child| found |= binds(child, choice));
+                found
+            }
+            binds(effect, choice)
+        });
+        if bound_by_delegated_target {
+            continue;
+        }
         rewrite_validate_unbound_iterated_player(
             choose_spec_mentions_iterated_player(choice),
             choice,
@@ -3457,8 +3564,21 @@ fn rewrite_validate_effects_for_iterated_player(
     iterated_player_bound: bool,
     context: &str,
 ) -> Result<(), CardTextError> {
+    let mut iterated_player_bound = iterated_player_bound;
     for effect in effects {
         rewrite_validate_effect_for_iterated_player(effect, iterated_player_bound, context)?;
+        fn delegates_iterated_target(effect: &Effect) -> bool {
+            if let Some(target) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
+                && target.chooser.is_some()
+                && choose_spec_mentions_iterated_player(&target.target)
+            {
+                return true;
+            }
+            let mut found = false;
+            effect.visit_child_effects(&mut |child| found |= delegates_iterated_target(child));
+            found
+        }
+        iterated_player_bound |= delegates_iterated_target(effect);
     }
     Ok(())
 }
@@ -3665,7 +3785,12 @@ fn rewrite_validate_effect_for_iterated_player(
         return Ok(());
     }
     if let Some(reflexive) = effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>() {
-        rewrite_validate_choose_specs_for_iterated_player(&reflexive.choices, false, context)?;
+        rewrite_validate_choose_specs_for_iterated_player(
+            &reflexive.choices,
+            &reflexive.effects,
+            false,
+            context,
+        )?;
         return rewrite_validate_effects_for_iterated_player(&reflexive.effects, false, context);
     }
     if let Some(schedule_delayed) =
@@ -3708,7 +3833,12 @@ fn rewrite_validate_effect_for_iterated_player(
         );
     }
     if let Some(haunt) = effect.downcast_ref::<crate::effects::HauntExileEffect>() {
-        rewrite_validate_choose_specs_for_iterated_player(&haunt.haunt_choices, false, context)?;
+        rewrite_validate_choose_specs_for_iterated_player(
+            &haunt.haunt_choices,
+            &haunt.haunt_effects,
+            false,
+            context,
+        )?;
         return rewrite_validate_effects_for_iterated_player(&haunt.haunt_effects, false, context);
     }
     if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
@@ -3763,7 +3893,12 @@ fn rewrite_validate_ability_for_iterated_player(
                 false,
                 context,
             )?;
-            rewrite_validate_choose_specs_for_iterated_player(&triggered.choices, false, context)?;
+            rewrite_validate_choose_specs_for_iterated_player(
+                &triggered.choices,
+                &triggered.effects.flattened_default_effects(),
+                false,
+                context,
+            )?;
             if let Some(intervening_if) = &triggered.intervening_if {
                 rewrite_validate_condition_for_iterated_player(intervening_if, false, context)?;
             }
@@ -3775,7 +3910,12 @@ fn rewrite_validate_ability_for_iterated_player(
                 false,
                 context,
             )?;
-            rewrite_validate_choose_specs_for_iterated_player(&activated.choices, false, context)?;
+            rewrite_validate_choose_specs_for_iterated_player(
+                &activated.choices,
+                &activated.effects.flattened_default_effects(),
+                false,
+                context,
+            )?;
             for restriction in &activated.activation_restrictions {
                 rewrite_validate_condition_for_iterated_player(restriction, false, context)?;
             }
@@ -3824,6 +3964,7 @@ pub(crate) fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
     rewrite_validate_effects_for_iterated_player(&lowered.effects, iterated_player_bound, context)?;
     rewrite_validate_choose_specs_for_iterated_player(
         &lowered.choices,
+        &lowered.effects.flattened_default_effects(),
         iterated_player_bound,
         context,
     )
@@ -3852,6 +3993,35 @@ mod tests {
         assert!(
             prepared.exports.to_imports().last_effect_id.is_some(),
             "the next source statement must be able to import the per-player exile result: {prepared:#?}"
+        );
+    }
+
+    #[test]
+    fn self_contained_coordinated_statement_does_not_export_unused_result_id() {
+        let tokens = lex_line("Target player draws two cards and loses 2 life.", 0)
+            .expect("coordinated statement should lex");
+        let effects =
+            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
+                .expect("coordinated statement should parse");
+        let prepared =
+            rewrite_prepare_statement_effects_for_lowering(&effects, ReferenceImports::default())
+                .expect("coordinated statement should prepare");
+
+        assert!(
+            prepared.exports.to_imports().last_effect_id.is_none(),
+            "a self-contained statement must not manufacture a terminal result dependency: {prepared:#?}"
+        );
+        let lowered = materialize_prepared_statement_effects(&prepared)
+            .expect("coordinated statement should lower");
+        assert!(
+            lowered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .all(|effect| effect
+                    .downcast_ref::<crate::effects::WithIdEffect>()
+                    .is_none()),
+            "unused statement export must not obscure the coordinated runtime shell: {lowered:#?}"
         );
     }
 

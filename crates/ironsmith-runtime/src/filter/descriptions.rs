@@ -298,6 +298,9 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
+        PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => {
+            format!("{}'s", describe_player_filter(filter))
+        }
         PlayerFilter::LostLifeThisTurn { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
@@ -384,6 +387,11 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
             "{} this source has dealt damage to this game",
             describe_player_filter(base)
+        ),
+        PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
+            "{} dealt combat damage this game by {}",
+            describe_player_filter(base),
+            sources.description()
         ),
         PlayerFilter::LostLifeThisTurn { base } => {
             format!("{} who lost life this turn", describe_player_filter(base))

@@ -1,7 +1,9 @@
 //! "Whenever [filter] attacks" trigger.
 
+use crate::effect::ChoiceAggregateMetric;
 use crate::events::EventKind;
 use crate::events::combat::CreatureAttackedEvent;
+use crate::filter::Comparison;
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::ids::ObjectId;
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -21,6 +23,9 @@ pub struct AttacksTrigger {
     pub min_total_attackers: usize,
     /// Maximum number of total attackers allowed for this trigger to fire.
     pub max_total_attackers: Option<usize>,
+    /// Optional comparison over one characteristic summed across every
+    /// matching attacker in the declaration.
+    pub aggregate_constraint: Option<(ChoiceAggregateMetric, Comparison)>,
 }
 
 /// Trigger that fires once when one or more matching players are attacked.
@@ -202,6 +207,7 @@ impl AttacksTrigger {
             one_or_more: false,
             min_total_attackers: 1,
             max_total_attackers: None,
+            aggregate_constraint: None,
         }
     }
 
@@ -212,6 +218,7 @@ impl AttacksTrigger {
             one_or_more: true,
             min_total_attackers: 1,
             max_total_attackers: None,
+            aggregate_constraint: None,
         }
     }
 
@@ -226,6 +233,7 @@ impl AttacksTrigger {
             one_or_more: true,
             min_total_attackers: min_total_attackers.max(1),
             max_total_attackers: None,
+            aggregate_constraint: None,
         }
     }
 
@@ -241,6 +249,21 @@ impl AttacksTrigger {
             one_or_more: true,
             min_total_attackers: total_attackers,
             max_total_attackers: Some(total_attackers),
+            aggregate_constraint: None,
+        }
+    }
+
+    pub fn one_or_more_with_aggregate(
+        filter: ObjectFilter,
+        metric: ChoiceAggregateMetric,
+        comparison: Comparison,
+    ) -> Self {
+        Self {
+            filter,
+            one_or_more: true,
+            min_total_attackers: 1,
+            max_total_attackers: None,
+            aggregate_constraint: Some((metric, comparison)),
         }
     }
 
@@ -287,6 +310,25 @@ impl AttacksTrigger {
             .filter(|info| self.matches_attacker_info(info, ctx))
             .count();
         (count > 0).then_some(count as i32)
+    }
+
+    fn matching_attacker_aggregate_this_combat(
+        &self,
+        metric: ChoiceAggregateMetric,
+        ctx: &TriggerContext,
+    ) -> Option<i32> {
+        let combat = ctx.game.combat.as_ref()?;
+        let values = combat
+            .attackers
+            .iter()
+            .filter(|info| self.matches_attacker_info(info, ctx))
+            .map(|info| crate::targeting::aggregate_object_value(ctx.game, info.creature, metric));
+        let mut matched = false;
+        let total = values.fold(0, |sum, value| {
+            matched = true;
+            sum + value
+        });
+        matched.then_some(total)
     }
 
     pub(crate) fn matches_attacker_info(
@@ -422,6 +464,14 @@ impl TriggerMatcher for AttacksTrigger {
         {
             return false;
         }
+        if let Some((metric, comparison)) = &self.aggregate_constraint {
+            let Some(total) = self.matching_attacker_aggregate_this_combat(*metric, ctx) else {
+                return false;
+            };
+            if !comparison.satisfies(total) {
+                return false;
+            }
+        }
         if self.one_or_more {
             return self.is_first_matching_attacker_this_combat(e.attacker, &attack_target, ctx);
         }
@@ -509,6 +559,41 @@ impl TriggerMatcher for AttacksTrigger {
             }
             _ => String::new(),
         };
+
+        if let Some((metric, comparison)) = &self.aggregate_constraint {
+            let metric = match metric {
+                ChoiceAggregateMetric::Power => "power",
+                ChoiceAggregateMetric::Toughness => "toughness",
+                ChoiceAggregateMetric::ManaValue => "mana value",
+            };
+            let comparison = match comparison {
+                Comparison::Equal(value) => value.to_string(),
+                Comparison::OneOf(values) => values
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" or "),
+                Comparison::NotEqual(value) => format!("not equal to {value}"),
+                Comparison::LessThan(value) => format!("less than {value}"),
+                Comparison::LessThanOrEqual(value) => format!("{value} or less"),
+                Comparison::GreaterThan(value) => format!("greater than {value}"),
+                Comparison::GreaterThanOrEqual(value) => format!("{value} or greater"),
+                _ => "the required amount".to_string(),
+            };
+            let group_subject = pluralize_attack_subject(
+                &base_subject
+                    .replace(" you control", "")
+                    .replace(" an opponent controls", ""),
+            );
+            if base_subject.ends_with(" you control") {
+                return format!(
+                    "Whenever you attack{target_tail} with {group_subject} with total {metric} {comparison}"
+                );
+            }
+            return format!(
+                "Whenever {group_subject} with total {metric} {comparison} attack{target_tail}"
+            );
+        }
 
         if self.one_or_more {
             if let Some(exact_total) = self.max_total_attackers
@@ -1468,6 +1553,68 @@ mod tests {
             ),
             crate::provenance::ProvNodeId::default(),
         );
+        assert!(!trigger.matches(&second_event, &ctx));
+    }
+
+    #[test]
+    fn aggregate_power_attack_trigger_sums_the_declared_group_once() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(100);
+        let first = create_creature(&mut game, "A", alice);
+        let second = create_creature(&mut game, "B", alice);
+        let third = create_creature(&mut game, "C", alice);
+
+        let trigger = AttacksTrigger::one_or_more_with_aggregate(
+            ObjectFilter::creature().you_control(),
+            ChoiceAggregateMetric::Power,
+            Comparison::GreaterThanOrEqual(6),
+        );
+        assert_eq!(
+            trigger.display(),
+            "Whenever you attack with creatures with total power 6 or greater"
+        );
+
+        let event = |attacker, total_attackers| {
+            TriggerEvent::new_with_provenance(
+                CreatureAttackedEvent::with_total_attackers(
+                    attacker,
+                    AttackEventTarget::Player(bob),
+                    total_attackers,
+                ),
+                crate::provenance::ProvNodeId::default(),
+            )
+        };
+
+        game.combat = Some(CombatState {
+            attackers: vec![
+                AttackerInfo {
+                    creature: first,
+                    target: AttackTarget::Player(bob),
+                },
+                AttackerInfo {
+                    creature: second,
+                    target: AttackTarget::Player(bob),
+                },
+            ],
+            ..CombatState::default()
+        });
+        let below = event(first, 2);
+        assert!(!trigger.matches(&below, &TriggerContext::for_source(source_id, alice, &game)));
+
+        game.combat
+            .as_mut()
+            .expect("combat exists")
+            .attackers
+            .push(AttackerInfo {
+                creature: third,
+                target: AttackTarget::Player(bob),
+            });
+        let first_event = event(first, 3);
+        let second_event = event(second, 3);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(trigger.matches(&first_event, &ctx));
         assert!(!trigger.matches(&second_event, &ctx));
     }
 

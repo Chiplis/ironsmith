@@ -101,10 +101,101 @@ pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     parse_generic_mana_transaction(tokens)
         .or_else(|| parse_cast_unlock_turn_face_up(tokens))
         .or_else(|| parse_cast_or_activate_source(tokens))
+        .or_else(|| parse_cast_or_activate_any_ability(tokens))
+        .or_else(|| parse_activate_any_ability_or_cast(tokens))
         .or_else(|| parse_legacy_restriction(tokens))
         .or_else(|| parse_activate_ability_restriction(tokens))
         .or_else(|| parse_cant_be_spent_restriction(tokens))
         .or_else(|| parse_filter_restriction(tokens))
+}
+
+fn cast_spell_payment_predicate(filter: ObjectFilter) -> ManaPaymentPredicate {
+    ManaPaymentPredicate::All(vec![
+        ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell),
+        ManaPaymentPredicate::SourceMatches(filter),
+    ])
+}
+
+fn any_ability_payment_predicates() -> [ManaPaymentPredicate; 2] {
+    [
+        ManaPaymentPredicate::Purpose(ManaPaymentPurpose::ActivateAbility),
+        ManaPaymentPredicate::Purpose(ManaPaymentPurpose::ActivateManaAbility),
+    ]
+}
+
+fn cast_or_any_ability_restriction(spell_filter: ObjectFilter) -> ManaUsageRestriction {
+    let [activate, activate_mana] = any_ability_payment_predicates();
+    ManaUsageRestriction::PaymentTransaction {
+        restriction: Some(ManaPaymentPredicate::AnyOf(vec![
+            cast_spell_payment_predicate(spell_filter),
+            activate,
+            activate_mana,
+        ])),
+        on_spend: Vec::new(),
+    }
+}
+
+fn parse_cast_or_activate_any_ability(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
+    const SEPARATORS: &[&[&str]] = &[
+        &["or", "activate", "an", "ability"],
+        &["or", "activate", "abilities"],
+        &["or", "to", "activate", "an", "ability"],
+        &["or", "to", "activate", "abilities"],
+    ];
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let prefix_end = parse_any_prefix_word_count(&words, SPEND_MANA_CAST_PREFIXES)?;
+    let separator = SEPARATORS.iter().find(|separator| {
+        words.get(words.len().saturating_sub(separator.len())..) == Some(**separator)
+    })?;
+    let separator_start = words.len().checked_sub(separator.len())?;
+    if separator_start <= prefix_end {
+        return None;
+    }
+    let spell_tokens = token_slice_for_words(tokens, &view, prefix_end, separator_start)?;
+    Some(cast_or_any_ability_restriction(
+        parse_mana_usage_spell_filter(spell_tokens)?,
+    ))
+}
+
+fn parse_activate_any_ability_or_cast(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
+    const PREFIXES: &[&[&str]] = &[
+        &[
+            "spend", "this", "mana", "only", "to", "activate", "an", "ability", "or", "cast",
+        ],
+        &[
+            "spend",
+            "this",
+            "mana",
+            "only",
+            "to",
+            "activate",
+            "abilities",
+            "or",
+            "cast",
+        ],
+        &[
+            "spend", "that", "mana", "only", "to", "activate", "an", "ability", "or", "cast",
+        ],
+        &[
+            "spend",
+            "that",
+            "mana",
+            "only",
+            "to",
+            "activate",
+            "abilities",
+            "or",
+            "cast",
+        ],
+    ];
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let spell_start = parse_any_prefix_word_count(&words, PREFIXES)?;
+    let spell_tokens = token_slice_for_words(tokens, &view, spell_start, words.len())?;
+    Some(cast_or_any_ability_restriction(
+        parse_mana_usage_spell_filter(spell_tokens)?,
+    ))
 }
 
 pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
@@ -402,6 +493,10 @@ fn parse_cast_or_activate_source(tokens: &[OwnedLexToken]) -> Option<ManaUsageRe
     const SEPARATORS: &[&[&str]] = &[
         &["or", "activate", "an", "ability", "of"],
         &["or", "activate", "abilities", "of"],
+        &["or", "to", "activate", "an", "ability", "of"],
+        &["or", "to", "activate", "abilities", "of"],
+        &["and", "activate", "an", "ability", "of"],
+        &["and", "activate", "abilities", "of"],
     ];
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
@@ -506,6 +601,51 @@ fn parse_activate_ability_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUs
                 ManaPaymentPredicate::SourceMatches(
                     ObjectFilter::default().with_type(CardType::Artifact),
                 ),
+            ])),
+            on_spend: Vec::new(),
+        });
+    }
+
+    const SOURCE_PREFIXES: &[&[&str]] = &[
+        &[
+            "spend",
+            "this",
+            "mana",
+            "only",
+            "to",
+            "activate",
+            "abilities",
+            "of",
+        ],
+        &[
+            "spend", "this", "mana", "only", "to", "activate", "an", "ability", "of",
+        ],
+        &[
+            "spend",
+            "that",
+            "mana",
+            "only",
+            "to",
+            "activate",
+            "abilities",
+            "of",
+        ],
+        &[
+            "spend", "that", "mana", "only", "to", "activate", "an", "ability", "of",
+        ],
+    ];
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if let Some(source_start) = parse_any_prefix_word_count(&words, SOURCE_PREFIXES)
+        && source_start < words.len()
+    {
+        let source_tokens = token_slice_for_words(tokens, &view, source_start, words.len())?;
+        let source_filter = parse_ability_source_filter(source_tokens)?;
+        let [activate, activate_mana] = any_ability_payment_predicates();
+        return Some(ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(ManaPaymentPredicate::All(vec![
+                ManaPaymentPredicate::AnyOf(vec![activate, activate_mana]),
+                ManaPaymentPredicate::SourceMatches(source_filter),
             ])),
             on_spend: Vec::new(),
         });
@@ -680,15 +820,35 @@ fn parse_simple_subtype_spell_filter(tokens: &[OwnedLexToken]) -> Option<ObjectF
 
 fn parse_ability_source_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let tokens = strip_article(trim_lexed_commas(tokens));
-    let words = TokenWordView::new(tokens).word_refs();
-    let [subtype_word, source_word] = words.as_slice() else {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let semantic_end = words
+        .last()
+        .is_some_and(|word| matches!(*word, "source" | "sources"))
+        .then(|| words.len().saturating_sub(1))
+        .unwrap_or(words.len());
+    if semantic_end == 0 {
+        return None;
+    }
+    let semantic = token_slice_for_words(tokens, &view, 0, semantic_end)?;
+    let parsed = parse_spell_filter_with_grammar_entrypoint(semantic);
+    if parsed != ObjectFilter::default() {
+        return Some(parsed);
+    }
+
+    let semantic_words = TokenWordView::new(semantic).word_refs();
+    let [kind] = semantic_words.as_slice() else {
         return None;
     };
-    matches!(*source_word, "source" | "sources").then_some(())?;
-    Some(
-        ObjectFilter::default()
-            .with_subtype(leaf::parse_leaf_subtype_flexible_complete(subtype_word).ok()?),
-    )
+    match *kind {
+        "artifact" | "artifacts" => Some(ObjectFilter::default().with_type(CardType::Artifact)),
+        "creature" | "creatures" => Some(ObjectFilter::default().with_type(CardType::Creature)),
+        "land" | "lands" => Some(ObjectFilter::default().with_type(CardType::Land)),
+        _ => Some(
+            ObjectFilter::default()
+                .with_subtype(leaf::parse_leaf_subtype_flexible_complete(kind).ok()?),
+        ),
+    }
 }
 
 fn parse_alternative_cast_spell_with_origin(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {

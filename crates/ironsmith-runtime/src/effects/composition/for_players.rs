@@ -874,6 +874,32 @@ mod tests {
     }
 
     #[test]
+    fn quantified_damage_uses_each_iterated_players_own_life_total() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.player_mut(bob).expect("bob").life = 7;
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let amount = crate::effect::Value::HalfRoundedDown(Box::new(
+            crate::effect::Value::LifeTotal(PlayerFilter::IteratedPlayer),
+        ));
+
+        ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![Effect::deal_damage(
+                amount,
+                crate::target::ChooseSpec::Player(PlayerFilter::IteratedPlayer),
+            )],
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("each player's own life total should resolve inside the loop");
+
+        assert_eq!(game.player(alice).expect("alice").life, 10);
+        assert_eq!(game.player(bob).expect("bob").life, 4);
+    }
+
+    #[test]
     fn i004_simultaneous_proposal_commit_is_atomic_on_error() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

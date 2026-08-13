@@ -126,7 +126,163 @@ fn normalize_compiled_effects(compiled: Vec<Effect>) -> Vec<Effect> {
     let compiled = normalize_two_target_conditional_then_fight(compiled);
     let compiled = normalize_two_target_counter_then_fight(compiled);
     let compiled = normalize_random_destroy_across_target_groups(compiled);
+    let compiled = normalize_mixed_target_exile_top_damage(compiled);
     fold_local_zone_rewrite_self_replacements(compiled)
+}
+
+fn rewrite_wrapped_damage_target(effect: &Effect, target: ChooseSpec) -> Option<Effect> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return Some(Effect::new(crate::effects::TaggedEffect::new(
+            tagged.tag.clone(),
+            rewrite_wrapped_damage_target(&tagged.effect, target)?,
+        )));
+    }
+    let mut damage = effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()?
+        .clone();
+    damage.target = target;
+    Some(Effect::new(damage))
+}
+
+fn exact_exile_top_damage_procedure(
+    effects: &[Effect],
+) -> Option<(
+    &crate::effects::ExileTopOfLibraryEffect,
+    &crate::effects::DealDamageEffect,
+)> {
+    let [sequence_effect] = effects else {
+        return None;
+    };
+    let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if sequence.surface != ironsmith_core::SequenceSurface::CommaThen {
+        return None;
+    }
+    let [exile_effect, damage_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let mut damage_effect = damage_effect;
+    while let Some(tagged) = damage_effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        damage_effect = &tagged.effect;
+    }
+    let damage = damage_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let [exiled_tag] = exile.moved_tags.as_slice() else {
+        return None;
+    };
+    if exile.player != PlayerFilter::You
+        || exile.count.unhinted() != &Value::Fixed(1)
+        || exile.face_down
+        || !exile.accumulated_tags.is_empty()
+        || damage.source_is_combat
+        || damage.unpreventable
+        || !matches!(damage.amount.unhinted(), Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == exiled_tag))
+    {
+        return None;
+    }
+    Some((exile, damage))
+}
+
+/// A mixed player/permanent target declaration is executed by two disjoint
+/// runtime iterators. Rebind the damage recipient in each mirrored procedure
+/// to that iterator's current member; the original broad target phrase is
+/// only the declaration and must not become a fresh choice during resolution.
+fn normalize_mixed_target_exile_top_damage(mut compiled: Vec<Effect>) -> Vec<Effect> {
+    let [
+        declaration_effect,
+        player_loop_effect,
+        object_loop_effect,
+        _permission,
+    ] = compiled.as_slice()
+    else {
+        return compiled;
+    };
+    let Some(declaration) = declaration_effect.downcast_ref::<crate::effects::TaggedEffect>()
+    else {
+        return compiled;
+    };
+    let Some(target_only) = declaration
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+    else {
+        return compiled;
+    };
+    let ChooseSpec::ObjectOrPlayer(object_filter, PlayerFilter::Any) = target_only.target.base()
+    else {
+        return compiled;
+    };
+    let mut semantic_filter = object_filter.clone();
+    semantic_filter.union_surface = Default::default();
+    let mut expected_filter = ObjectFilter::default().in_zone(crate::zone::Zone::Battlefield);
+    expected_filter.card_types = vec![
+        crate::types::CardType::Creature,
+        crate::types::CardType::Planeswalker,
+    ];
+    if !target_only.explicit_declaration
+        || target_only.chooser.is_some()
+        || target_only.target.count() != ChoiceCount::any_number()
+        || semantic_filter != expected_filter
+    {
+        return compiled;
+    }
+    let Some(player_loop) =
+        player_loop_effect.downcast_ref::<crate::effects::ForPlayersEffect<Effect>>()
+    else {
+        return compiled;
+    };
+    let Some(object_loop) =
+        object_loop_effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>()
+    else {
+        return compiled;
+    };
+    if player_loop.filter != PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any))
+        || player_loop.starting_with_controller
+        || player_loop.stop_after_first_happened
+        || object_loop.tag != declaration.tag
+        || object_loop.controller_at_last_blocked_by.is_some()
+    {
+        return compiled;
+    }
+    let Some((player_exile, player_damage)) =
+        exact_exile_top_damage_procedure(&player_loop.effects)
+    else {
+        return compiled;
+    };
+    let Some((object_exile, object_damage)) =
+        exact_exile_top_damage_procedure(&object_loop.effects)
+    else {
+        return compiled;
+    };
+    if player_exile != object_exile
+        || player_damage.amount != object_damage.amount
+        || player_damage.target != object_damage.target
+    {
+        return compiled;
+    }
+    let mut normalized_player = player_loop.clone();
+    let mut normalized_object = object_loop.clone();
+    let player_sequence = normalized_player.effects[0]
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("validated player procedure")
+        .clone();
+    let object_sequence = normalized_object.effects[0]
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("validated object procedure")
+        .clone();
+    let mut player_sequence = player_sequence;
+    let mut object_sequence = object_sequence;
+    player_sequence.effects[1] = rewrite_wrapped_damage_target(
+        &player_sequence.effects[1],
+        ChooseSpec::Player(PlayerFilter::IteratedPlayer),
+    )
+    .expect("validated player damage");
+    object_sequence.effects[1] =
+        rewrite_wrapped_damage_target(&object_sequence.effects[1], ChooseSpec::Iterated)
+            .expect("validated object damage");
+    normalized_player.effects[0] = Effect::new(player_sequence);
+    normalized_object.effects[0] = Effect::new(object_sequence);
+    compiled[1] = Effect::new(normalized_player);
+    compiled[2] = Effect::new(normalized_object);
+    compiled
 }
 
 fn plural_result_reference_tag(effect: &Effect) -> Option<&TagKey> {
@@ -517,7 +673,7 @@ fn fold_cross_segment_counter_rewrites(segments: &mut Vec<crate::resolution::Res
         if !matches!(&replacement.target, ChooseSpec::Tagged(tag) if tag == producer_tag)
             || replacement.from_zone != Some(crate::zone::Zone::Stack)
             || replacement.to_zone != Some(crate::zone::Zone::Graveyard)
-            || replacement.mode != crate::effects::ReplacementApplyMode::UntilEndOfTurn
+            || replacement.mode != crate::effects::ReplacementApplyMode::OneShot
             || replacement.optional
             || replacement.choice_description.is_some()
             || !replacement.counters.is_empty()
@@ -928,6 +1084,133 @@ fn retarget_death_replacement_from_exiled_attachment(
     }
 }
 
+/// Keep both attachment classes anchored to the same triggering permanent in
+/// a return-and-reattach procedure. The intervening Aura result becomes the
+/// destination reference, but it must not replace the historical object in
+/// the later "Equipment that were attached to it" filter.
+pub(crate) fn rebind_returned_attachment_history_to_triggering_object(
+    segments: &mut [crate::resolution::ResolutionSegment],
+) {
+    for segment in segments {
+        let [first_snapshot, second_snapshot, sequence_effect] =
+            segment.default_effects.as_mut_slice()
+        else {
+            continue;
+        };
+        let Some(first_snapshot) =
+            first_snapshot.downcast_ref::<crate::effects::TagAttachedToSourceEffect>()
+        else {
+            continue;
+        };
+        if second_snapshot
+            .downcast_ref::<crate::effects::TagAttachedToSourceEffect>()
+            .is_none()
+        {
+            continue;
+        }
+        let anchor_tag = first_snapshot.tag.clone();
+        let Some(sequence) = sequence_effect
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .cloned()
+        else {
+            continue;
+        };
+        if sequence.surface != ironsmith_core::SequenceSurface::CommaThen {
+            continue;
+        }
+        let [move_effect, attach_returned_effect, attach_history_effect] =
+            sequence.effects.as_slice()
+        else {
+            continue;
+        };
+        let Some(moved) = move_effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+            continue;
+        };
+        let moved_tag = moved.tag.clone();
+        let Some(movement) = moved
+            .effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        else {
+            continue;
+        };
+        let ChooseSpec::WithCount(aura_spec, aura_count) = movement.target.unhinted() else {
+            continue;
+        };
+        let ChooseSpec::Object(aura_filter) = aura_spec.unhinted() else {
+            continue;
+        };
+        if !aura_count.is_any_number()
+            || movement.zone != crate::zone::Zone::Battlefield
+            || aura_filter.subtypes.as_slice() != [crate::types::Subtype::Aura]
+            || !aura_filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == anchor_tag
+                    && constraint.relation
+                        == crate::filter::TaggedOpbjectRelation::WasAttachedToTaggedObject
+            })
+        {
+            continue;
+        }
+        let Some(attach_returned) =
+            attach_returned_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()
+        else {
+            continue;
+        };
+        if !matches!(
+            attach_returned.objects.base(),
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter)
+                if filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag == moved_tag
+                        && constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
+        )
+        {
+            continue;
+        }
+        let Some(attach_history) =
+            attach_history_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()
+        else {
+            continue;
+        };
+        let ChooseSpec::Object(equipment_filter) = attach_history.objects.base() else {
+            continue;
+        };
+        if equipment_filter.subtypes.as_slice() != [crate::types::Subtype::Equipment]
+            || !matches!(attach_history.target.base(), ChooseSpec::Tagged(tag) if tag == &moved_tag)
+        {
+            continue;
+        }
+        let mut normalized = sequence;
+        let Some(normalized_attach) = normalized.effects[2]
+            .downcast_ref::<crate::effects::AttachObjectsEffect>()
+            .cloned()
+        else {
+            continue;
+        };
+        let mut normalized_attach = normalized_attach;
+        let ChooseSpec::WithCount(objects, count) = &mut normalized_attach.objects else {
+            continue;
+        };
+        if !count.is_any_number() {
+            continue;
+        }
+        let ChooseSpec::Object(filter) = objects.as_mut() else {
+            continue;
+        };
+        let [constraint] = filter.tagged_constraints.as_mut_slice() else {
+            continue;
+        };
+        if constraint.relation != crate::filter::TaggedOpbjectRelation::WasAttachedToTaggedObject
+            || constraint.tag != moved_tag
+        {
+            continue;
+        }
+        constraint.tag = anchor_tag;
+        normalized.effects[2] = Effect::new(normalized_attach);
+        *sequence_effect = Effect::new(normalized);
+    }
+}
+
 /// Oracle sometimes iterates the individual objects affected by a zone change
 /// while assigning a follow-up search to each distinct controller. Lowering
 /// the sentence literally as `ForEachTagged` repeats the search once per
@@ -1116,6 +1399,7 @@ fn materialize_source_sentence_segments(
     normalize_cross_segment_correlated_created_result_fights(&mut segments);
     normalize_cross_segment_fight_sequences(&mut segments);
     retarget_death_replacement_from_exiled_attachment(&mut segments);
+    rebind_returned_attachment_history_to_triggering_object(&mut segments);
     fold_cross_segment_counter_rewrites(&mut segments);
     if let Some(first) = segments.first_mut() {
         first.default_effects = prepend_effect_prelude(
@@ -2593,5 +2877,53 @@ mod plural_result_reference_tests {
             apply.target_spec.as_ref().map(ChooseSpec::base),
             Some(ChooseSpec::Tagged(tag)) if tag.as_str() == "second"
         ));
+    }
+}
+
+#[cfg(test)]
+mod counter_rewrite_mode_tests {
+    use super::*;
+
+    fn counter_then_replacement(
+        mode: crate::effects::ReplacementApplyMode,
+    ) -> Vec<crate::resolution::ResolutionSegment> {
+        let tag = TagKey::from("countered");
+        let mut spell = ObjectFilter::default().in_zone(crate::zone::Zone::Stack);
+        spell.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        let target = ChooseSpec::target(ChooseSpec::Object(spell));
+        let counter = Effect::counter(target).tag(tag.clone());
+        let replacement = Effect::new(crate::effects::RegisterZoneReplacementEffect::new(
+            ChooseSpec::Tagged(tag),
+            Some(crate::zone::Zone::Stack),
+            Some(crate::zone::Zone::Graveyard),
+            crate::zone::Zone::Exile,
+            mode,
+        ));
+        vec![
+            crate::resolution::ResolutionSegment::from_effects(vec![counter]),
+            crate::resolution::ResolutionSegment::from_effects(vec![replacement]),
+        ]
+    }
+
+    #[test]
+    fn one_shot_counter_destination_folds_into_local_rewrite() {
+        let mut segments = counter_then_replacement(crate::effects::ReplacementApplyMode::OneShot);
+        fold_cross_segment_counter_rewrites(&mut segments);
+
+        assert_eq!(segments.len(), 1);
+        assert!(
+            segments[0].default_effects[0]
+                .downcast_ref::<crate::effects::LocalRewriteEffect>()
+                .is_some(),
+            "a counter destination replacement is scoped to the counter action: {segments:#?}"
+        );
+    }
+
+    #[test]
+    fn turn_scoped_replacement_is_not_misclassified_as_counter_rewrite() {
+        let mut segments =
+            counter_then_replacement(crate::effects::ReplacementApplyMode::UntilEndOfTurn);
+        fold_cross_segment_counter_rewrites(&mut segments);
+        assert_eq!(segments.len(), 2);
     }
 }

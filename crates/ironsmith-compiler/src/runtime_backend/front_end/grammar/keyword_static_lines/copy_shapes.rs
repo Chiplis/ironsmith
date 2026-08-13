@@ -369,6 +369,9 @@ fn parse_copy_characteristic_exception_lexed<'a>(
 
 fn parse_copy_characteristic_remainder_start<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
+        primitives::phrase(&[
+            "in", "addition", "to", "its", "other", "colors", "and", "types",
+        ]),
         primitives::phrase(&["in", "addition", "to", "its", "other", "types"]),
         primitives::phrase(&["in", "addition", "to", "its", "other", "creature", "types"]),
         primitives::phrase(&["and", "its", "power", "and", "toughness"]),
@@ -384,6 +387,9 @@ fn parse_copy_characteristic_remainder<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<CopyCharacteristicRemainder<'a>> {
     opt(alt((
+        primitives::phrase(&[
+            "in", "addition", "to", "its", "other", "colors", "and", "types",
+        ]),
         primitives::phrase(&["in", "addition", "to", "its", "other", "types"]),
         primitives::phrase(&["in", "addition", "to", "its", "other", "creature", "types"]),
     )))

@@ -2823,6 +2823,37 @@ fn alternative_cast_label(
     (!name.is_empty()).then(|| name.to_string())
 }
 
+fn selected_alternative_cost_reference(
+    game: &GameState,
+    caster: PlayerId,
+    obj_id: ObjectId,
+    casting_method: &CastingMethod,
+) -> Option<crate::cost::OptionalCostRef> {
+    let obj = game.object(obj_id)?;
+    let method = match casting_method {
+        CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            zone,
+            ..
+        } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx)
+            .or_else(|| obj.cast_alternative_method_owned()),
+        _ => None,
+    }?;
+    let reference = ironsmith_core::AlternativeCostReference::paid_marker(
+        method.name(),
+        method.mana_cost(),
+    );
+    Some(crate::cost::OptionalCostRef::new(
+        crate::cost::OptionalCostKind::AlternativeCast(reference),
+    ))
+}
+
 /// Finalize a spell cast by paying remaining costs and creating the stack entry.
 /// Returns the spell cast info for trigger checking.
 ///
@@ -2967,6 +2998,14 @@ pub(super) fn finalize_spell_cast(
         game.turn_store.turn_history.spell_warped_this_turn = true;
     }
     let selected_alternative_label = alternative_cast_label(game, caster, new_id, &casting_method);
+    if let Some(reference) =
+        selected_alternative_cost_reference(game, caster, new_id, &casting_method)
+    {
+        optional_costs_paid.mark_label_paid(reference.clone());
+        if let Some(spell_obj) = game.object_mut(new_id) {
+            spell_obj.optional_costs_paid.mark_label_paid(reference);
+        }
+    }
     if let Some(label) = selected_alternative_label.as_deref()
         && !label.eq_ignore_ascii_case("Parsed alternative cost")
         && !matches!(
@@ -3465,6 +3504,29 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
         }
         DecisionContext::SelectOptions(options_ctx) => {
             let result = decision_maker.decide_options(game, options_ctx);
+
+            if state
+                .pending_cast
+                .as_ref()
+                .is_some_and(|pending| pending.stage == CastStage::ChoosingTargetChooser)
+                || state
+                    .pending_activation
+                    .as_ref()
+                    .is_some_and(|pending| pending.stage == ActivationStage::ChoosingTargetChooser)
+            {
+                let Some(choice) = result.first().copied() else {
+                    return Err(GameLoopError::InvalidState(
+                        "target chooser selection requires one player".to_string(),
+                    ));
+                };
+                return apply_target_chooser_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    choice,
+                    decision_maker,
+                );
+            }
 
             if game.effect_store.pending_replacement_choice.is_some() {
                 let Some(choice) = result.first().copied() else {

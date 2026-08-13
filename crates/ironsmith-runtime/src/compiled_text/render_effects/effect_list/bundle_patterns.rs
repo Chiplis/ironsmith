@@ -96,6 +96,11 @@
     if let Some(compact) = describe_reveal_top_opponent_split_you_choose_pile_bundle(&filtered) {
         return compact;
     }
+    if let Some(compact) =
+        describe_exiled_collection_opponent_split_you_choose_pile_bundle(&filtered)
+    {
+        return compact;
+    }
     if let Some(compact) = describe_creature_pile_destroy_bundle(&filtered) {
         return compact;
     }

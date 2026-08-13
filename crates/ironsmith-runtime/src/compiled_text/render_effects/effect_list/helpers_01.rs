@@ -518,20 +518,35 @@ pub(crate) fn describe_reveal_top_opponent_split_you_choose_pile_bundle(
     } else {
         filtered
     };
-    let [reveal_effect, tag_effect, choose_effect, unless_effect] = filtered else {
-        return None;
-    };
+    let (reveal_effect, tag_effect, choose_player_effect, choose_effect, unless_effect) =
+        match filtered {
+            [reveal, tag, choose, unless] => (*reveal, *tag, None, *choose, *unless),
+            [reveal, tag, choose_player, choose, unless] => {
+                (*reveal, *tag, Some(*choose_player), *choose, *unless)
+            }
+            _ => return None,
+        };
 
     let reveal = reveal_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
     let tag_matching = tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let unless_action = unless_effect.downcast_ref::<crate::effects::UnlessActionEffect>()?;
 
-    if !reveal.reveal
+    let delegated_opponent = choose_player_effect
+        .and_then(|effect| effect.downcast_ref::<crate::effects::ChoosePlayerEffect>())
+        .is_some_and(|player_choice| {
+            player_choice.chooser == PlayerFilter::You
+                && player_choice.filter == PlayerFilter::Opponent
+                && !player_choice.random
+                && player_choice.excluded_tags.is_empty()
+                && choose.chooser == PlayerFilter::TaggedPlayer(player_choice.tag.clone())
+        });
+    if choose_player_effect.is_some() != delegated_opponent
+        || !reveal.reveal
         || reveal.player != PlayerFilter::You
         || tag_matching.tag.as_str() != "divvy_source"
         || choose.tag.as_str() != "divvy_pile"
-        || choose.chooser != PlayerFilter::Opponent
+        || (!delegated_opponent && choose.chooser != PlayerFilter::Opponent)
         || choose_primary_zone(choose) != Some(Zone::Library)
         || choose.is_search
         || !choose.count.is_any_number()
@@ -577,6 +592,73 @@ pub(crate) fn describe_reveal_top_opponent_split_you_choose_pile_bundle(
     let reveal_text = describe_effect(reveal_effect);
     Some(format!(
         "{reveal_text}. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard."
+    ))
+}
+
+/// Render an exact exiled collection divided by a correlated opponent, where
+/// the controller chooses which pile returns and the complement is disposed.
+/// Every collection relationship is proven by tags; unrelated exile objects
+/// and unrelated player choices deliberately fall through.
+pub(crate) fn describe_exiled_collection_opponent_split_you_choose_pile_bundle(
+    filtered: &[&Effect],
+) -> Option<String> {
+    let [
+        exile_effect,
+        tag_effect,
+        choose_player_effect,
+        choose_effect,
+        selected_effect,
+        rest_effect,
+    ] = filtered
+    else {
+        return None;
+    };
+    let exile = downcast_exile(exile_effect)?;
+    if exile.face_down {
+        return None;
+    }
+    let exile_result_tag =
+        if let Some(tagged) = exile_effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            &tagged.tag
+        } else {
+            return None;
+        };
+    let tag_source = tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let choose_player =
+        choose_player_effect.downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose_player.chooser != PlayerFilter::You
+        || choose_player.filter != PlayerFilter::Opponent
+        || choose_player.random
+        || !choose_player.excluded_tags.is_empty()
+        || choose.chooser != PlayerFilter::TaggedPlayer(choose_player.tag.clone())
+        || choose.is_search
+        || !choose.count.is_any_number()
+        || choose_primary_zone(choose) != Some(Zone::Exile)
+        || tag_matching_zones(tag_source)? != vec![Zone::Exile]
+        || !filter_is_tagged_as(&tag_source.filter, exile_result_tag.as_str())
+        || !filter_is_tagged_as(&choose.filter, tag_source.tag.as_str())
+    {
+        return None;
+    }
+    let selected = downcast_move_to_zone(selected_effect)?;
+    if !move_to_zone_uses_tag(selected, choose.tag.as_str(), Zone::Battlefield)
+        || selected.battlefield_controller != crate::effects::BattlefieldController::You
+        || effect_moves_unselected_to_zone(
+            rest_effect,
+            tag_source.tag.as_str(),
+            choose.tag.as_str(),
+        ) != Some(Zone::Graveyard)
+    {
+        return None;
+    }
+
+    let exile_text = describe_effect(exile_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    Some(format!(
+        "{exile_text}. An opponent separates those cards into two piles. Put all cards from the pile of your choice onto the battlefield under your control and the rest into their owners' graveyards."
     ))
 }
 
@@ -629,15 +711,29 @@ pub(crate) fn describe_creature_pile_destroy_bundle(filtered: &[&Effect]) -> Opt
 pub(crate) fn describe_graveyard_creature_pile_exile_return_bundle(
     filtered: &[&Effect],
 ) -> Option<String> {
-    let [choose_effect, exile_effect, return_effect] = filtered else {
-        return None;
+    let (choose_player_effect, choose_effect, exile_effect, return_effect) = match filtered {
+        [choose, exile, returned] => (None, *choose, *exile, *returned),
+        [choose_player, choose, exile, returned] => {
+            (Some(*choose_player), *choose, *exile, *returned)
+        }
+        _ => return None,
     };
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let exile = downcast_move_to_zone(exile_effect)?;
     let return_all = downcast_return_all_to_battlefield(return_effect)?;
 
-    if choose.tag.as_str() != "divvy_chosen"
-        || choose.chooser != PlayerFilter::Opponent
+    let delegated_opponent = choose_player_effect
+        .and_then(|effect| effect.downcast_ref::<crate::effects::ChoosePlayerEffect>())
+        .is_some_and(|player_choice| {
+            player_choice.chooser == PlayerFilter::You
+                && player_choice.filter == PlayerFilter::Opponent
+                && !player_choice.random
+                && player_choice.excluded_tags.is_empty()
+                && choose.chooser == PlayerFilter::TaggedPlayer(player_choice.tag.clone())
+        });
+    if choose_player_effect.is_some() != delegated_opponent
+        || choose.tag.as_str() != "divvy_chosen"
+        || (!delegated_opponent && choose.chooser != PlayerFilter::Opponent)
         || choose.is_search
         || !choose.count.is_any_number()
         || choose_primary_zone(choose) != Some(Zone::Graveyard)
@@ -2916,6 +3012,28 @@ pub(crate) fn render_search_reveal_opponent_choose_rest_bundle(
         Some((search, true))
     }
 
+    let mut normalized = filtered.to_vec();
+    let mut delegated_opponent = false;
+    if let Some(index) = normalized.windows(2).position(|window| {
+        let Some(player_choice) = window[0].downcast_ref::<crate::effects::ChoosePlayerEffect>()
+        else {
+            return false;
+        };
+        let Some(object_choice) = window[1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        else {
+            return false;
+        };
+        player_choice.chooser == PlayerFilter::You
+            && player_choice.filter == PlayerFilter::Opponent
+            && !player_choice.random
+            && player_choice.excluded_tags.is_empty()
+            && object_choice.chooser == PlayerFilter::TaggedPlayer(player_choice.tag.clone())
+    }) {
+        normalized.remove(index);
+        delegated_opponent = true;
+    }
+    let filtered = normalized.as_slice();
+
     let (
         search_effect,
         reveal_effect,
@@ -3107,7 +3225,11 @@ pub(crate) fn render_search_reveal_opponent_choose_rest_bundle(
         (search_line, None)
     };
 
-    let chooser = describe_player_filter(&choose.chooser);
+    let chooser = if delegated_opponent {
+        "an opponent".to_string()
+    } else {
+        describe_player_filter(&choose.chooser)
+    };
     let chosen_count = if choose.count.is_single() {
         if search.count.is_single() {
             "that card".to_string()

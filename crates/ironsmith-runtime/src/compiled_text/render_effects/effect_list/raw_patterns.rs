@@ -62,6 +62,9 @@
     if let Some(compact) = describe_attach_all_enchanting_target_to_same_controller(effects) {
         return compact;
     }
+    if let Some(compact) = describe_targeted_attachment_instruction(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_redundant_target_only_pair(effects) {
         return compact;
     }
@@ -268,6 +271,9 @@
         return compact;
     }
     if let Some(compact) = describe_choose_sacrifice_then_source_damage_effects(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_damaged_player_discard_then_untap_lands(effects) {
         return compact;
     }
     if let Some(compact) = describe_sacrifice_then_sacrificed_conditional_sequence(effects) {

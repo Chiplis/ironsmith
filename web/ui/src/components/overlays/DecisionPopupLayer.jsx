@@ -96,14 +96,8 @@ function manaPaymentDisplayCode(symbols) {
   return normalized.join("/") || "0";
 }
 
-function manaPaymentEndsOnGeneric(payment) {
-  const pips = Array.isArray(payment?.pips) ? payment.pips : [];
-  return pips.length > 0 && isSingleGenericPip(pips[pips.length - 1]);
-}
-
 function buildManaPaymentGroups(payment) {
   const pips = Array.isArray(payment?.pips) ? payment.pips : [];
-  const currentIndex = clamp(Number(payment?.current_pip_index || 0), 0, pips.length);
   const groups = [];
 
   for (let index = 0; index < pips.length; index += 1) {
@@ -115,15 +109,12 @@ function buildManaPaymentGroups(payment) {
         count += 1;
       }
 
-      const paidCount = clamp(currentIndex - index, 0, count);
       groups.push({
         key: `generic-${index}`,
         start: index,
         end: index + count,
         kind: "generic",
-        displayCount: Math.max(0, count - paidCount),
-        isActive: currentIndex >= index && currentIndex < index + count,
-        isPaid: currentIndex >= index + count,
+        displayCount: count,
       });
       index += count - 1;
       continue;
@@ -135,8 +126,6 @@ function buildManaPaymentGroups(payment) {
       end: index + 1,
       kind: "symbol",
       displayCode: manaPaymentDisplayCode(pip),
-      isActive: currentIndex === index,
-      isPaid: currentIndex > index,
     });
   }
 
@@ -149,9 +138,6 @@ function ManaPaymentTab({ manaPayment = null, anchorRect = null }) {
   const renderedPaymentRef = useRef(renderedPayment);
   const exitTimerRef = useRef(null);
   const frameRef = useRef(null);
-  const shellRef = useRef(null);
-  const indicatorRef = useRef(null);
-  const groupNodeRefs = useRef(new Map());
 
   useEffect(() => {
     renderedPaymentRef.current = renderedPayment;
@@ -179,16 +165,6 @@ function ManaPaymentTab({ manaPayment = null, anchorRect = null }) {
     if (!renderedPaymentRef.current) return undefined;
 
     frameRef.current = requestAnimationFrame(() => {
-      setRenderedPayment((current) => {
-        const totalPips = Array.isArray(current?.pips) ? current.pips.length : 0;
-        if (!current || !manaPaymentEndsOnGeneric(current) || current.current_pip_index >= totalPips) {
-          return current;
-        }
-        return {
-          ...current,
-          current_pip_index: totalPips,
-        };
-      });
       setVisible(false);
       frameRef.current = null;
     });
@@ -215,32 +191,6 @@ function ManaPaymentTab({ manaPayment = null, anchorRect = null }) {
     () => (renderedPayment ? buildManaPaymentGroups(renderedPayment) : []),
     [renderedPayment]
   );
-
-  useLayoutEffect(() => {
-    const shellEl = shellRef.current;
-    const indicatorEl = indicatorRef.current;
-    const activeGroup = groups.find((group) => group.isActive);
-    if (!shellEl || !indicatorEl) {
-      return;
-    }
-    if (!activeGroup) {
-      indicatorEl.style.opacity = "0";
-      return;
-    }
-
-    const activeEl = groupNodeRefs.current.get(activeGroup.key);
-    if (!activeEl) {
-      indicatorEl.style.opacity = "0";
-      return;
-    }
-
-    const shellRect = shellEl.getBoundingClientRect();
-    const activeRect = activeEl.getBoundingClientRect();
-    indicatorEl.style.opacity = "1";
-    indicatorEl.style.transform = `translate(${activeRect.left - shellRect.left}px, ${activeRect.top - shellRect.top}px)`;
-    indicatorEl.style.width = `${activeRect.width}px`;
-    indicatorEl.style.height = `${activeRect.height}px`;
-  }, [groups, visible]);
 
   if (!renderedPayment || groups.length === 0) return null;
 
@@ -274,36 +224,17 @@ function ManaPaymentTab({ manaPayment = null, anchorRect = null }) {
       )}
       >
         <div
-        ref={shellRef}
         className="mana-payment-shell relative overflow-visible rounded-none border px-2.5 py-1.5"
         >
           <div className="mana-payment-shell-glow absolute inset-0" />
           <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,220,176,0.85),transparent)]" />
           <div className="mana-payment-tail absolute left-1/2 top-full h-3.5 w-14 -translate-x-1/2 -translate-y-px overflow-hidden rounded-none border-x border-b" />
-          <div
-            ref={indicatorRef}
-            className="mana-payment-indicator absolute left-0 top-0 rounded-none border opacity-0 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
-          />
           <div className="mana-payment-track relative rounded-none border px-1.5 py-0.5">
             <div className="relative flex items-center gap-1.5">
-              {groups.map((group) => {
-                const toneClass = group.isPaid
-                  ? "opacity-45 saturate-[0.12] grayscale"
-                  : group.isActive
-                    ? "opacity-100"
-                    : "opacity-88";
-                return (
+              {groups.map((group) => (
                   <span
                     key={group.key}
-                    ref={(node) => {
-                      if (node) groupNodeRefs.current.set(group.key, node);
-                      else groupNodeRefs.current.delete(group.key);
-                    }}
-                    className={cn(
-                      "mana-payment-group relative inline-flex min-w-[28px] items-center justify-center rounded-none px-1 py-0.5 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                      toneClass
-                    )}
-                    style={group.isActive ? { filter: "drop-shadow(0 0 10px rgba(247,160,64,0.44))" } : undefined}
+                    className="mana-payment-group relative inline-flex min-w-[28px] items-center justify-center rounded-none px-1 py-0.5 opacity-100"
                   >
                     {group.kind === "generic" ? (
                       <ManaSymbol sym={String(group.displayCount)} size={18} />
@@ -311,8 +242,7 @@ function ManaPaymentTab({ manaPayment = null, anchorRect = null }) {
                       <ManaSymbol sym={group.displayCode} size={18} />
                     )}
                   </span>
-                );
-              })}
+              ))}
             </div>
           </div>
         </div>
@@ -882,7 +812,7 @@ function PriorityActionStrip({
                 if (event.button !== 0) return;
                 if (event.pointerType && event.pointerType !== "mouse") return;
                 // Match decision option buttons so a pointer sequence that
-                // started on a mana pip cannot finish as a click on a newly
+                // started on a payment control cannot finish as a click on a newly
                 // rendered priority action under the cursor.
                 event.preventDefault();
                 onActionClick(group.firstAction);
@@ -925,6 +855,8 @@ function resolveDecisionTitle(decision) {
       return "Choose Option";
     case "number":
       return "Choose Number";
+    case "mana_payment":
+      return "Pay Mana";
     default:
       return "Decision";
   }
@@ -1603,6 +1535,8 @@ function MobileBattleDecisionLayer({
     decision?.description || "",
     decision?.context_text || "",
     decision?.consequence_text || "",
+    decision?.plan_id || "",
+    decision?.request_hash || "",
   ].join("|");
   const rawViewedCards = state?.viewed_cards || null;
   const viewedCards = isInspectorOnlyViewedCards(rawViewedCards) ? null : rawViewedCards;
@@ -3290,7 +3224,6 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     setHoldRule,
     cancelDecision,
     multiplayer,
-    playerAccentOverrides,
   } = useGame();
   const decisionIdentity = [
     decision?.kind || "",
@@ -3304,8 +3237,6 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
   ].join("|");
   const [combatActionState, setCombatActionState] = useState({ key: "", action: null });
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
-  const { style: decisionButtonStyle, isLocal: localDecisionButton } =
-    useDecisionButtonAccent(state, decision, playerAccentOverrides);
   const rawPeerWait = multiplayer?.peerWait || null;
   const peerWait = useDeferredPeerWait(rawPeerWait);
   const peerWaiting = Boolean(peerWait);
@@ -3345,18 +3276,19 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     <div className={panelClass}>
       <div className={innerClass} style={anchoredStyle || undefined}>
         <div className={cn("min-w-0 flex-1", compactPortraitViewport && "w-full")}>
-          <div className={cn("action-strip-layout flex min-h-[46px] items-stretch gap-2", compactPortraitViewport && "flex-col")}>
+          <div className={cn("action-strip-layout flex min-h-[46px] items-stretch justify-end gap-2", compactPortraitViewport && "flex-col")}>
             <PeerWaitPopover peerWait={peerWait}>
               <Button
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "pass-priority-btn decision-main-button action-strip-advance-button w-[224px] min-w-[224px] shrink-0 justify-end rounded-none px-3 text-right text-[14px] font-bold uppercase",
-                  inline ? "combat-inline-primary my-auto self-center" : "h-full self-stretch",
+                  "decision-option-row decision-option-row--strip combat-confirm-option h-9 w-[224px] min-w-[224px] max-w-[360px] shrink-0 justify-center self-center px-3 text-center text-[12px] font-semibold",
+                  decision.kind === "attackers"
+                    ? "combat-confirm-option--attackers"
+                    : "combat-confirm-option--blockers",
+                  inline ? "combat-inline-primary my-auto" : "h-full self-stretch",
                   compactPortraitViewport && "w-full min-w-0"
                 )}
-                style={decisionButtonStyle}
-                data-local-action={localDecisionButton ? "true" : "false"}
                 data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
                 aria-disabled={peerWaitLocked || !canSubmitCombat}
                 disabled={peerWaiting ? false : combatPrimaryDisabled}

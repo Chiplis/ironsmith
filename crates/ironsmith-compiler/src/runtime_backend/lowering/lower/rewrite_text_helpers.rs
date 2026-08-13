@@ -168,7 +168,8 @@ pub(crate) fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -
             if increase.filter.source
     ) || match &static_ability.payload {
         ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
-            uses_spell_only_functional_zones(ability)
+            ability.id == Some(crate::static_abilities::StaticAbilityId::Flash)
+                || uses_spell_only_functional_zones(ability)
         }
         _ => false,
     }

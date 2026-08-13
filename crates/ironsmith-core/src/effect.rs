@@ -768,6 +768,10 @@ pub enum TypeRetentionSurface {
     /// Spirit") without spelling out the `creature` noun.
     InAdditionToOtherTypesImplicitCreature,
     StillALand,
+    /// Oracle names another retained card type inline (for example,
+    /// "that's still a planeswalker"). The executable effect still adds its
+    /// new types instead of replacing the object's existing types.
+    StillACardType(CardType),
 }
 
 /// Oracle surface used to express the power and toughness portion of an
@@ -1632,6 +1636,9 @@ pub struct ChooseModeEffect<E> {
     pub distinct_player_targets_per_mode: bool,
     /// Alternate mode range that becomes legal if a later optional cost is announced.
     pub conditional_mode_range: Option<ConditionalModeRange>,
+    /// Authored ability-word label for a modal spell. Triggered modal labels
+    /// live on the enclosing triggered ability instead.
+    pub presentation_label: Option<crate::ability_model::PresentationLabel>,
 }
 
 impl<E> ChooseModeEffect<E> {
@@ -1659,6 +1666,7 @@ impl<E> ChooseModeEffect<E> {
             disallow_previously_chosen_modes_this_turn: false,
             distinct_player_targets_per_mode: false,
             conditional_mode_range: None,
+            presentation_label: None,
         }
     }
 
@@ -1747,6 +1755,14 @@ impl<E> ChooseModeEffect<E> {
 
     pub fn with_conditional_mode_range(mut self, range: ConditionalModeRange) -> Self {
         self.conditional_mode_range = Some(range);
+        self
+    }
+
+    pub fn with_presentation_label(
+        mut self,
+        label: crate::ability_model::PresentationLabel,
+    ) -> Self {
+        self.presentation_label = Some(label);
         self
     }
 }
@@ -2656,6 +2672,9 @@ pub struct MoveToZoneEffect {
     /// (for example, "those cards" or "the exiled cards"). Tagged specs can
     /// resolve more than one object, but do not otherwise retain that surface.
     pub target_plural_surface: bool,
+    /// Authored singular reference to a structurally tagged moved object.
+    /// This is presentation-only: `target` remains the executable identity.
+    pub target_reference_surface: Option<SearchResultReferenceSurface>,
     /// Authored provenance for a tagged-set complement disposition. This is
     /// presentation-only; the enclosing tagged iteration remains the
     /// executable definition of which objects move.
@@ -2702,6 +2721,7 @@ impl MoveToZoneEffect {
             library_order: None,
             verb_surface: MoveToZoneVerbSurface::Canonical,
             target_plural_surface: false,
+            target_reference_surface: None,
             remainder_surface: None,
             actor_surface: None,
             destination_player_surface: None,
@@ -2743,6 +2763,11 @@ impl MoveToZoneEffect {
 
     pub fn with_target_plural_surface(mut self) -> Self {
         self.target_plural_surface = true;
+        self
+    }
+
+    pub fn with_target_reference_surface(mut self, surface: SearchResultReferenceSurface) -> Self {
+        self.target_reference_surface = Some(surface);
         self
     }
 

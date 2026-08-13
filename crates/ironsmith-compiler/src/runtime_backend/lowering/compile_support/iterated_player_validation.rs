@@ -186,6 +186,8 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
+        | Value::ColorPairsAmong(filter)
+        | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => object_filter_mentions_iterated_player(filter),
         Value::PlayersWhoControlMoreThanYou { players, filter }
@@ -325,6 +327,8 @@ pub(crate) fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
+        | Value::ColorPairsAmong(filter)
+        | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => object_filter_contains_pending_effect_metric(filter),
         Value::PlayersWhoControlMoreThanYou { filter, .. }
@@ -363,6 +367,7 @@ fn anthem_count_mentions_iterated_player(count: &ironsmith_core::AnthemCountExpr
         AnthemCountExpression::CommanderCastCount(player)
         | AnthemCountExpression::PlayerSpeed(player)
         | AnthemCountExpression::UnspentMana { player, .. } => player.mentions_iterated_player(),
+        AnthemCountExpression::GraveyardsWithAtLeastCards { .. } => false,
         _ => false,
     }
 }
@@ -510,9 +515,22 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
 }
 
 pub(crate) fn effect_mentions_iterated_player(effect: &Effect) -> bool {
-    if effect
-        .target_spec()
-        .is_some_and(choose_spec_mentions_iterated_player)
+    let target_iterated_player_is_bound_by_delegated_chooser =
+        if let Some(target) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() {
+            target.chooser.is_some()
+        } else {
+            let mut found = false;
+            effect.visit_child_effects(&mut |child| {
+                if let Some(target) = child.downcast_ref::<crate::effects::TargetOnlyEffect>() {
+                    found |= target.chooser.is_some();
+                }
+            });
+            found
+        };
+    if !target_iterated_player_is_bound_by_delegated_chooser
+        && effect
+            .target_spec()
+            .is_some_and(choose_spec_mentions_iterated_player)
     {
         return true;
     }

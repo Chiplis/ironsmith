@@ -451,6 +451,7 @@ impl StaticAbilityModelInterpreter {
                     copy_source_self: spec.copy_source_self,
                     copy_source_enchanted: spec.copy_source_enchanted,
                     name_override: spec.name_override.clone(),
+                    added_colors: spec.added_colors,
                     added_card_types: spec.added_card_types.clone(),
                     removed_supertypes: spec.removed_supertypes.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
@@ -881,6 +882,9 @@ impl StaticAbilityModelInterpreter {
         }
 
         Some(match &model.payload {
+            ironsmith_core::StaticAbilityPayload::CommanderTaxLifeSubstitution { .. } => {
+                return None;
+            }
             ironsmith_core::StaticAbilityPayload::SelfSubjectSurface { .. } => {
                 StaticAbility::from_compiler_model_parts(model.id, model.label.clone()).ok()?
             }
@@ -1109,6 +1113,15 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
                 StaticAbility::can_block_subtype_as_though_reach(*subtype)
+            }
+            ironsmith_core::StaticAbilityPayload::CanBlockAsThoughNoShadow => {
+                StaticAbility::can_block_as_though_no_shadow()
+            }
+            ironsmith_core::StaticAbilityPayload::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender => {
+                StaticAbility::can_attack_players_who_attacked_controller_last_turn_as_though_no_defender()
+            }
+            ironsmith_core::StaticAbilityPayload::TargetingAsThoughNoAbility(spec) => {
+                StaticAbility::targeting_as_though_no_ability(spec.clone())
             }
             ironsmith_core::StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
                 StaticAbility::cant_be_blocked_by_more_than(*count)
@@ -1497,6 +1510,7 @@ impl StaticAbilityModelInterpreter {
                         copy_source_self: spec.copy_source_self,
                         copy_source_enchanted: spec.copy_source_enchanted,
                         name_override: spec.name_override.clone(),
+                        added_colors: spec.added_colors,
                         added_card_types: spec.added_card_types.clone(),
                         removed_supertypes: spec.removed_supertypes.clone(),
                         added_subtypes: spec.added_subtypes.clone(),
@@ -1678,21 +1692,25 @@ impl StaticAbilityModelInterpreter {
                 source_filter,
                 performer_filter,
                 replacement_effects,
+                optional,
                 display,
             } => StaticAbility::keyword_action_replacement_with_performer(
                 *action,
                 source_filter.clone(),
                 performer_filter.clone(),
                 replacement_effects.clone(),
+                *optional,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::ConditionalDrawReplacement {
                 condition,
                 replacement_effects,
+                optional,
                 display,
             } => StaticAbility::conditional_draw_replacement(
                 condition.clone(),
                 replacement_effects.clone(),
+                *optional,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::LoseGameReplacement {
@@ -1761,14 +1779,18 @@ impl StaticAbilityModelInterpreter {
                 amount,
                 follow_up,
                 one_damage_per_counter,
+                surface,
             } => {
                 if *one_damage_per_counter {
                     StaticAbility::prevent_one_damage_to_self_per_removed_counter(*counter_type)
                 } else {
-                    StaticAbility::prevent_damage_to_self_remove_counter_with_follow_up(
-                        *counter_type,
-                        amount.clone(),
-                        *follow_up,
+                    StaticAbility::new(
+                        crate::static_abilities::PreventDamageToSelfRemoveCounter::new_with_follow_up(
+                            *counter_type,
+                            amount.clone(),
+                            *follow_up,
+                        )
+                        .with_surface(*surface),
                     )
                 }
             }
@@ -2072,6 +2094,32 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
+    fn materialize_resolution_values(
+        &self,
+        game: &GameState,
+        ctx: &mut crate::effects::ExecutionContext<'_>,
+    ) -> Result<Option<StaticAbility>, crate::effects::ExecutionError> {
+        match self.leaf_static_ability() {
+            Some(ability) => ability.materialize_resolution_values(game, ctx),
+            None => Ok(None),
+        }
+    }
+
+    fn can_attack_specific_defender(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        defending_player: PlayerId,
+    ) -> Option<bool> {
+        self.leaf_static_ability()?.can_attack_specific_defender(
+            game,
+            source,
+            controller,
+            defending_player,
+        )
+    }
+
     fn affects_untap(&self) -> bool {
         self.leaf_static_ability()
             .is_some_and(|ability| ability.affects_untap())
@@ -2208,6 +2256,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
+    fn blocks_as_though_no_shadow(&self) -> bool {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::CanBlockAsThoughNoShadow => true,
+            _ => self
+                .leaf_static_ability()
+                .is_some_and(|ability| ability.blocks_as_though_no_shadow()),
+        }
+    }
+
     fn has_first_strike(&self) -> bool {
         self.id() == StaticAbilityId::FirstStrike
     }
@@ -2238,6 +2295,21 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn has_flash(&self) -> bool {
         self.id() == StaticAbilityId::Flash
+            && !matches!(
+                self.payload(),
+                ironsmith_core::StaticAbilityPayload::Conditional { .. }
+            )
+    }
+
+    fn conditional_flash_condition(&self) -> Option<&ironsmith_core::Condition> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }
+                if ability.id == Some(StaticAbilityId::Flash) =>
+            {
+                Some(condition)
+            }
+            _ => None,
+        }
     }
 
     fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> {

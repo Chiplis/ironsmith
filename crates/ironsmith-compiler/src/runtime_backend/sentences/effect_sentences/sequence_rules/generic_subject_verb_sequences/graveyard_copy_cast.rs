@@ -8,11 +8,20 @@ use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::families::activation_and_restrictions::{
     build_may_cast_tagged_effect, parse_may_cast_it_sentence,
 };
+use crate::runtime_backend::util::helper_tag_for_tokens;
 use crate::zone::Zone;
 
 fn target_is_in_graveyard(target: &TargetAst) -> bool {
     match target {
-        TargetAst::Object(filter, _, _) => filter.zone == Some(Zone::Graveyard),
+        TargetAst::Object(filter, _, _) => {
+            filter.zone == Some(Zone::Graveyard)
+                || (filter.zone.is_none()
+                    && !filter.any_of.is_empty()
+                    && filter
+                        .any_of
+                        .iter()
+                        .all(|arm| arm.zone == Some(Zone::Graveyard)))
+        }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             target_is_in_graveyard(inner)
         }
@@ -20,13 +29,59 @@ fn target_is_in_graveyard(target: &TargetAst) -> bool {
     }
 }
 
-fn exact_tagged_graveyard_exile_tag(effect: &EffectAst) -> Option<TagKey> {
-    let EffectAst::TagAffected { effect, tag } = effect else {
-        return None;
+/// Propagate a trailing shared graveyard qualifier across a coordinated card
+/// union. The ordinary branch parser can attach `from your graveyard` only to
+/// the final arm of `Assassin card or card with freerunning`; within this
+/// exact graveyard copy family the qualifier grammatically scopes both arms.
+fn normalize_shared_graveyard_union_target(target: &mut TargetAst) {
+    match target {
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            normalize_shared_graveyard_union_target(inner);
+        }
+        TargetAst::Object(filter, _, _) if filter.zone.is_none() && !filter.any_of.is_empty() => {
+            let scoped_owner = filter
+                .any_of
+                .iter()
+                .find_map(|arm| (arm.zone == Some(Zone::Graveyard)).then(|| arm.owner.clone()));
+            let Some(scoped_owner) = scoped_owner else {
+                return;
+            };
+            if filter.any_of.iter().any(|arm| {
+                !matches!(arm.zone, None | Some(Zone::Graveyard))
+                    || (arm.zone == Some(Zone::Graveyard) && arm.owner != scoped_owner)
+                    || (arm.zone.is_none() && arm.owner.is_some())
+            }) {
+                return;
+            }
+            for arm in &mut filter.any_of {
+                if arm.zone.is_none() {
+                    arm.zone = Some(Zone::Graveyard);
+                    arm.owner = scoped_owner.clone();
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn normalize_shared_graveyard_union_exile(effect: &mut EffectAst) {
+    let effect = match effect {
+        EffectAst::TagAffected { effect, .. } => effect.as_mut(),
+        effect => effect,
     };
-    let tag = tag.clone();
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Exile { target, .. },
+        ..
+    }) = effect
+    else {
+        return;
+    };
+    normalize_shared_graveyard_union_target(target);
+}
+
+fn is_exact_graveyard_exile(effect: &EffectAst) -> bool {
     matches!(
-        effect.as_ref(),
+        effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject: SubjectVerbSubjectAst {
                 player: PlayerAst::Implicit | PlayerAst::You,
@@ -41,7 +96,14 @@ fn exact_tagged_graveyard_exile_tag(effect: &EffectAst) -> Option<TagKey> {
             ..
         }) if target_is_in_graveyard(target)
     )
-    .then_some(tag)
+}
+
+fn exact_tagged_graveyard_exile_tag(effect: &EffectAst) -> Option<TagKey> {
+    let EffectAst::TagAffected { effect, tag } = effect else {
+        return None;
+    };
+    let tag = tag.clone();
+    is_exact_graveyard_exile(effect).then_some(tag)
 }
 
 fn is_exact_tagged_graveyard_exile(effect: &EffectAst, expected_tag: &TagKey) -> bool {
@@ -106,6 +168,9 @@ pub(crate) fn parse_graveyard_exile_copy_then_may_cast_copy(
     else {
         return Ok(None);
     };
+    for effect in &mut first_effects {
+        normalize_shared_graveyard_union_exile(effect);
+    }
     let [
         EffectAst::Coordinated {
             effects: coordinated,
@@ -152,15 +217,28 @@ pub(crate) fn parse_graveyard_exile_if_copy_then_may_cast_copy(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(first_effects) =
+    let Ok(mut first_effects) =
         effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
     else {
         return Ok(None);
     };
-    let [exile_effect] = first_effects.as_slice() else {
+    for effect in &mut first_effects {
+        normalize_shared_graveyard_union_exile(effect);
+    }
+    let [exile_effect] = first_effects.as_mut_slice() else {
         return Ok(None);
     };
-    let Some(exiled_tag) = exact_tagged_graveyard_exile_tag(exile_effect) else {
+    let exiled_tag = if let Some(tag) = exact_tagged_graveyard_exile_tag(exile_effect) {
+        tag
+    } else if is_exact_graveyard_exile(exile_effect) {
+        let tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "exiled");
+        let exile = exile_effect.clone();
+        *exile_effect = EffectAst::TagAffected {
+            effect: Box::new(exile),
+            tag: tag.clone(),
+        };
+        tag
+    } else {
         return Ok(None);
     };
 

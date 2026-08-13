@@ -765,6 +765,9 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 ),
                 PlayerFilter::AttackedBySourceThisTurn => player_filter.description(),
                 PlayerFilter::WasDealtDamageBySourceThisGame { .. } => player_filter.description(),
+                PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => {
+                    player_filter.description()
+                }
                 PlayerFilter::LostLifeThisTurn { .. } => player_filter.description(),
                 PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
                     player_filter.description()

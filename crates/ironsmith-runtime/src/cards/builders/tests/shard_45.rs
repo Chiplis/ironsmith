@@ -41,6 +41,348 @@ fn assert_named_inline_entry_counter(
 }
 
 #[test]
+fn shellshock_preserves_the_demonstrative_target_set_in_compiled_text() {
+    let rendered =
+        crate::compiled_text::compiled_text_lines(&parse_oracle_card_definition("Shellshock"))
+            .join("\n");
+
+    assert!(
+        rendered.contains("Shellshock deals X damage to each of those creatures."),
+        "the prior target set must retain its authored demonstrative surface: {rendered}"
+    );
+    assert!(
+        rendered.contains("You create a Mutagen token for each creature dealt damage this way."),
+        "the damage-result count must retain its authored per-creature surface: {rendered}"
+    );
+}
+
+#[test]
+fn wargling_keeps_the_while_qualifier_on_the_attack_event() {
+    let definition = parse_oracle_card_definition("Wargling");
+    let debug = format!("{definition:#?}");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+
+    assert!(
+        debug.contains("ThisAttacksWhileYouControlTrigger"),
+        "the ferocious predicate must be part of the attack matcher: {debug}"
+    );
+    assert!(
+        debug.contains("intervening_if: None"),
+        "authored 'attacks while' is not an intervening-if check: {debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever this creature attacks while you control a creature with power 4 or greater"
+        ),
+        "the event-time qualifier must round-trip on the trigger surface: {rendered}"
+    );
+    assert!(!rendered.contains("attacks, if you control"), "{rendered}");
+}
+
+#[test]
+fn gollum_keeps_named_creature_combat_damage_history_on_each_opponent() {
+    let definition = parse_oracle_card_definition("Gollum, Obsessed Stalker");
+    let debug = format!("{definition:#?}");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+
+    assert!(
+        debug.contains("WasDealtCombatDamageBySourcesThisGame"),
+        "the opponent iterator must retain its full-game combat history filter: {debug}"
+    );
+    assert!(
+        debug.contains("name: Some") && debug.contains("\"gollum obsessed stalker\""),
+        "the source filter must retain Gollum's normalized literal name: {debug}"
+    );
+    assert!(
+        rendered.contains("each opponent dealt combat damage this game by a creature named gollum obsessed stalker loses life"),
+        "the typed history qualifier must survive compiled text: {rendered}"
+    );
+}
+
+#[test]
+fn gideon_the_oathsworn_counters_the_exact_triggering_attack_group() {
+    let definition = parse_oracle_card_definition("Gideon, the Oathsworn");
+    let debug = format!("{definition:#?}");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+
+    assert!(
+        debug.contains("one_or_more: true")
+            && debug.contains("min_total_attackers: 2")
+            && debug.contains(ironsmith_core::ATTACKING_GROUP_TAG),
+        "Gideon's trigger and counter target must share the captured attack group: {debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever you attack with two or more non-gideon creatures, put a +1/+1 counter on each of those creatures."
+        ),
+        "the captured group must retain Gideon's authored surface: {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "+2: Until end of turn, gideon becomes a 5/5 white Soldier creature that's still a planeswalker. Prevent all damage that would be dealt to him this turn."
+        ),
+        "Gideon's animation must retain color, subtype, and planeswalker status: {rendered}\n{debug}"
+    );
+    assert!(
+        rendered.contains("−9: Exile Gideon and each creature your opponents control."),
+        "Gideon's ultimate must retain the quantified opponent-controlled set: {rendered}\n{debug}"
+    );
+}
+
+#[test]
+fn zimone_infinite_analyst_reduces_only_the_first_x_spell_each_turn() {
+    let definition = parse_oracle_card_definition("Zimone, Infinite Analyst");
+    let debug = format!("{definition:#?}");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+
+    assert!(
+        debug.contains("CostReduction")
+            && debug.contains("first_spell_cast_each_turn: true")
+            && debug.contains("has_x_in_cost: true"),
+        "Zimone's reduction must retain both first-spell and X-cost filters: {debug}"
+    );
+    assert!(
+        rendered.contains(
+            "The first spell you cast with {X} in its mana cost each turn costs {1} less to cast for each +1/+1 counter on Zimone."
+        ),
+        "Zimone's typed cost restriction must survive compiled text: {rendered}"
+    );
+}
+
+#[test]
+fn refreshed_restricted_mana_cards_with_supported_transactions_keep_typed_spending_rules() {
+    let mut failures = Vec::new();
+    for name in [
+        "Automated Artificer",
+        "Guidelight Optimizer",
+        "Soldevi Machinist",
+        "Purple Dragon Punks",
+        "Sage of the Unknowable",
+        "Smokebraider",
+        "Vedalken Engineer",
+        "Slobad, Iron Goblin",
+        "Hargilde, Kindly Runechanter",
+        "Dalakos, Crafter of Wonders",
+        "Myr Reservoir",
+        "Brotherhood Headquarters",
+        "Castle Garenbrig",
+        "Grand Architect",
+        "Renowned Weaponsmith",
+        "Oaken Siren",
+        "Crucible of the Spirit Dragon",
+        "Orb of Dragonkind",
+        "Osgood, Operation Double",
+        "Woodland Weavemaster",
+        "Gallifrey Council Chamber",
+        "Base Camp",
+        "Fabrication Foundry",
+        "Gwenna, Eyes of Gaea",
+        "Sunken Citadel",
+        "Lukka, Bound to Ruin",
+        "Cargo Ship",
+        "Power Depot",
+        "Primal Beyond",
+        "Avengers Tower",
+        "Villainous Hideout",
+    ] {
+        let definition = parse_oracle_card_definition(name);
+        let debug = format!("{definition:#?}");
+        let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        let typed = definition.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Activated(activated) if !activated.mana_usage_restrictions.is_empty()
+            )
+        });
+        let surfaced = rendered.contains("Spend this mana only");
+        if !typed || !surfaced {
+            failures.push(format!(
+                "{name}: typed={typed}, surfaced={surfaced}\n{rendered}\n{debug}"
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+}
+
+#[test]
+fn refreshed_cumulative_upkeep_cards_render_typed_payments() {
+    for name in [
+        "Phyrexian Soulgorger",
+        "Sheltering Ancient",
+        "Jötun Owl Keeper",
+        "Polar Kraken",
+        "Wall of Shards",
+        "Arctic Nishoba",
+        "Vexing Sphinx",
+        "Earthen Goo",
+        "Thought Lash",
+        "Krovikan Whispers",
+    ] {
+        let definition = parse_oracle_card_definition(name);
+        let debug = format!("{definition:#?}");
+        let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        assert!(debug.contains("CumulativeUpkeepEffect"), "{name}: {debug}");
+        assert!(
+            !rendered.contains("unsupported effect") && rendered.contains("Cumulative upkeep"),
+            "{name} dropped its cumulative payment surface: {rendered}\n{debug}"
+        );
+    }
+}
+
+#[test]
+fn refreshed_as_though_cards_keep_authored_permission_surface() {
+    let mut failures = Vec::new();
+    for name in [
+        "Rolling Stones",
+        "Detection Tower",
+        "Hungering Yeti",
+        "Mirror Wall",
+        "Krotiq Nestguard",
+        "Returned Phalanx",
+        "Cherished Hatchling",
+        "Glaring Spotlight",
+        "Kaya, Bane of the Dead",
+        "Roving Keep",
+        "Radagast of Rhosgobel",
+        "Autumn Willow",
+        "Dark Maze",
+        "Glade Watcher",
+        "Skyclave Squid",
+        "Steelclad Spirit",
+        "Wall of One Thousand Cuts",
+        "Aetherflame Wall",
+        "Vodalian War Machine",
+        "Guardians of Oboro",
+        "Wall of Wonder",
+        "Prismari Pledgemage",
+        "Assault Formation",
+        "Hightide Hermit",
+        "Nivix Cyclops",
+        "Stalked Researcher",
+        "High Alert",
+        "Mobile Fort",
+        "Walking Wall",
+        "Serpent of the Pass",
+        "Wakestone Gargoyle",
+        "Swift Reckoning",
+        "Nowhere to Run",
+        "Arlinn, the Pack's Hope // Arlinn, the Moon's Fury",
+        "Weathered Sentinels",
+        "Territorial Witchstalker",
+        "Aether Web",
+        "Dragon Grip",
+    ] {
+        let definition = parse_oracle_card_definition(name);
+        let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        if !rendered.to_ascii_lowercase().contains("as though") {
+            failures.push(format!("{name}:\n{rendered}\n{definition:#?}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+}
+
+#[test]
+fn typed_as_though_families_keep_their_exact_permission_clauses() {
+    for (name, expected) in [
+        (
+            "Weathered Sentinels",
+            "This creature can attack players who attacked you during their last turn as though it didn't have defender.",
+        ),
+        (
+            "Detection Tower",
+            "Until end of turn, your opponents and creatures your opponents control with hexproof can be the targets of spells and abilities you control as though they didn't have hexproof.",
+        ),
+        (
+            "Glaring Spotlight",
+            "Creatures your opponents control with hexproof can be the targets of spells and abilities you control as though they didn't have hexproof.",
+        ),
+        (
+            "Kaya, Bane of the Dead",
+            "Your opponents and permanents your opponents control with hexproof can be the targets of spells and abilities you control as though they didn't have hexproof.",
+        ),
+        (
+            "Autumn Willow",
+            "Until end of turn, Autumn Willow can be the target of spells and abilities controlled by target player as though it didn't have shroud.",
+        ),
+        (
+            "Nowhere to Run",
+            "Creatures your opponents control can be the targets of spells and abilities as though they didn't have hexproof.",
+        ),
+        (
+            "Aetherflame Wall",
+            "This creature can block creatures with shadow as though they didn't have shadow.",
+        ),
+        (
+            "Aether Web",
+            "Enchanted creature gets +1/+1, has reach, and can block creatures with shadow as though they didn't have shadow.",
+        ),
+        (
+            "Hungering Yeti",
+            "As long as you control a green or blue permanent, you may cast this spell as though it had flash.",
+        ),
+        (
+            "Serpent of the Pass",
+            "If there are three or more Lesson cards in your graveyard, you may cast this spell as though it had flash.",
+        ),
+        (
+            "Swift Reckoning",
+            "Spell mastery — If there are two or more instant and/or sorcery cards in your graveyard, you may cast this spell as though it had flash.",
+        ),
+        (
+            "Dragon Grip",
+            "Ferocious — If you control a creature with power 4 or greater, you may cast this spell as though it had flash.",
+        ),
+        (
+            "Radagast of Rhosgobel",
+            "The first creature spell you cast each turn costs {2} less to cast and can be cast as though it had flash.",
+        ),
+    ] {
+        let definition = parse_oracle_card_definition(name);
+        let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line == expected || line.ends_with(expected)),
+            "{name} dropped or rewrote its exact typed permission:\nexpected: {expected}\nactual: {rendered}\n{definition:#?}"
+        );
+    }
+}
+
+#[test]
+fn mirror_wall_temporary_permission_lowers_to_the_attack_override() {
+    let definition = parse_oracle_card_definition("Mirror Wall");
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("CanAttackAsThoughNoDefender"),
+        "Mirror Wall must grant the executable defender override: {debug}"
+    );
+}
+
+#[test]
+fn destructive_revelry_uses_the_common_permanent_antecedent() {
+    let definition = parse_oracle_card_definition("Destructive Revelry");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+
+    assert!(
+        rendered.contains("Destructive Revelry deals 2 damage to that permanent's controller."),
+        "an artifact-or-enchantment target needs the common permanent antecedent: {rendered}"
+    );
+}
+
+#[test]
+fn voracious_fell_beast_renders_a_food_for_each_sacrifice() {
+    let rendered = crate::compiled_text::compiled_text_lines(&parse_oracle_card_definition(
+        "Voracious Fell Beast",
+    ))
+    .join("\n");
+
+    assert!(
+        rendered.contains("Create a Food token for each creature sacrificed this way."),
+        "the typed prior-effect count should render as a per-creature token instruction: {rendered}"
+    );
+}
+
+#[test]
 pub(super) fn named_triggered_and_activated_entry_counter_cards_use_inline_entry_modifiers() {
     for (name, counter, rendered_fragment) in [
         (

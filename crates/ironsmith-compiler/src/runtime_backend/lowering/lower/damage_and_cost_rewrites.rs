@@ -87,6 +87,52 @@ fn filter_uses_persistent_chosen_object(filter: &ObjectFilter) -> bool {
         .any(filter_uses_persistent_chosen_object)
 }
 
+fn static_ability_uses_persistent_chosen_object(
+    ability: &crate::static_abilities::StaticAbility,
+) -> bool {
+    match &ability.payload {
+        crate::static_abilities::StaticAbilityPayload::Anthem(anthem) => anthem
+            .filter
+            .as_ref()
+            .is_some_and(filter_uses_persistent_chosen_object),
+        crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
+            filter_uses_persistent_chosen_object(&grant.filter)
+        }
+        crate::static_abilities::StaticAbilityPayload::Conditional { ability, .. } => {
+            static_ability_uses_persistent_chosen_object(ability)
+        }
+        _ => false,
+    }
+}
+
+fn choose_spec_uses_persistent_chosen_object(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::Tagged(tag) => tag.as_str() == ironsmith_core::CHOSEN_OBJECTS_TAG,
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => choose_spec_uses_persistent_chosen_object(spec),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter_uses_persistent_chosen_object(filter)
+        }
+        _ => false,
+    }
+}
+
+fn effect_uses_persistent_chosen_object(effect: &crate::effect::Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        .is_some_and(|sacrifice| choose_spec_uses_persistent_chosen_object(&sacrifice.target))
+    {
+        return true;
+    }
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        found |= effect_uses_persistent_chosen_object(child);
+    });
+    found
+}
+
 fn triggered_ability_uses_persistent_chosen_object(
     triggered: &crate::ability::TriggeredAbility,
 ) -> bool {
@@ -111,6 +157,12 @@ fn triggered_ability_uses_persistent_chosen_object(
     }
 
     trigger_uses_persistent_chosen_object(&triggered.trigger)
+        || triggered
+            .effects
+            .segments
+            .iter()
+            .flat_map(|segment| segment.default_effects.iter())
+            .any(effect_uses_persistent_chosen_object)
 }
 
 /// Persist an object choice only when a different ability proves an authored
@@ -123,11 +175,15 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
         .iter()
         .enumerate()
         .filter_map(|(ability_index, ability)| {
-            matches!(
-                &ability.kind,
-                AbilityKind::Triggered(triggered)
-                    if triggered_ability_uses_persistent_chosen_object(triggered)
-            )
+            match &ability.kind {
+                AbilityKind::Triggered(triggered) => {
+                    triggered_ability_uses_persistent_chosen_object(triggered)
+                }
+                AbilityKind::Static(static_ability) => {
+                    static_ability_uses_persistent_chosen_object(static_ability)
+                }
+                _ => false,
+            }
             .then_some(ability_index)
         })
         .collect::<Vec<_>>();
@@ -135,28 +191,61 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
         return;
     }
 
+    fn single_choice(
+        effect: &crate::effect::Effect,
+    ) -> Option<crate::effects::ChooseObjectsEffect> {
+        if let Some(choice) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+            return (choice.count.min == 1
+                && choice.count.max == Some(1)
+                && choice.count_value.is_none())
+            .then(|| choice.clone());
+        }
+        let with_id = effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        single_choice(&with_id.effect)
+    }
+
+    #[derive(Clone, Copy)]
+    enum ChoiceContainer {
+        Triggered,
+        AsEnters,
+    }
+
     let choices = builder
         .abilities
         .iter()
         .enumerate()
         .flat_map(|(ability_index, ability)| {
-            let AbilityKind::Triggered(triggered) = &ability.kind else {
-                return Vec::new().into_iter();
+            let (container, program) = match &ability.kind {
+                AbilityKind::Triggered(triggered) => {
+                    (ChoiceContainer::Triggered, &triggered.effects)
+                }
+                AbilityKind::Static(static_ability) => {
+                    let crate::static_abilities::StaticAbilityPayload::AsEntersEffectProgram {
+                        program,
+                        ..
+                    } = &static_ability.payload
+                    else {
+                        return Vec::new().into_iter();
+                    };
+                    (ChoiceContainer::AsEnters, program)
+                }
+                _ => return Vec::new().into_iter(),
             };
-            triggered
-                .effects
+            program
                 .segments
                 .iter()
                 .enumerate()
                 .flat_map(move |(segment_index, segment)| {
                     segment.default_effects.iter().enumerate().filter_map(
                         move |(effect_index, effect)| {
-                            let choice =
-                                effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-                            (choice.count.min == 1
-                                && choice.count.max == Some(1)
-                                && choice.count_value.is_none())
-                            .then(|| (ability_index, segment_index, effect_index, choice.clone()))
+                            let choice = single_choice(effect)?;
+                            Some((
+                                ability_index,
+                                segment_index,
+                                effect_index,
+                                container,
+                                choice,
+                            ))
                         },
                     )
                 })
@@ -164,7 +253,8 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
                 .into_iter()
         })
         .collect::<Vec<_>>();
-    let [(ability_index, segment_index, effect_index, choice)] = choices.as_slice() else {
+    let [(ability_index, segment_index, effect_index, container, choice)] = choices.as_slice()
+    else {
         return;
     };
     if !reference_abilities
@@ -173,11 +263,53 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
     {
         return;
     }
-    let AbilityKind::Triggered(triggered) = &mut builder.abilities[*ability_index].kind else {
-        return;
+    fn remember_choice(
+        effect: &crate::effect::Effect,
+        choice: &crate::effects::ChooseObjectsEffect,
+    ) -> Option<crate::effect::Effect> {
+        if effect
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .is_some()
+        {
+            return Some(crate::effect::Effect::new(
+                choice.clone().remember_as_chosen_object(),
+            ));
+        }
+        let with_id = effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        Some(crate::effect::Effect::new(
+            crate::effects::WithIdEffect::new(
+                with_id.id,
+                remember_choice(&with_id.effect, choice)?,
+            ),
+        ))
+    }
+
+    let root = match container {
+        ChoiceContainer::Triggered => {
+            let AbilityKind::Triggered(triggered) = &mut builder.abilities[*ability_index].kind
+            else {
+                return;
+            };
+            &mut triggered.effects.segments[*segment_index].default_effects[*effect_index]
+        }
+        ChoiceContainer::AsEnters => {
+            let AbilityKind::Static(static_ability) = &mut builder.abilities[*ability_index].kind
+            else {
+                return;
+            };
+            let crate::static_abilities::StaticAbilityPayload::AsEntersEffectProgram {
+                program,
+                ..
+            } = &mut static_ability.payload
+            else {
+                return;
+            };
+            &mut program.segments[*segment_index].default_effects[*effect_index]
+        }
     };
-    triggered.effects.segments[*segment_index].default_effects[*effect_index] =
-        crate::effect::Effect::new(choice.clone().remember_as_chosen_object());
+    if let Some(rewritten) = remember_choice(root, choice) {
+        *root = rewritten;
+    }
 }
 
 pub(crate) fn lower_normalized_card_ast_with_facts(

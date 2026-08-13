@@ -71,6 +71,31 @@ fn typed_prior_exile_count_renders_for_each_object_kind() {
 }
 
 #[test]
+fn typed_prior_sacrifice_count_creates_one_food_per_creature() {
+    let query = ironsmith_core::PriorEffectMetricQuery::new(
+        crate::effect::EffectMetricSource::AffectedObjects,
+        crate::effect::EffectMetric::Count,
+    )
+    .with_action(crate::effect::PriorEffectAction::Sacrificed)
+    .with_filter(ObjectFilter::creature());
+    let count = Value::PriorEffectMetric {
+        effect_id: crate::effect::EffectId(7),
+        query,
+    }
+    .with_surface_hint(ValueSurfaceHint::ForEach);
+    let create = Effect::new(crate::effects::CreateTokenEffect::new(
+        crate::cards::tokens::food_token_definition(),
+        count,
+        PlayerFilter::You,
+    ));
+
+    assert_eq!(
+        describe_effect(&create),
+        "Create a Food token for each creature sacrificed this way"
+    );
+}
+
+#[test]
 fn scalar_damage_and_life_keep_that_much_surface() {
     for amount in [
         Value::EventValue(EventValueSpec::Amount),

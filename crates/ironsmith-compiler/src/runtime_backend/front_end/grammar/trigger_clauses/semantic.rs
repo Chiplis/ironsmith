@@ -1967,7 +1967,35 @@ pub(crate) fn parse_trigger_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
     stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        // `... while <condition>` qualifies the event itself. Preserve it as
+        // a typed matcher wrapper before union parsing or the broad attack/
+        // cast routes can accept only the event prefix and silently discard
+        // the board-state requirement. Recursive parsing is safe because the
+        // left slice no longer contains the `while` separator.
+        if let Some(while_idx) = tokens.iter().position(|token| token.is_word("while"))
+            && while_idx > 0
+            && while_idx + 1 < tokens.len()
+        {
+            let trigger_tokens = trim_edge_punctuation(&tokens[..while_idx]);
+            let condition_tokens = trim_edge_punctuation(&tokens[while_idx + 1..]);
+            if let Ok(trigger) = parse_trigger_clause_lexed(&trigger_tokens)
+                && let Ok(condition) = crate::runtime_backend::grammar::structure::
+                    parse_predicate_with_grammar_entrypoint_lexed(&condition_tokens)
+            {
+                return Ok(TriggerSpec::ConditionQualified {
+                    trigger: Box::new(trigger),
+                    condition,
+                    surface: crate::runtime_backend::lexer::render_token_slice(&condition_tokens)
+                        .trim()
+                        .trim_end_matches('.')
+                        .to_string(),
+                });
+            }
+        }
         if let Some(trigger) = try_parse_passive_sacrificed_or_destroyed_lexed(tokens)? {
+            return Ok(trigger);
+        }
+        if let Some(trigger) = try_parse_player_attack_with_aggregate_lexed(tokens)? {
             return Ok(trigger);
         }
         if let Some(trigger) = try_parse_player_attack_with_one_or_more_lexed(tokens) {
@@ -1987,6 +2015,70 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
         parse_trigger_clause_lexed_unstacked(tokens)
     })
+}
+
+/// Parse a comparison over the attacking group rather than each attacker.
+/// `creatures with total power 12 or greater` must not become a creature
+/// filter requiring every attacker to have power 12 or greater.
+fn try_parse_player_attack_with_aggregate_lexed(
+    raw_tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let tokens = trim_edge_punctuation_tokens(strip_leading_trigger_intro(raw_tokens));
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(attack_word) = words
+        .iter()
+        .position(|word| matches!(*word, "attack" | "attacks"))
+    else {
+        return Ok(None);
+    };
+    if words.get(attack_word + 1) != Some(&"with") {
+        return Ok(None);
+    }
+    let Some(player) = parse_trigger_subject_player_filter(&words[..attack_word]) else {
+        return Ok(None);
+    };
+    let Some(metric_word) = words
+        .windows(3)
+        .rposition(|window| window == ["with", "total", "power"])
+    else {
+        return Ok(None);
+    };
+    if metric_word <= attack_word + 2 || metric_word + 3 >= words.len() {
+        return Ok(None);
+    }
+    let comparison_tail = &words[metric_word + 3..];
+    let Some((comparison, consumed)) =
+        crate::runtime_backend::grammar::shared_util::value_semantics::parse_filter_comparison_tokens(
+            "power",
+            comparison_tail,
+            &words,
+        )?
+    else {
+        return Ok(None);
+    };
+    if consumed != comparison_tail.len() {
+        return Ok(None);
+    }
+    let Some(subject_start) = trigger_word_token_start(tokens, attack_word + 2) else {
+        return Ok(None);
+    };
+    let Some(subject_end) = trigger_word_token_start(tokens, metric_word) else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_edge_punctuation_tokens(&tokens[subject_start..subject_end]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = parse_object_filter_lexed(subject_tokens, false)?;
+    if filter.controller.is_none() {
+        filter.controller = Some(player);
+    }
+    filter.set_union_one_or_more(true);
+    Ok(Some(TriggerSpec::AttacksOneOrMoreWithAggregate {
+        filter,
+        metric: crate::effect::ChoiceAggregateMetric::Power,
+        comparison,
+    }))
 }
 
 fn try_parse_passive_sacrificed_or_destroyed_lexed(
@@ -2183,7 +2275,8 @@ fn attacked_player_from_attack_trigger(trigger: &TriggerSpec) -> Option<PlayerFi
         }
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter) => filter,
         TriggerSpec::AttacksOneOrMoreWithMinTotal { filter, .. }
-        | TriggerSpec::AttacksOneOrMoreWithExactTotal { filter, .. } => filter,
+        | TriggerSpec::AttacksOneOrMoreWithExactTotal { filter, .. }
+        | TriggerSpec::AttacksOneOrMoreWithAggregate { filter, .. } => filter,
         _ => return None,
     };
     filter
@@ -5105,7 +5198,10 @@ fn parse_trigger_clause_lexed_unstacked(
     if let Some(is_word_idx) = dealt_excess_noncombat_damage_subject_word_idx(&words) {
         let is_token_idx = trigger_word_token_start(tokens, is_word_idx).unwrap_or(tokens.len());
         let subject_tokens = &tokens[..is_token_idx];
-        if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)? {
+        if let Some(mut filter) = parse_trigger_subject_filter_lexed(subject_tokens)? {
+            if words[..is_word_idx].starts_with(&["one", "or", "more"]) {
+                filter.set_union_one_or_more(true);
+            }
             return Ok(TriggerSpec::IsDealtExcessNoncombatDamage(filter));
         }
     }
@@ -5861,6 +5957,23 @@ fn parse_trigger_clause_lexed_unstacked(
 
     if let Some(attacks_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Attack) {
         let tail_words = &words[attacks_word_idx + 1..];
+        if tail_words.first() == Some(&"while")
+            && matches!(words.first(), Some(&"this") | Some(&"it"))
+        {
+            let predicate_word_idx = attacks_word_idx + 2;
+            let predicate_token_idx =
+                trigger_word_token_start(tokens, predicate_word_idx).unwrap_or(tokens.len());
+            let predicate_tokens = trim_edge_punctuation(&tokens[predicate_token_idx..]);
+            if let PredicateAst::PlayerControls {
+                player: PlayerAst::You,
+                filter,
+            } = crate::runtime_backend::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
+                &predicate_tokens,
+            )?
+            {
+                return Ok(TriggerSpec::ThisAttacksWhileYouControl(filter));
+            }
+        }
         if trigger_pattern_accepts(tail_words, ATTACKS_AND_IS_NOT_BLOCKED_TAIL_PATTERN) {
             let attacks_token_idx =
                 trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());

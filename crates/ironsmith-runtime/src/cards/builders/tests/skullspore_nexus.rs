@@ -36,7 +36,6 @@ fn skullspore_trigger(definition: &CardDefinition) -> &crate::ability::Triggered
 #[test]
 fn skullspore_public_payload_keeps_dynamic_batch_power_and_exact_surface() {
     let definition = parse_oracle_card_definition("The Skullspore Nexus");
-    eprintln!("SKULLSPORE DEFINITION: {definition:#?}");
     assert_eq!(canonical_compiled_lines(&definition).join("\n"), ORACLE);
 
     let triggered = skullspore_trigger(&definition);

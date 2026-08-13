@@ -119,6 +119,7 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
         | PlayerFilter::LostLifeThisTurn { .. }
         | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
         | PlayerFilter::IteratedPlayer
@@ -167,6 +168,7 @@ pub(crate) fn describe_player_filter_possessive(filter: &PlayerFilter) -> String
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
         | PlayerFilter::LostLifeThisTurn { .. }
         | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
         | PlayerFilter::ChosenPlayer
@@ -284,6 +286,11 @@ impl Trigger {
 
     pub fn downcast_ref<T: TriggerMatcher + 'static>(&self) -> Option<&T> {
         (self.matcher.as_ref() as &dyn std::any::Any).downcast_ref::<T>()
+    }
+
+    pub fn downcast_mut<T: TriggerMatcher + 'static>(&mut self) -> Option<&mut T> {
+        Arc::get_mut(&mut self.matcher)
+            .and_then(|matcher| (matcher as &mut dyn std::any::Any).downcast_mut::<T>())
     }
 
     /// Whether this trigger uses snapshot-based matching.
@@ -573,6 +580,22 @@ impl Trigger {
         Self::new(ThisAttacksTrigger)
     }
 
+    pub fn condition_qualified(
+        trigger: Trigger,
+        condition: crate::effect::Condition,
+        surface: String,
+        stun_counter_reminder_surface: bool,
+    ) -> Self {
+        let mut qualified = ConditionQualifiedTrigger::new(trigger, condition, surface);
+        qualified.stun_counter_reminder_surface = stun_counter_reminder_surface;
+        Self::new(qualified)
+    }
+
+    /// Create a source attack trigger with an event-time controller-board qualifier.
+    pub fn this_attacks_while_you_control(filter: ObjectFilter) -> Self {
+        Self::new(ThisAttacksWhileYouControlTrigger::new(filter))
+    }
+
     pub fn this_and_another_attack_different_players() -> Self {
         Self::new(ThisAndAnotherAttackDifferentPlayersTrigger)
     }
@@ -706,6 +729,18 @@ impl Trigger {
         Self::new(AttacksTrigger::one_or_more_with_exact_total_attackers(
             filter,
             total_attackers,
+        ))
+    }
+
+    /// Create a grouped attack trigger constrained by an aggregate
+    /// characteristic of the matching attackers.
+    pub fn attacks_one_or_more_with_aggregate(
+        filter: ObjectFilter,
+        metric: crate::effect::ChoiceAggregateMetric,
+        comparison: crate::filter::Comparison,
+    ) -> Self {
+        Self::new(AttacksTrigger::one_or_more_with_aggregate(
+            filter, metric, comparison,
         ))
     }
 

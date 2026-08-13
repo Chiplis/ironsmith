@@ -33,6 +33,15 @@ pub(crate) enum ChoiceClauseActor {
     Opponent,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ChoiceClauseHeadShape<'a> {
+    pub(crate) actor: ChoiceClauseActor,
+    /// The authored choice clause beginning at `choose`/`chooses`.  Keeping
+    /// the verb lets the shared type-phrase parsers consume the same surface
+    /// for implicit, controller, and opponent choosers.
+    pub(crate) choice_tokens: &'a [OwnedLexToken],
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChoiceClauseSeparator {
     And,
@@ -255,6 +264,22 @@ pub(crate) fn parse_choice_object_clause_tokens(
     )))
 }
 
+pub(crate) fn parse_choice_clause_head_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<ChoiceClauseHeadShape<'_>> {
+    let mut input = LexStream::new(tokens);
+    let actor = parse_choice_head_lexed.parse_next(&mut input).ok()?;
+    let actor_token_count = match actor {
+        ChoiceClauseActor::Implicit => 0,
+        ChoiceClauseActor::You => 1,
+        ChoiceClauseActor::Opponent => 2,
+    };
+    Some(ChoiceClauseHeadShape {
+        actor,
+        choice_tokens: tokens.get(actor_token_count..)?,
+    })
+}
+
 pub(crate) fn parse_choice_player_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ChoicePlayerClauseShape>, ChoicePlayerClauseSyntaxError> {
@@ -362,6 +387,24 @@ fn parse_choice_head_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ChoiceClaus
     .parse_next(input)?;
     alt((primitives::kw("choose"), primitives::kw("chooses"))).parse_next(input)?;
     Ok(actor)
+}
+
+#[cfg(test)]
+mod choice_clause_head_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn opponent_choice_head_retains_the_choice_verb_for_type_parsers() {
+        let tokens = lex_line("An opponent chooses a creature type.", 0).unwrap();
+        let head = parse_choice_clause_head_tokens(&tokens).expect("choice head");
+
+        assert_eq!(head.actor, ChoiceClauseActor::Opponent);
+        assert_eq!(
+            TokenWordView::new(head.choice_tokens).word_refs(),
+            ["chooses", "a", "creature", "type"]
+        );
+    }
 }
 
 fn choice_separator_lexed<'a>(

@@ -571,6 +571,15 @@ pub enum IfResultPredicate {
     /// explicit "for each player who does" clauses.
     AcceptedChoice,
     DidNot,
+    /// An authored `If you don't` action fallback. Runtime polarity is the
+    /// same as [`DidNot`](Self::DidNot), but it refers to the immediately
+    /// preceding result gate when that gate contains the optional action.
+    ExplicitDidNot,
+    /// An authored `Otherwise` fallback. Runtime polarity is the same as
+    /// [`DidNot`](Self::DidNot), but retaining this provenance prevents an
+    /// ordinary negative result branch (such as "you lose the flip") from
+    /// being mistaken for a fallback to the immediately preceding gate.
+    Otherwise,
     SearchedLibrary,
     DiesThisWay,
     ExcessDamageDealt,

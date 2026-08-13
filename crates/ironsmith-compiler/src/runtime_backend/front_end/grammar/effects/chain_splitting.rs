@@ -39,6 +39,7 @@ pub(crate) enum ChainVerbKind {
     Unattach,
     Attach,
     Untap,
+    Unlock,
     Scry,
     Discard,
     Transform,

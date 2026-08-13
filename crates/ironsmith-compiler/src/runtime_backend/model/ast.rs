@@ -1,7 +1,8 @@
 use crate::ConditionExpr;
 use crate::color::ColorSet;
 use crate::cost::{OptionalCostRef, TotalCost};
-use crate::effect::{ChoiceCount, EffectId, Until, Value};
+use crate::effect::{ChoiceAggregateMetric, ChoiceCount, EffectId, Until, Value};
+use crate::filter::Comparison;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::model::RedirectNextTimeDamageDestinationAst;
 use crate::object::{AuraAttachmentFilter, CounterType};
@@ -139,12 +140,23 @@ pub(crate) enum TriggerSpec {
     },
     /// "Whenever A or B" — fires when any branch's event occurs.
     AnyOf(Vec<TriggerSpec>),
+    /// Event-time `while` qualification. This is part of event matching, not
+    /// an intervening-if condition that is checked again on resolution.
+    ConditionQualified {
+        trigger: Box<TriggerSpec>,
+        condition: PredicateAst,
+        surface: String,
+    },
     ThisPhasesOut,
     StateBased {
         condition: PredicateAst,
         display: String,
     },
     ThisAttacks,
+    /// The source attacks while its controller controls a matching permanent.
+    /// This predicate is part of the attack event qualification and is not an
+    /// intervening-if condition checked again on resolution.
+    ThisAttacksWhileYouControl(ObjectFilter),
     ThisAndAnotherAttackDifferentPlayers,
     ThisAttacksPlayerWhoControlsAtLeast {
         count: u32,
@@ -175,6 +187,11 @@ pub(crate) enum TriggerSpec {
     AttacksOneOrMoreWithExactTotal {
         filter: ObjectFilter,
         total_attackers: u32,
+    },
+    AttacksOneOrMoreWithAggregate {
+        filter: ObjectFilter,
+        metric: ChoiceAggregateMetric,
+        comparison: Comparison,
     },
     AttacksAlone(ObjectFilter),
     AttacksYouOrPlaneswalkerYouControl(ObjectFilter),
@@ -1440,6 +1457,7 @@ pub(crate) enum SubjectVerbActionAst {
         chooser: PlayerAst,
         allow_colorless: bool,
         allow_artifacts: bool,
+        choose_card_type: bool,
     },
     PreventAllCombatDamage {
         duration: Until,
@@ -1676,6 +1694,7 @@ pub(crate) enum SubjectVerbActionAst {
         library_order_chooser: PlayerAst,
         verb_surface: ironsmith_core::MoveToZoneVerbSurface,
         target_plural_surface: bool,
+        target_reference_surface: Option<ironsmith_core::SearchResultReferenceSurface>,
         destination_player_surface: Option<PlayerAst>,
         destination_player_reference_surface:
             Option<ironsmith_core::DestinationPlayerReferenceSurface>,
@@ -2296,6 +2315,7 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         action: crate::events::KeywordActionKind,
     },
+    UnlockRoomDoor,
     SwitchPowerToughness {
         target: TargetAst,
         duration: Until,
@@ -2953,12 +2973,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 chooser,
                 allow_colorless,
                 allow_artifacts,
+                choose_card_type,
             } => f
                 .debug_struct("GrantProtectionChoice")
                 .field("target", target)
                 .field("chooser", chooser)
                 .field("allow_colorless", allow_colorless)
                 .field("allow_artifacts", allow_artifacts)
+                .field("choose_card_type", choose_card_type)
                 .finish(),
             Self::PreventAllCombatDamage { duration } => f
                 .debug_struct("PreventAllCombatDamage")
@@ -3341,6 +3363,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 library_order_chooser,
                 verb_surface,
                 target_plural_surface,
+                target_reference_surface,
                 destination_player_surface,
                 destination_player_reference_surface,
                 exiled_with_source_surface,
@@ -3362,6 +3385,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("library_order_chooser", library_order_chooser)
                 .field("verb_surface", verb_surface)
                 .field("target_plural_surface", target_plural_surface)
+                .field("target_reference_surface", target_reference_surface)
                 .field("destination_player_surface", destination_player_surface)
                 .field(
                     "destination_player_reference_surface",
@@ -4303,6 +4327,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("action", action)
                 .finish(),
+            Self::UnlockRoomDoor => f.write_str("UnlockRoomDoor"),
             Self::SwitchPowerToughness { target, duration } => f
                 .debug_struct("SwitchPowerToughness")
                 .field("target", target)

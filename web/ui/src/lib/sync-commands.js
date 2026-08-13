@@ -77,6 +77,8 @@ export function isDecisionCommandCompatible(decision, command) {
       return command.type === "number_choice";
     case "text_input":
       return command.type === "text_choice";
+    case "mana_payment":
+      return command.type === "mana_payment";
     case "attackers":
       return command.type === "declare_attackers";
     case "blockers":
@@ -297,6 +299,20 @@ export function resolveSyncedCommand(command) {
     return {
       type: "select_options",
       option_indices: command.option_indices.map((optionIndex) => Number(optionIndex)),
+    };
+  }
+
+  if (command.type === "mana_payment" && command.response) {
+    return {
+      type: "mana_payment",
+      response: {
+        ...command.response,
+        plan_id: command.response.plan_id == null ? undefined : String(command.response.plan_id),
+        request_hash: command.response.request_hash == null ? undefined : String(command.response.request_hash),
+        required_source_ids: (command.response.required_source_ids || []).map(String),
+        excluded_source_ids: (command.response.excluded_source_ids || []).map(String),
+        preserved_source_ids: (command.response.preserved_source_ids || []).map(String),
+      },
     };
   }
 

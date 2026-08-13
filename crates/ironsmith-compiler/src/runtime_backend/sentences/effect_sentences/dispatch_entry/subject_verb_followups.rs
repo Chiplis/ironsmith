@@ -1075,6 +1075,66 @@ fn has_trailing_unpreventable_damage_rider(tokens: &[OwnedLexToken]) -> bool {
     })
 }
 
+/// Bind a conditional entry modifier to the immediately preceding typed token
+/// producer. This keeps the modifier executable: the true branch creates the
+/// token tapped and attacking, while the false branch preserves the authored
+/// ordinary creation. A standalone conditional sentence, or a different
+/// token follow-up, deliberately stays on the ordinary parser path.
+pub(super) fn is_conditional_token_entry_followup_sentence(
+    sentence_tokens: &[OwnedLexToken],
+) -> bool {
+    if !sentence_tokens
+        .first()
+        .is_some_and(|token| token.is_word("if"))
+    {
+        return false;
+    }
+    let Some(comma_idx) = sentence_tokens.iter().position(OwnedLexToken::is_comma) else {
+        return false;
+    };
+    let followup_tokens = trim_commas(&sentence_tokens[comma_idx + 1..]);
+    matches!(
+        parse_token_copy_followup_sentence_lexed(&followup_tokens),
+        Some(TokenCopyFollowup::EnterTappedAndAttacking)
+    )
+}
+
+pub(super) fn try_bind_conditional_token_entry_followup(
+    effects: &mut Vec<EffectAst>,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    if !is_conditional_token_entry_followup_sentence(sentence_tokens) {
+        return Ok(false);
+    }
+    let Some(comma_idx) = sentence_tokens.iter().position(OwnedLexToken::is_comma) else {
+        return Ok(false);
+    };
+    let predicate_tokens = trim_commas(&sentence_tokens[1..comma_idx]);
+    let followup_tokens = trim_commas(&sentence_tokens[comma_idx + 1..]);
+    if predicate_tokens.is_empty() || followup_tokens.is_empty() {
+        return Ok(false);
+    }
+    let followup = TokenCopyFollowup::EnterTappedAndAttacking;
+    let Some(previous) = effects.last().cloned() else {
+        return Ok(false);
+    };
+    let mut modified = vec![previous.clone()];
+    if !try_apply_token_copy_followup(&mut modified, followup)? {
+        return Ok(false);
+    }
+    let predicate = crate::runtime_backend::grammar::filters::parse_condition_predicate_lexed(
+        &predicate_tokens,
+    )?;
+
+    effects.pop();
+    effects.push(EffectAst::Conditional {
+        predicate,
+        if_true: modified,
+        if_false: vec![previous],
+    });
+    Ok(true)
+}
+
 fn pre_rule_token_followups(
     state: &mut SentenceDispatchState<'_>,
     sentences: &[SentenceInput],
@@ -1090,7 +1150,19 @@ fn pre_rule_token_followups(
         .get(sentence_idx)
         .map(SentenceInput::lowered)
         .unwrap_or(sentence_tokens);
+    let authored_reminder_tokens = sentences
+        .get(sentence_idx)
+        .map(SentenceInput::lexed)
+        .unwrap_or(sentence_tokens);
     let reminder_facts = followup_shapes::token_reminder_followup_facts(reminder_tokens);
+    if try_bind_conditional_token_entry_followup(state.effects, authored_reminder_tokens)? {
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+            route: Some(
+                "subject-verb verb=Create subject=implicit recognizer=conditional-token-entry",
+            ),
+        }));
+    }
     if let Some(followup) = parse_create_more_of_prior_tokens(sentence_tokens, state.effects) {
         if followup.instead {
             let Some(previous) = state.effects.pop() else {
@@ -1181,6 +1253,25 @@ fn pre_rule_token_followups(
         Some(TokenCopyFollowup::GainHasteUntilEndOfTurn(_))
     );
     if !is_temporary_token_grant
+        && crate::runtime_backend::sentences::effect_sentences::mixed_pronoun_token_rule_list(
+            authored_reminder_tokens,
+        )
+        .is_some()
+        && state.effects.last().is_some_and(effect_creates_any_token)
+        && crate::runtime_backend::sentences::effect_sentences::
+            attach_mixed_pronoun_token_rules_to_last_create(
+                state.effects,
+                authored_reminder_tokens,
+            )
+    {
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+            route: Some(
+                "subject-verb verb=Grant subject=implicit recognizer=created-token-ability-followup",
+            ),
+        }));
+    }
+    if !is_temporary_token_grant
         && is_generic_token_reminder_sentence(reminder_tokens)
         && state.effects.last().is_some_and(effect_creates_any_token)
     {
@@ -1212,7 +1303,11 @@ fn pre_rule_token_followups(
             )));
         }
     }
-    if let Some(effects) = parse_choose_target_prelude_sentence(sentence_tokens)? {
+    // Target-declaration normalization may collapse repeated `target`
+    // markers into one union filter.  The authored sentence is still the
+    // authoritative declaration surface, so split its independent target
+    // slots before the broad normalized target parser can merge them.
+    if let Some(effects) = parse_choose_target_prelude_sentence(authored_reminder_tokens)? {
         state.effects.extend(effects);
         *state.carried_context = None;
         return Ok(Some(PreParseFollowupResult::Handled {
@@ -1524,7 +1619,7 @@ fn pre_rule_otherwise_followup(
         return Ok(None);
     };
     let mut plan = SentenceParsePlan::new(rewrite_otherwise_referential_subject(without_otherwise));
-    plan.wrap_if_result = Some(IfResultPredicate::DidNot);
+    plan.wrap_if_result = Some(IfResultPredicate::Otherwise);
     Ok(Some(PreParseFollowupResult::Plan(plan)))
 }
 
@@ -2408,6 +2503,28 @@ fn post_rule_self_replacement_common_suffix(
     else {
         return Ok(None);
     };
+
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(sentence_tokens);
+    if words.starts_with(&["exile", "the", "chosen", "creature", "then"])
+        && words
+            .windows(5)
+            .any(|window| window == ["controller", "gains", "life", "equal", "to"])
+        && words.windows(2).any(|window| window == ["mana", "value"])
+        && !format!("{sentence_effects:#?}").contains("GainLife")
+    {
+        let iterated = TagKey::from(IT_TAG);
+        sentence_effects.push(EffectAst::ForEachTagged {
+            tag: TagKey::from("__chosen_objects__"),
+            effects: vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::ItsController,
+                SubjectVerbActionAst::GainLife {
+                    amount: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(iterated)))
+                        .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
+                },
+            )],
+        });
+    }
 
     if_true.extend(sentence_effects.iter().cloned());
     if_false.append(sentence_effects);

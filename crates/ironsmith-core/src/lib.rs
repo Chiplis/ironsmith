@@ -61,8 +61,9 @@ pub use continuous_model::{
     CompiledContinuousEffectTarget, CompiledContinuousModification, CompiledPtSublayer,
 };
 pub use cost_model::{
-    CoreCostComponent, Cost, CostComponent, DynamicManaCost, DynamicManaDisplayHint, OptionalCost,
-    OptionalCostKind, OptionalCostRef, OptionalCostsPaid, TotalCost, TotalCostKind,
+    AlternativeCostReference, AlternativeCostReferenceSurface, CoreCostComponent, Cost,
+    CostComponent, DynamicManaCost, DynamicManaDisplayHint, OptionalCost, OptionalCostKind,
+    OptionalCostRef, OptionalCostsPaid, TotalCost, TotalCostKind,
 };
 pub use counter::CounterType;
 pub use definition_model::CardDefinition;
@@ -168,10 +169,10 @@ pub use effect::{
     TagTriggeringSourceEffect, TaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect,
     TapEffect, TargetOnlyEffect, TicketCountersEffect, TokenAbilityPresentation,
     TokenCopyReferenceSurface, TransformEffect, TurnFaceUpEffect, TypeRetentionSurface,
-    UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect, Until,
-    VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect, VillainousChoiceEffect,
-    VoteChoice, VoteEffect, VoteOption, WinTheGameEffect, WithIdEffect,
-    ZoneReplacementLibraryPlacement,
+    UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect,
+    UnlockRoomDoorEffect, UntapEffect, Until, VariableCasualtyPlaneswalkerCopyEffect,
+    VentureIntoDungeonEffect, VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption,
+    WinTheGameEffect, WithIdEffect, ZoneReplacementLibraryPlacement,
 };
 pub use effect_model::{Comparison, EventValueSpec, ValueComparisonOperator};
 pub use event_model::KeywordActionKind;
@@ -208,10 +209,10 @@ pub use static_ability_model::{
     ConditionalSpellKeywordSpec, CopyActivatedAbilities, CopyStaticAbilityVariants,
     CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost, CostReduction,
     CostReductionCharacteristicIntersection, CostReductionManaCost, CounterRemovalFollowUp,
-    DefendingPlayerAttackCondition, EnterAsCopyAsEntersSpec, EnterAsCopyLinkedExilePairSpec,
-    EscalateSpec, GrantAbility, GrantObjectAbilityForFilter, GraveyardCountMetric, LandwalkKind,
-    OptionalLifeAdditionalCost, PowerToughnessChoiceOption, PregameActionKind,
-    PregameBeginOnBattlefieldSpec, PregameRevealFromOpeningHandSpec,
+    CounterRemovalPreventionSurface, DefendingPlayerAttackCondition, EnterAsCopyAsEntersSpec,
+    EnterAsCopyLinkedExilePairSpec, EscalateSpec, GrantAbility, GrantObjectAbilityForFilter,
+    GraveyardCountMetric, LandwalkKind, OptionalLifeAdditionalCost, PowerToughnessChoiceOption,
+    PregameActionKind, PregameBeginOnBattlefieldSpec, PregameRevealFromOpeningHandSpec,
     PreventAllDamageToSelfFromSourcesMatchingSpec, RemoveCardTypesForFilter, SetColorsForFilter,
     SpliceQuality, SpliceSpec, StaticAbility, StaticAbilityPayload, StaticAbilityVariantSelector,
     StaticDamageSourceRelation, ThisSpellCastRestrictionKind, ThisSpellCostReduction,
@@ -219,10 +220,10 @@ pub use static_ability_model::{
 };
 pub use tag::{
     ATTACKING_GROUP_TAG, CAST_CONTROLLED_OBJECTS_TAG, CAST_MODIFIED_CREATURES_TAG,
-    CHOSEN_OBJECTS_TAG, EXPLOITED_TAG, EXPLOITER_TAG, INITIATIVE_HOLDER_TAG, MANA_PAID_OBJECT_TAG,
-    MANA_SOURCES_SPENT_TO_CAST_TAG, MANIFEST_DREAD_GRAVEYARD_TAG, PREVIOUS_ITERATED_OBJECTS_TAG,
-    PRIOR_EXILED_CARD_TAG, REVEALED_THIS_WAY_TAG, SOURCE_EXILED_TAG, SOURCE_OBJECT_TAG, TagKey,
-    ZONE_CHANGE_GROUP_TAG,
+    CHOSEN_OBJECTS_TAG, COMBAT_DAMAGE_GROUP_TAG, EXPLOITED_TAG, EXPLOITER_TAG,
+    INITIATIVE_HOLDER_TAG, MANA_PAID_OBJECT_TAG, MANA_SOURCES_SPENT_TO_CAST_TAG,
+    MANIFEST_DREAD_GRAVEYARD_TAG, PREVIOUS_ITERATED_OBJECTS_TAG, PRIOR_EXILED_CARD_TAG,
+    REVEALED_THIS_WAY_TAG, SOURCE_EXILED_TAG, SOURCE_OBJECT_TAG, TagKey, ZONE_CHANGE_GROUP_TAG,
 };
 pub use target_model::{
     ChooseSpec, ChooseSpecSurfaceHint, SacrificedObjectKind, SourceReferenceSurface,

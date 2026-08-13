@@ -24,7 +24,8 @@ use crate::runtime_backend::front_end::grammar::sentence_markers::{
 use crate::runtime_backend::front_end::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint;
 use crate::runtime_backend::front_end::lexer::OwnedLexToken;
 use crate::runtime_backend::grammar::effects::{
-    control_copy_attach_shapes::BattlefieldControllerShape, looked_card_shapes as looked_grammar,
+    ExileLibraryPlayerShape, control_copy_attach_shapes::BattlefieldControllerShape,
+    looked_card_shapes as looked_grammar, parse_exile_dynamic_top_library_shape,
     sequence_quad_shapes as quad_grammar, triple_sequence_shapes as triple_grammar,
 };
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
@@ -36,6 +37,81 @@ use crate::target::ChooseSpec;
 use crate::target::{ObjectRef, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
+
+/// Keep a damage outcome, its excess-damage-derived exile count, and the
+/// resulting play permission in one reference-resolution program.
+pub(crate) fn parse_damage_then_excess_exile_top_then_play_until_next_turn(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_effects =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())?;
+    let [
+        damage @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DealDamage { .. },
+            ..
+        }),
+    ] = first_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+
+    let exile_tokens = sentences[sentence_idx + 1].lowered();
+    let exile_body = strip_leading_token_words_any(exile_tokens, &["exile"]);
+    if exile_body.len() == exile_tokens.len() {
+        return Ok(None);
+    }
+    let Some(shape) = parse_exile_dynamic_top_library_shape(exile_body, PlayerAst::Implicit) else {
+        return Ok(None);
+    };
+    let ExileLibraryPlayerShape::Player(player) = shape.player else {
+        return Ok(None);
+    };
+    if player != PlayerAst::You
+        || shape.face_down
+        || !matches!(
+            shape.count.unhinted(),
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::ExcessDamage,
+            }
+        )
+    {
+        return Ok(None);
+    }
+
+    let tag = helper_tag_for_tokens(exile_tokens, "exiled");
+    let Some(permission) = parse_cast_or_play_tagged_clause(sentences[sentence_idx + 2].lowered())?
+    else {
+        return Ok(None);
+    };
+    let Some(permission) =
+        super::exile_permission_followups::rebind_permission_tag(permission, tag.clone())
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        &permission,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                tag: permission_tag,
+                player: PlayerAst::You,
+                allow_land: true,
+                until_next_end_step: false,
+                ..
+            },
+            ..
+        }) if permission_tag == &tag
+    ) {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        damage.clone(),
+        EffectAst::subject_verb_exile_top_of_library(player, shape.count, vec![tag], Vec::new()),
+        permission,
+    ]))
+}
 
 /// Preserve the exact result collection across:
 ///
@@ -255,7 +331,10 @@ pub(crate) fn parse_consult_reveal_then_pump_triggering_creature_then_move_revea
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    // This complete looked-card rule owns its grammar and should not lose a
+    // numeric/type word merely because it also happens to be a short alias of
+    // the current source name.
+    let first_tokens = trim_commas(sentences[sentence_idx].lexed());
     let Some(parts) = parse_consult_traversal_sentence(&first_tokens)? else {
         return Ok(None);
     };
@@ -272,7 +351,7 @@ pub(crate) fn parse_consult_reveal_then_pump_triggering_creature_then_move_revea
         return Ok(None);
     }
 
-    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lexed());
     let Ok(mut pump_effects) = effect_sentences::parse_effect_sentence_lexed(&second_tokens) else {
         return Ok(None);
     };
@@ -407,6 +486,90 @@ pub(crate) fn parse_reveal_top_opponent_chooses_one_then_move_and_followup(
     ));
     effects.extend(followups);
     Ok(Some(effects))
+}
+
+/// Preserve an opponent's selection from one exact revealed pool and tag the
+/// unselected complement before either group moves. This makes both the
+/// chooser and "the rest" executable rather than leaving them as pronouns for
+/// generic reference resolution to guess at independently.
+pub(crate) fn parse_reveal_top_opponent_chooses_then_partition(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((library_owner, count, true)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let selection_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let Some(selection) =
+        looked_grammar::parse_opponent_revealed_card_selection_shape(&selection_tokens)
+    else {
+        return Ok(None);
+    };
+    let Some(partition) =
+        looked_grammar::parse_chosen_card_partition_shape(sentences[sentence_idx + 2].lowered())
+    else {
+        return Ok(None);
+    };
+
+    let revealed_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed_pool");
+    let opponent_tag =
+        helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "choosing_opponent");
+    let selected_tag =
+        helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "revealed_choice");
+    let remainder_tag =
+        helper_tag_for_tokens(sentences[sentence_idx + 2].lowered(), "revealed_remainder");
+
+    let mut selected_filter = if let Some(range) = selection.filter {
+        parse_looked_card_choice_filter(&selection_tokens[range]).ok_or_else(|| {
+            CardTextError::ParseError(
+                "unable to parse opponent's revealed-card selection filter".to_string(),
+            )
+        })?
+    } else {
+        ObjectFilter::default()
+    };
+    selected_filter.zone = Some(Zone::Library);
+    selected_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: revealed_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let remainder_filter =
+        super::pairs::tagged_library_candidate_filter(&revealed_tag, &[selected_tag.clone()]);
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_reveal_top_cards(library_owner, count, revealed_tag.clone()),
+        EffectAst::subject_verb_choose_player(
+            PlayerAst::You,
+            PlayerFilter::Opponent,
+            opponent_tag,
+            false,
+            0,
+        ),
+        EffectAst::ChooseTaggedObjectsInZone {
+            filter: selected_filter,
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::That,
+            tag: selected_tag.clone(),
+            zone: Zone::Library,
+        },
+        EffectAst::subject_verb_tag_matching_objects(
+            remainder_filter,
+            vec![Zone::Library],
+            remainder_tag.clone(),
+        ),
+        super::pairs::move_tagged_to_looked_destination(
+            selected_tag,
+            partition.selected_destination,
+        ),
+        super::pairs::move_tagged_to_looked_destination(
+            remainder_tag,
+            partition.remainder_destination,
+        ),
+    ]))
 }
 
 /// Joins a looked-card pool to an optional singleton placed back on top and
@@ -924,10 +1087,14 @@ pub(crate) fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
             None,
         ),
         EffectAst::MayByPlayer {
-            player: PlayerAst::Opponent,
+            // The first opponent reference above creates the concrete player
+            // choice. Both occurrences of "that opponent" refer to that
+            // same chosen player; treating them as fresh Opponent filters
+            // lets any opponent cast the card in multiplayer games.
+            player: PlayerAst::That,
             effects: vec![EffectAst::subject_verb_cast_tagged(
                 exiled_tag,
-                PlayerAst::Opponent,
+                PlayerAst::That,
                 false,
                 false,
                 true,
@@ -2485,7 +2652,7 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         choice_count = ChoiceCount::up_to(1);
     }
 
-    let remainder_tokens = sentences[sentence_idx + 2].lowered();
+    let remainder_tokens = sentences[sentence_idx + 2].lexed();
     let remainder_surface = triple_grammar::looked_remainder_surface(remainder_tokens);
     let Some(remainder) = triple_grammar::parse_looked_remainder_shape(remainder_tokens) else {
         return Ok(None);
@@ -2496,10 +2663,10 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
     };
 
     let looked_tag = helper_tag_for_tokens(
-        sentences[sentence_idx].lowered(),
+        sentences[sentence_idx].lexed(),
         if reveal_top { "revealed" } else { "looked" },
     );
-    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lexed(), "chosen");
     let mut choose_filter = filter;
     choose_filter.zone = Some(Zone::Library);
     choose_filter
@@ -3541,12 +3708,23 @@ pub(crate) fn parse_top_cards_reveal_any_matching_to_hand_rest_bottom(
             None,
         )],
     });
+    let remainder_surface = if crate::runtime_backend::lexer::parser_token_word_refs(
+        sentences[sentence_idx + 2].lexed(),
+    )
+    .first()
+    .is_some_and(|word| *word == "then")
+    {
+        ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest
+    } else {
+        ironsmith_core::LibraryRemainderSurface::Rest
+    };
     effects.push(
-        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
             looked_tag,
             Some(revealed_tag),
             order,
             chooser,
+            remainder_surface,
         ),
     );
     if gate_on_previous_result {
@@ -4197,6 +4375,14 @@ pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(
         return Ok(None);
     };
     let mut choice_count = shape.count;
+    let selected_reference_surface = {
+        let words = TokenWordView::new(&reveal_tokens).word_refs();
+        if words.windows(2).any(|window| window == ["that", "card"]) {
+            ironsmith_core::SearchResultReferenceSurface::ThatCard
+        } else {
+            ironsmith_core::SearchResultReferenceSurface::It
+        }
+    };
     if !matches!(action_match.actor, LeadingMayActor::Default) && choice_count.min > 0 {
         choice_count = ChoiceCount::up_to(choice_count.max.unwrap_or(choice_count.min));
     }
@@ -4247,14 +4433,17 @@ pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(
     });
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
-        effects: vec![EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
-            Zone::Hand,
-            false,
-            crate::cards::builders::ReturnControllerAst::Preserve,
-            false,
-            None,
-        )],
+        effects: vec![
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                Zone::Hand,
+                false,
+                crate::cards::builders::ReturnControllerAst::Preserve,
+                false,
+                None,
+            )
+            .with_move_to_zone_target_reference_surface(selected_reference_surface),
+        ],
     });
     effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
@@ -4598,6 +4787,90 @@ pub(crate) fn parse_consult_cleanup_then_typed_when_result(
 mod tests {
     use super::*;
     use crate::runtime_backend::front_end::lexer::{lex_line, split_lexed_sentences};
+
+    #[test]
+    fn opponent_revealed_choice_tags_the_filtered_selection_and_exact_remainder() {
+        let tokens = lex_line(
+            "Reveal the top five cards of your library. An opponent chooses a creature card from among them. Put that card onto the battlefield and the rest into your graveyard.",
+            0,
+        )
+        .expect("opponent partition should lex");
+        let split = split_lexed_sentences(&tokens);
+        let sentences = split
+            .iter()
+            .map(|sentence| SentenceInput::from_lexed(sentence))
+            .collect::<Vec<_>>();
+        let effects = parse_reveal_top_opponent_chooses_then_partition(&sentences, 0)
+            .expect("parse")
+            .expect("typed opponent partition");
+
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::LookAtTopCards {
+                        tag: revealed,
+                        reveal: true,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::ChoosePlayer {
+                        filter: PlayerFilter::Opponent,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                tag: selected,
+                ..
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::TagMatchingObjects {
+                        filter: remainder,
+                        tag: remainder_tag,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::MoveToZone {
+                        zone: Zone::Battlefield,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::MoveToZone {
+                        zone: Zone::Graveyard,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected revealed pool/opponent/selection/complement/moves: {effects:#?}");
+        };
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *revealed
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(remainder.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *revealed
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(remainder.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *selected
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        }));
+        assert_ne!(selected, remainder_tag);
+    }
     use crate::types::Subtype;
 
     #[test]
@@ -4799,6 +5072,47 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn looked_reveal_to_hand_preserves_the_authored_singular_reference() {
+        for (reference, expected) in [
+            ("it", ironsmith_core::SearchResultReferenceSurface::It),
+            (
+                "that card",
+                ironsmith_core::SearchResultReferenceSurface::ThatCard,
+            ),
+        ] {
+            let text = format!(
+                "Look at the top five cards of your library. You may reveal a creature card from among them and put {reference} into your hand. Put the rest on the bottom of your library in a random order."
+            );
+            let tokens = lex_line(&text, 0).expect("looked partition should lex");
+            let split = split_lexed_sentences(&tokens);
+            let sentences = split
+                .iter()
+                .map(|sentence| SentenceInput::from_lexed(sentence))
+                .collect::<Vec<_>>();
+            let effects = parse_look_at_top_reveal_match_put_rest_bottom(&sentences, 0)
+                .expect("parse")
+                .expect("typed looked partition");
+            let EffectAst::ForEachTagged { effects: moved, .. } = &effects[3] else {
+                panic!("expected tagged selected-card move: {effects:#?}");
+            };
+            let [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::MoveToZone {
+                            target_reference_surface,
+                            ..
+                        },
+                    ..
+                }),
+            ] = moved.as_slice()
+            else {
+                panic!("expected one selected-card move: {moved:#?}");
+            };
+            assert_eq!(*target_reference_surface, Some(expected));
+        }
     }
 
     #[test]

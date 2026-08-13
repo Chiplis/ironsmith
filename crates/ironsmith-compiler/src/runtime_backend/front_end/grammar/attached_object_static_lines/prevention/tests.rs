@@ -18,6 +18,22 @@ fn parses_attached_prevention_shapes() {
     assert_eq!(parsed.condition_tokens, None);
     assert_eq!(parsed.follow_up, None);
     assert!(!parsed.one_damage_per_counter);
+    assert!(!parsed.separate_removal_sentence);
+
+    let tokens = lex_line(
+        "If damage would be dealt to this creature, prevent that damage. Remove a +1/+1 counter from this creature.",
+        0,
+    )
+    .unwrap();
+    let parsed = primitives::parse_all(
+        &tokens,
+        parse_remove_counter_prevention_lexed,
+        "separate-sentence remove-counter prevention test",
+    )
+    .unwrap();
+    assert_eq!(parsed.amount, RemoveCounterPreventionAmount::Fixed(1));
+    assert_eq!(parsed.counter_type, CounterType::PlusOnePlusOne);
+    assert!(parsed.separate_removal_sentence);
 
     let tokens = lex_line(
         "For each 1 damage that would be dealt to this creature, if it has a +1/+1 counter on it, remove a +1/+1 counter from it and prevent that 1 damage.",
@@ -33,6 +49,7 @@ fn parses_attached_prevention_shapes() {
     assert_eq!(parsed.amount, RemoveCounterPreventionAmount::DamageAmount);
     assert_eq!(parsed.counter_type, CounterType::PlusOnePlusOne);
     assert!(parsed.one_damage_per_counter);
+    assert!(!parsed.separate_removal_sentence);
     assert_eq!(
         parser_token_word_refs(parsed.condition_tokens.unwrap()),
         vec!["it", "has", "a", "+1/+1", "counter", "on", "it"]

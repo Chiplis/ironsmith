@@ -123,7 +123,7 @@ pub(crate) use player_effect_helpers::{
 pub(crate) use prepared_effects::{
     compile_condition_from_predicate_ast_with_env,
     materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
-    materialize_prepared_triggered_effects,
+    materialize_prepared_triggered_effects, rebind_returned_attachment_history_to_triggering_object,
 };
 #[cfg(test)]
 pub(crate) use prepared_effects::{
@@ -1261,7 +1261,7 @@ fn preserve_chooser_relative_player_filters(
 ) {
     if !matches!(
         chooser,
-        PlayerFilter::Target(_) | PlayerFilter::IteratedPlayer
+        PlayerFilter::Opponent | PlayerFilter::Target(_) | PlayerFilter::IteratedPlayer
     ) {
         return;
     }
@@ -1517,6 +1517,8 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
+        | Value::ColorPairsAmong(filter)
+        | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => {
             bind_relative_iterated_player_filters_to_chooser(filter, player_filter);

@@ -454,6 +454,176 @@ fn parse_hidden_look_partition_activated(
     )
 }
 
+/// Reparse a grammar-proven leading-duration compound whose subject is an
+/// authored source name. The generic gain parser deliberately understands
+/// typed self references, while full-card preprocessing retains the authored
+/// name for presentation. Parse through a typed self subject, then restore
+/// that exact source-reference surface on the two coordinated consumers.
+fn parse_named_source_leading_gain_activated(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = token_word_refs(tokens);
+    const UNTIL_END_OF_TURN: [&str; 4] = ["until", "end", "of", "turn"];
+    if words.len() < UNTIL_END_OF_TURN.len()
+        || !words
+            .iter()
+            .zip(UNTIL_END_OF_TURN)
+            .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+    {
+        return Ok(None);
+    }
+    let Some(get_token_index) = tokens.iter().position(|token| {
+        token.as_word().is_some_and(|word| {
+            word.eq_ignore_ascii_case("get") || word.eq_ignore_ascii_case("gets")
+        })
+    }) else {
+        return Ok(None);
+    };
+    let Some(get_word_index) = words
+        .iter()
+        .position(|word| word.eq_ignore_ascii_case("get") || word.eq_ignore_ascii_case("gets"))
+    else {
+        return Ok(None);
+    };
+    if !words[get_word_index + 1..]
+        .iter()
+        .any(|word| word.eq_ignore_ascii_case("gain") || word.eq_ignore_ascii_case("gains"))
+    {
+        return Ok(None);
+    }
+    let subject_start = tokens[..get_token_index]
+        .iter()
+        .rposition(|token| token.kind == TokenKind::Comma)
+        .map_or(0, |index| index + 1);
+    let subject_tokens = trim_lexed_commas(&tokens[subject_start..get_token_index]);
+    let subject_words = token_word_refs(subject_tokens);
+    let authored_subject = subject_words.join(" ");
+    let contextual_surface =
+        crate::runtime_backend::front_end::shared::util::current_source_reference_name().and_then(
+            |source_name| {
+                if authored_subject.eq_ignore_ascii_case(&source_name) {
+                    return Some(crate::target::SourceReferenceSurface::FullName(source_name));
+                }
+                let short_name = source_name.split(',').next()?.trim().to_string();
+                authored_subject
+                    .eq_ignore_ascii_case(&short_name)
+                    .then_some(crate::target::SourceReferenceSurface::ShortName(short_name))
+            },
+        );
+    let Some(surface) = contextual_surface
+        .or_else(|| {
+            crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(
+                &subject_words,
+            )
+        })
+        .or_else(|| {
+            crate::runtime_backend::front_end::shared::util::this_source_surface_for_words(
+                &subject_words,
+            )
+        })
+    else {
+        return Ok(None);
+    };
+
+    let Some(gain_token_index) = tokens[get_token_index + 1..]
+        .iter()
+        .position(|token| {
+            token.as_word().is_some_and(|word| {
+                word.eq_ignore_ascii_case("gain") || word.eq_ignore_ascii_case("gains")
+            })
+        })
+        .map(|index| get_token_index + 1 + index)
+    else {
+        return Ok(None);
+    };
+    let Some(and_token_index) = tokens[get_token_index + 1..gain_token_index]
+        .iter()
+        .rposition(|token| token.is_word("and"))
+        .map(|index| get_token_index + 1 + index)
+    else {
+        return Ok(None);
+    };
+    let modifier_tokens = trim_lexed_commas(&tokens[get_token_index + 1..and_token_index]);
+    let Some(pump_head) = crate::runtime_backend::front_end::grammar::effects::gain_ability_shapes::parse_gain_pump_head_shape(modifier_tokens) else {
+        return Ok(None);
+    };
+    let (crate::effect::Value::Fixed(power_per), crate::effect::Value::Fixed(toughness_per)) =
+        (&pump_head.power, &pump_head.toughness)
+    else {
+        return Ok(None);
+    };
+    let Some(count) = crate::runtime_backend::effect_sentences::parse_get_for_each_count_value(
+        modifier_tokens.get(1..).unwrap_or_default(),
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let self_tokens = crate::runtime_backend::front_end::lexer::lex_line("this creature", 0)?;
+    let mut ability_tokens = Vec::with_capacity(tokens.len());
+    ability_tokens.extend_from_slice(&tokens[..subject_start]);
+    ability_tokens.extend(self_tokens);
+    ability_tokens.extend_from_slice(&tokens[gain_token_index..]);
+    let Some(grant) =
+        crate::runtime_backend::effect_sentences::parse_simple_gain_ability_clause_lexed(
+            &ability_tokens,
+        )?
+    else {
+        return Ok(None);
+    };
+
+    let target = TargetAst::Object(
+        ObjectFilter::source_with_surface(surface.clone()),
+        None,
+        None,
+    );
+    let pump = EffectAst::subject_verb_pump_for_each(
+        *power_per,
+        *toughness_per,
+        target,
+        count,
+        Until::EndOfTurn,
+    );
+    let mut effects = vec![EffectAst::Coordinated {
+        effects: vec![pump, grant],
+        leading_duration: true,
+        result_conjunction: false,
+    }];
+
+    fn apply_surface(target: &mut TargetAst, surface: &crate::target::SourceReferenceSurface) {
+        match target {
+            TargetAst::Source(span) => {
+                *target = TargetAst::Object(
+                    ObjectFilter::source_with_surface(surface.clone()),
+                    None,
+                    *span,
+                );
+            }
+            TargetAst::Object(filter, _, _) if filter.source => {
+                filter.source_surface = Some(surface.clone());
+            }
+            _ => {}
+        }
+    }
+    fn apply(effects: &mut [EffectAst], surface: &crate::target::SourceReferenceSurface) {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(subject_verb) = effect {
+                match &mut subject_verb.action {
+                    SubjectVerbActionAst::Pump { target, .. }
+                    | SubjectVerbActionAst::PumpForEach { target, .. }
+                    | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. } => {
+                        apply_surface(target, surface);
+                    }
+                    _ => {}
+                }
+            }
+            for_each_nested_effects_mut(effect, true, |nested| apply(nested, surface));
+        }
+    }
+    apply(&mut effects, &surface);
+    Ok(Some(effects))
+}
+
 fn parse_activated_effects_lexed(
     _effect_text: &str,
     tokens: &[OwnedLexToken],
@@ -472,6 +642,59 @@ fn parse_activated_effects_lexed(
     }
     if let Some(effects) = parse_hidden_look_partition_activated(tokens)? {
         return Ok(effects);
+    }
+    if let Some(effects) = parse_named_source_leading_gain_activated(tokens)? {
+        return Ok(effects);
+    }
+    // Keep the P/T modification and evasion restriction as one activated
+    // program. The broad restriction-oriented source-boundary parser can
+    // otherwise claim only the trailing `can't be blocked` arm.
+    if let Some(effects) =
+        crate::runtime_backend::effect_sentences::parse_source_gets_unblockable_subject_verb(
+            tokens,
+        )?
+    {
+        return Ok(effects);
+    }
+    let words = token_word_refs(tokens);
+    if crate::runtime_backend::front_end::grammar::effects::gain_ability_shapes::parse_leading_gain_duration_shape(
+        &words,
+    )
+    .is_some()
+    {
+        if let Some(effects) =
+            crate::runtime_backend::effect_sentences::parse_gain_ability_sentence(tokens)?
+        {
+            fn contains_compound_members(effects: &[EffectAst]) -> bool {
+                let mut pump = false;
+                let mut grant = false;
+                fn inspect(effects: &[EffectAst], pump: &mut bool, grant: &mut bool) {
+                    for effect in effects {
+                        if let EffectAst::SubjectVerb(subject_verb) = effect {
+                            *pump |= matches!(subject_verb.action, SubjectVerbActionAst::Pump { .. });
+                            *grant |= matches!(
+                                subject_verb.action,
+                                SubjectVerbActionAst::GrantAbilitiesToTarget { .. }
+                            );
+                        }
+                        crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effects(
+                            effect,
+                            true,
+                            |nested| inspect(nested, pump, grant),
+                        );
+                    }
+                }
+                inspect(effects, &mut pump, &mut grant);
+                pump && grant
+            }
+            // Activated bodies such as "Until end of turn, this creature gets
+            // +1/+1 ... and gains menace" are one coordinated modifier.  The
+            // generic source-boundary path can otherwise claim the leading
+            // `gets` as an unrelated counter-gain action.
+            if contains_compound_members(&effects) {
+                return Ok(effects);
+            }
+        }
     }
     if let Ok(effects) = parse_effect_sentences_preserving_source_boundaries(tokens) {
         return Ok(effects);
@@ -983,6 +1206,34 @@ mod hidden_look_partition_activated_tests {
                 "Look at the top three cards of your library. Exile one face up and put the rest on the bottom of your library in any order. Draw a card."
             )
             .is_none()
+        );
+    }
+}
+
+#[cfg(test)]
+mod leading_duration_gain_activated_tests {
+    use super::*;
+
+    #[test]
+    fn activated_pump_and_keyword_share_the_leading_duration() {
+        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "Azula, Ruthless Firebender",
+            || {
+                for text in [
+                    "Until end of turn, this creature gets +1/+1 for each experience counter you have and gains menace.",
+                    "Until end of turn, Azula gets +1/+1 for each experience counter you have and gains menace.",
+                ] {
+                    let tokens = crate::runtime_backend::lex_line(text, 0)
+                        .expect("activated body should lex");
+                    let effects = parse_activated_effects_lexed("", &tokens, 0)
+                        .expect("activated pump-and-keyword body should parse");
+                    let debug = format!("{effects:#?}");
+                    assert!(debug.contains("Pump"), "{debug}");
+                    assert!(debug.contains("PlayerCounters"), "{debug}");
+                    assert!(debug.contains("Menace"), "{debug}");
+                    assert!(!debug.contains("ExperienceCounters"), "{debug}");
+                }
+            },
         );
     }
 }

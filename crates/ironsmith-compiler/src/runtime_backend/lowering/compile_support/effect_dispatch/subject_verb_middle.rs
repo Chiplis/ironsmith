@@ -1,5 +1,26 @@
 use super::*;
 
+fn target_ast_object_filter(target: &TargetAst) -> Option<&ObjectFilter> {
+    match target {
+        TargetAst::Object(filter, ..) | TargetAst::ObjectOrPlayer(filter, ..) => Some(filter),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+            target_ast_object_filter(inner)
+        }
+        _ => None,
+    }
+}
+
+fn choose_spec_object_filter_mut(spec: &mut ChooseSpec) -> Option<&mut ObjectFilter> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, ..) => choose_spec_object_filter_mut(spec),
+        ChooseSpec::Object(filter) | ChooseSpec::ObjectOrPlayer(filter, _) => Some(filter),
+        _ => None,
+    }
+}
+
 fn choose_spec_may_hold_multiple_objects(spec: &ChooseSpec) -> bool {
     match spec.unhinted() {
         ChooseSpec::WithCount(_, count) | ChooseSpec::WithCountValue(_, count, _) => {
@@ -912,6 +933,7 @@ pub(super) fn compile_subject_verb_middle(
             library_order_chooser,
             verb_surface,
             target_plural_surface,
+            target_reference_surface,
             destination_player_surface,
             destination_player_reference_surface,
             exiled_with_source_surface,
@@ -980,6 +1002,11 @@ pub(super) fn compile_subject_verb_middle(
                 let move_effect = move_effect.with_verb_surface(*verb_surface);
                 let move_effect = if *target_plural_surface {
                     move_effect.with_target_plural_surface()
+                } else {
+                    move_effect
+                };
+                let move_effect = if let Some(surface) = target_reference_surface {
+                    move_effect.with_target_reference_surface(*surface)
                 } else {
                     move_effect
                 };
@@ -1313,21 +1340,44 @@ pub(super) fn compile_subject_verb_middle(
             target,
             explicit_declaration,
         } => {
-            let (spec, choices) =
+            let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             if matches!(spec.base(), ChooseSpec::Source) {
                 Ok((Vec::new(), choices))
             } else {
+                let delegated_chooser = if matches!(role, SubjectVerbRoleAst::Chooser)
+                    && !matches!(player, PlayerAst::Implicit)
+                {
+                    Some(resolve_non_target_player_filter(
+                        player,
+                        &current_reference_env(ctx),
+                    )?)
+                } else {
+                    None
+                };
+                // Keep chooser-relative references ("they control", "their
+                // graveyard", and so on) as `IteratedPlayer` until the
+                // delegated chooser is a concrete player. In multiplayer a
+                // broad filter such as `Opponent` describes several eligible
+                // choosers; replacing the relative reference with `Opponent`
+                // would incorrectly allow the selected opponent to choose an
+                // object associated with a different opponent.
+                if let Some(chooser) = delegated_chooser.as_ref()
+                    && let Some(original_filter) = target_ast_object_filter(target)
+                    && let Some(resolved_filter) = choose_spec_object_filter_mut(&mut spec)
+                {
+                    preserve_chooser_relative_player_filters(
+                        original_filter,
+                        resolved_filter,
+                        chooser,
+                    );
+                }
                 let mut target_only = if *explicit_declaration {
                     crate::effects::TargetOnlyEffect::explicit(spec.clone())
                 } else {
                     crate::effects::TargetOnlyEffect::new(spec.clone())
                 };
-                if matches!(role, SubjectVerbRoleAst::Chooser)
-                    && !matches!(player, PlayerAst::Implicit)
-                {
-                    let chooser =
-                        resolve_non_target_player_filter(player, &current_reference_env(ctx))?;
+                if let Some(chooser) = delegated_chooser {
                     target_only = target_only.with_chooser(chooser);
                 }
                 let effect =

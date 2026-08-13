@@ -3,7 +3,7 @@
 //! This module contains the `check_triggers()` function that scans all permanents
 //! for triggered abilities that match a game event.
 
-use crate::filter::ObjectFilterExt as _;
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use std::collections::{HashMap, HashSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -1694,6 +1694,30 @@ fn tagged_objects_for_matched_trigger(
             tagged.insert(
                 crate::tag::TagKey::from(ironsmith_core::ZONE_CHANGE_GROUP_TAG),
                 snapshots,
+            );
+        }
+    }
+    if let Some(damage) =
+        trigger.downcast_ref::<crate::triggers::DealsCombatDamageToPlayerTrigger>()
+        && damage.one_or_more
+        && trigger_event
+            .downcast::<crate::events::DamageEvent>()
+            .is_some_and(|event| event.is_combat)
+    {
+        let mut seen = std::collections::HashSet::new();
+        let sources = game
+            .combat_damage_player_batch_hits()
+            .iter()
+            .filter(|(_, player)| damage.player.matches_player(*player, &ctx.filter_ctx))
+            .filter_map(|(source, _)| game.object(*source))
+            .filter(|source| damage.filter.matches(source, &ctx.filter_ctx, game))
+            .filter(|source| seen.insert(source.stable_id))
+            .map(|source| ObjectSnapshot::from_object_with_calculated_characteristics(source, game))
+            .collect::<Vec<_>>();
+        if !sources.is_empty() {
+            tagged.insert(
+                crate::tag::TagKey::from(ironsmith_core::COMBAT_DAMAGE_GROUP_TAG),
+                sources,
             );
         }
     }
@@ -3402,7 +3426,8 @@ pub fn player_filter_matches_with_context(
         // This helper has no source object. Source-relative player history is
         // resolved by effect execution's game-aware filter context instead.
         PlayerFilter::AttackedBySourceThisTurn
-        | PlayerFilter::WasDealtDamageBySourceThisGame { .. } => false,
+        | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => false,
         PlayerFilter::LostLifeThisTurn { .. } => {
             let filter_ctx = game.filter_context_for(controller, None);
             crate::filter::player_filter_matches_game(spec, player, game, &filter_ctx)

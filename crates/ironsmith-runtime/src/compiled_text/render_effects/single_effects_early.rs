@@ -1663,6 +1663,15 @@ pub(super) fn describe_damage_fanout_filter(filter: &ObjectFilter) -> Option<Str
     // Remove the zone only in this tightly scoped damage surface.
     let mut display_filter = filter.clone();
     display_filter.zone = None;
+    let demonstrative = display_filter.set_quantifier_surface()
+        == Some(ironsmith_core::SetQuantifierSurface::Those);
+    if demonstrative {
+        // The tag is the semantic identity of the previously selected set;
+        // `Those` is its authored reference surface. Describe only the noun
+        // here so the fanout renderer can say "each of those creatures".
+        display_filter.tagged_constraints.clear();
+        display_filter.set_set_quantifier_surface(None);
+    }
     let mut rendered = describe_for_each_count_filter(&display_filter);
     // Planeswalker subtypes are proper names in Oracle text. The generic
     // filter description intentionally lowercases excluded subtypes for its
@@ -1676,6 +1685,11 @@ pub(super) fn describe_damage_fanout_filter(filter: &ObjectFilter) -> Option<Str
         }
     }
     let rendered = conjoin_quantified_card_types(rendered, &display_filter.card_types);
+    let rendered = if demonstrative {
+        format!("of those {}", pluralize_noun_phrase(&rendered))
+    } else {
+        rendered
+    };
     (!rendered.trim().is_empty()).then_some(rendered)
 }
 
@@ -3308,8 +3322,14 @@ pub(crate) fn describe_search_origin_zones(
         _ if zones.len() == 2 && has_zone(Zone::Hand) && has_zone(Zone::Library) => {
             format!("{owner_text} hand and library")
         }
-        _ if zones.len() == 2 && has_zone(Zone::Graveyard) && has_zone(Zone::Library) => {
+        [Zone::Library, Zone::Graveyard] => {
             format!("{owner_text} library and/or graveyard")
+        }
+        [Zone::Library, Zone::OutsideGame] => {
+            format!("{owner_text} library and/or outside the game")
+        }
+        [Zone::Graveyard, Zone::Library] => {
+            format!("{owner_text} graveyard and/or library")
         }
         _ if zones.len() == 3
             && has_zone(Zone::Library)
@@ -3528,25 +3548,54 @@ pub(crate) fn describe_search_choose_for_each(
             )
         }
         [_, attachment_choice_effect, attach_effect] => {
-            let attachment_choice =
-                attachment_choice_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
             let attach = unwrap_basic_tag_wrappers(attach_effect)
                 .downcast_ref::<crate::effects::AttachObjectsEffect>()?;
             if !matches_search_move_target(&attach.objects, choose.tag.as_str())
                 || !choose.count.is_single()
-                || !attachment_choice.count.is_single()
-                || attachment_choice.count_value.is_some()
-                || attachment_choice.aggregate_constraint.is_some()
-                || attachment_choice.is_search
-                || attachment_choice.reveal
-                || attachment_choice.count.is_random()
-                || choose_primary_zone(attachment_choice) != Some(Zone::Battlefield)
-                || !same_search_player_filter(&attachment_choice.chooser, &choose.chooser)
-                || !choose_spec_references_exact_tag(&attach.target, &attachment_choice.tag)
             {
                 return None;
             }
-            (None, Some(describe_choose_selection(attachment_choice)))
+            if let Some(attachment_choice) =
+                attachment_choice_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            {
+                if !attachment_choice.count.is_single()
+                    || attachment_choice.count_value.is_some()
+                    || attachment_choice.aggregate_constraint.is_some()
+                    || attachment_choice.is_search
+                    || attachment_choice.reveal
+                    || attachment_choice.count.is_random()
+                    || choose_primary_zone(attachment_choice) != Some(Zone::Battlefield)
+                    || !same_search_player_filter(&attachment_choice.chooser, &choose.chooser)
+                    || !choose_spec_references_exact_tag(&attach.target, &attachment_choice.tag)
+                {
+                    return None;
+                }
+                (None, Some(describe_choose_selection(attachment_choice)))
+            } else {
+                let (target_tag, target_only) =
+                    tagged_target_only_effect(attachment_choice_effect)?;
+                let target_filter = match target_only.target.unhinted() {
+                    ChooseSpec::Target(target) => match target.unhinted() {
+                        ChooseSpec::Object(filter) => filter,
+                        _ => return None,
+                    },
+                    _ => return None,
+                };
+                if target_only.explicit_declaration
+                    || target_only.chooser.is_some()
+                    || target_filter.zone != Some(Zone::Battlefield)
+                    || !choose_spec_references_exact_tag(&attach.target, target_tag)
+                {
+                    return None;
+                }
+                (
+                    Some(format!(
+                        " attached to {}",
+                        describe_choose_spec(&target_only.target)
+                    )),
+                    None,
+                )
+            }
         }
         _ => return None,
     };
@@ -5929,6 +5978,125 @@ pub(crate) fn describe_conditional_damage_instead(
     ))
 }
 
+/// Compact two otherwise-identical token-creation branches when the true
+/// branch changes only how the created tokens enter. This preserves the
+/// executable resolution-time branch while recovering Oracle's shared
+/// producer followed by an entry-condition sentence.
+pub(crate) fn describe_conditional_token_entry_modification(
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    if conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+        || conditional.if_true.len() != 1
+        || conditional.if_false.len() != 1
+    {
+        return None;
+    }
+    let true_create = created_token_effect(&conditional.if_true[0])?;
+    let false_create = created_token_effect(&conditional.if_false[0])?;
+    if !true_create.enters_tapped
+        || !true_create.enters_attacking
+        || false_create.enters_tapped
+        || false_create.enters_attacking
+    {
+        return None;
+    }
+
+    if describe_create_token_blueprint(true_create)
+        != describe_create_token_blueprint(false_create)
+        || true_create.count != false_create.count
+        || true_create.controller != false_create.controller
+        || true_create.controller_target != false_create.controller_target
+        || true_create.use_source_chosen_color != false_create.use_source_chosen_color
+        || true_create.use_source_chosen_creature_type
+            != false_create.use_source_chosen_creature_type
+        || true_create.actor_surface_explicit != false_create.actor_surface_explicit
+        || true_create.suppress_aura_attachment_choice
+            != false_create.suppress_aura_attachment_choice
+        || true_create.ability_presentation != false_create.ability_presentation
+        || true_create.attack_target_mode != false_create.attack_target_mode
+        || true_create.exile_at_end_of_combat != false_create.exile_at_end_of_combat
+        || true_create.sacrifice_at_end_of_combat != false_create.sacrifice_at_end_of_combat
+        || true_create.sacrifice_at_next_end_step != false_create.sacrifice_at_next_end_step
+        || true_create.exile_at_next_end_step != false_create.exile_at_next_end_step
+        || true_create.next_end_step_player != false_create.next_end_step_player
+    {
+        return None;
+    }
+
+    let producer = describe_effect(&conditional.if_false[0]);
+    let producer = producer.trim().trim_end_matches('.');
+    if producer.is_empty() || producer.contains(". ") {
+        return None;
+    }
+    let (pronoun, verb) = if false_create.count == Value::Fixed(1) {
+        ("it", "enters")
+    } else {
+        ("they", "enter")
+    };
+    let condition = if conditional.condition == crate::effect::Condition::YouControlCommander {
+        "you control your commander".to_string()
+    } else {
+        describe_condition(&conditional.condition)
+    };
+    Some(format!(
+        "{producer}. If {condition}, {pronoun} {verb} tapped and attacking"
+    ))
+}
+
+#[cfg(test)]
+mod conditional_token_entry_modification_tests {
+    use super::*;
+
+    fn create(
+        token: crate::cards::CardDefinition,
+        count: i32,
+        enters_tapped: bool,
+        enters_attacking: bool,
+    ) -> Effect {
+        let mut create = crate::effects::CreateTokenEffect::new(
+            token,
+            count,
+            PlayerFilter::You,
+        );
+        create.enters_tapped = enters_tapped;
+        create.enters_attacking = enters_attacking;
+        Effect::new(create)
+    }
+
+    #[test]
+    fn refreshed_instead_shared_token_producer_renders_entry_condition_once() {
+        let token = crate::cards::tokens::treasure_token_definition();
+        let conditional = crate::effects::ConditionalEffect::new(
+            crate::effect::Condition::YouControlCommander,
+            vec![create(token.clone(), 3, true, true)],
+            vec![create(token, 3, false, false)],
+        );
+        assert_eq!(
+            describe_conditional_token_entry_modification(&conditional).as_deref(),
+            Some(
+                "Create three Treasure tokens. If you control your commander, they enter tapped and attacking"
+            )
+        );
+    }
+
+    #[test]
+    fn refreshed_instead_changed_token_or_partial_entry_change_does_not_fold() {
+        let token = crate::cards::tokens::treasure_token_definition();
+        let changed_count = crate::effects::ConditionalEffect::new(
+            crate::effect::Condition::YouControlCommander,
+            vec![create(token.clone(), 2, true, true)],
+            vec![create(token.clone(), 3, false, false)],
+        );
+        let only_tapped = crate::effects::ConditionalEffect::new(
+            crate::effect::Condition::YouControlCommander,
+            vec![create(token.clone(), 3, true, false)],
+            vec![create(token, 3, false, false)],
+        );
+        assert!(describe_conditional_token_entry_modification(&changed_count).is_none());
+        assert!(describe_conditional_token_entry_modification(&only_tapped).is_none());
+    }
+}
+
 pub(crate) fn describe_conditional_choose_both_instead(
     conditional: &crate::effects::ConditionalEffect,
 ) -> Option<String> {
@@ -5952,14 +6120,29 @@ pub(crate) fn describe_conditional_choose_both_instead(
         return None;
     }
 
-    // Pattern: "Choose one. If <condition>, you may choose both instead."
-    if choose_true.choose_count != Value::Fixed(2)
-        || choose_true.min_choose_count != Value::Fixed(1)
-        || choose_false.choose_count != Value::Fixed(1)
+    // Pattern: "Choose one. If <condition>, [you may] choose <range> instead."
+    if choose_false.choose_count != Value::Fixed(1)
         || choose_false.min_choose_count != choose_false.choose_count
     {
         return None;
     }
+
+    let selection = match (&choose_true.min_choose_count, &choose_true.choose_count) {
+        (Value::Fixed(1), Value::Fixed(2)) if choose_true.modes.len() == 2 => "both".to_string(),
+        (Value::Fixed(0), Value::Fixed(max))
+            if usize::try_from(*max).ok() == Some(choose_true.modes.len()) =>
+        {
+            "any number".to_string()
+        }
+        (Value::Fixed(1), Value::Fixed(max))
+            if usize::try_from(*max).ok() == Some(choose_true.modes.len()) =>
+        {
+            "one or more".to_string()
+        }
+        (Value::Fixed(1), Value::Fixed(2)) => "two".to_string(),
+        (Value::Fixed(1), Value::Fixed(1)) => "one".to_string(),
+        _ => return None,
+    };
 
     let condition = describe_condition(&conditional.condition);
     let timing = if choose_both_condition_is_cast_time(&conditional.condition) {
@@ -5967,7 +6150,25 @@ pub(crate) fn describe_conditional_choose_both_instead(
     } else {
         ""
     };
-    let mut out = format!("Choose one. If {condition}{timing}, you may choose both instead.");
+    let permission = if matches!(
+        &conditional.condition,
+        crate::effect::Condition::YouControlCommander
+            | crate::effect::Condition::PlayerControls { .. }
+            | crate::effect::Condition::PlayerDescendedThisTurn { .. }
+            | crate::effect::Condition::LifeTotalOrLess(_)
+            | crate::effect::Condition::LifeTotalOrGreater(_)
+    ) {
+        "you may "
+    } else {
+        ""
+    };
+    let base = if choose_false.random {
+        "Choose one at random"
+    } else {
+        "Choose one"
+    };
+    let mut out =
+        format!("{base}. If {condition}{timing}, {permission}choose {selection} instead.");
     for mode in &choose_true.modes {
         let rendered = describe_effect_list(&mode.effects);
         let description = capitalize_first(&ensure_trailing_period(rendered.trim()));

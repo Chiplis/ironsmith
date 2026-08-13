@@ -65,6 +65,7 @@ fn apply_trigger_intro_surface(
         | TriggerSpec::PlayerAttacksOneOrMore { .. }
         | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
         | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
+        | TriggerSpec::AttacksOneOrMoreWithAggregate { .. }
         | TriggerSpec::AttacksAlone(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)

@@ -912,6 +912,9 @@ pub(super) fn parse_spell_filter_power_or_toughness_words(words: &[&str]) -> Opt
 }
 
 pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[&str]) {
+    if words.iter().any(|word| matches!(*word, "kicked" | "kick")) {
+        filter.ability_markers.push("kicked".to_string());
+    }
     let mut idx = 0usize;
     while idx < words.len() {
         if let Some((kind, consumed)) = parse_alternative_cast_words(&words[idx..]) {

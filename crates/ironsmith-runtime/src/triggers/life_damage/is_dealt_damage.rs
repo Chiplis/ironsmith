@@ -6,7 +6,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
-use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
+use crate::triggers::matcher_trait::{SimultaneousTriggerKey, TriggerContext, TriggerMatcher};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IsDealtDamageTrigger {
@@ -73,6 +73,14 @@ impl TriggerMatcher for IsDealtDamageTrigger {
         Some(vec![EventKind::Damage])
     }
 
+    fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<SimultaneousTriggerKey> {
+        let ChooseSpec::Object(filter) = base_spec(&self.target) else {
+            return None;
+        };
+        (filter.union_is_one_or_more() && event.downcast::<DamageEvent>().is_some())
+            .then_some(SimultaneousTriggerKey::DamageBatch)
+    }
+
     fn display(&self) -> String {
         let damage_text = if self.excess_only && self.noncombat_only {
             "excess noncombat damage"
@@ -83,13 +91,6 @@ impl TriggerMatcher for IsDealtDamageTrigger {
         } else {
             "damage"
         };
-        fn base_spec(spec: &ChooseSpec) -> &ChooseSpec {
-            match spec {
-                ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => base_spec(inner),
-                other => other,
-            }
-        }
-
         match base_spec(&self.target) {
             ChooseSpec::Source => {
                 format!("Whenever this creature is dealt {damage_text}")
@@ -98,7 +99,22 @@ impl TriggerMatcher for IsDealtDamageTrigger {
                 format!("Whenever that permanent is dealt {damage_text}")
             }
             ChooseSpec::Object(filter) => {
-                format!("Whenever {} is dealt {damage_text}", filter.description())
+                let subject = if filter.union_is_one_or_more() {
+                    let mut singular = filter.clone();
+                    singular.set_union_one_or_more(false);
+                    format!(
+                        "one or more {}",
+                        pluralize_damage_subject(&singular.description())
+                    )
+                } else {
+                    filter.description()
+                };
+                let verb = if filter.union_is_one_or_more() {
+                    "are"
+                } else {
+                    "is"
+                };
+                format!("Whenever {subject} {verb} dealt {damage_text}")
             }
             ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => {
                 format!("Whenever a target is dealt {damage_text}")
@@ -122,6 +138,27 @@ impl TriggerMatcher for IsDealtDamageTrigger {
         event
             .downcast::<DamageEvent>()
             .map(|damage| damage.excess_damage as i32)
+    }
+}
+
+fn base_spec(spec: &ChooseSpec) -> &ChooseSpec {
+    match spec {
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => base_spec(inner),
+        other => other,
+    }
+}
+
+fn pluralize_damage_subject(description: &str) -> String {
+    let description = description
+        .strip_prefix("a ")
+        .or_else(|| description.strip_prefix("an "))
+        .unwrap_or(description);
+    if description.ends_with('s') {
+        description.to_string()
+    } else if let Some(stem) = description.strip_suffix('y') {
+        format!("{stem}ies")
+    } else {
+        format!("{description}s")
     }
 }
 
@@ -169,6 +206,7 @@ fn target_matches_player(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ObjectFilter;
     use crate::events::cause::EventCause;
     use crate::ids::{ObjectId, PlayerId};
     use crate::provenance::ProvNodeId;
@@ -234,5 +272,32 @@ mod tests {
         );
         assert!(!trigger.matches(&no_excess, &ctx));
         assert!(!trigger.matches(&combat, &ctx));
+    }
+
+    #[test]
+    fn one_or_more_excess_recipients_share_one_simultaneous_damage_group() {
+        let mut filter = ObjectFilter::creature();
+        filter.set_union_one_or_more(true);
+        let trigger = IsDealtDamageTrigger::excess_noncombat(ChooseSpec::Object(filter));
+        let event = TriggerEvent::new_with_provenance(
+            DamageEvent::with_cause(
+                ObjectId::from_raw(13),
+                DamageTarget::Object(ObjectId::from_raw(12)),
+                5,
+                false,
+                EventCause::effect(),
+            )
+            .with_excess_damage(3),
+            ProvNodeId::default(),
+        );
+
+        assert_eq!(
+            trigger.simultaneous_trigger_key(&event),
+            Some(SimultaneousTriggerKey::DamageBatch)
+        );
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more creatures are dealt excess noncombat damage"
+        );
     }
 }

@@ -1,6 +1,7 @@
 use crate::cards::builders::{
     ActivationTiming, CardTextError, EffectAst, EffectPredicate, IfResultPredicate, LineInfo,
-    ParsedModalActivatedHeader, ParsedModalGate, ParsedModalHeader, SubjectVerbActionAst,
+    ConditionalModeSelection, ParsedConditionalModeChange, ParsedModalActivatedHeader,
+    ParsedModalGate, ParsedModalHeader, SubjectVerbActionAst,
 };
 use crate::effect::Value;
 use crate::target::PlayerFilter;
@@ -163,6 +164,17 @@ pub(crate) fn parse_modal_header(
         choose_spec
     };
     let modal_flags = scan_modal_header_flags(tokens);
+    let conditional_mode_change = parse_conditional_mode_change(tokens, choose_spec.choose_idx)?;
+    let presentation_label = parse_modal_presentation_label(&info.source_tokens);
+    let presentation_prefix_end = presentation_label.as_ref().and_then(|_| {
+        tokens
+            .iter()
+            .enumerate()
+            .take(choose_spec.choose_idx)
+            .find_map(|(idx, token)| {
+                matches!(token.kind, TokenKind::Dash | TokenKind::EmDash).then_some(idx + 1)
+            })
+    });
     let choose_idx = choose_spec.choose_idx;
     let min = choose_spec.min;
     let max = choose_spec.max;
@@ -173,7 +185,7 @@ pub(crate) fn parse_modal_header(
     let x_replacement = choose_spec.x_clause_start.and_then(|x_clause_start| {
         parse_x_is_value_clause(trim_lexed_commas(&tokens[x_clause_start..]))
     });
-    let mut effect_start_idx = 0usize;
+    let mut effect_start_idx = presentation_prefix_end.unwrap_or(0);
     if let Some(colon_idx) = locate_token_index(tokens, |token| token.kind == TokenKind::Colon)
         .filter(|idx| *idx < choose_idx)
     {
@@ -227,7 +239,9 @@ pub(crate) fn parse_modal_header(
         && let Some(comma_idx) = locate_token_index(tokens, |token| token.kind == TokenKind::Comma)
         && choose_idx > comma_idx
     {
-        let start_idx = if tokens.first().is_some_and(|token| {
+        let start_idx = if effect_start_idx > 0 {
+            effect_start_idx
+        } else if tokens.first().is_some_and(|token| {
             token.is_word("whenever") || token.is_word("when") || token.is_word("at")
         }) {
             1
@@ -265,6 +279,8 @@ pub(crate) fn parse_modal_header(
         mode_must_be_unchosen_this_turn: modal_flags.mode_must_be_unchosen_this_turn,
         distinct_player_targets_per_mode: modal_flags.distinct_player_targets_per_mode,
         if_kicked_choose_any_number: modal_flags.if_kicked_choose_any_number,
+        conditional_mode_change,
+        presentation_label,
         commander_allows_both: modal_flags.commander_allows_both,
         choose_both_control_card_types: modal_flags.choose_both_control_card_types,
         choose_both_exact_life_total: modal_flags.choose_both_exact_life_total,
@@ -276,6 +292,130 @@ pub(crate) fn parse_modal_header(
         common_suffix_effects_ast,
         modal_gate,
         line_text: info.raw_line.clone(),
+    }))
+}
+
+fn parse_modal_presentation_label(
+    source_tokens: &[OwnedLexToken],
+) -> Option<crate::ability::PresentationLabel> {
+    let choose_idx = source_tokens.iter().position(|token| token.is_word("choose"))?;
+    let dash_idx = source_tokens.iter().position(|token| {
+        matches!(token.kind, TokenKind::Dash | TokenKind::EmDash)
+    })?;
+    if dash_idx >= choose_idx {
+        return None;
+    }
+    let label_tokens = trim_lexed_commas(&source_tokens[..dash_idx]);
+    let word_count = label_tokens
+        .iter()
+        .filter(|token| token.kind == TokenKind::Word || token.kind == TokenKind::Number)
+        .count();
+    if word_count == 0
+        || word_count > 4
+        || label_tokens.iter().any(|token| token.is_period())
+    {
+        return None;
+    }
+    let label = render_token_slice(label_tokens).trim().to_string();
+    (!label.is_empty()).then(|| crate::ability::PresentationLabel::from_ability_word(label))
+}
+
+/// Parse the typed condition and alternate selection range from the common
+/// modal sentence "Choose one. If ..., choose ... instead." Ordinary prose
+/// containing either word is rejected unless the complete grammar is present.
+fn parse_conditional_mode_change(
+    tokens: &[OwnedLexToken],
+    base_choose_idx: usize,
+) -> Result<Option<ParsedConditionalModeChange>, CardTextError> {
+    let Some(if_idx) = tokens
+        .iter()
+        .enumerate()
+        .skip(base_choose_idx + 1)
+        .find_map(|(idx, token)| token.is_word("if").then_some(idx))
+    else {
+        return Ok(None);
+    };
+    let Some(comma_idx) = tokens
+        .iter()
+        .enumerate()
+        .skip(if_idx + 1)
+        .find_map(|(idx, token)| (token.kind == TokenKind::Comma).then_some(idx))
+    else {
+        return Ok(None);
+    };
+    let Some(change_choose_idx) = tokens
+        .iter()
+        .enumerate()
+        .skip(comma_idx + 1)
+        .find_map(|(idx, token)| token.is_word("choose").then_some(idx))
+    else {
+        return Ok(None);
+    };
+    if !tokens[change_choose_idx + 1..]
+        .iter()
+        .any(|token| token.is_word("instead"))
+    {
+        return Ok(None);
+    }
+
+    let selection = if tokens
+        .get(change_choose_idx + 1)
+        .is_some_and(|token| token.is_word("both") || token.is_word("two"))
+    {
+        ConditionalModeSelection::BothOrTwo
+    } else if tokens
+        .get(change_choose_idx + 1)
+        .is_some_and(|token| token.is_word("any"))
+        && tokens
+            .get(change_choose_idx + 2)
+            .is_some_and(|token| token.is_word("number"))
+    {
+        ConditionalModeSelection::AnyNumber
+    } else if tokens
+        .get(change_choose_idx + 1)
+        .is_some_and(|token| token.is_word("one"))
+        && tokens
+            .get(change_choose_idx + 2)
+            .is_some_and(|token| token.is_word("or"))
+        && tokens
+            .get(change_choose_idx + 3)
+            .is_some_and(|token| token.is_word("more"))
+    {
+        ConditionalModeSelection::OneOrMore
+    } else if tokens
+        .get(change_choose_idx + 1)
+        .is_some_and(|token| token.is_word("one"))
+    {
+        ConditionalModeSelection::One
+    } else {
+        return Ok(None);
+    };
+
+    let mut condition_end = comma_idx;
+    if condition_end >= if_idx + 5
+        && tokens[condition_end - 5..condition_end]
+            .iter()
+            .zip(["as", "you", "cast", "this", "spell"])
+            .all(|(token, word)| token.is_word(word))
+    {
+        condition_end -= 5;
+    }
+    let condition_tokens = trim_lexed_commas(&tokens[if_idx + 1..condition_end]);
+    if condition_tokens.is_empty() {
+        return Ok(None);
+    }
+    let condition = if condition_tokens.len() == 3
+        && condition_tokens[0].is_word("it")
+        && condition_tokens[1].is_word("was")
+        && condition_tokens[2].is_word("kicked")
+    {
+        crate::cards::builders::PredicateAst::ThisSpellWasKicked
+    } else {
+        super::grammar::filters::parse_condition_predicate_lexed(condition_tokens)?
+    };
+    Ok(Some(ParsedConditionalModeChange {
+        condition,
+        selection,
     }))
 }
 
@@ -665,7 +805,7 @@ fn replace_modal_header_x_in_effect_ast(
                     replace_modal_header_x_in_value(toughness, replacement, clause)?;
                 }
             }
-            SubjectVerbActionAst::Learn => {}
+            SubjectVerbActionAst::Learn | SubjectVerbActionAst::UnlockRoomDoor => {}
         },
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {
@@ -692,7 +832,9 @@ fn parse_modal_header_prefix_effects(
                     EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
                 }
                 IfResultPredicate::AcceptedChoice => EffectPredicate::Chosen,
-                IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
+                IfResultPredicate::DidNot
+                | IfResultPredicate::ExplicitDidNot
+                | IfResultPredicate::Otherwise => EffectPredicate::DidNotHappen,
                 IfResultPredicate::SearchedLibrary => EffectPredicate::SearchedLibrary,
                 IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
                 IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,

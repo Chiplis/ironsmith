@@ -59,8 +59,16 @@ fn nahiri_keeps_the_complete_stoneforged_blade_rules_and_surface() {
     assert!(abilities.iter().any(|ability| matches!(
         &ability.kind,
         AbilityKind::Static(ability)
-            if ability.id() == StaticAbilityId::AttachedAbilityGrant
-                && ability.display().contains("Equipped creature gets +5/+5")
+            if ability.id() == StaticAbilityId::Anthem
+                && ability.anthem_payload().is_some_and(|anthem| {
+                    anthem.power == crate::static_abilities::AnthemValue::Fixed(5)
+                        && anthem.toughness == crate::static_abilities::AnthemValue::Fixed(5)
+                })
+    )));
+    assert!(abilities.iter().any(|ability| matches!(
+        &ability.kind,
+        AbilityKind::Static(ability)
+            if ability.id() == StaticAbilityId::GrantObjectAbilityForFilter
                 && ability.display().to_ascii_lowercase().contains("double strike")
     )));
     assert!(abilities.iter().any(|ability| {

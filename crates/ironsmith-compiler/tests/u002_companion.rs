@@ -84,7 +84,17 @@ fn every_printed_companion_condition_lowers_to_a_typed_deck_predicate() {
     ];
 
     for (text, expected) in cases {
-        assert_eq!(condition(&compile_companion(text)), &expected, "{text}");
+        let definition = compile_companion(text);
+        assert_eq!(condition(&definition), &expected, "{text}");
+        let AbilityKind::Static(ability) = &definition.abilities[0].kind else {
+            unreachable!("condition() already proved this is static");
+        };
+        let (_, condition_text) = text.split_once('—').expect("Companion has an em dash");
+        assert!(
+            ability.label.eq_ignore_ascii_case(condition_text.trim()),
+            "{text}: {:?}",
+            ability.label
+        );
     }
 }
 

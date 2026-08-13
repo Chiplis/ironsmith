@@ -11,7 +11,8 @@ use super::super::activation_and_restrictions::{
     starts_with_target_indicator,
 };
 use super::super::grammar::choices::{
-    parse_choice_land_type_phrase_words, parse_choice_subtype_family_phrase_words,
+    ChoiceClauseActor, parse_choice_clause_head_tokens, parse_choice_land_type_phrase_words,
+    parse_choice_subtype_family_phrase_words,
 };
 use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::effects::clause_dispatch_shapes as clause_grammar;
@@ -70,6 +71,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::object::CounterType;
+use crate::static_abilities::{StaticAbility, StaticAbilityId};
 use crate::target::{ObjectFilter, PlayerFilter, SourceReferenceSurface};
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
@@ -90,6 +92,57 @@ fn target_object_filter_mut(target: &mut TargetAst) -> Option<&mut ObjectFilter>
         }
         _ => None,
     }
+}
+
+/// Parse a participant-owned object choice followed by a return of exactly
+/// that chosen set. The explicit choice actor and tagged return are both
+/// executable; this is intentionally narrower than ordinary coordinated
+/// prose so a later unrelated return cannot capture the choice.
+fn parse_participant_choice_then_return_chosen_set(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(and_idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
+        (token.is_word("and")
+            && tokens
+                .get(idx + 1)
+                .is_some_and(|next| next.is_word("return") || next.is_word("returns")))
+        .then_some(idx)
+    }) else {
+        return Ok(None);
+    };
+    let tail_words = crate::runtime_backend::token_word_refs(&tokens[and_idx + 1..]);
+    if !matches!(
+        tail_words.as_slice(),
+        [
+            "return" | "returns",
+            "them",
+            "to",
+            "their",
+            "owner" | "owners" | "owner's" | "owners'",
+            "hand" | "hands"
+        ]
+    ) {
+        return Ok(None);
+    }
+    let choice_tokens = trim_commas(&tokens[..and_idx]);
+    let Some((chooser, filter, count, count_value)) =
+        parse_target_player_choose_objects_clause_with_count_value(&choice_tokens)?
+    else {
+        return Ok(None);
+    };
+    let chosen_tag = TagKey::from(IT_TAG);
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::ChooseObjects {
+                filter,
+                count,
+                count_value,
+                player: chooser,
+                tag: chosen_tag.clone(),
+            },
+            EffectAst::subject_verb_return_all_to_hand(ObjectFilter::tagged(chosen_tag)),
+        ],
+    }))
 }
 
 fn player_filter_mentions_source_object(filter: &PlayerFilter) -> bool {
@@ -1808,7 +1861,23 @@ fn parse_effect_clause_unstacked(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         return Ok(effect);
     }
 
-    let choice_tokens = clause_grammar::strip_optional_you_choice_tokens(tokens);
+    if let Some(effect) = parse_participant_choice_then_return_chosen_set(tokens)? {
+        return Ok(effect);
+    }
+
+    let choice_head = parse_choice_clause_head_tokens(tokens);
+    let choice_actor = choice_head
+        .as_ref()
+        .map_or(ChoiceClauseActor::Implicit, |head| head.actor);
+    let choice_tokens = choice_head.as_ref().map_or_else(
+        || clause_grammar::strip_optional_you_choice_tokens(tokens),
+        |head| head.choice_tokens,
+    );
+    let choice_player = match choice_actor {
+        ChoiceClauseActor::Implicit => PlayerAst::Implicit,
+        ChoiceClauseActor::You => PlayerAst::You,
+        ChoiceClauseActor::Opponent => PlayerAst::Opponent,
+    };
     let choice_word_view = ClauseDispatchCompatWords::new(choice_tokens);
     let choice_words = choice_word_view.to_word_refs();
 
@@ -1816,9 +1885,7 @@ fn parse_effect_clause_unstacked(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         && consumed == choice_words.len()
         && excluded_color.is_none()
     {
-        return Ok(EffectAst::subject_verb_choose_color(
-            crate::cards::builders::PlayerAst::Implicit,
-        ));
+        return Ok(EffectAst::subject_verb_choose_color(choice_player));
     }
 
     if let Some((consumed, excluded_subtypes)) =
@@ -1826,7 +1893,7 @@ fn parse_effect_clause_unstacked(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         && consumed == choice_words.len()
     {
         return Ok(EffectAst::subject_verb_choose_creature_type(
-            crate::cards::builders::PlayerAst::Implicit,
+            choice_player,
             excluded_subtypes,
         ));
     }
@@ -1835,7 +1902,7 @@ fn parse_effect_clause_unstacked(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         && parsed.consumed == choice_words.len()
     {
         return Ok(EffectAst::subject_verb_choose_land_type(
-            crate::cards::builders::PlayerAst::Implicit,
+            choice_player,
             parsed.exclude_basic,
         ));
     }
@@ -1844,7 +1911,7 @@ fn parse_effect_clause_unstacked(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         && parsed.consumed == choice_words.len()
     {
         return Ok(EffectAst::subject_verb_choose_subtype_type(
-            crate::cards::builders::PlayerAst::Implicit,
+            choice_player,
             parsed.family,
         ));
     }
@@ -1853,7 +1920,7 @@ fn parse_effect_clause_unstacked(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         && consumed == choice_words.len()
     {
         return Ok(EffectAst::subject_verb_choose_card_type(
-            crate::cards::builders::PlayerAst::Implicit,
+            choice_player,
             options,
         ));
     }
@@ -1862,7 +1929,7 @@ fn parse_effect_clause_unstacked(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         && consumed == choice_words.len()
     {
         return Ok(EffectAst::subject_verb_choose_player(
-            crate::cards::builders::PlayerAst::Implicit,
+            choice_player,
             PlayerFilter::Any,
             TagKey::from(IT_TAG),
             false,
@@ -2232,6 +2299,7 @@ fn parse_effect_clause_unstacked(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
                 },
                 shape.includes_colorless,
                 shape.includes_artifacts,
+                shape.chooses_card_type,
             ));
         }
     }
@@ -2585,21 +2653,99 @@ fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
     Ok(Some(EffectAst::subject_verb_goad_for(target, duration)))
 }
 
-fn parse_hexproof_targeting_override_clause(
+pub(super) fn parse_hexproof_targeting_override_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let (duration, clause_tokens) =
         parse_restriction_duration(tokens)?.unwrap_or((Until::Forever, tokens.to_vec()));
-    let Some(shape) = clause_grammar::parse_hexproof_targeting_override_shape(&clause_tokens)
+    let Some(spec) = parse_targeting_as_though_no_ability_spec(&clause_tokens)? else {
+        return Ok(None);
+    };
+    Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
+        TargetAst::Source(None),
+        vec![GrantedAbilityAst::StaticAbility(
+            StaticAbility::targeting_as_though_no_ability(spec),
+        )],
+        duration,
+    )))
+}
+
+pub(crate) fn parse_targeting_as_though_no_ability_spec(
+    tokens: &[OwnedLexToken],
+) -> Result<
+    Option<ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec>,
+    CardTextError,
+> {
+    let tokens = trim_edge_punctuation(tokens);
+    let words = crate::runtime_backend::token_word_refs(&tokens);
+    let Some(can) = words.windows(4).position(|window| {
+        window == ["can", "be", "the", "target"] || window == ["can", "be", "the", "targets"]
+    }) else {
+        return Ok(None);
+    };
+    let Some(as_though) = words
+        .windows(2)
+        .position(|window| window == ["as", "though"])
     else {
         return Ok(None);
     };
-    let filter = parse_object_filter(shape.filter_tokens, false)?;
-    Ok(Some(EffectAst::subject_verb_remove_abilities_all(
-        filter,
-        vec![GrantedAbilityAst::KeywordAction(KeywordAction::Hexproof)],
-        duration,
-    )))
+    if can == 0 || as_though <= can + 4 {
+        return Ok(None);
+    }
+    let ignored_ability = if words[as_though..].iter().any(|word| *word == "hexproof") {
+        StaticAbilityId::Hexproof
+    } else if words[as_though..].iter().any(|word| *word == "shroud") {
+        StaticAbilityId::Shroud
+    } else {
+        return Ok(None);
+    };
+    let permission_words = &words[can + 4..as_though];
+    if !permission_words.starts_with(&["of", "spells", "and", "abilities"])
+        && !permission_words.starts_with(&["of", "spells", "or", "abilities"])
+    {
+        return Ok(None);
+    }
+    let sources_controlled_by = if permission_words.ends_with(&["you", "control"]) {
+        PlayerFilter::You
+    } else if permission_words.ends_with(&["controlled", "by", "target", "player"]) {
+        PlayerFilter::Target(Box::new(PlayerFilter::Any))
+    } else if permission_words.len() == 4 {
+        PlayerFilter::Any
+    } else {
+        return Ok(None);
+    };
+
+    let subject_words = &words[..can];
+    let (players, object_start) = if subject_words.starts_with(&["your", "opponents", "and"]) {
+        (Some(PlayerFilter::Opponent), 3)
+    } else if subject_words == ["your", "opponents"] {
+        (Some(PlayerFilter::Opponent), subject_words.len())
+    } else {
+        (None, 0)
+    };
+    let object_tokens = &tokens[object_start..can];
+    let objects = if object_tokens.is_empty() {
+        None
+    } else if crate::runtime_backend::util::is_source_reference_words(
+        &crate::runtime_backend::token_word_refs(object_tokens),
+    ) {
+        Some(ObjectFilter::source())
+    } else {
+        Some(parse_object_filter(object_tokens, false)?)
+    };
+    if objects.is_none() && players.is_none() {
+        return Ok(None);
+    }
+
+    Ok(Some(
+        ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec {
+            objects,
+            players,
+            sources_controlled_by,
+            ignored_ability,
+            display: crate::runtime_backend::lexer::render_token_slice(&tokens),
+        },
+    ))
 }
 
 pub(crate) fn parse_effect_clause_lexed(
@@ -2617,6 +2763,44 @@ mod tests {
 
     fn lex_tail(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("lex test tail")
+    }
+
+    #[test]
+    fn targeting_as_though_permission_keeps_affected_set_and_source_controller_scope() {
+        let static_spec = parse_targeting_as_though_no_ability_spec(&lex_tail(
+            "Creatures your opponents control with hexproof can be the targets of spells and abilities you control as though they didn't have hexproof.",
+        ))
+        .expect("static permission should parse")
+        .expect("static permission should be claimed");
+        assert_eq!(static_spec.ignored_ability, StaticAbilityId::Hexproof);
+        assert_eq!(static_spec.sources_controlled_by, PlayerFilter::You);
+        let objects = static_spec.objects.expect("creature set");
+        assert_eq!(objects.card_types, [CardType::Creature]);
+        assert_eq!(objects.controller, Some(PlayerFilter::Opponent));
+
+        let temporary_spec = parse_targeting_as_though_no_ability_spec(&lex_tail(
+            "Autumn Willow can be the target of spells and abilities controlled by target player as though it didn't have shroud.",
+        ))
+        .expect("temporary permission should parse")
+        .expect("temporary permission should be claimed");
+        assert_eq!(temporary_spec.ignored_ability, StaticAbilityId::Shroud);
+        assert!(matches!(
+            temporary_spec.sources_controlled_by,
+            PlayerFilter::Target(_)
+        ));
+        assert!(temporary_spec.objects.is_some_and(|filter| filter.source));
+
+        for near_miss in [
+            "Creatures your opponents control lose hexproof.",
+            "Creatures your opponents control can be the targets of spells and abilities you control.",
+        ] {
+            assert!(
+                parse_targeting_as_though_no_ability_spec(&lex_tail(near_miss))
+                    .expect("near miss should parse safely")
+                    .is_none(),
+                "claimed near miss: {near_miss}"
+            );
+        }
     }
 
     #[test]
@@ -2654,6 +2838,27 @@ mod tests {
         else {
             panic!("expected synthetic target prelude");
         };
+    }
+
+    #[test]
+    fn explicit_opponent_creature_type_choice_keeps_typed_chooser() {
+        let parsed = parse_effect_clause(&lex_tail("An opponent chooses a creature type."))
+            .expect("parse opponent creature-type choice");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action:
+                SubjectVerbActionAst::ChooseCreatureType {
+                    excluded_subtypes,
+                    family: crate::types::SubtypeFamily::Creature,
+                },
+        }) = parsed
+        else {
+            panic!("expected typed creature-type choice, got {parsed:#?}");
+        };
+
+        assert_eq!(subject.role, SubjectVerbRoleAst::Chooser);
+        assert_eq!(subject.player, PlayerAst::Opponent);
+        assert!(excluded_subtypes.is_empty());
     }
 
     #[test]

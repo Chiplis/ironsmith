@@ -1732,7 +1732,8 @@ mod tests {
                 .object_was_put_into_graveyard_from_zone_this_turn(library_stable, Zone::Library)
         );
         assert!(
-            !game.turn_store
+            !game
+                .turn_store
                 .turn_history
                 .object_was_put_into_graveyard_from_zone_this_turn(hand_stable, Zone::Library)
         );

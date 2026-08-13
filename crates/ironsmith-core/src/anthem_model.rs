@@ -21,6 +21,12 @@ impl SourceCounterPronounSurface {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnthemCountExpression {
     MatchingFilter(ObjectFilter),
+    /// Number of players whose graveyards contain at least `minimum_cards`
+    /// cards. This is a count of qualifying graveyards, not a count of the
+    /// cards across those graveyards.
+    GraveyardsWithAtLeastCards {
+        minimum_cards: u32,
+    },
     GreatestManaValueAmong(ObjectFilter),
     AttachedToSource(ObjectFilter),
     AttachedToAffected(ObjectFilter),
@@ -38,6 +44,7 @@ pub enum AnthemCountExpression {
     StickersOnSource {
         action: KeywordActionKind,
         surface: Option<SourceReferenceSurface>,
+        min_name_letters: Option<u32>,
         max_name_letters: Option<u32>,
     },
     CountersOnAffected(CounterType),

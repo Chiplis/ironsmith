@@ -3919,22 +3919,34 @@ pub(super) fn move_revealed_remainder_to_hand(
 pub(super) fn describe_reveal_top_opponent_exiles_rest_hand_then_may_cast(
     effects: &[Effect],
 ) -> Option<String> {
-    let [
-        look_effect,
-        choose_effect,
-        exile_effect,
-        hand_effect,
-        may_effect,
-    ] = effects
-    else {
-        return None;
+    let (look_effect, chosen_player, choose_effect, exile_effect, hand_effect, may_effect) =
+        match effects {
+            [look, choose, exile, hand, may] => (look, None, choose, exile, hand, may),
+            [look, player, choose, exile, hand, may] => {
+                let player = player.downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+                if player.chooser != PlayerFilter::You
+                    || player.filter != PlayerFilter::Opponent
+                    || player.random
+                    || player.remember_as_chosen_player
+                    || !player.excluded_tags.is_empty()
+                {
+                    return None;
+                }
+                (look, Some(player), choose, exile, hand, may)
+            }
+            _ => return None,
+        };
+    let expected_opponent = if let Some(player) = chosen_player {
+        PlayerFilter::TaggedPlayer(player.tag.clone())
+    } else {
+        PlayerFilter::Opponent
     };
     let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
     if !look.reveal || look.player != PlayerFilter::You {
         return None;
     }
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    if choose.chooser != PlayerFilter::Opponent
+    if choose.chooser != expected_opponent
         || !choose.count.is_single()
         || choose_primary_zone(choose) != Some(Zone::Library)
         || choose.is_search
@@ -3956,14 +3968,14 @@ pub(super) fn describe_reveal_top_opponent_exiles_rest_hand_then_may_cast(
     if may
         .decider
         .as_ref()
-        .is_some_and(|decider| *decider != choose.chooser)
+        .is_some_and(|decider| *decider != expected_opponent)
         || may.effects.len() != 1
     {
         return None;
     }
     let cast = may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()?;
     if cast.tag != choose.tag
-        || cast.player != choose.chooser
+        || cast.player != expected_opponent
         || cast.allow_land
         || cast.as_copy
         || !cast.without_paying_mana_cost
@@ -4657,6 +4669,22 @@ pub(super) fn describe_for_players_simple_iterated_action(
     let [effect] = for_players.effects.as_slice() else {
         return None;
     };
+    if matches!(
+        for_players.filter,
+        PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
+    ) && let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>()
+        && matches!(
+            lose.player,
+            ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+        )
+    {
+        let described = describe_player_filter(&for_players.filter);
+        let subject = strip_leading_article(&described);
+        return Some(format!(
+            "Each {subject} loses {}",
+            describe_life_amount_phrase(&lose.amount)
+        ));
+    }
     // An authored comma-then chain is still a multi-action quantified-player
     // sequence. Let the structural sequence compactor retain the shared
     // "Each player" subject instead of treating the wrapper as one generic
@@ -4855,6 +4883,31 @@ pub(super) fn describe_for_players_simple_iterated_action(
         }
     }
 
+    if let Some(create) =
+        unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::CreateTokenEffect>()
+        && create.controller == PlayerFilter::IteratedPlayer
+        && let Value::PriorEffectMetric { query, .. } = create.count.unhinted()
+        && query.player == Some(PlayerFilter::IteratedPlayer)
+        && query.action == Some(crate::effect::PriorEffectAction::Revealed)
+        && create
+            .count
+            .has_surface_hint(ValueSurfaceHint::CardsRevealedThisWay)
+    {
+        let inner = describe_effect_list(&for_players.effects);
+        let rest = inner
+            .strip_prefix("that player ")
+            .or_else(|| inner.strip_prefix("That player "))?;
+        let action = if subject == "You" {
+            normalize_you_verb_phrase(rest)
+        } else {
+            rewrite_iterated_player_references(&normalize_third_person_verb_phrase(rest)).replace(
+                "for each card revealed this way",
+                "for each card they revealed this way",
+            )
+        };
+        return Some(format!("{subject} {action}"));
+    }
+
     let inner = describe_effect_list(&for_players.effects);
     let rest = inner
         .strip_prefix("that player ")
@@ -4872,17 +4925,21 @@ pub(super) fn describe_for_players_simple_iterated_action(
 pub(super) fn describe_for_players_iterated_action_sequence(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
-    let effects = if let [effect] = for_players.effects.as_slice()
+    let (effects, repeated_comma_then) = if let [effect] = for_players.effects.as_slice()
         && let Some(sequence) = structural_unwrap_render_wrappers(effect)
             .downcast_ref::<crate::effects::SequenceEffect>()
         && matches!(
             sequence.surface,
             ironsmith_core::SequenceSurface::Coordinated
                 | ironsmith_core::SequenceSurface::CommaThen
+                | ironsmith_core::SequenceSurface::RepeatedCommaThen
         ) {
-        sequence.effects.as_slice()
+        (
+            sequence.effects.as_slice(),
+            sequence.surface == ironsmith_core::SequenceSurface::RepeatedCommaThen,
+        )
     } else {
-        for_players.effects.as_slice()
+        (for_players.effects.as_slice(), false)
     };
     if effects.len() < 2 {
         return None;
@@ -4938,6 +4995,8 @@ pub(super) fn describe_for_players_iterated_action_sequence(
     let last = phrases.pop()?;
     let body = if phrases.is_empty() {
         last
+    } else if repeated_comma_then {
+        format!("{}, then {last}", phrases.join(", then "))
     } else if phrases.len() == 1
         && phrases[0].starts_with("exiles all cards from ")
         && last.starts_with("draws ")
@@ -4953,6 +5012,36 @@ pub(super) fn describe_for_players_iterated_action_sequence(
         format!("{}, then {last}", phrases.join(", "))
     };
     Some(format!("{subject} {body}"))
+}
+
+#[cfg(test)]
+mod repeated_quantified_action_tests {
+    use super::*;
+
+    #[test]
+    fn repeated_comma_then_keeps_every_authored_boundary() {
+        let sequence = crate::effects::SequenceEffect::repeated_comma_then(vec![
+            Effect::new(crate::effects::DrawCardsEffect::new(
+                Value::Fixed(2),
+                PlayerFilter::IteratedPlayer,
+            )),
+            Effect::new(crate::effects::DiscardEffect::new(
+                Value::Fixed(3),
+                PlayerFilter::IteratedPlayer,
+                false,
+            )),
+            Effect::new(crate::effects::LoseLifeEffect::with_filter(
+                4,
+                PlayerFilter::IteratedPlayer,
+            )),
+        ]);
+        let for_players =
+            crate::effects::ForPlayersEffect::new(PlayerFilter::Any, vec![Effect::new(sequence)]);
+        assert_eq!(
+            describe_for_players_iterated_action_sequence(&for_players).as_deref(),
+            Some("Each player draws two cards, then discards three cards, then loses 4 life")
+        );
+    }
 }
 
 pub(super) fn iterated_player_action_phrase(

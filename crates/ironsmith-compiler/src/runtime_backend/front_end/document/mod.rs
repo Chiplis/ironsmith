@@ -3146,6 +3146,24 @@ mod tests {
     }
 
     #[test]
+    fn triggered_cst_preserves_linked_token_next_turn_sacrifice_for_semantic_lowering() {
+        let line = single_preprocessed_line(
+            "When this creature enters, create a Lander token. At the beginning of the end step on your next turn, sacrifice that token.",
+        );
+        let parsed = parse_triggered_line_cst(&line)
+            .expect("linked delayed sacrifice should survive the CST probe");
+
+        assert_eq!(
+            render_token_slice(&parsed.trigger_parse_tokens),
+            "this creature enters"
+        );
+        assert_eq!(
+            render_token_slice(&parsed.effect_parse_tokens),
+            "create a Lander token. At the beginning of the end step on your next turn, sacrifice that token."
+        );
+    }
+
+    #[test]
     fn triggered_split_keeps_anaphoric_animation_in_the_resolution_program() {
         let followup = lex_line(
             "If it isn't a creature, it becomes a 0/0 Mutant creature in addition to its other types.",
@@ -3314,6 +3332,35 @@ mod tests {
     }
 
     #[test]
+    fn eminence_labeled_trigger_remains_one_triggered_semantic_item() {
+        let (semantic, _) = parse_text_to_semantic_document(
+            CardDefinitionBuilder::new(CardId::new(), "Eminence Fixture")
+                .card_types(vec![CardType::Creature]),
+            "Eminence — At the beginning of combat on your turn, if this is in the command zone or on the battlefield, another target Cat you control gets +3/+3 until end of turn."
+                .to_string(),
+            false,
+        )
+        .expect("Eminence should remain a typed triggered line");
+
+        assert_eq!(semantic.items.len(), 1, "{semantic:#?}");
+        let [crate::runtime_backend::RewriteSemanticItem::ParsedLine(line)] =
+            semantic.items.as_slice()
+        else {
+            panic!("expected one parsed Eminence line: {semantic:#?}");
+        };
+        assert!(
+            matches!(
+                line.chunks.as_slice(),
+                [crate::cards::builders::LineAst::Ability(ability)]
+                    if matches!(ability.kind(), crate::ability::AbilityKind::Triggered(triggered)
+                        if triggered.intervening_if.is_some())
+            ),
+            "{:#?}",
+            line.chunks
+        );
+    }
+
+    #[test]
     fn triggered_presentation_label_is_derived_from_lexed_line_tokens() {
         let tokens = lex_line(
             "Mold Earth — Whenever one or more lands enter under an opponent's control without being played, draw a card.",
@@ -3437,6 +3484,28 @@ mod tests {
             chunks,
             vec![
                 "When this creature dies, exile it and choose target creature an opponent controls. When that creature leaves the battlefield, return this card from exile to the battlefield under its owner's control"
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn trigger_sentence_chunk_splitter_keeps_next_end_step_schedule_with_trigger() {
+        let tokens = lex_line(
+            "Whenever this creature enters, gain control of target creature an opponent controls until end of turn. Untap that creature. At the beginning of the next end step, target land deals 3 damage to that creature.",
+            0,
+        )
+        .expect("rewrite lexer should classify next-end-step followup line");
+
+        let chunks = split_trigger_sentence_chunks_rewrite_lexed(&tokens)
+            .into_iter()
+            .map(|chunk| render_token_slice(&chunk))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            chunks,
+            vec![
+                "Whenever this creature enters, gain control of target creature an opponent controls until end of turn. Untap that creature. At the beginning of the next end step, target land deals 3 damage to that creature"
                     .to_string(),
             ]
         );
@@ -4604,6 +4673,10 @@ fn is_delayed_when_that_leaves_battlefield_followup_sentence(tokens: &[OwnedLexT
     effect_grammar::delayed_sentence_shapes::parse_delayed_tagged_leaves_shape(tokens).is_some()
 }
 
+fn is_delayed_next_end_step_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens).is_some()
+}
+
 fn is_attack_group_combat_damage_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     grammar::has_phrase(tokens, &["either", "of", "those", "creatures"])
         && grammar::has_phrase(tokens, &["deals", "combat", "damage"])
@@ -4632,7 +4705,8 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
         let sentence_starts_with_trigger = line_starts_with_trigger_intro_tokens(sentence_tokens);
         let sentence_is_delayed_followup =
             is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens)
-                || is_delayed_when_that_leaves_battlefield_followup_sentence(sentence_tokens);
+                || is_delayed_when_that_leaves_battlefield_followup_sentence(sentence_tokens)
+                || is_delayed_next_end_step_followup_sentence(sentence_tokens);
         let sentence_is_attack_group_followup =
             is_attack_group_combat_damage_followup_sentence(sentence_tokens);
         if !current.is_empty() && current_starts_with_trigger && sentence_starts_with_trigger {
@@ -4748,8 +4822,41 @@ fn try_parse_labeled_line_dispatch(
         split_label_prefix_lexed(&line.info.source_tokens)
     {
         let body_line = rewrite_line_tokens(line, body_tokens);
+        let is_eminence = label.eq_ignore_ascii_case("eminence");
+        let mut authored_trigger = parse_labeled_qualified_ability_trigger_cst(&body_line);
+        if authored_trigger.is_none() && is_eminence {
+            authored_trigger = parse_triggered_line_cst(&body_line).ok();
+        }
+        if authored_trigger.is_none() && is_eminence {
+            let authored_body = render_original_text_for_token_slice(line, body_tokens)
+                .unwrap_or_else(|| render_token_slice(body_tokens));
+            authored_trigger = try_parse_triggered_line_with_named_source_rewrite(
+                &preprocessed.builder,
+                line,
+                &authored_body,
+            )?;
+        }
+        if authored_trigger.is_none()
+            && is_eminence
+            && let Some(spec) = super::grammar::structure::split_triggered_conditional_clause_lexed(
+                &body_line.tokens,
+                1,
+            )
+        {
+            authored_trigger = Some(TriggeredLineCst {
+                info: line.info.clone(),
+                full_text: render_token_slice(&body_line.tokens),
+                full_parse_tokens: body_line.tokens.clone(),
+                trigger_parse_tokens: spec.trigger_tokens.to_vec(),
+                effect_parse_tokens: spec.effects_tokens.to_vec(),
+                intervening_if: Some(spec.predicate),
+                max_triggers_per_turn: None,
+                chosen_option: None,
+                presentation: Some(PresentationLabel::AbilityWord("Eminence".to_string())),
+            });
+        }
         if line_starts_with_trigger_intro_tokens(&body_line.tokens)
-            && let Some(mut triggered) = parse_labeled_qualified_ability_trigger_cst(&body_line)
+            && let Some(mut triggered) = authored_trigger
         {
             if looks_like_ability_word_label(label_tokens, false) {
                 triggered.presentation = Some(trigger_presentation(label_tokens, &label));
@@ -4787,6 +4894,44 @@ fn try_parse_labeled_line_dispatch(
 
     let authored_body_text = render_original_text_for_token_slice(line, body_tokens);
     let body_line = rewrite_line_tokens(line, body_tokens);
+    if label.eq_ignore_ascii_case("eminence")
+        && let Some((trigger_with_intro, after_trigger)) =
+            grammar::split_lexed_once_on_comma(&body_line.tokens)
+        && let Some((_source_zone_condition, effect_tokens)) =
+            grammar::split_lexed_once_on_comma(after_trigger)
+        && trigger_with_intro.len() > 1
+    {
+        let source_zone_condition = PredicateAst::SourceMatches(crate::ObjectFilter {
+            any_of: vec![
+                crate::ObjectFilter {
+                    zone: Some(crate::zone::Zone::Command),
+                    ..Default::default()
+                },
+                crate::ObjectFilter {
+                    zone: Some(crate::zone::Zone::Battlefield),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        });
+        let triggered = TriggeredLineCst {
+            info: line.info.clone(),
+            full_text: render_token_slice(&body_line.tokens),
+            full_parse_tokens: body_line.tokens.clone(),
+            trigger_parse_tokens: trigger_with_intro[1..].to_vec(),
+            effect_parse_tokens: effect_tokens.to_vec(),
+            intervening_if: Some(source_zone_condition),
+            max_triggers_per_turn: None,
+            chosen_option: None,
+            presentation: Some(PresentationLabel::AbilityWord("Eminence".to_string())),
+        };
+        let (triggered, next_idx) =
+            extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Triggered(triggered),
+            next_idx,
+        )));
+    }
     let labeled_activation = if (!line_starts_with_lparen_token(line)
         || is_fully_parenthetical_line(line))
         && let Some((cost_tokens, effect_parse_tokens)) =
@@ -5637,6 +5782,16 @@ pub(crate) fn parse_document_cst(
                         previous.parse_tokens.extend(line.tokens.clone());
                     }
                     idx += 1;
+                    continue;
+                }
+                if let Some(dispatch) =
+                    try_parse_labeled_line_dispatch(preprocessed, idx, line, allow_unsupported)?
+                {
+                    for cst in &dispatch.lines {
+                        trace_cst_line(cst);
+                    }
+                    lines.extend(dispatch.lines);
+                    idx = dispatch.next_idx;
                     continue;
                 }
                 if !line_starts_with_trigger_intro_tokens(&line.tokens)

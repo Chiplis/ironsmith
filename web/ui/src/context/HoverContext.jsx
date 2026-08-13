@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useCallback, useMemo } from "react";
 
 const HoverStateContext = createContext(undefined);
@@ -7,6 +8,7 @@ const HoverActionsContext = createContext(undefined);
 export function HoverProvider({ children }) {
   const [hoveredObjectId, setHoveredObjectId] = useState(null);
   const [hoveredLinkedObjectIds, setHoveredLinkedObjectIds] = useState(() => new Set());
+  const [previewLinkedObjectIds, setPreviewLinkedObjectIds] = useState(() => new Set());
 
   const hoverCard = useCallback((objectId) => {
     setHoveredObjectId(objectId != null ? String(objectId) : null);
@@ -30,19 +32,47 @@ export function HoverProvider({ children }) {
     setHoveredLinkedObjectIds(new Set());
   }, []);
 
+  const setPreviewLinkedObjects = useCallback((objectIds) => {
+    const ids = Array.isArray(objectIds) ? objectIds : Array.from(objectIds || []);
+    setPreviewLinkedObjectIds(new Set(ids.filter((id) => id != null).map(String)));
+  }, []);
+
+  const clearPreviewLinkedObjects = useCallback(() => {
+    setPreviewLinkedObjectIds(new Set());
+  }, []);
+
   const clearHover = useCallback(() => {
     setHoveredObjectId(null);
     setHoveredLinkedObjectIds(new Set());
   }, []);
 
   const actions = useMemo(
-    () => ({ hoverCard, clearHover, setHoverLinkedObjects, clearHoverLinkedObjects }),
-    [hoverCard, clearHover, setHoverLinkedObjects, clearHoverLinkedObjects]
+    () => ({
+      hoverCard,
+      clearHover,
+      setHoverLinkedObjects,
+      clearHoverLinkedObjects,
+      setPreviewLinkedObjects,
+      clearPreviewLinkedObjects,
+    }),
+    [
+      hoverCard,
+      clearHover,
+      setHoverLinkedObjects,
+      clearHoverLinkedObjects,
+      setPreviewLinkedObjects,
+      clearPreviewLinkedObjects,
+    ]
+  );
+
+  const linkedObjectIds = useMemo(
+    () => new Set([...hoveredLinkedObjectIds, ...previewLinkedObjectIds]),
+    [hoveredLinkedObjectIds, previewLinkedObjectIds]
   );
 
   return (
     <HoverStateContext.Provider value={hoveredObjectId}>
-      <HoverLinkedObjectsContext.Provider value={hoveredLinkedObjectIds}>
+      <HoverLinkedObjectsContext.Provider value={linkedObjectIds}>
         <HoverActionsContext.Provider value={actions}>
           {children}
         </HoverActionsContext.Provider>
@@ -76,6 +106,8 @@ export function useHover() {
     clearHover,
     setHoverLinkedObjects,
     clearHoverLinkedObjects,
+    setPreviewLinkedObjects,
+    clearPreviewLinkedObjects,
   } = useHoverActions();
   return {
     hoveredObjectId,
@@ -84,5 +116,7 @@ export function useHover() {
     clearHover,
     setHoverLinkedObjects,
     clearHoverLinkedObjects,
+    setPreviewLinkedObjects,
+    clearPreviewLinkedObjects,
   };
 }

@@ -2,6 +2,152 @@ use super::shard_01::*;
 use super::*;
 
 #[test]
+pub(super) fn comma_then_mill_matching_collection_moves_all_from_among_them() {
+    let milled = TagKey::from("milled");
+    let matching = TagKey::from("chosen_milled");
+    let mut elf = ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .with_subtype(Subtype::Elf);
+    elf.tagged_constraints.push(TaggedObjectConstraint {
+        tag: milled.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let sequence = crate::effects::SequenceEffect::comma_then(vec![
+        Effect::new(crate::effects::MillEffect::new(
+            Value::Fixed(4),
+            PlayerFilter::You,
+        ))
+        .tag(milled),
+        Effect::new(
+            crate::effects::TagMatchingObjectsEffect::new(elf, matching.clone())
+                .in_zone(Zone::Graveyard),
+        ),
+        Effect::new(crate::effects::ForEachTaggedEffect::new(
+            matching,
+            vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Iterated,
+                Zone::Hand,
+                false,
+            ))],
+        )),
+    ]);
+
+    assert_eq!(
+        describe_effect(&Effect::new(sequence)),
+        "Mill four cards, then put all Elf cards from among them into your hand"
+    );
+}
+
+#[test]
+pub(super) fn comma_then_look_any_land_deployment_keeps_inline_tapped_shuffle() {
+    let looked = TagKey::from("looked");
+    let chosen = TagKey::from("chosen");
+    let mut land = ObjectFilter::default()
+        .in_zone(Zone::Library)
+        .with_type(CardType::Land);
+    land.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let sequence = crate::effects::SequenceEffect::comma_then(vec![
+        Effect::new(crate::effects::LookAtTopCardsEffect::new(
+            PlayerFilter::You,
+            Value::Fixed(20),
+            looked,
+        )),
+        Effect::new(crate::effects::ChooseObjectsEffect::new(
+            land,
+            ChoiceCount::any_number(),
+            PlayerFilter::You,
+            chosen.clone(),
+        )),
+        Effect::new(crate::effects::ForEachTaggedEffect::new(
+            chosen,
+            vec![Effect::new({
+                let mut move_to_battlefield = crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Iterated,
+                    Zone::Battlefield,
+                    false,
+                );
+                move_to_battlefield.enters_tapped = true;
+                move_to_battlefield
+            })],
+        )),
+        Effect::new(crate::effects::ShuffleLibraryEffect::you()),
+    ]);
+
+    assert_eq!(
+        describe_effect(&Effect::new(sequence)),
+        "Look at the top twenty cards of your library, put any number of land cards from among them onto the battlefield tapped, then shuffle"
+    );
+}
+
+#[test]
+pub(super) fn each_player_optional_reveal_drives_their_own_token_count() {
+    let revealed = TagKey::from("revealed");
+    let choose = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature()
+                .in_zone(Zone::Hand)
+                .owned_by(PlayerFilter::IteratedPlayer),
+            ChoiceCount::any_number(),
+            PlayerFilter::IteratedPlayer,
+            revealed.clone(),
+        )
+        .in_zone(Zone::Hand),
+    );
+    let reveal = Effect::new(crate::effects::RevealTaggedEffect::new(revealed));
+    let producer_id = crate::effect::EffectId(0);
+    let reveal_for_players = Effect::with_id(
+        producer_id.0,
+        Effect::new(crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![Effect::new(crate::effects::MayEffect::new_for_player(
+                vec![choose, reveal],
+                PlayerFilter::IteratedPlayer,
+            ))],
+        )),
+    );
+    let bear = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Bear")
+        .token()
+        .color_indicator(crate::color::ColorSet::GREEN)
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+        .build();
+    let count = Value::PriorEffectMetric {
+        effect_id: producer_id,
+        query: crate::effect::PriorEffectMetricQuery::new(
+            crate::effect::EffectMetricSource::AffectedObjects,
+            crate::effect::EffectMetric::Count,
+        )
+        .with_player(PlayerFilter::IteratedPlayer)
+        .with_action(crate::effect::PriorEffectAction::Revealed),
+    }
+    .with_surface_hint(ValueSurfaceHint::CardsRevealedThisWay)
+    .with_surface_hint(ValueSurfaceHint::ForEach);
+    let create_for_players =
+        Effect::new(crate::effects::SequenceEffect::sentence_leading_then(vec![
+            Effect::new(crate::effects::ForPlayersEffect::new(
+                PlayerFilter::Any,
+                vec![
+                    Effect::new(crate::effects::CreateTokenEffect::new(
+                        bear,
+                        count,
+                        PlayerFilter::IteratedPlayer,
+                    ))
+                    .tag("created"),
+                ],
+            )),
+        ]));
+
+    assert_eq!(
+        describe_effect_list(&[reveal_for_players, create_for_players]),
+        "Each player may reveal any number of creature cards from their hand. Then each player creates a 2/2 green Bear creature token for each card they revealed this way"
+    );
+}
+
+#[test]
 pub(super) fn explicit_static_label_capitalizes_conjunctive_subtype_anthem_body() {
     let mut filter = ObjectFilter {
         zone: Some(Zone::Battlefield),
@@ -5896,6 +6042,18 @@ pub(super) fn pluralize_relative_union_conjugates_and_pluralizes_members() {
     assert_eq!(
         pluralize_noun_phrase("a creature you control that's a Zombie and/or token"),
         "creatures you control that are Zombies and/or tokens"
+    );
+}
+
+#[test]
+pub(super) fn pluralize_negative_adjectival_predicate_does_not_pluralize_the_adjective() {
+    assert_eq!(
+        pluralize_noun_phrase("creature that isn't enchanted"),
+        "creatures that aren't enchanted"
+    );
+    assert_eq!(
+        pluralize_noun_phrase("permanent that is not tapped"),
+        "permanents that aren't tapped"
     );
 }
 

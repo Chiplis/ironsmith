@@ -8,6 +8,7 @@ export function useHoverSuppressedWhileScrolling({ onScrollStart, idleMs = DEFAU
   const timeoutRef = useRef(null);
   const idleMsRef = useRef(idleMs);
   const onScrollStartRef = useRef(onScrollStart);
+  const hoverSuppressedRef = useRef(false);
   const [hoverSuppressed, setHoverSuppressed] = useState(false);
 
   useEffect(() => {
@@ -19,18 +20,18 @@ export function useHoverSuppressedWhileScrolling({ onScrollStart, idleMs = DEFAU
   }, [idleMs]);
 
   const markScrollingActive = useCallback(() => {
-    setHoverSuppressed((wasSuppressed) => {
-      if (!wasSuppressed) {
-        onScrollStartRef.current?.();
-      }
-      return true;
-    });
+    if (!hoverSuppressedRef.current) {
+      hoverSuppressedRef.current = true;
+      setHoverSuppressed(true);
+      onScrollStartRef.current?.();
+    }
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     timeoutRef.current = window.setTimeout(() => {
       timeoutRef.current = null;
+      hoverSuppressedRef.current = false;
       setHoverSuppressed(false);
     }, idleMsRef.current);
   }, []);
@@ -68,6 +69,7 @@ export function useHoverSuppressedWhileScrolling({ onScrollStart, idleMs = DEFAU
       detachListeners(attachedNodeRef.current);
       attachedNodeRef.current = null;
       nodeRef.current = null;
+      hoverSuppressedRef.current = false;
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;

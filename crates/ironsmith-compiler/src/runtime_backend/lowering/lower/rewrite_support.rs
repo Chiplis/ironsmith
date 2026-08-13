@@ -618,17 +618,726 @@ pub(super) fn rewrite_finalize_lowered_card(
     if let Some(spell_effect) = &mut builder.spell_effect {
         normalize_ordered_revealed_partition_tags(spell_effect);
         preserve_looked_collection_self_replacement_preludes(spell_effect);
+        bind_quantified_player_damage_values(spell_effect);
+        correlate_additional_cost_damage_replacement(spell_effect);
+        correlate_additional_cost_chosen_type_search_destination(spell_effect);
     }
     for ability in &mut builder.abilities {
         match &mut ability.kind {
             AbilityKind::Triggered(triggered) => {
                 preserve_looked_collection_self_replacement_preludes(&mut triggered.effects);
+                bind_quantified_player_damage_values(&mut triggered.effects);
             }
             AbilityKind::Activated(activated) => {
                 preserve_looked_collection_self_replacement_preludes(&mut activated.effects);
+                bind_quantified_player_damage_values(&mut activated.effects);
             }
             _ => {}
         }
     }
+    reconcile_alternative_cast_condition_references(&mut builder);
     builder
+}
+
+/// A searched card is still in the library when its destination is chosen.
+/// Fold an exact later `put searched card onto the battlefield` rider into a
+/// local Library -> Hand replacement, restricted to the searched card and the
+/// source's chosen creature type. This makes the destination one zone-change
+/// event rather than moving the card out of the hand afterward.
+fn correlate_additional_cost_chosen_type_search_destination(
+    program: &mut crate::resolution::ResolutionProgram,
+) {
+    let [search_segment, rider_segment] = program.segments.as_slice() else {
+        return;
+    };
+    if !search_segment.self_replacements.is_empty()
+        || !rider_segment.self_replacements.is_empty()
+        || search_segment.default_effects.len() != 1
+        || rider_segment.default_effects.len() != 1
+    {
+        return;
+    }
+    let Some(tagged_search) = search_segment.default_effects[0]
+        .downcast_ref::<crate::effects::TaggedEffect>()
+    else {
+        return;
+    };
+    let Some(search) = tagged_search.effect.as_search() else {
+        return;
+    };
+    if search.destination != Zone::Hand
+        || !search.reveal
+        || search.filter.card_types != [crate::types::CardType::Creature]
+    {
+        return;
+    }
+    let Some(conditional) = rider_segment.default_effects[0]
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+    else {
+        return;
+    };
+    if !conditional.if_false.is_empty()
+        || conditional.if_true.len() != 1
+        || !matches!(
+            &conditional.condition,
+            crate::effect::Condition::ThisSpellPaidLabel(label)
+                if label.kind == crate::cost::OptionalCostKind::Additional
+        )
+    {
+        return;
+    }
+    let Some(tagged_move) = conditional.if_true[0]
+        .downcast_ref::<crate::effects::TaggedEffect>()
+    else {
+        return;
+    };
+    let Some(move_to_zone) = tagged_move
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return;
+    };
+    if move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.to_top
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+        || move_to_zone.enters_transformed
+        || !matches!(
+            move_to_zone.target.unhinted(),
+            ChooseSpec::Tagged(tag) if tag == &tagged_search.tag
+        )
+    {
+        return;
+    }
+
+    let mut chosen_type_card = search.filter.clone();
+    chosen_type_card.chosen_creature_type = true;
+    let replacement = crate::effects::RegisterZoneReplacementEffect::new(
+        ChooseSpec::Object(chosen_type_card),
+        Some(Zone::Library),
+        Some(Zone::Hand),
+        Zone::Battlefield,
+        crate::effects::ReplacementApplyMode::OneShot,
+    );
+    let rewritten_search = crate::effect::Effect::new(crate::effects::LocalRewriteEffect::new(
+        search_segment.default_effects[0].clone(),
+        vec![replacement],
+    ));
+    let mut segment = crate::resolution::ResolutionSegment::from_effects(
+        search_segment.default_effects.clone(),
+    );
+    segment.starts_new_source_line = search_segment.starts_new_source_line;
+    segment.self_replacements.push(
+        crate::resolution::SelfReplacementBranch::new(
+            conditional.condition.clone(),
+            vec![rewritten_search],
+        ),
+    );
+    *program = crate::resolution::ResolutionProgram::new(vec![segment]);
+}
+
+#[cfg(test)]
+mod chosen_type_search_destination_tests {
+    use super::*;
+    use crate::target::PlayerFilter;
+
+    fn program(move_tag: &str, reveal: bool) -> crate::resolution::ResolutionProgram {
+        let search = crate::effect::Effect::new(crate::effects::SearchLibraryEffect::to_hand(
+            ObjectFilter::creature().in_zone(Zone::Library),
+            PlayerFilter::You,
+            reveal,
+        ))
+        .tag("searched");
+        let move_card = crate::effect::Effect::move_to_zone(
+            ChooseSpec::Tagged(TagKey::from(move_tag)),
+            Zone::Battlefield,
+            false,
+        )
+        .tag("moved");
+        let rider = crate::effect::Effect::conditional(
+            crate::effect::Condition::ThisSpellPaidLabel(crate::cost::OptionalCostRef::new(
+                crate::cost::OptionalCostKind::Additional,
+            )),
+            vec![move_card],
+            vec![],
+        );
+        crate::resolution::ResolutionProgram::new(vec![
+            crate::resolution::ResolutionSegment::from_effects(vec![search]),
+            crate::resolution::ResolutionSegment::from_effects(vec![rider]),
+        ])
+    }
+
+    #[test]
+    fn chosen_type_search_uses_one_library_zone_change() {
+        let mut matching = program("searched", true);
+        correlate_additional_cost_chosen_type_search_destination(&mut matching);
+        assert_eq!(matching.segments.len(), 1);
+        let [branch] = matching.segments[0].self_replacements.as_slice() else {
+            panic!("expected one destination self-replacement: {matching:#?}");
+        };
+        let local = branch.replacement_effects[0]
+            .downcast_ref::<crate::effects::LocalRewriteEffect>()
+            .expect("replacement should wrap the original search");
+        let [replacement] = local.zone_replacements.as_slice() else {
+            panic!("expected one local zone replacement: {local:#?}");
+        };
+        assert_eq!(replacement.from_zone, Some(Zone::Library));
+        assert_eq!(replacement.to_zone, Some(Zone::Hand));
+        assert_eq!(replacement.replacement_zone, Zone::Battlefield);
+        assert!(matches!(
+            &replacement.target,
+            ChooseSpec::Object(filter) if filter.chosen_creature_type
+        ));
+    }
+
+    #[test]
+    fn uncorrelated_or_unrevealed_searches_are_near_misses() {
+        for mut near_miss in [program("other", true), program("searched", false)] {
+            correlate_additional_cost_chosen_type_search_destination(&mut near_miss);
+            assert_eq!(near_miss.segments.len(), 2, "{near_miss:#?}");
+        }
+    }
+}
+
+/// Turn the strict two-sentence surface
+/// `Deal N damage to target ... . If the additional cost was paid, deal M
+/// damage instead.` into one executable conditional replacement. The second
+/// sentence's implicit player-or-planeswalker target is accepted only because
+/// the preceding spell segment proves the explicit target; combat/source
+/// flags must agree and every branch must be otherwise empty.
+fn correlate_additional_cost_damage_replacement(
+    program: &mut crate::resolution::ResolutionProgram,
+) {
+    fn tagged_damage(
+        effect: &crate::effect::Effect,
+    ) -> Option<&crate::effects::DealDamageEffect> {
+        if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
+            return Some(damage);
+        }
+        let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        tagged
+            .effect
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+    }
+
+    let [base_segment, replacement_segment] = program.segments.as_slice() else {
+        return;
+    };
+    if !base_segment.self_replacements.is_empty()
+        || !replacement_segment.self_replacements.is_empty()
+        || base_segment.default_effects.len() != 1
+        || replacement_segment.default_effects.len() != 1
+    {
+        return;
+    }
+    let Some(base_damage) = tagged_damage(&base_segment.default_effects[0]) else {
+        return;
+    };
+    let Some(conditional) = replacement_segment.default_effects[0]
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+    else {
+        return;
+    };
+    if !conditional.if_false.is_empty()
+        || conditional.if_true.len() != 1
+        || !matches!(
+            &conditional.condition,
+            crate::effect::Condition::ThisSpellPaidLabel(label)
+                if label.kind == crate::cost::OptionalCostKind::Additional
+        )
+    {
+        return;
+    }
+    let Some(replacement_damage) =
+        conditional.if_true[0].downcast_ref::<crate::effects::DealDamageEffect>()
+    else {
+        return;
+    };
+    if replacement_damage.source_is_combat != base_damage.source_is_combat
+        || replacement_damage.unpreventable != base_damage.unpreventable
+        || !matches!(
+            replacement_damage.target.unhinted(),
+            crate::target::ChooseSpec::PlayerOrPlaneswalker(crate::target::PlayerFilter::Any)
+        )
+        || !matches!(
+            base_damage.target.base(),
+            crate::target::ChooseSpec::Object(filter)
+                if filter.card_types.contains(&crate::types::CardType::Planeswalker)
+        )
+    {
+        return;
+    }
+
+    let mut replacement_damage = replacement_damage.clone();
+    replacement_damage.target = base_damage.target.clone();
+    let replacement = crate::effect::Effect::new(crate::effects::ConditionalEffect {
+        condition: conditional.condition.clone(),
+        if_true: vec![crate::effect::Effect::new(replacement_damage)],
+        if_false: vec![crate::effect::Effect::new(base_damage.clone())],
+        surface: conditional.surface,
+    });
+    *program = crate::resolution::ResolutionProgram::from_effects(vec![replacement]);
+}
+
+#[cfg(test)]
+mod additional_cost_damage_replacement_tests {
+    use super::*;
+
+    fn base_target() -> crate::target::ChooseSpec {
+        crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+            crate::target::ObjectFilter::any_of_types(&[
+                crate::types::CardType::Creature,
+                crate::types::CardType::Planeswalker,
+            ]),
+        ))
+    }
+
+    fn program(
+        base_target: crate::target::ChooseSpec,
+        replacement_target: crate::target::ChooseSpec,
+        replacement_combat: bool,
+    ) -> crate::resolution::ResolutionProgram {
+        let base = crate::effect::Effect::new(crate::effects::DealDamageEffect::new(
+            crate::effect::Value::Fixed(2),
+            base_target,
+        ));
+        let mut replacement_damage = crate::effects::DealDamageEffect::new(
+            crate::effect::Value::Fixed(4),
+            replacement_target,
+        );
+        replacement_damage.source_is_combat = replacement_combat;
+        let replacement = crate::effect::Effect::new(crate::effects::ConditionalEffect::if_only(
+            crate::effect::Condition::ThisSpellPaidLabel(crate::cost::OptionalCostRef::new(
+                crate::cost::OptionalCostKind::Additional,
+            )),
+            vec![crate::effect::Effect::new(replacement_damage)],
+        ));
+        crate::resolution::ResolutionProgram::new(vec![
+            crate::resolution::ResolutionSegment::from_effects(vec![base]),
+            crate::resolution::ResolutionSegment::from_effects(vec![replacement]),
+        ])
+    }
+
+    #[test]
+    fn refreshed_instead_correlates_only_matching_noncombat_implicit_damage_replacement() {
+        let explicit = base_target();
+        let implicit = crate::target::ChooseSpec::PlayerOrPlaneswalker(
+            crate::target::PlayerFilter::Any,
+        );
+        let mut matching = program(explicit.clone(), implicit.clone(), false);
+        correlate_additional_cost_damage_replacement(&mut matching);
+        assert_eq!(matching.segments.len(), 1);
+        let conditional = matching.segments[0].default_effects[0]
+            .downcast_ref::<crate::effects::ConditionalEffect>()
+            .expect("matching program should become one conditional");
+        assert_eq!(
+            conditional.if_true[0]
+                .downcast_ref::<crate::effects::DealDamageEffect>()
+                .expect("replacement damage")
+                .target,
+            explicit
+        );
+
+        let wrong_target = crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Any);
+        let mut target_near_miss = program(explicit.clone(), wrong_target, false);
+        correlate_additional_cost_damage_replacement(&mut target_near_miss);
+        assert_eq!(target_near_miss.segments.len(), 2);
+
+        let mut source_near_miss = program(explicit, implicit, true);
+        correlate_additional_cost_damage_replacement(&mut source_near_miss);
+        assert_eq!(source_near_miss.segments.len(), 2);
+    }
+}
+
+/// Correlate later "that cost was paid" conditions with a real alternative
+/// casting method on the same card. The broad condition grammar cannot know
+/// which earlier line introduced a mana-only alternative cost, so it retains
+/// the authored label temporarily. This final pass accepts only an exact,
+/// unique method-name or canonical typed-mana match and replaces it with an
+/// executable `AlternativeCast` reference.
+fn reconcile_alternative_cast_condition_references(builder: &mut CardDefinitionBuilder) {
+    let [method] = builder.alternative_casts.as_slice() else {
+        return;
+    };
+    let method_name = method.name();
+    let mana_cost = method.mana_cost();
+
+    fn rewrite_condition(
+        condition: &crate::effect::Condition,
+        method_name: &str,
+        mana_cost: Option<&crate::mana::ManaCost>,
+        allow_that: bool,
+    ) -> Option<crate::effect::Condition> {
+        use ironsmith_core::{AlternativeCostReference, OptionalCostKind, OptionalCostRef};
+
+        match condition {
+            crate::effect::Condition::ThisSpellPaidLabel(label) => {
+                let OptionalCostKind::CustomUnsupported(raw) = &label.kind else {
+                    return None;
+                };
+                let reference = if mana_cost.is_some_and(|mana| raw == &mana.to_oracle()) {
+                    AlternativeCostReference::by_mana_cost(method_name, mana_cost?)
+                } else if raw.eq_ignore_ascii_case(method_name) {
+                    AlternativeCostReference::by_name(method_name, mana_cost)
+                } else if allow_that && raw.eq_ignore_ascii_case("that") {
+                    AlternativeCostReference::as_that_cost(method_name, mana_cost)
+                } else {
+                    return None;
+                };
+                Some(crate::effect::Condition::ThisSpellPaidLabel(OptionalCostRef::new(
+                    OptionalCostKind::AlternativeCast(reference),
+                )))
+            }
+            crate::effect::Condition::Not(inner) => rewrite_condition(
+                inner,
+                method_name,
+                mana_cost,
+                allow_that,
+            )
+            .map(|inner| crate::effect::Condition::Not(Box::new(inner))),
+            crate::effect::Condition::And(left, right) => {
+                let left_rewritten = rewrite_condition(left, method_name, mana_cost, allow_that);
+                let right_rewritten = rewrite_condition(right, method_name, mana_cost, allow_that);
+                match (left_rewritten, right_rewritten) {
+                    (None, None) => None,
+                    (left_rewritten, right_rewritten) => Some(crate::effect::Condition::And(
+                        Box::new(left_rewritten.unwrap_or_else(|| left.as_ref().clone())),
+                        Box::new(right_rewritten.unwrap_or_else(|| right.as_ref().clone())),
+                    )),
+                }
+            }
+            crate::effect::Condition::Or(left, right) => {
+                let left_rewritten = rewrite_condition(left, method_name, mana_cost, allow_that);
+                let right_rewritten = rewrite_condition(right, method_name, mana_cost, allow_that);
+                match (left_rewritten, right_rewritten) {
+                    (None, None) => None,
+                    (left_rewritten, right_rewritten) => Some(crate::effect::Condition::Or(
+                        Box::new(left_rewritten.unwrap_or_else(|| left.as_ref().clone())),
+                        Box::new(right_rewritten.unwrap_or_else(|| right.as_ref().clone())),
+                    )),
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn rewrite_effect(
+        effect: &crate::effect::Effect,
+        method_name: &str,
+        mana_cost: Option<&crate::mana::ManaCost>,
+        allow_that: bool,
+    ) -> (crate::effect::Effect, bool) {
+        if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+            let mut conditional = conditional.clone();
+            let condition = rewrite_condition(
+                &conditional.condition,
+                method_name,
+                mana_cost,
+                allow_that,
+            );
+            let mut any = condition.is_some();
+            if let Some(rewritten) = condition {
+                conditional.condition = rewritten;
+            }
+            conditional.if_true = conditional
+                .if_true
+                .iter()
+                .map(|child| {
+                    let (child, changed) =
+                        rewrite_effect(child, method_name, mana_cost, allow_that || any);
+                    any |= changed;
+                    child
+                })
+                .collect();
+            conditional.if_false = conditional
+                .if_false
+                .iter()
+                .map(|child| {
+                    let (child, changed) =
+                        rewrite_effect(child, method_name, mana_cost, allow_that || any);
+                    any |= changed;
+                    child
+                })
+                .collect();
+            return (crate::effect::Effect::new(conditional), any);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            let mut sequence = sequence.clone();
+            let mut any = false;
+            sequence.effects = sequence
+                .effects
+                .iter()
+                .map(|child| {
+                    let (child, changed) =
+                        rewrite_effect(child, method_name, mana_cost, allow_that || any);
+                    any |= changed;
+                    child
+                })
+                .collect();
+            return (crate::effect::Effect::new(sequence), any);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            let mut tagged = tagged.clone();
+            let (child, changed) =
+                rewrite_effect(&tagged.effect, method_name, mana_cost, allow_that);
+            tagged.effect = Box::new(child);
+            return (crate::effect::Effect::new(tagged), changed);
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            let mut with_id = with_id.clone();
+            let (child, changed) =
+                rewrite_effect(&with_id.effect, method_name, mana_cost, allow_that);
+            with_id.effect = Box::new(child);
+            return (crate::effect::Effect::new(with_id), changed);
+        }
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>() {
+            let mut may = may.clone();
+            let mut any = false;
+            may.effects = may
+                .effects
+                .iter()
+                .map(|child| {
+                    let (child, changed) =
+                        rewrite_effect(child, method_name, mana_cost, allow_that || any);
+                    any |= changed;
+                    child
+                })
+                .collect();
+            return (crate::effect::Effect::new(may), any);
+        }
+        (effect.clone(), false)
+    }
+
+    let Some(program) = builder.spell_effect.as_mut() else {
+        return;
+    };
+    let mut prior_matched = false;
+    for segment in &mut program.segments {
+        let mut segment_matched = false;
+        segment.default_effects = segment
+            .default_effects
+            .iter()
+            .map(|effect| {
+                let (effect, matched) =
+                    rewrite_effect(effect, method_name, mana_cost, prior_matched || segment_matched);
+                segment_matched |= matched;
+                effect
+            })
+            .collect();
+        prior_matched |= segment_matched;
+    }
+    *program = crate::resolution::ResolutionProgram::new(std::mem::take(&mut program.segments));
+}
+
+/// Bind a player-relative value inside a quantified damage action to the
+/// same participant as its executable recipient. The broad player-value
+/// grammar initially represents “that player's life total” as `Target(Any)`;
+/// inside `ForPlayers`, an `IteratedPlayer` damage target proves the referent
+/// without consulting source text or inventing a separate target choice.
+fn bind_quantified_player_damage_values(program: &mut crate::resolution::ResolutionProgram) {
+    fn bind_value(value: &mut crate::effect::Value) -> bool {
+        match value {
+            crate::effect::Value::SurfaceHinted { value, .. }
+            | crate::effect::Value::HalfRoundedDown(value)
+            | crate::effect::Value::DividedRoundedDown(value, _)
+            | crate::effect::Value::Scaled(value, _) => bind_value(value),
+            crate::effect::Value::LifeTotal(player)
+                if *player
+                    == crate::target::PlayerFilter::Target(Box::new(
+                        crate::target::PlayerFilter::Any,
+                    )) =>
+            {
+                *player = crate::target::PlayerFilter::IteratedPlayer;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn bind_in_player_action(effect: &crate::effect::Effect) -> crate::effect::Effect {
+        if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>()
+            && matches!(
+                damage.target.unhinted(),
+                crate::target::ChooseSpec::Player(crate::target::PlayerFilter::IteratedPlayer)
+            )
+        {
+            let mut damage = damage.clone();
+            if bind_value(&mut damage.amount) {
+                return crate::effect::Effect::new(damage);
+            }
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            let mut sequence = sequence.clone();
+            sequence.effects = sequence.effects.iter().map(bind_in_player_action).collect();
+            return crate::effect::Effect::new(sequence);
+        }
+        if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+            let mut conditional = conditional.clone();
+            conditional.if_true = conditional
+                .if_true
+                .iter()
+                .map(bind_in_player_action)
+                .collect();
+            conditional.if_false = conditional
+                .if_false
+                .iter()
+                .map(bind_in_player_action)
+                .collect();
+            return crate::effect::Effect::new(conditional);
+        }
+        if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+            let mut if_effect = if_effect.clone();
+            if_effect.then = if_effect.then.iter().map(bind_in_player_action).collect();
+            if_effect.else_ = if_effect.else_.iter().map(bind_in_player_action).collect();
+            return crate::effect::Effect::new(if_effect);
+        }
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+        {
+            let mut may = may.clone();
+            may.effects = may.effects.iter().map(bind_in_player_action).collect();
+            return crate::effect::Effect::new(may);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            let mut tagged = tagged.clone();
+            tagged.effect = Box::new(bind_in_player_action(&tagged.effect));
+            return crate::effect::Effect::new(tagged);
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            let mut with_id = with_id.clone();
+            with_id.effect = Box::new(bind_in_player_action(&with_id.effect));
+            return crate::effect::Effect::new(with_id);
+        }
+        if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        {
+            let mut with_source = with_source.clone();
+            with_source.effect = Box::new(bind_in_player_action(&with_source.effect));
+            return crate::effect::Effect::new(with_source);
+        }
+        effect.clone()
+    }
+
+    fn rewrite(effect: &crate::effect::Effect) -> crate::effect::Effect {
+        if let Some(for_players) =
+            effect.downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
+        {
+            let mut for_players = for_players.clone();
+            for_players.effects = for_players
+                .effects
+                .iter()
+                .map(bind_in_player_action)
+                .map(|effect| rewrite(&effect))
+                .collect();
+            return crate::effect::Effect::new(for_players);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            let mut sequence = sequence.clone();
+            sequence.effects = sequence.effects.iter().map(rewrite).collect();
+            return crate::effect::Effect::new(sequence);
+        }
+        if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+            let mut conditional = conditional.clone();
+            conditional.if_true = conditional.if_true.iter().map(rewrite).collect();
+            conditional.if_false = conditional.if_false.iter().map(rewrite).collect();
+            return crate::effect::Effect::new(conditional);
+        }
+        if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+            let mut if_effect = if_effect.clone();
+            if_effect.then = if_effect.then.iter().map(rewrite).collect();
+            if_effect.else_ = if_effect.else_.iter().map(rewrite).collect();
+            return crate::effect::Effect::new(if_effect);
+        }
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+        {
+            let mut may = may.clone();
+            may.effects = may.effects.iter().map(rewrite).collect();
+            return crate::effect::Effect::new(may);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            let mut tagged = tagged.clone();
+            tagged.effect = Box::new(rewrite(&tagged.effect));
+            return crate::effect::Effect::new(tagged);
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            let mut with_id = with_id.clone();
+            with_id.effect = Box::new(rewrite(&with_id.effect));
+            return crate::effect::Effect::new(with_id);
+        }
+        if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        {
+            let mut with_source = with_source.clone();
+            with_source.effect = Box::new(rewrite(&with_source.effect));
+            return crate::effect::Effect::new(with_source);
+        }
+        effect.clone()
+    }
+
+    for segment in &mut program.segments {
+        segment.default_effects = segment.default_effects.iter().map(rewrite).collect();
+        for branch in &mut segment.self_replacements {
+            branch.replacement_effects = branch.replacement_effects.iter().map(rewrite).collect();
+        }
+    }
+    *program = crate::resolution::ResolutionProgram::new(std::mem::take(&mut program.segments));
+}
+
+#[cfg(test)]
+mod quantified_player_damage_value_tests {
+    use super::*;
+
+    fn program_with_damage_target(target: crate::target::PlayerFilter) -> ResolutionProgram {
+        let amount =
+            crate::effect::Value::HalfRoundedDown(Box::new(crate::effect::Value::LifeTotal(
+                crate::target::PlayerFilter::Target(Box::new(crate::target::PlayerFilter::Any)),
+            )));
+        ResolutionProgram::from_effects(vec![crate::effect::Effect::new(
+            crate::effects::ForPlayersEffect {
+                filter: crate::target::PlayerFilter::Any,
+                effects: vec![crate::effect::Effect::new(
+                    crate::effects::DealDamageEffect::new(
+                        amount,
+                        crate::target::ChooseSpec::Player(target),
+                    ),
+                )],
+                starting_with_controller: false,
+                stop_after_first_happened: false,
+            },
+        )])
+    }
+
+    fn life_total_player(program: &ResolutionProgram) -> &crate::target::PlayerFilter {
+        let for_players = program.segments[0].default_effects[0]
+            .downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
+            .expect("quantified player effect");
+        let damage = for_players.effects[0]
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+            .expect("damage action");
+        let crate::effect::Value::HalfRoundedDown(inner) = &damage.amount else {
+            panic!("expected half-rounded-down amount: {damage:#?}");
+        };
+        let crate::effect::Value::LifeTotal(player) = inner.as_ref() else {
+            panic!("expected life-total basis: {damage:#?}");
+        };
+        player
+    }
+
+    #[test]
+    fn binds_that_players_life_total_to_the_quantified_damage_recipient() {
+        let mut program = program_with_damage_target(crate::target::PlayerFilter::IteratedPlayer);
+        bind_quantified_player_damage_values(&mut program);
+        assert_eq!(
+            life_total_player(&program),
+            &crate::target::PlayerFilter::IteratedPlayer
+        );
+    }
+
+    #[test]
+    fn does_not_bind_a_value_when_damage_has_a_different_recipient() {
+        let mut program = program_with_damage_target(crate::target::PlayerFilter::You);
+        bind_quantified_player_damage_values(&mut program);
+        assert_eq!(
+            life_total_player(&program),
+            &crate::target::PlayerFilter::Target(Box::new(crate::target::PlayerFilter::Any))
+        );
+    }
 }

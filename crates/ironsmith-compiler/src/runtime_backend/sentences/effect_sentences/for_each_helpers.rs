@@ -771,6 +771,12 @@ pub(crate) fn parse_for_each_opponent_clause(
         return Ok(Some(wrap_opponents(&iteration_filter, vec![conditional])));
     }
 
+    if let Some(effect) =
+        parse_combat_damage_history_participant(outer.inner_tokens, iteration_filter.clone())?
+    {
+        return Ok(Some(effect));
+    }
+
     if let Some(special) = for_each_shapes::parse_opponent_special_shape(outer.inner_tokens)? {
         match special {
             OpponentSpecialShape::IgnoreScryOrSurveil => return Ok(None),
@@ -1021,6 +1027,27 @@ pub(crate) fn parse_who_did_this_way_predicate(
     ))
 }
 
+fn parse_combat_damage_history_participant(
+    inner_tokens: &[OwnedLexToken],
+    iteration_filter: PlayerFilter,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(history) =
+        for_each_shapes::parse_combat_damage_history_player_clause_shape(inner_tokens)
+    else {
+        return Ok(None);
+    };
+    let sources = parse_object_filter(history.source_tokens, false)?;
+    let normalized = prepend_that_player_subject(history.effect_tokens);
+    let effects = parse_maybe_effects(&normalized, false, true)?;
+    Ok(Some(EffectAst::ForEachPlayersFiltered {
+        filter: PlayerFilter::was_dealt_combat_damage_by_sources_this_game(
+            iteration_filter,
+            sources,
+        ),
+        effects,
+    }))
+}
+
 pub(crate) fn parse_for_each_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1064,6 +1091,12 @@ pub(crate) fn parse_for_each_player_clause(
             filter: PlayerFilter::AttackedBySourceThisTurn,
             effects,
         }));
+    }
+
+    if let Some(effect) =
+        parse_combat_damage_history_participant(outer.inner_tokens, iteration_filter.clone())?
+    {
+        return Ok(Some(effect));
     }
 
     if let Some(who) = for_each_shapes::parse_who_clause_shape(outer.inner_tokens) {
@@ -1432,6 +1465,33 @@ mod participant_choice_ownership_tests {
         };
         assert_eq!(filter, PlayerFilter::AttackedBySourceThisTurn);
         assert!(format!("{effects:#?}").contains("LoseGame"), "{effects:#?}");
+    }
+
+    #[test]
+    fn named_creature_combat_damage_history_keeps_filtered_participant() {
+        let tokens = lex_line(
+            "Each opponent dealt combat damage this game by a creature named Gollum, Obsessed Stalker loses life equal to the amount of life you gained this turn.",
+            0,
+        )
+        .expect("combat-history participant clause should lex");
+        let effect = parse_for_each_opponent_clause(&tokens)
+            .expect("combat-history participant clause should parse")
+            .expect("combat-history participant clause should match");
+        let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
+            panic!("expected filtered player iteration, got {effect:#?}");
+        };
+        assert!(
+            matches!(
+                filter,
+                PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
+            ),
+            "{filter:#?}"
+        );
+        let PlayerFilter::WasDealtCombatDamageBySourcesThisGame { sources, .. } = &filter else {
+            unreachable!("typed history variant was already asserted")
+        };
+        assert_eq!(sources.name.as_deref(), Some("gollum obsessed stalker"));
+        assert!(format!("{effects:#?}").contains("LoseLife"), "{effects:#?}");
     }
 
     #[test]

@@ -1736,6 +1736,18 @@ pub(super) fn resolve_value_with_context(
             });
             seen.len() as i32
         }
+        Value::DistinctCounterTypesAmong(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            let mut seen = HashSet::new();
+            for_each_filter_candidate(ctx, filter, |object| {
+                if filter.matches_non_recursive(object, &filter_ctx, ctx.game) {
+                    seen.extend(object.counters.keys().copied());
+                }
+            });
+            seen.len() as i32
+        }
         Value::DistinctNames(filter) => {
             use std::collections::HashSet;
 

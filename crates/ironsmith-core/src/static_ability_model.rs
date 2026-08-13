@@ -40,6 +40,17 @@ pub struct PreventAllDamageToSelfFromSourcesMatchingSpec {
     pub display: String,
 }
 
+/// A scoped rule permission to ignore one targeting-protection ability.
+/// The permission changes targeting legality; it does not remove the ability.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetingAsThoughNoAbilitySpec {
+    pub objects: Option<ObjectFilter>,
+    pub players: Option<PlayerFilter>,
+    pub sources_controlled_by: PlayerFilter,
+    pub ignored_ability: StaticAbilityId,
+    pub display: String,
+}
+
 /// The quality of spell onto which a card's splice ability may be applied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpliceQuality {
@@ -98,6 +109,16 @@ pub enum CounterRemovalFollowUp {
         counter_type: CounterType,
         counters_per_removed: u32,
     },
+}
+
+/// Authored punctuation joining damage prevention to its linked counter
+/// removal. This affects only Oracle-facing text; replacement semantics are
+/// identical for both surfaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CounterRemovalPreventionSurface {
+    #[default]
+    Conjoined,
+    SeparateSentences,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -511,6 +532,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     Megamorph(TotalCost<C>),
     CanBlockAdditionalCreatureEachCombat(usize),
     CanBlockAsThoughReachForSubtype(Subtype),
+    CanBlockAsThoughNoShadow,
+    CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender,
+    TargetingAsThoughNoAbility(TargetingAsThoughNoAbilitySpec),
     CantBeBlockedByMoreThan(usize),
     CantBeBlockedExceptByNOrMore(usize),
     CantBeBlockedByPowerOrLess(i32),
@@ -692,6 +716,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     /// Mandatory nonmana cost paid once for every target announced for this
     /// spell (for example, "costs 3 life more to cast for each target").
     AdditionalLifeCostPerTarget(u32),
+    /// Replaces the normal commander tax with a life payment for each prior
+    /// cast of this commander from the command zone.
+    CommanderTaxLifeSubstitution {
+        life_per_previous_cast: u32,
+    },
     MinimumSpellTotalMana(u32),
     PlayersSkipUpkeep {
         player: PlayerFilter,
@@ -865,11 +894,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         source_filter: ObjectFilter,
         performer_filter: Option<PlayerFilter>,
         replacement_effects: Vec<E>,
+        optional: bool,
         display: String,
     },
     ConditionalDrawReplacement {
         condition: Condition,
         replacement_effects: Vec<E>,
+        optional: bool,
         display: String,
     },
     LoseGameReplacement {
@@ -911,6 +942,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         /// Each counter removed prevents one point of the incoming damage,
         /// rather than replacing the entire damage event.
         one_damage_per_counter: bool,
+        surface: CounterRemovalPreventionSurface,
     },
     PreventDamageToSelfPutCountersInstead {
         counter_type: CounterType,
@@ -1482,6 +1514,15 @@ where
             StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
                 StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype)
             }
+            StaticAbilityPayload::CanBlockAsThoughNoShadow => {
+                StaticAbilityPayload::CanBlockAsThoughNoShadow
+            }
+            StaticAbilityPayload::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender => {
+                StaticAbilityPayload::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender
+            }
+            StaticAbilityPayload::TargetingAsThoughNoAbility(spec) => {
+                StaticAbilityPayload::TargetingAsThoughNoAbility(spec)
+            }
             StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
                 StaticAbilityPayload::CantBeBlockedByMoreThan(count)
             }
@@ -1765,6 +1806,11 @@ where
             StaticAbilityPayload::AdditionalLifeCostPerTarget(amount) => {
                 StaticAbilityPayload::AdditionalLifeCostPerTarget(amount)
             }
+            StaticAbilityPayload::CommanderTaxLifeSubstitution {
+                life_per_previous_cast,
+            } => StaticAbilityPayload::CommanderTaxLifeSubstitution {
+                life_per_previous_cast,
+            },
             StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbilityPayload::MinimumSpellTotalMana(amount)
             }
@@ -1878,6 +1924,7 @@ where
                         copy_source_self: spec.copy_source_self,
                         copy_source_enchanted: spec.copy_source_enchanted,
                         name_override: spec.name_override,
+                        added_colors: spec.added_colors,
                         added_card_types: spec.added_card_types,
                         removed_supertypes: spec.removed_supertypes,
                         added_subtypes: spec.added_subtypes,
@@ -2076,6 +2123,7 @@ where
                 source_filter,
                 performer_filter,
                 replacement_effects,
+                optional,
                 display,
             } => StaticAbilityPayload::KeywordActionReplacement {
                 action,
@@ -2085,11 +2133,13 @@ where
                     .into_iter()
                     .map(map_effect)
                     .collect::<Result<Vec<_>, _>>()?,
+                optional,
                 display,
             },
             StaticAbilityPayload::ConditionalDrawReplacement {
                 condition,
                 replacement_effects,
+                optional,
                 display,
             } => StaticAbilityPayload::ConditionalDrawReplacement {
                 condition,
@@ -2097,6 +2147,7 @@ where
                     .into_iter()
                     .map(map_effect)
                     .collect::<Result<Vec<_>, _>>()?,
+                optional,
                 display,
             },
             StaticAbilityPayload::LoseGameReplacement {
@@ -2161,11 +2212,13 @@ where
                 amount,
                 follow_up,
                 one_damage_per_counter,
+                surface,
             } => StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
                 counter_type,
                 amount,
                 follow_up,
                 one_damage_per_counter,
+                surface,
             },
             StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
                 counter_type,
@@ -3039,6 +3092,36 @@ impl<
         match self.payload {
             StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => Some(subtype),
             _ => None,
+        }
+    }
+
+    pub fn can_block_as_though_no_shadow() -> Self {
+        Self {
+            id: Some(StaticAbilityId::CanBlockAsThoughNoShadow),
+            label:
+                "This creature can block creatures with shadow as though they didn't have shadow"
+                    .to_string(),
+            payload: StaticAbilityPayload::CanBlockAsThoughNoShadow,
+        }
+    }
+
+    pub fn blocks_as_though_no_shadow(&self) -> bool {
+        matches!(self.payload, StaticAbilityPayload::CanBlockAsThoughNoShadow)
+    }
+
+    pub fn can_attack_players_who_attacked_controller_last_turn_as_though_no_defender() -> Self {
+        Self {
+            id: Some(StaticAbilityId::CanAttackAsThoughNoDefender),
+            label: "This creature can attack players who attacked you during their last turn as though it didn't have defender".to_string(),
+            payload: StaticAbilityPayload::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender,
+        }
+    }
+
+    pub fn targeting_as_though_no_ability(spec: TargetingAsThoughNoAbilitySpec) -> Self {
+        Self {
+            id: Some(StaticAbilityId::TargetingAsThoughNoAbility),
+            label: spec.display.clone(),
+            payload: StaticAbilityPayload::TargetingAsThoughNoAbility(spec),
         }
     }
 
@@ -4124,8 +4207,18 @@ impl<
                 amount: amount.into(),
                 follow_up,
                 one_damage_per_counter: false,
+                surface: CounterRemovalPreventionSurface::Conjoined,
             },
         }
+    }
+
+    pub fn with_separate_counter_removal_sentence(mut self) -> Self {
+        if let StaticAbilityPayload::PreventDamageToSelfRemoveCounter { surface, .. } =
+            &mut self.payload
+        {
+            *surface = CounterRemovalPreventionSurface::SeparateSentences;
+        }
+        self
     }
 
     pub fn prevent_one_damage_to_self_per_removed_counter(counter_type: CounterType) -> Self {
@@ -4137,6 +4230,7 @@ impl<
                 amount: Value::EventValue(crate::EventValueSpec::Amount),
                 follow_up: None,
                 one_damage_per_counter: true,
+                surface: CounterRemovalPreventionSurface::Conjoined,
             },
         }
     }
@@ -4684,6 +4778,17 @@ impl<
             payload: StaticAbilityPayload::AdditionalLifeCostPerTarget(amount),
         }
     }
+    pub fn commander_tax_life_substitution(life_per_previous_cast: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CommanderTaxLifeSubstitution),
+            label: format!(
+                "Rather than pay {{2}} for each previous time you've cast this spell from the command zone this game, pay {life_per_previous_cast} life that many times"
+            ),
+            payload: StaticAbilityPayload::CommanderTaxLifeSubstitution {
+                life_per_previous_cast,
+            },
+        }
+    }
     pub fn players_skip_upkeep() -> Self {
         Self::player_skips_upkeep(PlayerFilter::Any)
     }
@@ -5036,6 +5141,20 @@ impl<
         replacement_effects: Vec<E>,
         display: impl Into<String>,
     ) -> Self {
+        Self::conditional_draw_replacement_with_optional(
+            condition,
+            replacement_effects,
+            false,
+            display,
+        )
+    }
+
+    pub fn conditional_draw_replacement_with_optional(
+        condition: Condition,
+        replacement_effects: Vec<E>,
+        optional: bool,
+        display: impl Into<String>,
+    ) -> Self {
         let display = display.into();
         Self {
             id: Some(StaticAbilityId::ConditionalDrawReplacement),
@@ -5043,6 +5162,7 @@ impl<
             payload: StaticAbilityPayload::ConditionalDrawReplacement {
                 condition,
                 replacement_effects,
+                optional,
                 display,
             },
         }
@@ -5107,6 +5227,7 @@ impl<
                 source_filter,
                 performer_filter: None,
                 replacement_effects,
+                optional: false,
                 display,
             },
         }
@@ -5118,6 +5239,22 @@ impl<
         replacement_effects: Vec<E>,
         display: impl Into<String>,
     ) -> Self {
+        Self::keyword_action_replacement_for_player_with_optional(
+            action,
+            performer_filter,
+            replacement_effects,
+            false,
+            display,
+        )
+    }
+
+    pub fn keyword_action_replacement_for_player_with_optional(
+        action: KeywordActionKind,
+        performer_filter: PlayerFilter,
+        replacement_effects: Vec<E>,
+        optional: bool,
+        display: impl Into<String>,
+    ) -> Self {
         let display = display.into();
         Self {
             id: Some(StaticAbilityId::KeywordActionReplacement),
@@ -5127,6 +5264,7 @@ impl<
                 source_filter: ObjectFilter::default(),
                 performer_filter: Some(performer_filter),
                 replacement_effects,
+                optional,
                 display,
             },
         }

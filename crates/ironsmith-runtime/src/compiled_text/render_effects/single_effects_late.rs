@@ -1,5 +1,87 @@
 use super::*;
 
+/// Preserve the subject of an exact delayed land-damage instruction. The
+/// runtime program chooses and tags the land, then executes damage with that
+/// tag as its source; generic rendering otherwise calls both the land and the
+/// earlier creature "that creature."
+pub(super) fn describe_delayed_target_land_damages_tagged_creature(
+    schedule: &crate::effects::ScheduleDelayedTriggerEffect,
+) -> Option<String> {
+    if !schedule.one_shot
+        || schedule.start_next_turn
+        || schedule.until_end_of_turn
+        || schedule.until_end_of_combat
+        || schedule.leading_duration_surface
+        || schedule.watch_ability_source
+        || schedule.watch_all_object_targets
+        || schedule.either_of_watched_objects
+        || schedule.duration != ironsmith_core::DelayedTriggerDuration::Forever
+        || schedule.while_any_tagged_object_in_zone.is_some()
+        || !schedule.target_objects.is_empty()
+        || schedule.target_tag.is_some()
+        || schedule.target_filter.is_some()
+        || schedule.controller != PlayerFilter::You
+        || schedule.prepayment.is_some()
+        || schedule.event_value_from_prior_prevention
+        || !schedule
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>()
+            .is_some_and(|end_step| end_step.player == PlayerFilter::Any)
+    {
+        return None;
+    }
+
+    let [land_effect, damage_effect] = schedule.effects.flattened_default_effects() else {
+        return None;
+    };
+    let tagged_land = land_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let target_land = tagged_land
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let ChooseSpec::Object(land_filter) = target_land.target.base() else {
+        return None;
+    };
+    let mut semantic_land = land_filter.clone();
+    semantic_land.union_surface = Default::default();
+    if target_land.chooser.is_some()
+        || target_land.explicit_declaration
+        || semantic_land != ObjectFilter::land()
+    {
+        return None;
+    }
+
+    let with_source = damage_effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+    if !matches!(&with_source.source, ChooseSpec::Tagged(tag) if tag == &tagged_land.tag) {
+        return None;
+    }
+    let damage = with_source
+        .effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let ChooseSpec::Object(creature_filter) = damage.target.base() else {
+        return None;
+    };
+    let [creature_tag] = creature_filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    let mut semantic_creature = creature_filter.clone();
+    semantic_creature.tagged_constraints.clear();
+    semantic_creature.union_surface = Default::default();
+    if damage.amount != Value::Fixed(3)
+        || damage.source_is_combat
+        || damage.unpreventable
+        || creature_tag.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        || creature_tag.tag == tagged_land.tag
+        || semantic_creature != ObjectFilter::creature()
+    {
+        return None;
+    }
+
+    Some(
+        "At the beginning of the next end step, target land deals 3 damage to that creature"
+            .to_string(),
+    )
+}
+
 pub(super) fn describe_delayed_exile_referenced_controller_graveyard(
     schedule: &crate::effects::ScheduleDelayedTriggerEffect,
 ) -> Option<String> {
@@ -1093,6 +1175,55 @@ fn activation_source_payment_filter(
     })
 }
 
+fn cast_or_any_ability_payment_filter(
+    predicate: &crate::ability::ManaPaymentPredicate,
+) -> Option<&ObjectFilter> {
+    let crate::ability::ManaPaymentPredicate::AnyOf(parts) = predicate else {
+        return None;
+    };
+    if parts.len() != 3
+        || !parts.iter().any(|part| {
+            matches!(
+                part,
+                crate::ability::ManaPaymentPredicate::Purpose(
+                    crate::ability::ManaPaymentPurpose::ActivateAbility
+                )
+            )
+        })
+        || !parts.iter().any(|part| {
+            matches!(
+                part,
+                crate::ability::ManaPaymentPredicate::Purpose(
+                    crate::ability::ManaPaymentPurpose::ActivateManaAbility
+                )
+            )
+        })
+    {
+        return None;
+    }
+    parts.iter().find_map(|part| {
+        let crate::ability::ManaPaymentPredicate::All(cast_parts) = part else {
+            return None;
+        };
+        if cast_parts.len() != 2
+            || !cast_parts.iter().any(|cast_part| {
+                matches!(
+                    cast_part,
+                    crate::ability::ManaPaymentPredicate::Purpose(
+                        crate::ability::ManaPaymentPurpose::CastSpell
+                    )
+                )
+            })
+        {
+            return None;
+        }
+        cast_parts.iter().find_map(|cast_part| match cast_part {
+            crate::ability::ManaPaymentPredicate::SourceMatches(filter) => Some(filter),
+            _ => None,
+        })
+    })
+}
+
 pub(super) fn describe_mana_usage_restriction(
     restriction: &crate::ability::ManaUsageRestriction,
     activated: Option<&crate::ability::ActivatedAbility>,
@@ -1318,6 +1449,17 @@ pub(super) fn describe_mana_usage_restriction(
             restriction,
             on_spend,
         } => {
+            if on_spend.is_empty()
+                && let Some(filter) = restriction
+                    .as_ref()
+                    .and_then(cast_or_any_ability_payment_filter)
+            {
+                let spell_text =
+                    describe_mana_usage_spell_filter_target_with_options(filter, false)?;
+                return Some(format!(
+                    "Spend this mana only to cast {spell_text} or activate an ability"
+                ));
+            }
             if on_spend.is_empty()
                 && let Some(filter) = restriction.as_ref().and_then(negative_cast_payment_filter)
             {
@@ -3042,9 +3184,30 @@ pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<Strin
     }
 
     let mut parts = Vec::new();
-    for effect in payment {
+    for root in payment {
+        let effect = if let Some(tagged) = root.downcast_ref::<crate::effects::TaggedEffect>() {
+            tagged.effect.as_ref()
+        } else if let Some(with_id) = root.downcast_ref::<crate::effects::WithIdEffect>() {
+            with_id.effect.as_ref()
+        } else {
+            root
+        };
         if let Some(pay_mana) = effect.downcast_ref::<crate::effects::PayManaEffect>() {
             parts.push(pay_mana.cost.to_oracle());
+        } else if let Some(one_of) = effect.downcast_ref::<crate::effects::UnlessActionEffect>() {
+            let [first] = one_of.effects.as_slice() else {
+                return None;
+            };
+            let [second] = one_of.alternative.as_slice() else {
+                return None;
+            };
+            let first = first.downcast_ref::<crate::effects::PayManaEffect>()?;
+            let second = second.downcast_ref::<crate::effects::PayManaEffect>()?;
+            parts.push(format!(
+                "{} or {}",
+                first.cost.to_oracle(),
+                second.cost.to_oracle()
+            ));
         } else if let Some(pay_life) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
             if matches!(
                 pay_life.player,
@@ -3064,7 +3227,15 @@ pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<Strin
         } else if let Some(put_counters) =
             effect.downcast_ref::<crate::effects::PutCountersEffect>()
         {
-            parts.push(cumulative_upkeep_put_counters_text(put_counters)?);
+            if let ChooseSpec::Object(filter) = put_counters.target.base() {
+                parts.push(format!(
+                    "Put {} on {}",
+                    cumulative_counter_phrase(put_counters)?,
+                    filter.description()
+                ));
+            } else {
+                parts.push(cumulative_upkeep_put_counters_text(put_counters)?);
+            }
         } else if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
             parts.push(cumulative_upkeep_sacrifice_text(
                 &sacrifice.filter,
@@ -3077,6 +3248,25 @@ pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<Strin
             effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
         {
             parts.push(describe_apply_continuous_effect(apply_continuous)?);
+        } else if let Some(gain_life) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
+            if gain_life.player == ChooseSpec::Player(PlayerFilter::Opponent) {
+                parts.push(format!(
+                    "An opponent gains {} life",
+                    describe_value(&gain_life.amount)
+                ));
+            }
+        } else if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>() {
+            parts.push(describe_simple_discard_cost(discard)?);
+        } else if let Some(exile_top) =
+            effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+        {
+            if exile_top.player != PlayerFilter::You
+                || exile_top.count != Value::Fixed(1)
+                || exile_top.face_down
+            {
+                return None;
+            }
+            parts.push("Exile the top card of your library".to_string());
         }
     }
     if parts.is_empty() {
@@ -4436,7 +4626,14 @@ pub(super) fn describe_structural_casualty_keyword(
     if choose_targets.from_effect != copy.id || !choose_targets.may {
         return None;
     }
-    Some(format!("Casualty {power}"))
+    let retarget = if choose_targets.may {
+        " and you may choose a new target for the copy"
+    } else {
+        ""
+    };
+    Some(format!(
+        "Casualty {power} {STANDARD_REMINDER_OPEN_SENTINEL}As you cast this spell, you may sacrifice a creature with power {power} or greater. When you do, copy this spell{retarget}.{STANDARD_REMINDER_CLOSE_SENTINEL}"
+    ))
 }
 
 pub(super) fn keyword_base_cost_text(

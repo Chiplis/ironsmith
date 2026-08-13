@@ -1692,6 +1692,23 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
         // filter capture can absorb the suffix and silently drop the offset.
         return None;
     }
+    // The broad `number of <filter>` shape deliberately recovers the final
+    // object scope. For `number of abilities from among ... found among
+    // creatures`, that means it can reduce the expression to merely the
+    // creature count before the dedicated aggregate sees it. Claim the exact
+    // typed ability-list suffix first.
+    if let Some(ability_word) = words
+        .windows(3)
+        .position(|window| matches!(window, ["number", "of", "ability" | "abilities"]))
+        .map(|index| index + 2)
+        && let Some((token_index, _)) =
+            crate::runtime_backend::lexer::parser_token_word_positions(tokens)
+                .into_iter()
+                .nth(ability_word)
+        && let Some(value) = parse_static_abilities_among_scope_value(&tokens[token_index..])
+    {
+        return Some(value);
+    }
     let captured = etb_grammar::parse_where_x_number_of_filter_tokens(tokens)?;
 
     if etb_grammar::etb_tokens_have_common_creature_type_value(tokens) {
@@ -1841,7 +1858,9 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     Some(scale_where_x_number_value(Value::Count(filter), multiplier))
 }
 
-fn parse_static_abilities_among_scope_value(filter_tokens: &[OwnedLexToken]) -> Option<Value> {
+pub(crate) fn parse_static_abilities_among_scope_value(
+    filter_tokens: &[OwnedLexToken],
+) -> Option<Value> {
     let parsed = etb_grammar::parse_etb_static_abilities_among_scope_tokens(filter_tokens)?;
     let ability_ids = etb_grammar::parse_etb_static_ability_ids_tokens(parsed.ability_tokens)?;
 

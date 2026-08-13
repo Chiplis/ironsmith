@@ -2958,6 +2958,7 @@ pub struct PreventDamageToSelfRemoveCounter {
     pub amount: Value,
     pub follow_up: Option<ironsmith_core::CounterRemovalFollowUp>,
     pub one_damage_per_counter: bool,
+    pub surface: ironsmith_core::CounterRemovalPreventionSurface,
 }
 
 impl PreventDamageToSelfRemoveCounter {
@@ -2975,6 +2976,7 @@ impl PreventDamageToSelfRemoveCounter {
             amount: amount.into(),
             follow_up,
             one_damage_per_counter: false,
+            surface: ironsmith_core::CounterRemovalPreventionSurface::Conjoined,
         }
     }
 
@@ -2984,7 +2986,16 @@ impl PreventDamageToSelfRemoveCounter {
             amount: Value::EventValue(EventValueSpec::Amount),
             follow_up: None,
             one_damage_per_counter: true,
+            surface: ironsmith_core::CounterRemovalPreventionSurface::Conjoined,
         }
+    }
+
+    pub fn with_surface(
+        mut self,
+        surface: ironsmith_core::CounterRemovalPreventionSurface,
+    ) -> Self {
+        self.surface = surface;
+        self
     }
 }
 
@@ -3006,9 +3017,21 @@ impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
             Value::EventValue(EventValueSpec::Amount) => ("that many".to_string(), "s"),
             amount => (describe_value(amount), "s"),
         };
-        let mut display = format!(
-            "If damage would be dealt to this creature, prevent that damage. Remove {amount_word} {counter} counter{suffix} from this creature."
-        );
+        let mut display = match self.surface {
+            ironsmith_core::CounterRemovalPreventionSurface::Conjoined => format!(
+                "If damage would be dealt to this creature, prevent that damage and remove {amount_word} {counter} counter{suffix} from it."
+            ),
+            ironsmith_core::CounterRemovalPreventionSurface::SeparateSentences => {
+                let amount_word = if matches!(&self.amount, Value::Fixed(1)) {
+                    "a"
+                } else {
+                    amount_word.as_str()
+                };
+                format!(
+                    "If damage would be dealt to this creature, prevent that damage. Remove {amount_word} {counter} counter{suffix} from this creature."
+                )
+            }
+        };
         if let Some(ironsmith_core::CounterRemovalFollowUp::EachPlayerGetsCounters {
             counter_type,
             counters_per_removed,

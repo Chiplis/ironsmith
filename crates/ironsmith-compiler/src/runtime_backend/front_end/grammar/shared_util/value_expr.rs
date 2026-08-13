@@ -678,6 +678,17 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if let Some(used) = prefix_len(
         words,
         &[
+            &[
+                "the", "amount", "of", "life", "you", "gained", "this", "turn",
+            ],
+            &["amount", "of", "life", "you", "gained", "this", "turn"],
+        ],
+    ) {
+        return Some((Value::LifeGainedThisTurn(PlayerFilter::You), used));
+    }
+    if let Some(used) = prefix_len(
+        words,
+        &[
             &["target", "players", "life", "total"],
             &["target", "player", "life", "total"],
             &["that", "players", "life", "total"],
@@ -1516,6 +1527,12 @@ mod tests {
         assert_eq!(
             parse_value_expr_words(&["your", "life", "total"]),
             Some((Value::LifeTotal(PlayerFilter::You), 3))
+        );
+        assert_eq!(
+            parse_value_expr_words(&[
+                "the", "amount", "of", "life", "you", "gained", "this", "turn",
+            ]),
+            Some((Value::LifeGainedThisTurn(PlayerFilter::You), 8))
         );
         assert_eq!(
             parse_value_expr_words(&[

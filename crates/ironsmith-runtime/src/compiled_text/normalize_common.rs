@@ -152,6 +152,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "{} this source has dealt damage to this game",
             describe_player_filter(base)
         ),
+        PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => filter.description(),
         PlayerFilter::LostLifeThisTurn { base } => format!(
             "{} who lost life this turn",
             strip_leading_article(&describe_player_filter(base))
@@ -1682,7 +1683,8 @@ fn compact_separate_sentence_equipment_token_ability_payload(
     }
 
     let mut intrinsic_keywords = Vec::new();
-    let mut attached_rule: Option<String> = None;
+    let mut pump_text: Option<String> = None;
+    let mut attached_keywords = Vec::new();
     let mut equip_text: Option<String> = None;
     for ability in &token.abilities {
         match &ability.kind {
@@ -1699,11 +1701,27 @@ fn compact_separate_sentence_equipment_token_ability_payload(
                 let text =
                     normalize_token_granted_static_ability_text(static_ability.display().as_str());
                 let text = text.trim().trim_end_matches(|ch| ch == '.' || ch == ',');
-                if !text.starts_with("Equipped creature gets ")
-                    || attached_rule.replace(text.to_string()).is_some()
-                {
-                    return None;
+                if let Some(rest) = text.strip_prefix("Equipped creature gets ") {
+                    if pump_text.replace(rest.to_string()).is_some() {
+                        return None;
+                    }
+                    continue;
                 }
+                if let Some(rest) = text.strip_prefix("Equipped creature has ") {
+                    let keyword = rest.trim().to_ascii_lowercase();
+                    if keyword.is_empty()
+                        || keyword.contains(',')
+                        || keyword.contains(" and ")
+                        || keyword.contains('"')
+                    {
+                        return None;
+                    }
+                    if !attached_keywords.contains(&keyword) {
+                        attached_keywords.push(keyword);
+                    }
+                    continue;
+                }
+                return None;
             }
             AbilityKind::Activated(_) => {
                 let text = describe_inline_ability(ability);
@@ -1726,7 +1744,12 @@ fn compact_separate_sentence_equipment_token_ability_payload(
     if intrinsic_keywords.is_empty() {
         return None;
     }
-    let attached_rule = attached_rule?;
+    let pump_text = pump_text?;
+    let mut attached_rule = format!("Equipped creature gets {pump_text}");
+    if !attached_keywords.is_empty() {
+        attached_rule.push_str(" and has ");
+        attached_rule.push_str(&join_with_and(&attached_keywords));
+    }
     let equip_text = equip_text?;
     Some(format!(
         "{}, \"{attached_rule},\" and {equip_text}",
@@ -3225,6 +3248,14 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
                 "put it into your hand",
             )
             .replace(
+                "For each card searched for this way, you put it into its owner's hand",
+                "Put it into your hand",
+            )
+            .replace(
+                "for each card searched for this way, you put it into its owner's hand",
+                "put it into your hand",
+            )
+            .replace(
                 "put it into your hand, then shuffle your library",
                 "put it into your hand. If you search your library this way, shuffle your library",
             )
@@ -3771,6 +3802,18 @@ fn normalize_split_damage_pairs(line: &str) -> String {
 
 fn normalize_gets_replacement_instead_order(line: &str) -> Option<String> {
     let (prefix, tail) = line.rsplit_once(". If ")?;
+    if let Some((condition, effect)) = tail.split_once(", instead it gets ")
+        && condition == "the target is a Human"
+    {
+        let effect = effect.trim_end_matches('.');
+        if let Some((pt, keyword)) = effect.split_once(" until end of turn and it gains ")
+            && let Some(keyword) = keyword.strip_suffix(" until end of turn")
+        {
+            return Some(format!(
+                "{prefix}. If it's a Human, instead it gets {pt} and gains {keyword} until end of turn."
+            ));
+        }
+    }
     let (condition, effect) = tail.split_once(", it gets ")?;
     if !matches!(
         condition,

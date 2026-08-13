@@ -893,6 +893,7 @@ pub(super) fn rewrite_grammar_empty_library_draw_win_lowers_to_conditional_repla
         condition,
         replacement_effects,
         display,
+        ..
     } = &ability.payload
     else {
         panic!("expected conditional draw replacement payload: {ability:#?}");

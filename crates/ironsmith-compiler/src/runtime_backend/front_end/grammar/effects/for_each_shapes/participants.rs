@@ -48,6 +48,12 @@ pub(crate) struct SourceAttackedPlayerClauseShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub(crate) struct CombatDamageHistoryPlayerClauseShape<'a> {
+    pub(crate) source_tokens: &'a [OwnedLexToken],
+    pub(crate) effect_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum WhoClauseShape<'a> {
     TappedLandForMana {
         effect_tokens: &'a [OwnedLexToken],
@@ -264,6 +270,27 @@ pub(crate) fn parse_source_attacked_player_clause_shape(
     )?;
     let effect_tokens = trim(effect_tokens);
     (!effect_tokens.is_empty()).then_some(SourceAttackedPlayerClauseShape { effect_tokens })
+}
+
+/// Parse a full-game combat-damage participant qualifier, retaining the
+/// damage source as an LKI object filter rather than discarding the relative
+/// clause before the participant's action.
+pub(crate) fn parse_combat_damage_history_player_clause_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<CombatDamageHistoryPlayerClauseShape<'_>> {
+    let (_, tail) = primitives::parse_prefix(
+        trim(tokens),
+        primitives::phrase(&["dealt", "combat", "damage", "this", "game", "by"]),
+    )?;
+    let action_start = effect_start(tail)?;
+    let source_tokens = trim(tail.get(..action_start)?);
+    let effect_tokens = trim(tail.get(action_start..)?);
+    (!source_tokens.is_empty() && !effect_tokens.is_empty()).then_some(
+        CombatDamageHistoryPlayerClauseShape {
+            source_tokens,
+            effect_tokens,
+        },
+    )
 }
 
 fn effect_start(tokens: &[OwnedLexToken]) -> Option<usize> {

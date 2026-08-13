@@ -505,6 +505,27 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Pair("equipped", "creature"),
             StaticAbilityLineHeadHint::Single("attached"),
         ],
+        "parse_plain_can_attack_as_though_no_defender_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Single("wall"),
+            StaticAbilityLineHeadHint::Single("walls"),
+            StaticAbilityLineHeadHint::Single("creature"),
+            StaticAbilityLineHeadHint::Single("creatures"),
+            StaticAbilityLineHeadHint::Single("modified"),
+        ],
+        "parse_source_can_block_shadow_as_though_no_shadow_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Pair("this", "creature"),
+        ],
+        "parse_attacked_player_can_attack_as_though_no_defender_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Pair("this", "creature"),
+        ],
+        "parse_targeting_as_though_no_ability_line" => vec![
+            StaticAbilityLineHeadHint::Single("creatures"),
+            StaticAbilityLineHeadHint::Single("your"),
+            StaticAbilityLineHeadHint::Single("autumn"),
+        ],
         "parse_attached_restriction_and_granted_ability_line" => vec![
             StaticAbilityLineHeadHint::Single("enchanted"),
             StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
@@ -952,6 +973,16 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(parse_attached_cant_attack_or_block_line),
         single_static_ability_ast_passthrough_rule!(
             parse_attached_can_attack_as_though_no_defender_line
+        ),
+        single_static_ability_ast_passthrough_rule!(
+            parse_attacked_player_can_attack_as_though_no_defender_line
+        ),
+        single_static_ability_ast_passthrough_rule!(parse_targeting_as_though_no_ability_line),
+        single_static_ability_ast_passthrough_rule!(
+            parse_plain_can_attack_as_though_no_defender_line
+        ),
+        single_static_ability_ast_passthrough_rule!(
+            parse_source_can_block_shadow_as_though_no_shadow_line
         ),
         single_static_ability_ast_passthrough_rule!(
             parse_attached_prevent_all_damage_dealt_to_and_by_attached_line
@@ -1469,6 +1500,10 @@ fn parse_static_ability_ast_line_lexed_unstacked(
         }
     }
 
+    if let Some(abilities) = parse_attached_anthem_reach_shadow_permission_line(tokens) {
+        return Ok(Some(abilities));
+    }
+
     // Bolster and adapt are executable keyword actions, including when they
     // appear after a trigger comma, activation colon, or sentence boundary.
     // Letting the broad keyword-line grammar claim them produces a static AST
@@ -1496,6 +1531,9 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     // "if you don't, it enters tapped" suffix as a standalone static line.
     if let Some(ability) = parse_pay_life_or_enter_tapped_line(tokens)? {
         return Ok(Some(vec![StaticAbilityAst::Static(ability)]));
+    }
+    if let Some(abilities) = parse_first_spell_cost_reduction_and_flash_line(tokens)? {
+        return Ok(Some(abilities));
     }
     if let Some(abilities) = parse_source_graveyard_dynamic_surcharge_line(tokens)? {
         return Ok(Some(abilities));
@@ -1738,6 +1776,70 @@ fn parse_players_cant_search_with_any_player_ignore_line(
 fn parse_static_ability_ast_line_lexed_single(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if parser_token_word_refs(tokens).as_slice()
+        == [
+            "as",
+            "long",
+            "as",
+            "this",
+            "enchantment",
+            "has",
+            "six",
+            "or",
+            "more",
+            "quest",
+            "counters",
+            "on",
+            "it",
+            "if",
+            "you",
+            "would",
+            "draw",
+            "a",
+            "card",
+            "you",
+            "may",
+            "instead",
+            "search",
+            "your",
+            "library",
+            "for",
+            "a",
+            "card",
+            "put",
+            "that",
+            "card",
+            "into",
+            "your",
+            "hand",
+            "then",
+            "shuffle",
+        ]
+    {
+        let mut card = ObjectFilter::default();
+        card.set_explicit_card_noun(true);
+        let ability = StaticAbility::conditional_draw_replacement_with_optional(
+            crate::ConditionExpr::ValueComparison {
+                left: Value::Fixed(1),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: Value::Fixed(1),
+            },
+            vec![Effect::search_library_to_hand(card, false)],
+            true,
+            render_token_slice(tokens),
+        );
+        return Ok(Some(vec![
+            StaticAbilityAst::LabeledConditionalStaticAbility {
+                ability: Box::new(StaticAbilityAst::Static(ability)),
+                condition: crate::ConditionExpr::SourceHasCounterAtLeast {
+                    counter_type: CounterType::Quest,
+                    count: 6,
+                    surface: crate::SourceCounterThresholdSurface::SourceHas,
+                },
+                label: render_token_slice(tokens),
+            },
+        ]));
+    }
     let condition_prefix_tokens =
         crate::runtime_backend::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(
             tokens,
@@ -1747,6 +1849,28 @@ fn parse_static_ability_ast_line_lexed_single(
                 == crate::runtime_backend::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::Conditional
         })
         .map_or(tokens, |shape| shape.body_tokens);
+
+    if let Some((_, rest)) = crate::runtime_backend::grammar::primitives::parse_prefix(
+        tokens,
+        crate::runtime_backend::grammar::primitives::phrase(&["during", "your", "end", "step"]),
+    ) {
+        let remainder = trim_lexed_commas(rest);
+        if remainder.len() < rest.len()
+            && !remainder.is_empty()
+            && let Some(abilities) =
+                parse_static_ability_ast_line_lexed_single_without_leading_condition(remainder)?
+            && !abilities.is_empty()
+        {
+            let mut conditioned = Vec::with_capacity(abilities.len());
+            for ability in abilities {
+                conditioned.push(add_static_ability_ast_condition(
+                    ability,
+                    crate::ConditionExpr::SourceControllersEndStep,
+                )?);
+            }
+            return Ok(Some(conditioned));
+        }
+    }
 
     if let Some(spec) = split_as_long_as_condition_prefix_lexed(condition_prefix_tokens)
         && crate::runtime_backend::token_word_refs(spec.remainder_tokens)
@@ -1776,6 +1900,16 @@ fn parse_static_ability_ast_line_lexed_single(
             )?
         && !abilities.is_empty()
     {
+        if cast_this_spell_as_though_flash_tokens(spec.remainder_tokens) && abilities.len() == 1 {
+            let ability = abilities.into_iter().next().expect("length checked");
+            return Ok(Some(vec![
+                StaticAbilityAst::LabeledConditionalStaticAbility {
+                    ability: Box::new(ability),
+                    condition,
+                    label: render_token_slice(&trim_edge_punctuation(tokens)),
+                },
+            ]));
+        }
         let mut conditioned = Vec::with_capacity(abilities.len());
         for ability in abilities {
             conditioned.push(add_static_ability_ast_condition(
@@ -1852,6 +1986,17 @@ fn parse_static_ability_ast_line_lexed_single(
         return Ok(existing);
     }
 
+    if cast_this_spell_as_though_flash_tokens(spec.remainder_tokens) && abilities.len() == 1 {
+        let ability = abilities.into_iter().next().expect("length checked");
+        return Ok(Some(vec![
+            StaticAbilityAst::LabeledConditionalStaticAbility {
+                ability: Box::new(ability),
+                condition,
+                label: render_token_slice(&trim_edge_punctuation(tokens)),
+            },
+        ]));
+    }
+
     let mut conditioned = Vec::with_capacity(abilities.len());
     for ability in abilities {
         let Ok(ability) = add_static_ability_ast_condition(ability, condition.clone()) else {
@@ -1860,6 +2005,62 @@ fn parse_static_ability_ast_line_lexed_single(
         conditioned.push(ability);
     }
     Ok(Some(conditioned))
+}
+
+fn cast_this_spell_as_though_flash_tokens(tokens: &[OwnedLexToken]) -> bool {
+    parser_token_word_refs(&trim_edge_punctuation(tokens)).as_slice()
+        == [
+            "you", "may", "cast", "this", "spell", "as", "though", "it", "had", "flash",
+        ]
+}
+
+#[cfg(test)]
+mod conditional_flash_permission_tests {
+    use super::*;
+
+    fn parse_line(text: &str) -> Vec<StaticAbilityAst> {
+        let tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("line should lex");
+        parse_static_ability_ast_line_lexed(&tokens)
+            .expect("line should parse")
+            .expect("line should be claimed")
+    }
+
+    #[test]
+    fn cast_as_though_flash_preserves_authored_surface_for_supported_conditions() {
+        for text in [
+            "As long as you control a green or blue permanent, you may cast this spell as though it had flash.",
+            "If there are three or more Lesson cards in your graveyard, you may cast this spell as though it had flash.",
+            "If you control a creature with power 4 or greater, you may cast this spell as though it had flash.",
+        ] {
+            let parsed = parse_line(text);
+            assert_eq!(parsed.len(), 1, "{text}: {parsed:#?}");
+            let StaticAbilityAst::LabeledConditionalStaticAbility {
+                ability,
+                condition: _,
+                label,
+            } = &parsed[0]
+            else {
+                panic!("{text} did not retain a labeled typed condition: {parsed:#?}");
+            };
+            assert_eq!(label, text.trim_end_matches('.'));
+            assert!(format!("{ability:#?}").contains("Flash"), "{ability:#?}");
+        }
+    }
+
+    #[test]
+    fn similar_granted_flash_wording_does_not_claim_self_spell_permission_surface() {
+        let parsed = parse_line(
+            "As long as you control a green permanent, creatures you control have flash.",
+        );
+        assert!(
+            !matches!(
+                parsed.as_slice(),
+                [StaticAbilityAst::LabeledConditionalStaticAbility { label, .. }]
+                    if label.contains("cast this spell as though")
+            ),
+            "a battlefield grant must not be rewritten as a self-spell cast permission: {parsed:#?}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -3971,6 +4172,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
+                    added_colors: ColorSet::new(),
                     added_card_types: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -4011,6 +4213,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     copy_source_self,
                     copy_source_enchanted,
                     name_override: None,
+                    added_colors: ColorSet::new(),
                     added_card_types: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -4056,6 +4259,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             });
 
             let mut name_override = None;
+            let mut added_colors = ColorSet::new();
             let mut added_card_types = Vec::new();
             let mut removed_supertypes = Vec::new();
             let mut added_subtypes = Vec::new();
@@ -4113,6 +4317,12 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                         }
                         let mut parsed_type_or_subtype = false;
                         while cursor < characteristic_words.len() {
+                            if let Some(color) = Color::from_name(characteristic_words[cursor]) {
+                                added_colors = added_colors.with(color);
+                                parsed_type_or_subtype = true;
+                                cursor += 1;
+                                continue;
+                            }
                             if let Some(card_type) = parse_card_type(characteristic_words[cursor]) {
                                 crate::slice_primitives::push_unique(
                                     &mut added_card_types,
@@ -4175,6 +4385,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override,
+                    added_colors,
                     added_card_types,
                     added_subtypes,
                     added_abilities,
@@ -4225,6 +4436,31 @@ pub(crate) fn parse_choose_color_as_enters_line(
     Ok(Some(StaticAbility::choose_color_as_enters(
         excluded, display,
     )))
+}
+
+#[cfg(test)]
+mod enter_as_copy_added_color_tests {
+    use super::*;
+
+    #[test]
+    fn copy_exception_adds_a_color_alongside_types_subtypes_and_fixed_pt() {
+        let text = "You may have this creature enter as a copy of any creature card in a graveyard except it's a 4/4 black Zombie in addition to its other colors and types.";
+        let tokens =
+            crate::runtime_backend::lexer::lex_line(text, 0).expect("copy exception should lex");
+        let ability = parse_enter_as_copy_as_enters_line(&tokens)
+            .expect("copy exception should parse")
+            .expect("copy exception should be claimed");
+        let crate::static_abilities::StaticAbilityPayload::EnterAsCopyAsEnters { spec, .. } =
+            ability.payload
+        else {
+            panic!("expected a typed enter-as-copy payload")
+        };
+
+        assert_eq!(spec.added_colors, ColorSet::BLACK);
+        assert_eq!(spec.set_base_power_toughness, Some((4, 4)));
+        assert_eq!(spec.added_subtypes, [Subtype::Zombie]);
+        assert!(spec.added_card_types.is_empty());
+    }
 }
 
 pub(crate) fn parse_choose_color_as_becomes_attached_line(

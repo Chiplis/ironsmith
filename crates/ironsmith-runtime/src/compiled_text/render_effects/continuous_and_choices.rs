@@ -512,9 +512,24 @@ pub(crate) fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
             " in any order".to_string()
         }
     };
+    let selected_reference = move_to_hand
+        .effects
+        .first()
+        .and_then(|effect| {
+            unwrap_tag_wrapped_effect(effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
+        })
+        .and_then(|move_to_zone| move_to_zone.target_reference_surface)
+        .unwrap_or(ironsmith_core::SearchResultReferenceSurface::It)
+        .as_str();
+    let remainder = match rest.surface {
+        ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => "Then put",
+        ironsmith_core::LibraryRemainderSurface::Rest
+        | ironsmith_core::LibraryRemainderSurface::RestBare => "Put",
+        _ => return None,
+    };
 
     Some(format!(
-        "Look at the top {count_text} {noun} of {owner} library{where_clause}. {may_prefix} reveal {chosen} from among them and put it into {hand} hand. Put the rest on the bottom of {owner} library{order_text}"
+        "Look at the top {count_text} {noun} of {owner} library{where_clause}. {may_prefix} reveal {chosen} from among them and put {selected_reference} into {hand} hand. {remainder} the rest on the bottom of {owner} library{order_text}"
     ))
 }
 
@@ -678,6 +693,9 @@ pub(super) fn describe_look_at_top_then_put_any_matching_to_zone_rest_bottom(
         | ironsmith_core::LibraryRemainderSurface::RestBare => {
             format!("Put the rest on the bottom of {owner} library{order_text}")
         }
+        ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => {
+            format!("Then put the rest on the bottom of {owner} library{order_text}")
+        }
         ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {
             if opener != "Reveal" {
                 return None;
@@ -756,9 +774,15 @@ pub(super) fn describe_look_at_top_then_reveal_any_matching_to_hand_rest_bottom(
             " in any order".to_string()
         }
     };
+    let remainder = match rest.surface {
+        ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => "Then put",
+        ironsmith_core::LibraryRemainderSurface::Rest
+        | ironsmith_core::LibraryRemainderSurface::RestBare => "Put",
+        _ => return None,
+    };
 
     Some(format!(
-        "Look at the top {count_text} {noun} of {owner} library{count_where_clause}. {may_prefix} reveal {matching} from among them and put the revealed cards into {hand} hand. Put the rest on the bottom of {owner} library{order_text}"
+        "Look at the top {count_text} {noun} of {owner} library{count_where_clause}. {may_prefix} reveal {matching} from among them and put the revealed cards into {hand} hand. {remainder} the rest on the bottom of {owner} library{order_text}"
     ))
 }
 
@@ -2171,6 +2195,12 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
         | ironsmith_core::LibraryRemainderSurface::RestBare => {
             format!("{remainder_opener} the rest on the bottom of {owner} library{order_text}")
         }
+        ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => {
+            format!(
+                "Then {} the rest on the bottom of {owner} library{order_text}",
+                lowercase_first(&remainder_opener)
+            )
+        }
         ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {
             if !(look_at_top.reveal || reveal_tagged.is_some()) {
                 return None;
@@ -2601,9 +2631,13 @@ pub(super) fn describe_target_player_draw_then_lose_life(
     target_only: &crate::effects::TargetOnlyEffect,
     lose: &crate::effects::LoseLifeEffect,
 ) -> Option<String> {
+    let lose_targets_declared_player = lose.player
+        == ChooseSpec::Player(PlayerFilter::target_player())
+        || lose.player
+            == ChooseSpec::Player(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)));
     if draw.player != PlayerFilter::target_player()
         || target_only.target != ChooseSpec::target_player()
-        || lose.player != ChooseSpec::Player(PlayerFilter::target_player())
+        || !lose_targets_declared_player
         || draw.count != lose.amount
     {
         return None;
@@ -2629,15 +2663,30 @@ pub(super) fn describe_target_player_lose_then_you_gain_life(
     lose: &crate::effects::LoseLifeEffect,
     gain: &crate::effects::GainLifeEffect,
 ) -> Option<String> {
-    if target_only.target != ChooseSpec::target_player()
-        || lose.player != ChooseSpec::Player(PlayerFilter::target_player())
+    if !target_only.target.is_target() {
+        return None;
+    }
+    let (target, label) = match target_only.target.base() {
+        ChooseSpec::Player(PlayerFilter::Any) => (PlayerFilter::Any, "Target player"),
+        ChooseSpec::Player(PlayerFilter::Opponent) => (PlayerFilter::Opponent, "Target opponent"),
+        _ => return None,
+    };
+    let loses_to_declared_target = lose.player
+        == ChooseSpec::Player(PlayerFilter::Target(Box::new(target.clone())))
+        || lose.player == ChooseSpec::Player(PlayerFilter::AliasedTarget(Box::new(target)));
+    if !loses_to_declared_target
         || gain.player != ChooseSpec::Player(PlayerFilter::You)
         || lose.amount != gain.amount
     {
         return None;
     }
     if lose.amount == Value::X {
-        return Some("Target player loses X life and you gain X life".to_string());
+        return Some(format!("{label} loses X life and you gain X life"));
+    }
+    if let Value::Fixed(amount) = lose.amount.unhinted() {
+        return Some(format!(
+            "{label} loses {amount} life and you gain {amount} life"
+        ));
     }
     let where_x = match lose.amount.unhinted() {
         Value::PowerOf(spec)
@@ -2653,7 +2702,7 @@ pub(super) fn describe_target_player_lose_then_you_gain_life(
         _ => describe_where_x_basis(&lose.amount)?,
     };
     Some(format!(
-        "Target player loses X life and you gain X life, where X is {where_x}"
+        "{label} loses X life and you gain X life, where X is {where_x}"
     ))
 }
 
@@ -3026,6 +3075,60 @@ pub(crate) fn describe_mill_then_put_milled_cards(
     let put_clause = describe_put_milled_cards_clause(source_tag, mill, choices, move_chosen)?;
     let mill_clause = describe_tagged_mill_clause(mill);
     Some(format!("{mill_clause}. {put_clause}"))
+}
+
+pub(crate) fn describe_tagged_mill_then_put_all_matching_milled_cards(
+    source_tag: &str,
+    mill: &crate::effects::MillEffect,
+    matching: &crate::effects::TagMatchingObjectsEffect,
+    move_matching: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    if matching.tag != move_matching.tag
+        || matching.zone != Some(Zone::Graveyard)
+        || !matching.additional_zones.is_empty()
+        || !matching.source_tags.is_empty()
+        || !for_each_moves_tag_to_hand(move_matching, move_matching.tag.as_str())
+    {
+        return None;
+    }
+
+    let matching_source_constraints = matching
+        .filter
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| {
+            constraint.tag.as_str() == source_tag
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                )
+        })
+        .count();
+    if matching_source_constraints != 1 {
+        return None;
+    }
+
+    let mut filter = matching.filter.clone();
+    filter.zone = None;
+    filter.tagged_constraints.retain(|constraint| {
+        !(constraint.tag.as_str() == source_tag
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            ))
+    });
+    if !filter.tagged_constraints.is_empty() {
+        return None;
+    }
+
+    let matching_cards = pluralize_noun_phrase(&describe_revealed_selection_with_cards(
+        &filter.description(),
+    ));
+    let mill_clause = describe_tagged_mill_clause(mill);
+    let hand = describe_possessive_player_filter(&mill.player);
+    Some(format!(
+        "{mill_clause}. Put all {matching_cards} from among them into {hand} hand"
+    ))
 }
 
 pub(crate) fn mill_with_collection_tag(

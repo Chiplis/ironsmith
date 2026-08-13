@@ -52,6 +52,40 @@ pub(super) fn stored_emblem_rules_text(
         return None;
     }
 
+    // A quoted triggered ability can reach the subject/verb fallback after
+    // the outer comma splitter has removed its trailing X-definition. Recover
+    // that definition only when the retained presentation and the complete
+    // typed ability prove the same spell-cast/X-damage program.
+    let retained = text.trim_matches('"').to_ascii_lowercase();
+    if retained.contains("this emblem deals x damage to any target")
+        && let [ability] = emblem.abilities.as_slice()
+        && let AbilityKind::Triggered(triggered) = &ability.kind
+    {
+        let flattened = triggered.effects.flattened_default_effects();
+        if triggered.intervening_if.is_none()
+            && triggered.choices.len() == 1
+            && triggered
+                .trigger
+                .downcast_ref::<crate::triggers::SpellCastTrigger>()
+                .is_some_and(|spell_cast| spell_cast.caster == PlayerFilter::You)
+            && let [effect] = flattened
+        {
+            let effect = structural_unwrap_render_wrappers(effect);
+            if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>()
+                && damage.amount.unhinted() == &Value::X
+                && matches!(damage.target.base(), ChooseSpec::AnyTarget)
+                && triggered.choices[0].unhinted() == damage.target.unhinted()
+                && !damage.source_is_combat
+                && !damage.unpreventable
+            {
+                return Some(format!(
+                    "{}, this emblem deals X damage to any target, where X is the amount of mana spent to cast that spell.",
+                    triggered.trigger.display()
+                ));
+            }
+        }
+    }
+
     let mut typed_subtypes = emblem
         .abilities
         .iter()

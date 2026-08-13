@@ -2448,6 +2448,12 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
     } else {
         "them"
     };
+    let remainder_prefix = match remainder.surface {
+        ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => "Then put",
+        ironsmith_core::LibraryRemainderSurface::Rest
+        | ironsmith_core::LibraryRemainderSurface::RestBare => "Put",
+        _ => return None,
+    };
     Some((
         if reveals_selection {
             let mut sentences = vec![
@@ -2460,7 +2466,7 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
                 sentences.push(describe_effect(condition));
             }
             sentences.push(format!(
-                "Put the rest on the bottom of your library{order_text}"
+                "{remainder_prefix} the rest on the bottom of your library{order_text}"
             ));
             sentences.join(". ")
         } else {
@@ -3007,9 +3013,15 @@ pub(crate) fn render_look_reveal_repeated_choices(effects: &[&Effect]) -> Option
         } else {
             ""
         };
+        let remainder_prefix = match remainder.surface {
+            ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => "Then put",
+            ironsmith_core::LibraryRemainderSurface::Rest
+            | ironsmith_core::LibraryRemainderSurface::RestBare => "Put",
+            _ => return None,
+        };
         return Some((
             format!(
-                "{look_text}{reveal_text}. {choice_text}. Put the rest on the bottom of your library{order_text}"
+                "{look_text}{reveal_text}. {choice_text}. {remainder_prefix} the rest on the bottom of your library{order_text}"
             ),
             idx + 2,
         ));

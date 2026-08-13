@@ -947,7 +947,9 @@ pub(crate) fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> E
             EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
         }
         IfResultPredicate::AcceptedChoice => EffectPredicate::Chosen,
-        IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
+        IfResultPredicate::DidNot
+        | IfResultPredicate::ExplicitDidNot
+        | IfResultPredicate::Otherwise => EffectPredicate::DidNotHappen,
         IfResultPredicate::SearchedLibrary => EffectPredicate::SearchedLibrary,
         IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
         IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,

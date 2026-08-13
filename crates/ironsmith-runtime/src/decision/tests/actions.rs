@@ -360,6 +360,57 @@ fn test_can_cast_spell_uses_conditional_spell_flash_threshold() {
     );
 }
 
+#[test]
+fn conditional_flash_model_is_inactive_until_its_typed_condition_is_true() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(Step::BeginCombat);
+
+    let sorcery = CardBuilder::new(CardId::from_raw(1201), "Conditional Flash Sorcery")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::new())
+        .build();
+    let spell_id = game.create_object_from_card(&sorcery, alice, Zone::Hand);
+    let condition = ironsmith_core::Condition::YouControl(
+        crate::target::ObjectFilter::default()
+            .with_type(CardType::Artifact)
+            .you_control(),
+    );
+    let modeled = crate::static_abilities::CompiledStaticAbility::flash()
+        .with_labeled_condition(
+            condition,
+            "As long as you control an artifact, you may cast this spell as though it had flash",
+        );
+    game.object_mut(spell_id)
+        .expect("spell should exist")
+        .abilities_mut()
+        .push(
+            Ability::static_ability(StaticAbility::from_model(modeled))
+                .in_zones(vec![Zone::Hand, Zone::Stack]),
+        );
+
+    let spell = game.object(spell_id).expect("spell should exist").clone();
+    assert!(
+        !can_cast_spell(&game, alice, &spell, &CastingMethod::Normal),
+        "the Flash id on a false conditional wrapper must not grant unconditional timing"
+    );
+
+    let artifact = CardBuilder::new(CardId::from_raw(1202), "Condition Artifact")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+
+    let spell = game.object(spell_id).expect("spell should exist").clone();
+    assert!(
+        can_cast_spell(&game, alice, &spell, &CastingMethod::Normal),
+        "the same typed condition should grant flash timing once satisfied"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_compute_legal_actions_includes_kentaro_mana_value_cast_for_samurai() {

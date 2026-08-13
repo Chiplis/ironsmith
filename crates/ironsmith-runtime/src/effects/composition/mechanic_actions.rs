@@ -144,7 +144,7 @@ fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
 }
 
-pub(super) fn execute_keyword_action_replacement_effects(
+pub(crate) fn execute_keyword_action_replacement_effects(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     effects: Vec<Effect>,

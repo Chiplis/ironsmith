@@ -1287,6 +1287,29 @@ pub fn resolve_value(
             }
             Ok(seen.len() as i32)
         }
+        Value::DistinctCounterTypesAmong(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let mut seen = HashSet::new();
+                for snapshot in snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                {
+                    seen.extend(snapshot.counters.keys().copied());
+                }
+                return Ok(seen.len() as i32);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
+            let mut seen = HashSet::new();
+            for object in candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|object| filter.matches(object, &filter_ctx, game))
+            {
+                seen.extend(object.counters.keys().copied());
+            }
+            Ok(seen.len() as i32)
+        }
         Value::DistinctNames(filter) => {
             let filter_ctx = ctx.filter_context(game);
             if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
@@ -3083,6 +3106,7 @@ pub fn resolve_player_filter(
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
         | PlayerFilter::LostLifeThisTurn { .. }
         | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
@@ -4707,6 +4731,7 @@ pub(crate) fn resolve_player_filter_to_list(
             .map(|player| player.id)
             .collect()),
         PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
         | PlayerFilter::LostLifeThisTurn { .. } => Ok(game
             .players
             .iter()

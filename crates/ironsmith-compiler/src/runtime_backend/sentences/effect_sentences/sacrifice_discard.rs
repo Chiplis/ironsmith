@@ -152,6 +152,14 @@ pub(crate) fn parse_sacrifice(
     target: Option<TargetAst>,
 ) -> Result<EffectAst, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let opponent_chooses_object =
+        crate::runtime_backend::front_end::grammar::choices::parse_possessive_object_choice_tokens(
+            tokens,
+        )
+        .is_some_and(|shape| {
+            shape.actor
+                == crate::runtime_backend::front_end::grammar::choices::PossessiveObjectChoiceActor::Opponent
+        });
     let clause_shape = sacrifice_discard_grammar::parse_sacrifice_clause_shape(tokens);
     let tokens = clause_shape.body_tokens;
     let normalized_words = crate::runtime_backend::token_word_refs(tokens);
@@ -530,6 +538,41 @@ pub(crate) fn parse_sacrifice(
         filter.controller = Some(controller);
     }
 
+    if opponent_chooses_object {
+        let sacrificing_player = if player == PlayerAst::Implicit {
+            PlayerAst::You
+        } else {
+            player
+        };
+        if filter.controller.is_none()
+            && let Some(controller) = controller_filter_for_token_player(sacrificing_player)
+        {
+            filter.controller = Some(controller);
+        }
+        let tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            tokens,
+            "sacrificed",
+        );
+        return Ok(wrap_unless_escaped(
+            EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::ChooseObjects {
+                        filter,
+                        count: crate::effect::ChoiceCount::exactly(count as usize),
+                        count_value: None,
+                        player: PlayerAst::Opponent,
+                        tag: tag.clone(),
+                    },
+                    EffectAst::subject_verb_sacrifice_all(
+                        sacrificing_player,
+                        ObjectFilter::tagged(tag),
+                    ),
+                ],
+            },
+            unless_escaped,
+        ));
+    }
+
     // A caller-supplied antecedent target ("its controller sacrifices IT")
     // only applies when the object phrase is a co-referent pronoun. For a
     // real filter ("its controller sacrifices a land of their choice") the
@@ -824,6 +867,19 @@ mod selected_sacrifice_tests {
     use super::*;
     use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn opponent_choice_delegates_selection_without_changing_the_sacrificing_player() {
+        let tokens = lex_line("Sacrifice a land of an opponent's choice.", 0)
+            .expect("sacrifice clause should lex");
+        let parsed =
+            parse_sacrifice(&tokens, None, None).expect("opponent-chosen sacrifice should parse");
+        let debug = format!("{parsed:#?}");
+
+        assert!(debug.contains("ChooseObjects"), "{debug}");
+        assert!(debug.contains("player: Opponent"), "{debug}");
+        assert!(debug.contains("player: You"), "{debug}");
+    }
 
     #[test]
     fn chooser_sacrifices_only_the_selected_set() {

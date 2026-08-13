@@ -88,6 +88,33 @@
   transform: scale(1.1) !important;
 }
 
+/* Combat confirmation lives with the regular decision options. Keep the same
+   chamfer, typography, and interaction treatment; only tint its surface by
+   combat role so it remains easy to distinguish at a glance. */
+.decision-option-row.combat-confirm-option--attackers {
+  border-color: rgba(196, 91, 76, 0.62) !important;
+  background:
+    linear-gradient(180deg, rgba(91, 43, 37, 0.94), rgba(29, 18, 18, 0.98)) !important;
+}
+
+.decision-option-row.combat-confirm-option--attackers:hover:not(:disabled) {
+  border-color: rgba(225, 123, 105, 0.78) !important;
+  background:
+    linear-gradient(180deg, rgba(119, 55, 45, 0.98), rgba(42, 23, 21, 0.98)) !important;
+}
+
+.decision-option-row.combat-confirm-option--blockers {
+  border-color: rgba(79, 132, 196, 0.64) !important;
+  background:
+    linear-gradient(180deg, rgba(42, 65, 96, 0.94), rgba(17, 24, 35, 0.98)) !important;
+}
+
+.decision-option-row.combat-confirm-option--blockers:hover:not(:disabled) {
+  border-color: rgba(111, 164, 226, 0.8) !important;
+  background:
+    linear-gradient(180deg, rgba(51, 82, 121, 0.98), rgba(21, 32, 48, 0.98)) !important;
+}
+
 .decision-main-button:hover:not(:disabled) > * {
   color: #fff7df !important;
   -webkit-text-fill-color: #fff7df !important;
@@ -2334,4 +2361,3 @@
     border-top: 0 !important;
   }
 }
-

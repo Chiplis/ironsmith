@@ -2,6 +2,42 @@ use super::*;
 use crate::runtime_backend::util::tokenize_line;
 
 #[test]
+fn while_qualified_triggers_keep_event_time_conditions() {
+    for text in [
+        "this creature attacks while you don't control another Dinosaur",
+        "this creature attacks while you control two or more artifacts",
+        "this creature attacks or blocks while you control a Dinosaur",
+        "you attack while you control a creature with power 4 or greater",
+        "this creature attacks while you have the most life or are tied for most life",
+        "you cast this spell while you control your commander",
+    ] {
+        let tokens = tokenize_line(text, 0);
+        let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .unwrap_or_else(|error| panic!("failed to parse {text:?}: {error}"));
+        assert!(
+            matches!(
+                parsed,
+                crate::runtime_backend::ast::TriggerSpec::ConditionQualified { .. }
+            ),
+            "{text}: {parsed:#?}"
+        );
+    }
+
+    let tokens = tokenize_line("this creature attacks", 0);
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("ordinary attack trigger should parse");
+    assert!(matches!(
+        parsed,
+        crate::runtime_backend::ast::TriggerSpec::ThisAttacks
+    ));
+}
+
+#[test]
 fn filtered_damage_source_death_trigger_keeps_victim_and_damager_filters_distinct() {
     for text in [
         "another creature dealt damage this turn by a Spider you controlled dies",
@@ -170,6 +206,26 @@ fn parses_excess_noncombat_damage_recipient_as_a_passive_qualified_trigger() {
     assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
     assert!(filter.card_types.contains(&CardType::Creature));
     assert!(filter.card_types.contains(&CardType::Planeswalker));
+}
+
+#[test]
+fn parses_one_or_more_excess_recipients_as_a_grouped_trigger() {
+    let tokens = tokenize_line(
+        "one or more creatures your opponents control are dealt excess noncombat damage",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("grouped excess-damage trigger should parse");
+    let crate::runtime_backend::ast::TriggerSpec::IsDealtExcessNoncombatDamage(filter) = parsed
+    else {
+        panic!("expected a typed grouped excess-damage trigger");
+    };
+    assert!(filter.union_is_one_or_more());
+    assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+    assert_eq!(filter.card_types, [CardType::Creature]);
 }
 
 #[test]
@@ -553,6 +609,23 @@ fn keeps_list_or_but_splits_clause_or() {
     assert_eq!(
         parse_trigger_or_split(&clauses),
         Some(TriggerOrSplit { separator: 2 })
+    );
+}
+
+#[test]
+fn cast_or_land_entry_stays_two_trigger_branches() {
+    let tokens = tokenize_line("you cast a white spell or a Plains you control enters", 0);
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("cast-or-entry trigger should parse");
+    assert!(
+        matches!(
+            parsed,
+            crate::runtime_backend::ast::TriggerSpec::Either(_, _)
+        ),
+        "{parsed:#?}"
     );
 }
 
@@ -1652,6 +1725,34 @@ fn attack_group_quantifiers_preserve_their_minimum_cardinality() {
         };
         assert_eq!(*min_total_attackers, expected_minimum, "{clause}");
     }
+}
+
+#[test]
+fn attack_group_total_power_is_not_a_per_attacker_filter() {
+    let tokens = tokenize_line(
+        "you attack with creatures with total power 12 or greater",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("aggregate-power attack trigger should parse");
+    let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMoreWithAggregate {
+        filter,
+        metric,
+        comparison,
+    } = parsed
+    else {
+        panic!("expected aggregate-power attack trigger, got {parsed:#?}");
+    };
+    assert_eq!(metric, crate::effect::ChoiceAggregateMetric::Power);
+    assert_eq!(
+        comparison,
+        crate::filter::Comparison::GreaterThanOrEqual(12)
+    );
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+    assert!(filter.power.is_none());
 }
 
 #[test]

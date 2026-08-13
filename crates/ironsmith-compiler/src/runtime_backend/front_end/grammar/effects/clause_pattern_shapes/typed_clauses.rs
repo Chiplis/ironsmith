@@ -410,7 +410,6 @@ fn parse_can_attack_no_defender_lexed<'a>(
     primitives::phrase(&["can", "attack"]).parse_next(input)?;
     let tail = input.as_ref();
     if !marker_present(tail, primitives::phrase(&["as", "though"]))
-        || !marker_present(tail, primitives::kw("turn"))
         || !has_no_defender_tail(tail)
     {
         return Err(primitives::backtrack_err(

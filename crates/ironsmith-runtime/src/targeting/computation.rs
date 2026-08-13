@@ -388,14 +388,35 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     let target_abilities = view
         .static_abilities_rc(target_id)
         .unwrap_or_else(|| std::rc::Rc::new(extract_static_abilities(&target.abilities)));
+    let ignores_shroud = game
+        .effect_store
+        .cant_effects
+        .ignores_target_ability_for_object(
+            game,
+            target_id,
+            caster,
+            crate::static_abilities::StaticAbilityId::Shroud,
+        );
+    let ignores_hexproof = game
+        .effect_store
+        .cant_effects
+        .ignores_target_ability_for_object(
+            game,
+            target_id,
+            caster,
+            crate::static_abilities::StaticAbilityId::Hexproof,
+        );
 
     // Check for shroud
-    if target_abilities.iter().any(|a| a.has_shroud()) {
+    if target_abilities.iter().any(|a| a.has_shroud()) && !ignores_shroud {
         return TargetingResult::Invalid(TargetingInvalidReason::HasShroud);
     }
 
     // Check for hexproof (only blocks opponents)
-    if target_abilities.iter().any(|a| a.has_hexproof()) && game.controller_of(target) != caster {
+    if target_abilities.iter().any(|a| a.has_hexproof())
+        && game.controller_of(target) != caster
+        && !ignores_hexproof
+    {
         return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
     }
 
@@ -417,7 +438,11 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
 
     // Check CantEffectTracker for "can't be targeted" effects
     // Note: This includes both shroud and hexproof tracked separately
-    if game.is_untargetable(target_id) && game.controller_of(target) != caster {
+    if game.is_untargetable(target_id)
+        && game.controller_of(target) != caster
+        && !ignores_hexproof
+        && !ignores_shroud
+    {
         return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
     }
     if !game.can_target_object_from_source(target_id, source_id) {
@@ -451,12 +476,33 @@ fn can_target_object_from_source_snapshot_with_view(
     let target_abilities = view
         .static_abilities_rc(target_id)
         .unwrap_or_else(|| std::rc::Rc::new(extract_static_abilities(&target.abilities)));
+    let ignores_shroud = game
+        .effect_store
+        .cant_effects
+        .ignores_target_ability_for_object(
+            game,
+            target_id,
+            source_snapshot.controller,
+            crate::static_abilities::StaticAbilityId::Shroud,
+        );
+    let ignores_hexproof = game
+        .effect_store
+        .cant_effects
+        .ignores_target_ability_for_object(
+            game,
+            target_id,
+            source_snapshot.controller,
+            crate::static_abilities::StaticAbilityId::Hexproof,
+        );
 
-    if target_abilities.iter().any(|a| a.has_shroud()) {
+    if target_abilities.iter().any(|a| a.has_shroud()) && !ignores_shroud {
         return TargetingResult::Invalid(TargetingInvalidReason::HasShroud);
     }
 
-    if target_abilities.iter().any(|a| a.has_hexproof()) && game.controller_of(target) != caster {
+    if target_abilities.iter().any(|a| a.has_hexproof())
+        && game.controller_of(target) != caster
+        && !ignores_hexproof
+    {
         return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
     }
 
@@ -474,7 +520,11 @@ fn can_target_object_from_source_snapshot_with_view(
         return TargetingResult::Invalid(TargetingInvalidReason::HasProtection);
     }
 
-    if game.is_untargetable(target_id) && game.controller_of(target) != caster {
+    if game.is_untargetable(target_id)
+        && game.controller_of(target) != caster
+        && !ignores_hexproof
+        && !ignores_shroud
+    {
         return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
     }
 
@@ -1239,6 +1289,18 @@ fn can_target_player_from_source_or_snapshot(
         return false;
     }
     let source_snapshot = source_snapshot.expect("checked above");
+    if game
+        .effect_store
+        .cant_effects
+        .ignores_target_ability_for_player(
+            game,
+            player,
+            source_snapshot.controller,
+            crate::static_abilities::StaticAbilityId::Hexproof,
+        )
+    {
+        return true;
+    }
     !game
         .effect_store
         .cant_effects
@@ -1415,7 +1477,9 @@ mod tests {
     use crate::effect::Comparison;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
-    use crate::static_abilities::{AnthemCountExpression, GrantAbility, StaticAbility};
+    use crate::static_abilities::{
+        AnthemCountExpression, GrantAbility, StaticAbility, StaticAbilityId,
+    };
 
     fn create_test_game() -> GameState {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
@@ -1708,6 +1772,51 @@ mod tests {
         assert!(matches!(
             result,
             TargetingResult::Invalid(TargetingInvalidReason::HasShroud)
+        ));
+    }
+
+    #[test]
+    fn targeting_as_though_permission_is_scoped_to_the_allowed_source_controller() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let mut target = create_creature(1, "Hexproof Target", bob);
+        add_static_ability(&mut target, StaticAbility::hexproof());
+        let alice_source = create_creature(2, "Allowed Source", alice);
+        let charlie_source = create_creature(3, "Disallowed Source", charlie);
+        let target_id = target.id;
+        let alice_source_id = alice_source.id;
+        let charlie_source_id = charlie_source.id;
+        game.add_object(target);
+        game.add_object(alice_source);
+        game.add_object(charlie_source);
+        game.effect_store
+            .cant_effects
+            .targeting_as_though_overrides
+            .push(crate::game_state::TargetingAsThoughOverride {
+                objects: Some(ObjectFilter::creature().controlled_by(PlayerFilter::Opponent)),
+                players: None,
+                allowed_source_controller: Some(alice),
+                ignored_ability: StaticAbilityId::Hexproof,
+                controller: alice,
+                source: alice_source_id,
+            });
+
+        assert!(
+            can_target_object(&game, target_id, alice_source_id, alice).is_legal(),
+            "the explicitly permitted controller may target through hexproof"
+        );
+        assert!(matches!(
+            can_target_object(&game, target_id, charlie_source_id, charlie),
+            TargetingResult::Invalid(TargetingInvalidReason::HasHexproof)
         ));
     }
 

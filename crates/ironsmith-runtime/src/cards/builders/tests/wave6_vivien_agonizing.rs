@@ -64,7 +64,7 @@ fn vivien_hidden_choice_and_creature_permission_share_one_exiled_tag() {
         exile.spec.base(),
         ChooseSpec::Tagged(tag) if tag == &choose.tag
     ));
-    assert_eq!(grant.tag, choose.tag);
+    assert_eq!(grant.tag.as_str(), crate::tag::SOURCE_EXILED_TAG);
     assert_eq!(
         grant.duration,
         crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled

@@ -888,6 +888,9 @@ where
             ironsmith_core::SequenceSurface::CommaThen => {
                 crate::effects::SequenceEffect::comma_then(effects)
             }
+            ironsmith_core::SequenceSurface::RepeatedCommaThen => {
+                crate::effects::SequenceEffect::repeated_comma_then(effects)
+            }
             ironsmith_core::SequenceSurface::Coordinated => {
                 crate::effects::SequenceEffect::coordinated(effects)
             }
@@ -1990,6 +1993,12 @@ where
         return Ok(Effect::new(crate::effects::PutStickerEffect::new(
             payload.target.clone(),
             payload.action,
+        )));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::UnlockRoomDoorEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::UnlockRoomDoorEffect::new(
+            payload.player.clone(),
+            payload.room_filter.clone(),
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::FatesealEffect>(&effect) {

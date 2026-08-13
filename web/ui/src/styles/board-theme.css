@@ -1939,9 +1939,486 @@ textarea,
 .decision-order-arrow,
 .mana-payment-shell,
 .mana-payment-track,
-.mana-payment-indicator,
 .mana-payment-group {
   border-radius: 0 !important;
+}
+
+/* Whole-cost mana planner -------------------------------------------------- */
+.mana-plan-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.55rem;
+}
+
+.mana-plan-strip {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  align-items: center;
+  gap: 0.45rem;
+  margin-block: auto;
+  overflow: hidden;
+  padding-block: 0.1rem;
+}
+
+.mana-plan-strip-cost,
+.mana-plan-strip-pools,
+.mana-plan-strip-source-region,
+.mana-plan-strip-source,
+.mana-plan-strip-warning,
+.mana-plan-strip-life-preference,
+.mana-plan-strip-actions {
+  display: flex;
+  align-items: center;
+}
+
+.mana-plan-strip-cost {
+  min-width: 92px;
+  max-width: 230px;
+  flex: 0 1 auto;
+  flex-direction: row;
+  align-self: stretch;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding-right: 0.45rem;
+  border-right: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+}
+
+.mana-plan-strip-label {
+  max-width: 100%;
+  color: color-mix(in srgb, var(--foreground) 58%, transparent);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.mana-plan-strip-pips,
+.mana-plan-strip-pool-symbols,
+.mana-plan-strip-produced {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.mana-plan-strip-pip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.42));
+}
+
+.mana-plan-strip-pools {
+  min-width: 240px;
+  flex: 0 1 auto;
+  align-self: stretch;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  background: color-mix(in srgb, var(--background) 58%, transparent);
+}
+
+.mana-plan-strip-pool {
+  display: flex;
+  min-width: 46px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.08rem;
+}
+
+.mana-plan-strip-pool-symbol,
+.mana-plan-strip-empty-pool {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.05rem;
+  font-size: 0.64rem;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.mana-plan-strip-empty-pool {
+  opacity: 0.55;
+}
+
+.mana-plan-strip-arrow {
+  flex: 0 0 auto;
+  opacity: 0.38;
+}
+
+.mana-plan-strip-source-region {
+  min-width: 180px;
+  flex: 1 1 360px;
+  align-self: stretch;
+  align-items: stretch;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.mana-plan-strip-source-scroller {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.mana-plan-strip-source-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.mana-plan-strip-source {
+  height: calc(100% - 2px);
+  min-width: 190px;
+  max-width: 420px;
+  flex: 1 0 230px;
+  gap: 0.35rem;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--border) 66%, transparent);
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  transition: border-color 150ms ease, background 150ms ease, opacity 150ms ease;
+}
+
+.mana-plan-strip-source.is-planned {
+  border-color: rgba(247, 160, 64, 0.58);
+  background: linear-gradient(90deg, rgba(247, 160, 64, 0.15), rgba(247, 160, 64, 0.025));
+}
+
+.mana-plan-strip-source.is-required {
+  border-color: rgba(92, 194, 119, 0.78);
+}
+
+.mana-plan-strip-source.is-excluded {
+  opacity: 0.48;
+  text-decoration: line-through;
+}
+
+.mana-plan-strip-source .mana-plan-source-index {
+  width: 1.2rem;
+  height: 1.2rem;
+  font-size: 0.62rem;
+}
+
+.mana-plan-strip-source-copy {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  line-height: 1.05;
+}
+
+.mana-plan-strip-source-name,
+.mana-plan-strip-source-action {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mana-plan-strip-source-name {
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.mana-plan-strip-source-action {
+  margin-top: 0.1rem;
+  font-size: 0.58rem;
+  line-height: 1.1;
+  opacity: 0.62;
+}
+
+.mana-plan-strip-produced {
+  flex: 0 0 auto;
+}
+
+.mana-plan-strip-source .mana-plan-constraint {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.mana-plan-strip-warning,
+.mana-plan-strip-life-preference {
+  align-self: stretch;
+  flex: 0 0 auto;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0 0.4rem;
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  background: rgba(245, 158, 11, 0.09);
+  color: color-mix(in srgb, var(--foreground) 88%, #f59e0b);
+  font-size: 0.62rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.mana-plan-strip-life-preference {
+  border-color: color-mix(in srgb, var(--border) 64%, transparent);
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
+  color: inherit;
+}
+
+.mana-plan-strip-actions {
+  align-self: stretch;
+  flex: 0 0 auto;
+  gap: 0.3rem;
+}
+
+.mana-plan-strip-actions button {
+  height: 100%;
+  min-height: 0;
+  padding-inline: 0.55rem;
+  font-size: 0.68rem;
+}
+
+.mana-plan-strip-no-sources {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+  padding-inline: 0.45rem;
+  font-size: 0.68rem;
+  font-style: italic;
+  opacity: 0.62;
+}
+
+.mana-plan-strip.is-adjusting .mana-plan-strip-source {
+  min-width: 270px;
+  max-width: 390px;
+  flex-basis: 310px;
+}
+
+.mana-plan-heading,
+.mana-plan-section-title,
+.mana-plan-source,
+.mana-plan-actions {
+  display: flex;
+  align-items: center;
+}
+
+.mana-plan-heading,
+.mana-plan-section-title,
+.mana-plan-actions {
+  justify-content: space-between;
+}
+
+.mana-plan-eyebrow,
+.mana-plan-label {
+  color: color-mix(in srgb, var(--foreground) 62%, transparent);
+  font-size: 0.66rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.mana-plan-title {
+  margin: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.mana-plan-pip {
+  display: inline-flex;
+  min-width: 2rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.42));
+}
+
+.mana-plan-pip-method {
+  max-width: 4.5rem;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--foreground) 66%, transparent);
+  font-size: 0.52rem;
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mana-plan-pip.is-life .mana-plan-pip-method {
+  color: #fda4af;
+}
+
+.mana-plan-pip.is-convoke .mana-plan-pip-method,
+.mana-plan-pip.is-improvise .mana-plan-pip-method {
+  color: #86efac;
+}
+
+.mana-plan-pools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--background) 67%, transparent);
+  padding: 0.45rem;
+}
+
+.mana-plan-pool {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.mana-plan-arrow {
+  opacity: 0.45;
+}
+
+.mana-plan-section {
+  min-height: 0;
+}
+
+.mana-plan-section-title {
+  margin-bottom: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mana-plan-source-list {
+  display: flex;
+  max-height: 220px;
+  flex-direction: column;
+  gap: 0.25rem;
+  overflow-y: auto;
+}
+
+.mana-plan-source {
+  min-width: 0;
+  gap: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  background: color-mix(in srgb, var(--muted) 52%, transparent);
+  padding: 0.42rem 0.5rem;
+  transition: border-color 150ms ease, background 150ms ease, opacity 150ms ease;
+}
+
+.mana-plan-source.is-planned {
+  border-color: rgba(247, 160, 64, 0.62);
+  background: linear-gradient(90deg, rgba(247, 160, 64, 0.16), rgba(247, 160, 64, 0.035));
+}
+
+.mana-plan-source.is-required {
+  border-color: rgba(92, 194, 119, 0.8);
+}
+
+.mana-plan-source.is-excluded {
+  opacity: 0.48;
+  text-decoration: line-through;
+}
+
+.mana-plan-source-index {
+  display: inline-flex;
+  height: 1.35rem;
+  width: 1.35rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.mana-plan-constraint {
+  display: inline-flex;
+  height: 1.65rem;
+  width: 1.65rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  background: color-mix(in srgb, var(--background) 78%, transparent);
+}
+
+.mana-plan-constraint.is-required {
+  border-color: rgba(92, 194, 119, 0.85);
+  background: rgba(92, 194, 119, 0.18);
+}
+
+.mana-plan-constraint.is-preserved {
+  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(96, 165, 250, 0.17);
+}
+
+.mana-plan-constraint.is-excluded {
+  border-color: rgba(248, 113, 113, 0.88);
+  background: rgba(248, 113, 113, 0.16);
+}
+
+.mana-plan-empty,
+.mana-plan-warnings {
+  border: 1px dashed color-mix(in srgb, var(--border) 75%, transparent);
+  padding: 0.5rem;
+  font-size: 0.76rem;
+}
+
+.mana-plan-life-preference {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.76rem;
+}
+
+.mana-plan-warnings {
+  display: flex;
+  gap: 0.4rem;
+  border-style: solid;
+  border-color: rgba(245, 158, 11, 0.48);
+  background: rgba(245, 158, 11, 0.1);
+  color: color-mix(in srgb, var(--foreground) 88%, #f59e0b);
+}
+
+.mana-plan-actions {
+  gap: 0.4rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  padding-top: 0.45rem;
+}
+
+.mana-plan-actions > :first-child {
+  margin-right: auto;
+}
+
+@media (max-width: 720px) {
+  .mana-plan-content {
+    padding: 0.25rem;
+  }
+
+  .mana-plan-pools {
+    grid-template-columns: 1fr;
+  }
+
+  .mana-plan-arrow {
+    display: none;
+  }
+
+  .mana-plan-pool {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mana-plan-source-list {
+    max-height: min(34vh, 260px);
+  }
 }
 
 .decision-option-row,
@@ -1953,7 +2430,6 @@ textarea,
 .decision-order-arrow,
 .mana-payment-shell,
 .mana-payment-track,
-.mana-payment-indicator,
 .mana-payment-group {
   clip-path: polygon(
     8px 0,
@@ -2116,7 +2592,6 @@ textarea,
 .app-shell[data-borderless-preview="true"] .decision-order-arrow,
 .app-shell[data-borderless-preview="true"] .mana-payment-shell,
 .app-shell[data-borderless-preview="true"] .mana-payment-track,
-.app-shell[data-borderless-preview="true"] .mana-payment-indicator,
 .app-shell[data-borderless-preview="true"] .mana-payment-group,
 .app-shell[data-borderless-preview="true"] .decision-neon-button,
 .app-shell[data-borderless-preview="true"] .pass-priority-btn,
@@ -2152,7 +2627,6 @@ textarea,
 .app-shell[data-borderless-preview="true"] .decision-order-arrow,
 .app-shell[data-borderless-preview="true"] .mana-payment-shell,
 .app-shell[data-borderless-preview="true"] .mana-payment-track,
-.app-shell[data-borderless-preview="true"] .mana-payment-indicator,
 .app-shell[data-borderless-preview="true"] .mana-payment-group,
 .app-shell[data-borderless-preview="true"] .decision-neon-button,
 .app-shell[data-borderless-preview="true"] .pass-priority-btn,
@@ -2293,14 +2767,6 @@ textarea,
   box-shadow:
     0 8px 16px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 245, 220, 0.06) !important;
-}
-
-.mana-payment-indicator {
-  border-color: rgba(214, 176, 109, 0.72) !important;
-  background: rgba(214, 176, 109, 0.16) !important;
-  box-shadow:
-    0 0 14px rgba(214, 176, 109, 0.26),
-    inset 0 0 10px rgba(255, 232, 184, 0.08) !important;
 }
 
 .mana-payment-track {

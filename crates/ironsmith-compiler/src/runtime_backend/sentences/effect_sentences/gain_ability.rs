@@ -942,8 +942,19 @@ pub(crate) fn parse_granted_abilities_for_token_definition(
     // see.
     let ability_tokens = crate::runtime_backend::front_end::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(ability_tokens)
         .map_or(ability_tokens, |shape| shape.body_tokens);
-    let specialized =
-        token_rule_is_already_lowered_by_specialized_shape(definition, ability_tokens, &name);
+    // A mixed `It has <keyword>, "<rule>," and <activation>` sentence is a
+    // list of independent abilities.  A compact token-rule probe can match
+    // one member (most commonly the trailing equip ability), but treating
+    // that partial match as the whole sentence discards the siblings.  Let
+    // the complete granted-ability list parser own exactly this authored
+    // mixed-pronoun shape; individual specialized token rules retain their
+    // normal short-circuit below.
+    // Callers pass the ability-list tail after stripping `It has`/`They
+    // have`, so recognize the mixed list from its top-level quoted split at
+    // this boundary rather than looking for the already-consumed pronoun.
+    let mixed_pronoun_list = split_quoted_granted_ability_list(ability_tokens).is_some();
+    let specialized = !mixed_pronoun_list
+        && token_rule_is_already_lowered_by_specialized_shape(definition, ability_tokens, &name);
     if specialized {
         return Ok(Vec::new());
     }
@@ -982,7 +993,8 @@ pub(crate) fn parse_granted_abilities_for_token_definition(
             // subject itself "has". Preserve the ordinary typed static-line
             // parse as one granted carrier before the gain-list grammar can
             // reduce the trailing restriction to an intrinsic token keyword.
-            if let Some(static_abilities) = parse_static_ability_ast_line_lexed(ability_tokens)?
+            if !mixed_pronoun_list
+                && let Some(static_abilities) = parse_static_ability_ast_line_lexed(ability_tokens)?
                 && !static_abilities.is_empty()
                 && static_abilities
                     .iter()
@@ -3007,8 +3019,7 @@ mod tests {
         let [GrantedAbilityAst::StaticAbility(ability)] = parsed.as_slice() else {
             panic!("expected one filtered static carrier: {parsed:#?}");
         };
-        let crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
-            &ability.payload
+        let crate::static_abilities::StaticAbilityPayload::GrantAbility(grant) = &ability.payload
         else {
             panic!("expected a filtered object-ability grant: {ability:#?}");
         };

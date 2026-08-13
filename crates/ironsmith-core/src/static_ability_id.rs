@@ -74,6 +74,7 @@ pub enum StaticAbilityId {
     FlyingRestriction,
     FlyingOnlyRestriction,
     CanBlockFlying,
+    CanBlockAsThoughNoShadow,
     CanBlockOnlyFlying,
     CanBlockAdditionalCreatureEachCombat,
     MaxCreaturesCanAttackEachCombat,
@@ -153,6 +154,7 @@ pub enum StaticAbilityId {
     CostIncreaseManaCost,
     CostIncreasePerAdditionalTarget,
     CostIncreaseManaCostPerAdditionalTarget,
+    CommanderTaxLifeSubstitution,
     Affinity,
     AffinityForArtifacts,
     Delve,
@@ -292,6 +294,7 @@ pub enum StaticAbilityId {
     SpendManaAsAnyColor,
     SpendManaAsAnyColorActivationCosts,
     RuleRestriction,
+    TargetingAsThoughNoAbility,
     DiscardOrRedirectReplacement,
     SacrificeOrRedirectReplacement,
     PayLifeOrEnterTappedReplacement,
@@ -383,6 +386,7 @@ impl StaticAbilityId {
             | FlyingRestriction
             | FlyingOnlyRestriction
             | CanBlockFlying
+            | CanBlockAsThoughNoShadow
             | CanBlockOnlyFlying
             | CanBlockAdditionalCreatureEachCombat
             | MaxCreaturesCanAttackEachCombat
@@ -462,6 +466,7 @@ impl StaticAbilityId {
             | CostIncreaseManaCost
             | CostIncreasePerAdditionalTarget
             | CostIncreaseManaCostPerAdditionalTarget
+            | CommanderTaxLifeSubstitution
             | Affinity
             | AffinityForArtifacts
             | Delve
@@ -601,6 +606,7 @@ impl StaticAbilityId {
             | SpendManaAsAnyColor
             | SpendManaAsAnyColorActivationCosts
             | RuleRestriction
+            | TargetingAsThoughNoAbility
             | DiscardOrRedirectReplacement
             | SacrificeOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
@@ -736,6 +742,7 @@ impl StaticAbilityId {
                 | FlyingRestriction
                 | FlyingOnlyRestriction
                 | CanBlockFlying
+                | CanBlockAsThoughNoShadow
                 | CanBlockOnlyFlying
                 | MaxCreaturesCanAttackEachCombat
                 | MaxCreaturesCanBlockEachCombat

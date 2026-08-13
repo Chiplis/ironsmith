@@ -125,6 +125,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
                     | TriggerSpec::AttacksOneOrMore(_)
                     | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
                     | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
+                    | TriggerSpec::AttacksOneOrMoreWithAggregate { .. }
                     | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
                     | TriggerSpec::CounterPutOn { .. }
                     | TriggerSpec::NthCounterPutOn { .. }
@@ -1069,7 +1070,12 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::Attach { object, target } => {
                     track_target_player(object, frame);
-                    track_target_player(target, frame);
+                    // The destination, rather than the attached object set, is
+                    // the newest singular antecedent in "attach ... to target
+                    // creature. ... that creature".  Reserve an identity tag
+                    // only when a later object reference proves that the
+                    // destination must survive this instruction.
+                    maybe_tag_target(target, frame, id_gen, "attachment_target")?;
                 }
                 SubjectVerbActionAst::Unattach { object } => {
                     track_target_player(object, frame);
@@ -2233,8 +2239,10 @@ fn result_gate_accepts_producer(gate: &EffectAst, producer: &EffectAst) -> bool 
 /// rather than its original producer, the fallback antecedent. For example,
 /// after “If no counters were removed this way, ... Otherwise, ...”, the
 /// fallback runs when that negated gate fails because counters were removed.
-/// The parser represents `otherwise` as a following `DidNot` result, so export
-/// the gate's assigned result ID for exactly that complementary shape.
+/// The parser retains `otherwise` as a distinct compiler-only predicate, so
+/// only that spelling may consume the gate's own outcome. An explicit
+/// negative clause such as "you lose the flip" or "if you don't" still
+/// refers to the original producer and must not steal the gate's result ID.
 fn result_gate_exports_outcome_to_fallback(effect: &EffectAst, next: Option<&EffectAst>) -> bool {
     let is_result_gate = matches!(
         effect,
@@ -2244,10 +2252,10 @@ fn result_gate_exports_outcome_to_fallback(effect: &EffectAst, next: Option<&Eff
         next,
         Some(
             EffectAst::IfResult {
-                predicate: IfResultPredicate::DidNot,
+                predicate: IfResultPredicate::Otherwise,
                 ..
             } | EffectAst::ResolvedIfResult {
-                predicate: IfResultPredicate::DidNot,
+                predicate: IfResultPredicate::Otherwise,
                 ..
             }
         )
@@ -3810,6 +3818,7 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(count, state)?;
             }
             SubjectVerbActionAst::Learn
+            | SubjectVerbActionAst::UnlockRoomDoor
             | SubjectVerbActionAst::ReverseTurnOrder
             | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
             | SubjectVerbActionAst::PutOntoBattlefield { .. }
@@ -4903,7 +4912,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::RegisterNextBatchEnterWithCounters { count, .. } => {
                 bind_unresolved_it_in_value(count, seed_tag)
             }
-            SubjectVerbActionAst::Learn => 0,
+            SubjectVerbActionAst::Learn | SubjectVerbActionAst::UnlockRoomDoor => 0,
             SubjectVerbActionAst::ReverseTurnOrder => 0,
             SubjectVerbActionAst::TurnFaceUp { .. } => 0,
             SubjectVerbActionAst::ShuffleLibrary => 0,
@@ -5178,6 +5187,8 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
+        | Value::ColorPairsAmong(filter)
+        | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => bind_unresolved_it_in_filter(filter, seed_tag),
         Value::StaticAbilitiesAmong { filter, .. } => {
@@ -5489,7 +5500,7 @@ mod tests {
                 effects: vec![investigate()],
             },
             EffectAst::IfResult {
-                predicate: IfResultPredicate::DidNot,
+                predicate: IfResultPredicate::Otherwise,
                 effects: vec![investigate()],
             },
         ];
@@ -5516,11 +5527,11 @@ mod tests {
         ));
         assert!(matches!(
             &annotated.effects[2].effect,
-            EffectAst::ResolvedIfResult { condition, predicate: IfResultPredicate::DidNot, .. }
+            EffectAst::ResolvedIfResult { condition, predicate: IfResultPredicate::Otherwise, .. }
                 if *condition == gate_id
         ));
 
-        let mut non_otherwise = effects;
+        let mut non_otherwise = effects.clone();
         let EffectAst::IfResult { predicate, .. } = &mut non_otherwise[2] else {
             unreachable!()
         };
@@ -5536,6 +5547,45 @@ mod tests {
             &annotated.effects[2].effect,
             EffectAst::ResolvedIfResult { condition, predicate: IfResultPredicate::Did, .. }
                 if *condition == producer_id
+        ));
+
+        let mut ordinary_negative_branch = effects;
+        let EffectAst::IfResult { predicate, .. } = &mut ordinary_negative_branch[2] else {
+            unreachable!()
+        };
+        *predicate = IfResultPredicate::DidNot;
+        let annotated = annotate_effect_sequence(
+            &ordinary_negative_branch,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate ordinary inverse result branch");
+        assert!(matches!(
+            &annotated.effects[2].effect,
+            EffectAst::ResolvedIfResult { condition, predicate: IfResultPredicate::DidNot, .. }
+                if *condition == producer_id
+        ));
+
+        let mut explicit_negative_branch = ordinary_negative_branch;
+        let EffectAst::IfResult { predicate, .. } = &mut explicit_negative_branch[2] else {
+            unreachable!()
+        };
+        *predicate = IfResultPredicate::ExplicitDidNot;
+        let annotated = annotate_effect_sequence(
+            &explicit_negative_branch,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate explicit ordinary inverse result branch");
+        assert!(matches!(
+            &annotated.effects[2].effect,
+            EffectAst::ResolvedIfResult {
+                condition,
+                predicate: IfResultPredicate::ExplicitDidNot,
+                ..
+            } if *condition == producer_id
         ));
     }
 

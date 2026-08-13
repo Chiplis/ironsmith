@@ -1218,7 +1218,13 @@ pub(super) fn apply_targets_response(
 ) -> Result<GameProgress, GameLoopError> {
     // Check for pending activation first
     if let Some(mut pending) = state.pending_activation.take() {
-        let requirements = pending.remaining_requirements.clone();
+        let prompt_count = pending.active_target_requirement_count.max(1);
+        let requirements = pending
+            .remaining_requirements
+            .iter()
+            .take(prompt_count)
+            .cloned()
+            .collect::<Vec<_>>();
         let assignments =
             build_target_assignments(&requirements, targets, pending.chosen_targets.len())?;
         // Combine previously chosen targets with new ones
@@ -1240,7 +1246,8 @@ pub(super) fn apply_targets_response(
             state.rollback_action(game);
             return Err(error);
         }
-        pending.remaining_requirements.clear();
+        pending.remaining_requirements.drain(..requirements.len());
+        pending.active_target_requirement_count = 0;
 
         if let Some(ability) = game.current_ability(pending.source, pending.ability_index)
             && let crate::ability::AbilityKind::Activated(activated) = &ability.kind
@@ -1272,7 +1279,11 @@ pub(super) fn apply_targets_response(
             assign_pending_activation_cost(game, &mut pending, &locked_cost, decision_maker)?;
         }
 
-        pending.stage = stage_after_activation_announcements(&pending);
+        pending.stage = if pending.remaining_requirements.is_empty() {
+            stage_after_activation_announcements(&pending)
+        } else {
+            ActivationStage::ChoosingTargets
+        };
 
         return continue_activation(game, trigger_queue, state, pending, decision_maker);
     }
@@ -1281,7 +1292,13 @@ pub(super) fn apply_targets_response(
         GameLoopError::InvalidState("No pending cast for targets response".to_string())
     })?;
 
-    let requirements = pending.remaining_requirements.clone();
+    let prompt_count = pending.active_target_requirement_count.max(1);
+    let requirements = pending
+        .remaining_requirements
+        .iter()
+        .take(prompt_count)
+        .cloned()
+        .collect::<Vec<_>>();
     let assignments =
         build_target_assignments(&requirements, targets, pending.chosen_targets.len())?;
 
@@ -1307,7 +1324,18 @@ pub(super) fn apply_targets_response(
         state.rollback_action(game);
         return Err(error);
     }
-    pending.remaining_requirements.clear();
+    pending.remaining_requirements.drain(..requirements.len());
+    pending.active_target_requirement_count = 0;
+
+    if !pending.remaining_requirements.is_empty() {
+        return continue_to_targets_or_mana_payment(
+            game,
+            trigger_queue,
+            state,
+            pending,
+            decision_maker,
+        );
+    }
 
     // CR 601.2d announces divisions after targets and before total-cost locking.
     continue_cast_target_distributions_or_mana_payment(
@@ -1317,6 +1345,70 @@ pub(super) fn apply_targets_response(
         pending,
         decision_maker,
     )
+}
+
+pub(super) fn apply_target_chooser_response(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    choice: usize,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    if state
+        .pending_activation
+        .as_ref()
+        .is_some_and(|pending| pending.stage == ActivationStage::ChoosingTargetChooser)
+    {
+        let mut pending = state
+            .pending_activation
+            .take()
+            .expect("pending activation checked above");
+        let chooser = pending
+            .pending_target_chooser_candidates
+            .get(choice)
+            .copied()
+            .ok_or_else(|| GameLoopError::InvalidState("Invalid target chooser".to_string()))?;
+        pending.pending_target_chooser_candidates.clear();
+        let requirement = pending.remaining_requirements.first_mut().ok_or_else(|| {
+            GameLoopError::InvalidState("Missing delegated target requirement".to_string())
+        })?;
+        requirement.chooser = Some(crate::target::PlayerFilter::Specific(chooser));
+        pending.stage = ActivationStage::ChoosingTargets;
+        return continue_activation(game, trigger_queue, state, pending, decision_maker);
+    }
+
+    if state
+        .pending_cast
+        .as_ref()
+        .is_some_and(|pending| pending.stage == CastStage::ChoosingTargetChooser)
+    {
+        let mut pending = state
+            .pending_cast
+            .take()
+            .expect("pending cast checked above");
+        let chooser = pending
+            .pending_target_chooser_candidates
+            .get(choice)
+            .copied()
+            .ok_or_else(|| GameLoopError::InvalidState("Invalid target chooser".to_string()))?;
+        pending.pending_target_chooser_candidates.clear();
+        let requirement = pending.remaining_requirements.first_mut().ok_or_else(|| {
+            GameLoopError::InvalidState("Missing delegated target requirement".to_string())
+        })?;
+        requirement.chooser = Some(crate::target::PlayerFilter::Specific(chooser));
+        pending.stage = CastStage::ChoosingTargets;
+        return continue_to_targets_or_mana_payment(
+            game,
+            trigger_queue,
+            state,
+            pending,
+            decision_maker,
+        );
+    }
+
+    Err(GameLoopError::InvalidState(
+        "No pending delegated target choice".to_string(),
+    ))
 }
 
 /// Apply an X value response for a pending spell cast.

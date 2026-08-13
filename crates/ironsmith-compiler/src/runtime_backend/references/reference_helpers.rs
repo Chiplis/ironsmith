@@ -235,6 +235,10 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
             push_target_player_filter_choices(base, choices);
             append_object_filter_target_player_choices(sources, choices);
         }
+        PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => {
+            push_target_player_filter_choices(base, choices);
+            append_object_filter_target_player_choices(sources, choices);
+        }
         PlayerFilter::Any
         | PlayerFilter::You
         | PlayerFilter::NotYou
@@ -481,6 +485,8 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
+        | Value::ColorPairsAmong(filter)
+        | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => replace_it_tag_in_filter(filter, tag),
         Value::StaticAbilitiesAmong { filter, .. } => replace_it_tag_in_filter(filter, tag),
@@ -1247,6 +1253,10 @@ pub(crate) fn resolve_value_it_tag(
             abilities: abilities.clone(),
         }),
         Value::ColorsAmong(filter) => Ok(Value::ColorsAmong(resolve_it_tag(filter, refs)?)),
+        Value::ColorPairsAmong(filter) => Ok(Value::ColorPairsAmong(resolve_it_tag(filter, refs)?)),
+        Value::DistinctCounterTypesAmong(filter) => Ok(Value::DistinctCounterTypesAmong(
+            resolve_it_tag(filter, refs)?,
+        )),
         Value::DistinctNames(filter) => Ok(Value::DistinctNames(resolve_it_tag(filter, refs)?)),
         Value::DistinctPowers(filter) => Ok(Value::DistinctPowers(resolve_it_tag(filter, refs)?)),
         Value::TurnHistoryCount(query) => {

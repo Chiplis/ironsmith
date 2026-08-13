@@ -456,7 +456,9 @@ fn parse_direct_prior_effect_result_surface(
     } else if after.first() == Some(&"countered") {
         PriorEffectAction::Countered
     } else if after.starts_with(&["returned", "to", "its", "owners", "hand"])
+        || after.starts_with(&["returned", "to", "its", "owner's", "hand"])
         || after.starts_with(&["returned", "to", "their", "owners", "hands"])
+        || after.starts_with(&["returned", "to", "their", "owners'", "hands"])
     {
         // This is an outcome predicate, not a present-zone characteristic:
         // "that card is returned to its owner's hand this way" must observe

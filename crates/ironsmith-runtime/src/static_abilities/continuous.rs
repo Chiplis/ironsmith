@@ -1151,12 +1151,18 @@ fn sticker_action_count_noun(action: crate::events::KeywordActionKind) -> &'stat
 fn describe_sticker_count_subject(
     action: crate::events::KeywordActionKind,
     surface: Option<&SourceReferenceSurface>,
+    min_name_letters: Option<u32>,
     max_name_letters: Option<u32>,
 ) -> String {
     let source_text = surface
         .map(describe_source_reference_surface)
         .unwrap_or_else(|| "this permanent".to_string());
     let mut text = format!("{} on {source_text}", sticker_action_count_noun(action));
+    if let Some(min_letters) = min_name_letters {
+        let min_letters_text =
+            number_word_u32(min_letters).unwrap_or_else(|| min_letters.to_string());
+        text.push_str(&format!(" with {min_letters_text} or more letters"));
+    }
     if let Some(max_letters) = max_name_letters {
         let max_letters_text =
             number_word_u32(max_letters).unwrap_or_else(|| max_letters.to_string());
@@ -1213,6 +1219,11 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             }
             subject
         }
+        AnthemCountExpression::GraveyardsWithAtLeastCards { minimum_cards } => {
+            let count =
+                number_word_u32(*minimum_cards).unwrap_or_else(|| minimum_cards.to_string());
+            format!("graveyards with {count} or more cards in them")
+        }
         AnthemCountExpression::GreatestManaValueAmong(filter) => {
             format!(
                 "the greatest mana value among {}",
@@ -1251,8 +1262,14 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::StickersOnSource {
             action,
             surface,
+            min_name_letters,
             max_name_letters,
-        } => describe_sticker_count_subject(*action, surface.as_ref(), *max_name_letters),
+        } => describe_sticker_count_subject(
+            *action,
+            surface.as_ref(),
+            *min_name_letters,
+            *max_name_letters,
+        ),
         AnthemCountExpression::CountersOnAffected(counter_type) => {
             format!("{} counter on it", counter_type.description())
         }
@@ -1417,6 +1434,11 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
             Some(describe_anthem_for_each_matching_filter(filter))
         }
+        AnthemCountExpression::GraveyardsWithAtLeastCards { minimum_cards } => {
+            let count =
+                number_word_u32(*minimum_cards).unwrap_or_else(|| minimum_cards.to_string());
+            Some(format!("graveyard with {count} or more cards in it"))
+        }
         AnthemCountExpression::MatchingFilter(filter)
             if filter.zone == Some(Zone::Graveyard)
                 && filter.name.is_some()
@@ -1459,10 +1481,12 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::StickersOnSource {
             action,
             surface,
+            min_name_letters,
             max_name_letters,
         } => Some(describe_sticker_count_subject(
             *action,
             surface.as_ref(),
+            *min_name_letters,
             *max_name_letters,
         )),
         AnthemCountExpression::CountersOnAffected(counter_type) => {
@@ -2233,6 +2257,10 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 "as long as a player this source has dealt damage to this game is the monarch"
                     .to_string()
             }
+            crate::target::PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => {
+                "as long as that player was dealt combat damage this game by a matching source"
+                    .to_string()
+            }
             crate::target::PlayerFilter::LostLifeThisTurn { .. } => {
                 "as long as a player who lost life this turn is the monarch".to_string()
             }
@@ -2561,6 +2589,16 @@ pub(crate) fn resolve_anthem_count_expression(
             .filter_map(|id| game.object(id))
             .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
             .count() as i32,
+        AnthemCountExpression::GraveyardsWithAtLeastCards { minimum_cards } => {
+            game.turn_store
+                .turn_order
+                .iter()
+                .filter_map(|player| game.player(*player))
+                .filter(|player| {
+                    player.is_in_game() && player.graveyard.len() >= *minimum_cards as usize
+                })
+                .count() as i32
+        }
         AnthemCountExpression::GreatestManaValueAmong(filter) => all_game_object_ids(game)
             .into_iter()
             .filter_map(|id| game.object(id))
@@ -2598,9 +2636,15 @@ pub(crate) fn resolve_anthem_count_expression(
         }
         AnthemCountExpression::StickersOnSource {
             action,
+            min_name_letters,
             max_name_letters,
             ..
-        } => game.sticker_count_on_object(source, *action, *max_name_letters) as i32,
+        } => game.sticker_count_on_object_with_name_letter_range(
+            source,
+            *action,
+            *min_name_letters,
+            *max_name_letters,
+        ) as i32,
         AnthemCountExpression::CountersOnAffected(counter_type) => {
             game.counter_count(source, *counter_type) as i32
         }
@@ -2874,8 +2918,25 @@ impl StaticAbilityKind for Anthem {
     }
 
     fn display(&self) -> String {
+        let source_and_land_creatures = !self.source_only
+            && self.filter.source
+            && self.filter.zone == Some(crate::zone::Zone::Battlefield)
+            && self.filter.controller == Some(crate::target::PlayerFilter::You)
+            && self.filter.card_types.len() == 2
+            && self
+                .filter
+                .card_types
+                .contains(&crate::types::CardType::Land)
+            && self
+                .filter
+                .card_types
+                .contains(&crate::types::CardType::Creature)
+            && self.filter.subtypes.is_empty()
+            && self.filter.any_of.is_empty();
         let subject = if self.source_only {
             "this creature".to_string()
+        } else if source_and_land_creatures {
+            "this creature and land creatures you control".to_string()
         } else if let Some(surface) = self.set_quantifier_surface {
             let mut subject = subject_text(&self.filter);
             if let Some(rest) = subject.strip_prefix("another ") {
@@ -2915,7 +2976,7 @@ impl StaticAbilityKind for Anthem {
             || subject.starts_with("Each ")
             || subject.starts_with("a ")
             || subject.starts_with("an ")
-            || subject.starts_with("this ")
+            || (subject.starts_with("this ") && !subject.contains(" and "))
             || subject.starts_with("that ")
             || ((subject.starts_with("enchanted ") || subject.starts_with("equipped "))
                 && !subject_mentions_plural);
@@ -3324,6 +3385,14 @@ impl StaticAbilityKind for Anthem {
             if static_condition_is_during_your_turn(condition) {
                 return format!("During your turn, {text}");
             }
+            if matches!(condition, crate::ConditionExpr::SourceControllersEndStep) {
+                return format!("During your end step, {text}");
+            }
+            if source_and_land_creatures
+                && let Some(rest) = condition_text.strip_prefix("as long as ")
+            {
+                return format!("As long as {rest}, {text}");
+            }
             // Only the "different kinds of counters among ..." count condition reads
             // naturally in the leading form (e.g. Hundred-Battle Veteran). All other
             // source-only pump conditions keep the trailing "... as long as ..." form.
@@ -3599,6 +3668,7 @@ impl StaticAbilityKind for GrantAbility {
             ability_text.split_whitespace().next(),
             Some("If" | "When" | "Whenever" | "At")
         ) || self.ability.id() == StaticAbilityId::DungeonRoomTriggerDuplication
+            || self.ability.id() == StaticAbilityId::RuleRestriction
             || is_quoted_cost_modifier
         {
             ability_text = format!("\"{ability_text}\"");
@@ -3633,6 +3703,10 @@ impl StaticAbilityKind for GrantAbility {
             || subject.starts_with("that ");
         let ability_text_lower = ability_text.to_ascii_lowercase();
         let mut text = match self.ability.id() {
+            StaticAbilityId::CanAttackAsThoughNoDefender => format!(
+                "{subject} can attack as though {} didn't have defender",
+                if singular_subject { "it" } else { "they" }
+            ),
             StaticAbilityId::Unblockable => format!("{subject} can't be blocked"),
             StaticAbilityId::CantAttack => format!("{subject} can't attack"),
             StaticAbilityId::CantBlock => format!("{subject} can't block"),
@@ -3718,6 +3792,9 @@ impl StaticAbilityKind for GrantAbility {
             }
         };
         if let Some(condition) = &self.condition {
+            if matches!(condition, crate::ConditionExpr::SourceControllersEndStep) {
+                return format!("During your end step, {text}");
+            }
             if applies_to_source
                 && self.ability.is_keyword()
                 && leading_source_keyword_condition(condition)

@@ -6,6 +6,7 @@ import SelectObjectsDecision from "./SelectObjectsDecision";
 import SelectOptionsDecision from "./SelectOptionsDecision";
 import NumberDecision from "./NumberDecision";
 import TextInputDecision from "./TextInputDecision";
+import ManaPaymentDecision from "./ManaPaymentDecision";
 import { useGame } from "@/context/GameContext";
 import { decisionKey } from "@/lib/decision-key";
 
@@ -115,6 +116,17 @@ export default function DecisionRouter({
           inlineSubmit={inlineSubmit}
           onSubmitActionChange={onSubmitActionChange}
           hideDescription={hideDescription}
+          layout={layout}
+        />
+      );
+    case "mana_payment":
+      return (
+        <ManaPaymentDecision
+          key={key}
+          decision={decision}
+          canAct={canAct}
+          inlineSubmit={inlineSubmit}
+          onSubmitActionChange={onSubmitActionChange}
           layout={layout}
         />
       );

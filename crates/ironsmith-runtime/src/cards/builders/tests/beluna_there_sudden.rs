@@ -112,14 +112,14 @@ fn sudden_salvation_preserves_plural_return_and_returned_set_controller_gate() {
         definition.spell_effect,
     );
     let program = definition.spell_effect.as_ref().expect("spell program");
-    let [target_segment, return_segment, draw_segment] = program.segments.as_slice() else {
-        panic!("expected target, return, and correlated draw segments: {program:#?}");
+    let [target_effect, return_effect, draw_effect] = program.flattened_default_effects() else {
+        panic!("expected target, return, and correlated draw effects: {program:#?}");
     };
 
-    let targeted = target_segment.default_effects[0]
+    let targeted = target_effect
         .downcast_ref::<crate::effects::TaggedEffect>()
         .expect("chosen target set should be tagged");
-    let returned = return_segment.default_effects[0]
+    let returned = return_effect
         .downcast_ref::<crate::effects::TaggedEffect>()
         .expect("returned set should be tagged");
     let move_effect = returned
@@ -133,7 +133,7 @@ fn sudden_salvation_preserves_plural_return_and_returned_set_controller_gate() {
         ironsmith_core::BattlefieldController::Owner
     );
 
-    let players = draw_segment.default_effects[0]
+    let players = draw_effect
         .downcast_ref::<crate::effects::ForPlayersEffect>()
         .expect("draw should iterate opponents once each");
     assert_eq!(players.filter, PlayerFilter::Opponent);

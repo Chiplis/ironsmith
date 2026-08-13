@@ -1467,31 +1467,45 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
         if min_targets == 0 {
             return true;
         }
-        let mut legal_targets =
-            crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
-                game,
-                extracted.spec,
-                caster,
-                source_id,
-                None,
-                view,
-            );
-        retain_targets_satisfying_announcement_condition(
-            game,
-            effect,
-            caster,
-            source_id,
-            &mut legal_targets,
+        let chooser_candidates = extracted.chooser.map_or_else(
+            || vec![None],
+            |chooser| {
+                delegated_target_chooser_candidates(game, caster, source_id, chooser)
+                    .into_iter()
+                    .map(Some)
+                    .collect()
+            },
         );
-        return legal_targets.len() >= min_targets
-            && distribution_supports_minimum_target_count(
+        return chooser_candidates.into_iter().any(|chooser| {
+            let spec = chooser.map_or_else(
+                || extracted.spec.clone(),
+                |chooser| specialize_iterated_player_choose_spec(extracted.spec, chooser),
+            );
+            let specialized = ExtractedTarget {
+                spec: &spec,
+                ..extracted
+            };
+            let mut legal_targets =
+                crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+                    game, &spec, caster, source_id, None, view,
+                );
+            retain_targets_satisfying_announcement_condition(
                 game,
-                &extracted,
+                effect,
                 caster,
                 source_id,
-                &legal_targets,
-                min_targets,
+                &mut legal_targets,
             );
+            legal_targets.len() >= min_targets
+                && distribution_supports_minimum_target_count(
+                    game,
+                    &specialized,
+                    caster,
+                    source_id,
+                    &legal_targets,
+                    min_targets,
+                )
+        });
     }
 
     true
@@ -1912,7 +1926,27 @@ fn extract_target_requirements_from_iterated_effect(
     );
 }
 
-fn specialize_iterated_player_choose_spec(spec: &ChooseSpec, player: PlayerId) -> ChooseSpec {
+fn delegated_target_chooser_candidates(
+    game: &GameState,
+    controller: PlayerId,
+    source_id: Option<ObjectId>,
+    chooser: &PlayerFilter,
+) -> Vec<PlayerId> {
+    let filter_ctx = game.filter_context_for(controller, source_id);
+    game.players
+        .iter()
+        .filter(|player| player.is_in_game())
+        .filter_map(|player| {
+            crate::filter::player_filter_matches_game(chooser, player.id, game, &filter_ctx)
+                .then_some(player.id)
+        })
+        .collect()
+}
+
+pub(super) fn specialize_iterated_player_choose_spec(
+    spec: &ChooseSpec,
+    player: PlayerId,
+) -> ChooseSpec {
     match spec {
         ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
             spec: Box::new(specialize_iterated_player_choose_spec(spec, player)),
@@ -2000,6 +2034,14 @@ fn specialize_iterated_player_object_filter(
         .entered_battlefield_controller
         .as_ref()
         .map(|controller| specialize_iterated_player_filter(controller, player));
+    filter.discarded_or_cycled_this_turn_by = filter
+        .discarded_or_cycled_this_turn_by
+        .as_ref()
+        .map(|actor| specialize_iterated_player_filter(actor, player));
+    filter.dealt_damage_to_player_this_turn = filter
+        .dealt_damage_to_player_this_turn
+        .as_ref()
+        .map(|damaged| specialize_iterated_player_filter(damaged, player));
     if let Some(constraint) = filter.counters_put_on_this_turn.as_mut() {
         constraint.source_controller =
             specialize_iterated_player_filter(&constraint.source_controller, player);
@@ -2015,6 +2057,20 @@ fn specialize_iterated_player_object_filter(
             targets_only_object,
             player,
         )));
+    }
+    if let Some(combat_partner) = filter.blocked_or_was_blocked_by_this_turn.as_ref() {
+        filter.blocked_or_was_blocked_by_this_turn = Some(Box::new(
+            specialize_iterated_player_object_filter(combat_partner, player),
+        ));
+    }
+    filter.no_shared_creature_types_with = filter
+        .no_shared_creature_types_with
+        .iter()
+        .map(|inner| specialize_iterated_player_object_filter(inner, player))
+        .collect();
+    for relation in &mut filter.characteristic_relations {
+        relation.comparison =
+            specialize_iterated_player_object_filter(&relation.comparison, player);
     }
     filter.any_of = filter
         .any_of
@@ -2042,8 +2098,32 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
         PlayerFilter::HasMoreLifeThanYou { base } => PlayerFilter::HasMoreLifeThanYou {
             base: Box::new(specialize_iterated_player_filter(base, player)),
         },
+        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+            PlayerFilter::WasDealtDamageBySourceThisGame {
+                base: Box::new(specialize_iterated_player_filter(base, player)),
+            }
+        }
         PlayerFilter::LostLifeThisTurn { base } => PlayerFilter::LostLifeThisTurn {
             base: Box::new(specialize_iterated_player_filter(base, player)),
+        },
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+            base,
+            sources,
+            minimum,
+        } => PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+            base: Box::new(specialize_iterated_player_filter(base, player)),
+            sources: Box::new(specialize_iterated_player_object_filter(sources, player)),
+            minimum: *minimum,
+        },
+        PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player: compared,
+            filter,
+        } => PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player: Box::new(specialize_iterated_player_filter(compared, player)),
+            filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
+        },
+        PlayerFilter::ControlsMost { filter } => PlayerFilter::ControlsMost {
+            filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
         },
         PlayerFilter::MaxSpeed {
             base,
@@ -2066,6 +2146,14 @@ fn count_target_selection_slots_from_effect_internal(
     consumed_modal_selection: &mut bool,
     declared_targets: &mut Vec<DeclaredTarget>,
 ) -> usize {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return count_target_selection_slots_from_effect_internal(
+            &with_id.effect,
+            chosen_modes,
+            consumed_modal_selection,
+            declared_targets,
+        );
+    }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && matches!(
             sequence.surface,
@@ -2814,7 +2902,8 @@ pub fn player_matches_filter_with_combat(
         // Source-relative history is not meaningful while validating a
         // standalone player target; these filters are used by effect loops.
         PlayerFilter::AttackedBySourceThisTurn
-        | PlayerFilter::WasDealtDamageBySourceThisGame { .. } => false,
+        | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => false,
         PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. } => {
             let filter_ctx = game.filter_context_for(controller, None);
             crate::filter::player_filter_matches_game(filter, player_id, game, &filter_ctx)
@@ -3240,6 +3329,132 @@ fn choose_spec_for_resolution_target_validation(
     }
 }
 
+fn specialize_target_player_relation(filter: &mut crate::target::PlayerFilter, player: PlayerId) {
+    use crate::target::PlayerFilter;
+
+    match filter {
+        PlayerFilter::TargetPlayerOrControllerOfTarget => {
+            *filter = PlayerFilter::Specific(player);
+        }
+        PlayerFilter::Target(inner)
+        | PlayerFilter::AliasedTarget(inner)
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner }
+        | PlayerFilter::LostLifeThisTurn { base: inner }
+        | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
+        | PlayerFilter::HasMoreLifeThanYou { base: inner }
+        | PlayerFilter::MaxSpeed { base: inner, .. } => {
+            specialize_target_player_relation(inner, player);
+        }
+        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, .. } => {
+            specialize_target_player_relation(base, player);
+        }
+        PlayerFilter::Excluding { base, excluded } => {
+            specialize_target_player_relation(base, player);
+            specialize_target_player_relation(excluded, player);
+        }
+        _ => {}
+    }
+}
+
+fn specialize_target_player_relation_in_object_filter(
+    filter: &mut crate::target::ObjectFilter,
+    player: PlayerId,
+) {
+    for player_filter in [
+        &mut filter.controller,
+        &mut filter.cast_by,
+        &mut filter.owner,
+        &mut filter.targets_player,
+        &mut filter.targets_only_player,
+        &mut filter.attacking_player_or_planeswalker_controlled_by,
+        &mut filter.protected_by,
+        &mut filter.attached_to_player,
+        &mut filter.entered_battlefield_controller,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        specialize_target_player_relation(player_filter, player);
+    }
+    if let Some(constraint) = &mut filter.counters_put_on_this_turn {
+        specialize_target_player_relation(&mut constraint.source_controller, player);
+    }
+    for nested in &mut filter.any_of {
+        specialize_target_player_relation_in_object_filter(nested, player);
+    }
+    for nested in [
+        &mut filter.targets_object,
+        &mut filter.targets_only_object,
+        &mut filter.attached_to_object,
+        &mut filter.with_attached_object,
+        &mut filter.without_attached_object,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        specialize_target_player_relation_in_object_filter(nested, player);
+    }
+}
+
+fn specialize_target_player_relation_in_choose_spec(
+    spec: &mut crate::target::ChooseSpec,
+    player: PlayerId,
+) {
+    use crate::target::ChooseSpec;
+
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => {
+            specialize_target_player_relation_in_choose_spec(spec, player);
+        }
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            specialize_target_player_relation_in_object_filter(filter, player);
+        }
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => {
+            specialize_target_player_relation_in_object_filter(object_filter, player);
+            specialize_target_player_relation(player_filter, player);
+        }
+        ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            specialize_target_player_relation(filter, player);
+        }
+        _ => {}
+    }
+}
+
+fn prior_player_or_planeswalker_target(
+    game: &GameState,
+    entry: &StackEntry,
+    before_assignment: usize,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Option<PlayerId> {
+    entry
+        .target_assignments
+        .iter()
+        .take(before_assignment)
+        .rev()
+        .filter(|assignment| {
+            matches!(
+                assignment.spec.base(),
+                crate::target::ChooseSpec::PlayerOrPlaneswalker(_)
+            )
+        })
+        .find_map(|assignment| {
+            entry
+                .targets
+                .get(assignment.range.clone())?
+                .iter()
+                .find_map(|target| match target {
+                    Target::Player(player) => Some(*player),
+                    Target::Object(object) => game
+                        .object(*object)
+                        .filter(|object| object.has_card_type(CardType::Planeswalker))
+                        .and_then(|_| view.current_controller(*object)),
+                })
+        })
+}
+
 pub(super) fn validate_stack_entry_targets_with_view(
     game: &GameState,
     entry: &StackEntry,
@@ -3259,12 +3474,17 @@ pub(super) fn validate_stack_entry_targets_with_view(
         let mut invalid_count = 0usize;
         let contains_exchange_control = stack_entry_contains_exchange_control(game, entry);
 
-        for assignment in &entry.target_assignments {
+        for (assignment_index, assignment) in entry.target_assignments.iter().enumerate() {
             let resolved_spec = choose_spec_with_damaged_player_from_event(
                 &assignment.spec,
                 entry.triggering_event.as_ref(),
             );
-            let resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
+            let mut resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
+            if let Some(player) =
+                prior_player_or_planeswalker_target(game, entry, assignment_index, view)
+            {
+                specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
+            }
             let legal_targets = compute_legal_targets_with_source_snapshot_and_view(
                 game,
                 &resolved_spec,

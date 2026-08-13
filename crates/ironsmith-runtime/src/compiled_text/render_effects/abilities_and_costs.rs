@@ -772,23 +772,38 @@ fn describe_spell_cast_copy_while_source_has_quest_counters(
 fn activated_resolution_has_explicit_it_damage_source(
     activated: &crate::ability::ActivatedAbility,
 ) -> bool {
+    fn effect_has_explicit_it_damage_source(effect: &Effect) -> bool {
+        if let Some(execute) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+            && matches!(
+                execute.source.source_reference_surface(),
+                Some(SourceReferenceSurface::ThisPermanentType(surface))
+                    if surface.trim().eq_ignore_ascii_case("it")
+            )
+            && execute
+                .effect
+                .downcast_ref::<crate::effects::DealDamageEffect>()
+                .is_some()
+        {
+            return true;
+        }
+        let mut found = false;
+        effect.visit_child_effects(&mut |child| {
+            if !found {
+                found = effect_has_explicit_it_damage_source(child);
+            }
+        });
+        found
+    }
+
     if super::ast_render::resolution_uses_named_artifacts_damage_replacement(&activated.effects) {
         return true;
     }
-    let [effect] = activated.effects.flattened_default_effects() else {
-        return false;
-    };
-    let Some(execute) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() else {
-        return false;
-    };
-    matches!(
-        execute.source.source_reference_surface(),
-        Some(SourceReferenceSurface::ThisPermanentType(surface))
-            if surface.trim().eq_ignore_ascii_case("it")
-    ) && execute
-        .effect
-        .downcast_ref::<crate::effects::DealDamageEffect>()
-        .is_some()
+    activated
+        .effects
+        .segments
+        .iter()
+        .flat_map(|segment| &segment.default_effects)
+        .any(effect_has_explicit_it_damage_source)
 }
 
 fn graveyard_self_exile_damage_uses_it_subject(
@@ -835,12 +850,69 @@ fn graveyard_self_exile_damage_uses_it_subject(
         .is_some()
 }
 
+fn describe_exiled_last_time_counter_creatures_unblockable(ability: &Ability) -> Option<String> {
+    if ability.functional_zones.as_slice() != [Zone::Exile] {
+        return None;
+    }
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return None;
+    };
+    if triggered.intervening_if.is_some()
+        || triggered.presentation_label.is_some()
+        || !triggered.choices.is_empty()
+    {
+        return None;
+    }
+    let counter = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::CounterRemovedFromTrigger>()?;
+    if !counter.last || counter.counter_type != Some(CounterType::Time) || !counter.filter.source {
+        return None;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let cant = effect.downcast_ref::<crate::effects::CantEffect>()?;
+    let crate::effect::Restriction::BeBlocked(filter) = &cant.restriction else {
+        return None;
+    };
+    if cant.duration != Until::EndOfTurn || filter.card_types.as_slice() != [CardType::Creature] {
+        return None;
+    }
+    let mut plain = filter.clone();
+    plain.zone = None;
+    plain.card_types.clear();
+    plain.set_explicit_card_type_noun(None);
+    plain.set_plural_object_noun_surface(false);
+    if plain != ObjectFilter::default() {
+        return None;
+    }
+    let source = counter
+        .filter
+        .source_surface
+        .as_ref()
+        .map(crate::target::SourceReferenceSurface::display_text)
+        .unwrap_or_else(|| "this card".to_string());
+    Some(format!(
+        "When the last time counter is removed from {source} while it's exiled, creatures can't be blocked this turn"
+    ))
+}
+
 pub(crate) fn describe_ability(
     index: usize,
     ability: &Ability,
     subject: &str,
     rewrite_it_deals: bool,
 ) -> Vec<String> {
+    if let Some(rendered) = describe_exiled_last_time_counter_creatures_unblockable(ability) {
+        return vec![format!("Triggered ability {index}: {rendered}")];
+    }
     if let AbilityKind::Static(static_ability) = &ability.kind
         && let Some(model) = static_ability.compiled_model()
         && let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
@@ -1703,7 +1775,16 @@ pub(crate) fn normalize_ability_self_reference_surface(line: &str, subject: &str
         );
     }
 
-    normalized
+    if line.contains("Sacrifice this permanent when that token leaves the battlefield")
+        && normalized.contains("Sacrifice it when that token leaves the battlefield")
+    {
+        normalized.replace(
+            "Sacrifice it when that token leaves the battlefield",
+            "Sacrifice this permanent when that token leaves the battlefield",
+        )
+    } else {
+        normalized
+    }
 }
 
 /// Source-reference normalization belongs to the ability that owns `line`.

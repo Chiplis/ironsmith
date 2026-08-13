@@ -1331,6 +1331,18 @@ pub(crate) fn parse_attached_no_defender_shape(
         .then_some(NoDefenderSubjectShape { subject_tokens })
 }
 
+pub(crate) fn parse_plain_no_defender_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<NoDefenderSubjectShape<'_>> {
+    let tokens = trim_anthem_clause_tokens(tokens);
+    let (phrase_start, phrase_end) = find_no_defender_phrase(tokens, false)?;
+    if phrase_end != tokens.len() {
+        return None;
+    }
+    let subject_tokens = trim_lexed_commas(&tokens[..phrase_start]);
+    (!subject_tokens.is_empty()).then_some(NoDefenderSubjectShape { subject_tokens })
+}
+
 pub(crate) fn parse_leading_condition_no_defender_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<NoDefenderConditionalShape<'_>> {
@@ -1942,12 +1954,20 @@ fn find_no_defender_phrase(
     tokens: &[OwnedLexToken],
     with_condition_tail: bool,
 ) -> Option<(usize, usize)> {
-    const BASE: &[&[&str]] = &[
+    const BASE_IT: &[&[&str]] = &[
         &[
             "can", "attack", "as", "though", "it", "didnt", "have", "defender",
         ],
         &[
             "can", "attack", "as", "though", "it", "didn't", "have", "defender",
+        ],
+    ];
+    const BASE_THEY: &[&[&str]] = &[
+        &[
+            "can", "attack", "as", "though", "they", "didnt", "have", "defender",
+        ],
+        &[
+            "can", "attack", "as", "though", "they", "didn't", "have", "defender",
         ],
     ];
     const CONDITIONAL: &[&[&str]] = &[
@@ -1958,11 +1978,7 @@ fn find_no_defender_phrase(
             "can", "attack", "as", "though", "it", "didn't", "have", "defender", "as", "long", "as",
         ],
     ];
-    let phrases = if with_condition_tail {
-        CONDITIONAL
-    } else {
-        BASE
-    };
+    let phrases = if with_condition_tail { CONDITIONAL } else { BASE_IT };
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
     loop {
@@ -1973,6 +1989,18 @@ fn find_no_defender_phrase(
             .is_ok()
         {
             return Some((start, initial_len.saturating_sub(candidate.len())));
+        }
+        if !with_condition_tail {
+            let mut plural_candidate = input.clone();
+            if primitives::any_phrase(BASE_THEY)
+                .parse_next(&mut plural_candidate)
+                .is_ok()
+            {
+                return Some((
+                    start,
+                    initial_len.saturating_sub(plural_candidate.len()),
+                ));
+            }
         }
         take_token(&mut input).ok()?;
     }

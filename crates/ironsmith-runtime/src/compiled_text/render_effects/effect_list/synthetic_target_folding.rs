@@ -510,7 +510,8 @@ pub(super) fn target_only_pair_can_fold(effects: &[Effect], target_effect: &Effe
 }
 
 /// Keep a lowering-only declaration visible when multiple top-level effect
-/// trees share its target identity.
+/// trees share its target identity, unless the consumer surface already
+/// carries the complete target phrase.
 ///
 /// A tagged `TargetOnlyEffect` renders as bookkeeping in the generic list
 /// loop, so merely retaining it in the filtered list is insufficient. Render
@@ -551,6 +552,24 @@ pub(super) fn describe_multi_consumer_synthetic_target_declaration(
     let rendered_consumers = describe_effect_list(&without_target);
     if rendered_consumers.trim().is_empty() {
         return None;
+    }
+
+    // Many coordinated clauses lower one authored target declaration into a
+    // bookkeeping `TargetOnlyEffect` followed by multiple consumers.  When
+    // those consumers already render the exact target spec (for example,
+    // "Target player draws ... and loses ..."), exposing the synthetic
+    // declaration produces the regression "Choose target player. Target
+    // player ...".  Only elide it when the full typed target description is
+    // visibly present; anaphoric-only consumers still keep the declaration.
+    let target_surface = describe_choose_spec(identity.target);
+    if !target_surface.trim().is_empty()
+        && rendered_consumers
+            .to_ascii_lowercase()
+            .contains(&target_surface.to_ascii_lowercase())
+    {
+        return Some(capitalize_first(
+            rendered_consumers.trim().trim_end_matches('.'),
+        ));
     }
 
     Some(format!(

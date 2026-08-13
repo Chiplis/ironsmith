@@ -3,6 +3,7 @@
 use std::any::Any;
 
 use crate::ability::Ability;
+use crate::color::ColorSet;
 use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
@@ -33,6 +34,8 @@ pub struct EnterBattlefieldEvent {
     pub copy_duration: Option<crate::effect::Until>,
     /// If set, overrides the copied object's name as it enters.
     pub copy_name_override: Option<String>,
+    /// Additional colors granted by the copy-as-enters replacement.
+    pub added_colors: ColorSet,
     /// Additional card types granted by the copy-as-enters replacement.
     pub added_card_types: Vec<CardType>,
     /// Supertypes removed by the copy-as-enters replacement.
@@ -61,6 +64,7 @@ impl EnterBattlefieldEvent {
             enters_as_copy_of: None,
             copy_duration: None,
             copy_name_override: None,
+            added_colors: ColorSet::new(),
             added_card_types: Vec::new(),
             removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
@@ -82,6 +86,7 @@ impl EnterBattlefieldEvent {
             enters_as_copy_of: None,
             copy_duration: None,
             copy_name_override: None,
+            added_colors: ColorSet::new(),
             added_card_types: Vec::new(),
             removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
@@ -148,6 +153,14 @@ impl EnterBattlefieldEvent {
     pub fn with_copy_name_override(&self, name: Option<String>) -> Self {
         Self {
             copy_name_override: name,
+            ..self.clone()
+        }
+    }
+
+    /// Return a new event with colors added to its copied characteristics.
+    pub fn with_added_colors(&self, colors: ColorSet) -> Self {
+        Self {
+            added_colors: self.added_colors.union(colors),
             ..self.clone()
         }
     }
@@ -263,6 +276,9 @@ impl EnterBattlefieldEvent {
             }
             if let Some(name) = &self.copy_name_override {
                 object.name = name.clone().into();
+            }
+            if !self.added_colors.is_empty() {
+                object.color_override = Some(object.colors().union(self.added_colors));
             }
             for card_type in &self.added_card_types {
                 if !object.card_types.contains(card_type) {

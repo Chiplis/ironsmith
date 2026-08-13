@@ -14,6 +14,7 @@ use super::super::super::{leaf, primitives};
 pub(crate) enum LookedCardDestinationShape {
     Hand,
     Graveyard,
+    Battlefield,
     LibraryTop,
     LibraryBottom,
 }
@@ -57,6 +58,17 @@ pub(crate) struct RevealedCardChoiceShape {
 pub(crate) struct ChosenCardMoveFollowupShape {
     pub(crate) destination: LookedCardDestinationShape,
     pub(crate) followup: Range<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct OpponentRevealedCardSelectionShape {
+    pub(crate) filter: Option<Range<usize>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChosenCardPartitionShape {
+    pub(crate) selected_destination: LookedCardDestinationShape,
+    pub(crate) remainder_destination: LookedCardDestinationShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,6 +226,8 @@ fn looked_card_destination(input: &mut LexStream<'_>) -> WResult<LookedCardDesti
             primitives::phrase(&["into", "their", "graveyard"]),
         ))
         .value(LookedCardDestinationShape::Graveyard),
+        primitives::phrase(&["onto", "the", "battlefield"])
+            .value(LookedCardDestinationShape::Battlefield),
         alt((
             primitives::phrase(&["on", "top", "of", "your", "library"]),
             primitives::phrase(&["on", "the", "top", "of", "your", "library"]),
@@ -352,6 +366,69 @@ pub(crate) fn parse_chosen_card_move_followup_shape(
     })
 }
 
+pub(crate) fn parse_opponent_revealed_card_selection_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<OpponentRevealedCardSelectionShape> {
+    let tokens = trim_lexed_commas(tokens);
+    if !tokens.get(0)?.is_word("an")
+        || !tokens.get(1)?.is_word("opponent")
+        || !tokens.get(2)?.is_word("chooses")
+    {
+        return None;
+    }
+    let from_among = (3..tokens.len().saturating_sub(2)).find(|index| {
+        tokens[*index].is_word("from")
+            && tokens[*index + 1].is_word("among")
+            && tokens[*index + 2].is_word("them")
+    });
+    let filter = if let Some(from_among) = from_among {
+        if from_among == 3
+            || tokens[from_among + 3..]
+                .iter()
+                .any(|token| token.as_word().is_some())
+        {
+            return None;
+        }
+        Some(3..from_among)
+    } else {
+        let words = tokens[3..]
+            .iter()
+            .filter_map(OwnedLexToken::as_word)
+            .collect::<Vec<_>>();
+        if words.as_slice() != ["one", "of", "them"]
+            && words.as_slice() != ["one", "of", "those", "cards"]
+        {
+            return None;
+        }
+        None
+    };
+    Some(OpponentRevealedCardSelectionShape { filter })
+}
+
+fn chosen_card_partition(input: &mut LexStream<'_>) -> WResult<ChosenCardPartitionShape> {
+    primitives::kw("put").parse_next(input)?;
+    tagged_card_reference.parse_next(input)?;
+    let selected_destination = looked_card_destination.parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("rest").parse_next(input)?;
+    let remainder_destination = looked_card_destination.parse_next(input)?;
+    opt(primitives::period()).parse_next(input)?;
+    eof.parse_next(input)?;
+    Ok(ChosenCardPartitionShape {
+        selected_destination,
+        remainder_destination,
+    })
+}
+
+pub(crate) fn parse_chosen_card_partition_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<ChosenCardPartitionShape> {
+    chosen_card_partition
+        .parse(LexStream::new(trim_lexed_commas(tokens)))
+        .ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,6 +484,32 @@ mod tests {
                 .filter_map(OwnedLexToken::as_word)
                 .collect::<Vec<_>>(),
             ["draw", "two", "cards"]
+        );
+    }
+
+    #[test]
+    fn parses_opponent_filtered_choice_and_exact_complement_disposition() {
+        let creature_tokens = lex("An opponent chooses a creature card from among them");
+        let creature = parse_opponent_revealed_card_selection_shape(&creature_tokens).unwrap();
+        assert_eq!(
+            creature_tokens[creature.filter.unwrap()]
+                .iter()
+                .filter_map(OwnedLexToken::as_word)
+                .collect::<Vec<_>>(),
+            ["a", "creature", "card"]
+        );
+        assert_eq!(
+            parse_opponent_revealed_card_selection_shape(&lex("An opponent chooses one of them")),
+            Some(OpponentRevealedCardSelectionShape { filter: None })
+        );
+        assert_eq!(
+            parse_chosen_card_partition_shape(&lex(
+                "Put that card onto the battlefield and the rest into your graveyard"
+            )),
+            Some(ChosenCardPartitionShape {
+                selected_destination: LookedCardDestinationShape::Battlefield,
+                remainder_destination: LookedCardDestinationShape::Graveyard,
+            })
         );
     }
 

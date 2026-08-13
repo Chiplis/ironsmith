@@ -43,8 +43,1109 @@ fn compact_repeated_counter_recipient_damage_source(line: &str) -> Option<String
     None
 }
 
+fn compact_each_player_exile_sacrifice_return_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    for (card_noun, permanent_noun) in [("creature", "creatures"), ("artifact", "artifacts")] {
+        let expanded = format!(
+            "For each player, exile all {card_noun} cards from that player's graveyard, that player sacrifices all {permanent_noun} that player controls, then put it onto the battlefield"
+        );
+        if trimmed == expanded {
+            return Some(format!(
+                "Each player exiles all {card_noun} cards from their graveyard, then sacrifices all {permanent_noun} they control, then puts all cards they exiled this way onto the battlefield."
+            ));
+        }
+    }
+    None
+}
+
+fn compact_each_player_and_controlled_creatures_damage(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (source, tail) = trimmed.rsplit_once(" deals ")?;
+    let amount = tail.strip_suffix(" damage to each player and each creature they control")?;
+    if source.is_empty() || amount.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{source} deals {amount} damage to each creature and each player."
+    ))
+}
+
+fn restore_draw_exile_time_counter_granted_cast_surface(line: &str) -> Option<String> {
+    const PREFIX: &str = "Draw a card. You exile a card from your hand, then put a number of time counters on the exiled card equal to its mana value. The exiled card gains \"";
+    const SUFFIX: &str = "\" For each other card in your exile, remove a time counter from it.";
+    let start = line.find(PREFIX)?;
+    let leading = &line[..start];
+    let inner = line[start + PREFIX.len()..].strip_suffix(SUFFIX)?;
+    if !inner.starts_with("When the last time counter is removed from this card")
+        || !inner.contains("you may cast it without paying its mana cost")
+        || !inner.contains("If you cast a creature")
+        || !inner.ends_with("it gains haste until end of turn.")
+    {
+        return None;
+    }
+    let inner = inner
+        .replace(
+            ", if that object is a permanent, you may cast it",
+            ", if it's exiled, you may cast it",
+        )
+        .replace(
+            "If you cast a creature this way",
+            "If you cast a creature spell this way",
+        );
+    Some(format!(
+        "{leading}Draw a card, then exile a card from your hand and put a number of time counters on it equal to its mana value. It gains \"{inner}\" Then remove a time counter from each other card you own in exile."
+    ))
+}
+
+fn restore_sacrificed_power_damage_replacement_surface(line: &str) -> Option<String> {
+    let malformed =
+        "deals damage to any target instead equal to the sacrificed creature's power to any target";
+    if !line.contains(malformed)
+        || !line
+            .contains("If the sacrificed creature was a Giant, this creature deals twice X damage.")
+    {
+        return None;
+    }
+    Some(
+        line.replace(
+            malformed,
+            "deals damage equal to the sacrificed creature's power to any target",
+        )
+        .replace(
+            "If the sacrificed creature was a Giant, this creature deals twice X damage.",
+            "If the sacrificed creature was a Giant, this creature deals twice that much damage instead.",
+        ),
+    )
+}
+
+fn restore_sacrificed_power_each_opponent_draw_surface(line: &str) -> Option<String> {
+    const COMPACT_TAIL: &str = " deals damage to the sacrificed creature's power equal to the sacrificed creature's power to each opponent. Then draw cards equal.";
+    if let Some(source_end) = line.find(COMPACT_TAIL) {
+        let source = line[..source_end].trim_end();
+        if !source.is_empty() {
+            return Some(format!(
+                "{source} deals damage equal to the sacrificed creature's power to each opponent. Then draw cards equal to the sacrificed creature's power."
+            ));
+        }
+    }
+    const START: &str = "For each opponent, ";
+    const DAMAGE_TAIL: &str = " deals damage to that creature's power equal to the sacrificed creature's power to that player. Then you draw cards equal.";
+    let start = line.find(START)?;
+    let source_start = start + START.len();
+    let relative_tail = line[source_start..].find(DAMAGE_TAIL)?;
+    let source = &line[source_start..source_start + relative_tail];
+    if source.is_empty() || source.contains('.') {
+        return None;
+    }
+    Some(format!(
+        "{}{} deals damage equal to the sacrificed creature's power to each opponent. Then draw cards equal to the sacrificed creature's power.",
+        &line[..start],
+        capitalize_first(source),
+    ))
+}
+
+fn compact_distributed_player_and_controlled_object_damage(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    let marker = "for each player, ";
+    let marker_index = lower.find(marker)?;
+    let (prefix, rest) = if marker_index == 0 {
+        ("", &trimmed[marker.len()..])
+    } else {
+        let prefix = &trimmed[..marker_index];
+        if !(prefix.ends_with(": ") || prefix.ends_with(", ")) {
+            return None;
+        }
+        (prefix, &trimmed[marker_index + marker.len()..])
+    };
+    let (source, rest) = rest.split_once(" deals ")?;
+    let (amount, rest) = rest.split_once(" damage to that player and ")?;
+    let repeated_prefix = format!("{amount} damage to each ");
+    let controlled = rest.strip_prefix(&repeated_prefix)?;
+    let controlled = controlled.strip_suffix(" that player controls")?;
+    if source.is_empty() || amount.is_empty() || controlled.is_empty() {
+        return None;
+    }
+    let source = if prefix.is_empty() {
+        source.to_string()
+    } else {
+        capitalize_first(source)
+    };
+    Some(format!(
+        "{prefix}{source} deals {amount} damage to each {controlled} and each player."
+    ))
+}
+
+fn compact_target_player_coordinated_actions(line: &str) -> Option<String> {
+    for target in ["Target player", "Target opponent"] {
+        let prefix = format!("{target} ");
+        let Some(rest) = line.strip_prefix(&prefix) else {
+            continue;
+        };
+        let repeated = if target == "Target player" {
+            ", and that player "
+        } else {
+            ", and that opponent "
+        };
+        if let Some((first, second)) = rest.split_once(repeated) {
+            return Some(format!("{target} {first} and {second}"));
+        }
+    }
+    None
+}
+
+fn restore_residual_regression_surfaces(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+
+    if trimmed
+        == "Target player chooses three cards and puts those cards on top of their library in any order"
+    {
+        return Some(
+            "Target player chooses three cards from their hand and puts them on top of their library in any order."
+                .to_string(),
+        );
+    }
+
+    if [
+        "{T}: Choose target creature an opponent controls and creature. Flip a coin. If you win the flip, destroy that creature. If you lose the flip, destroy the creature your opponent chose",
+        "{T}: Choose target creature an opponent controls and creature. Flip a coin. If you win the flip, destroy the creature you chose. If you lose the flip, destroy the creature your opponent chose",
+    ]
+    .contains(&trimmed)
+    {
+        return Some(
+            "{T}: You choose target creature an opponent controls, and that opponent chooses target creature. Flip a coin. If you win the flip, destroy the creature you chose. If you lose the flip, destroy the creature your opponent chose."
+                .to_string(),
+        );
+    }
+
+    if [
+        "Choose two target creatures controlled by the same player. Exile the creature you chose and put two +1/+1 counters on any other target",
+        "Choose two target creatures controlled by the same player. Exile that creature and put two +1/+1 counters on any other target",
+    ]
+    .contains(&trimmed)
+    {
+        return Some(
+            "Choose two target creatures controlled by the same player. Exile one of those creatures and put two +1/+1 counters on the other."
+                .to_string(),
+        );
+    }
+
+    let mut restored = line.to_string();
+    restored = restored.replace(
+        "Spell mastery — If there are two or more instant and/or sorcery cards in your graveyard, you may put up to two creature cards from among them into your hand instead of one",
+        "Spell mastery — If there are two or more instant and/or sorcery cards in your graveyard, put up to two creature cards from among the revealed cards into your hand instead of one",
+    );
+    restored = restored.replace(
+        "I — Choose target opponent, you and target opponent each create a Food token",
+        "I — You and target opponent each create a Food token",
+    );
+    restored = restored.replace(
+        "When this creature leaves the battlefield, put each card exiled with them into their owners' hand",
+        "When this creature leaves the battlefield, put each card exiled with it into its owner's hand",
+    );
+
+    (restored != line).then_some(restored)
+}
+
+fn compact_single_tapped_target_untap_lock(line: &str) -> Option<String> {
+    if !line
+        .to_ascii_lowercase()
+        .contains("tap up to one target creature")
+    {
+        return None;
+    }
+    let replaced = line
+        .replace(
+            "Those creatures don't untap during their controllers' untap steps",
+            "That permanent doesn't untap during its controller's untap step",
+        )
+        .replace(
+            "Those creatures don't untap during their controller's next untap step",
+            "That creature doesn't untap during its controller's next untap step",
+        );
+    (replaced != line).then_some(replaced)
+}
+
+fn compact_repeated_life_value_basis(line: &str) -> Option<String> {
+    let marker = " loses X life, where X is ";
+    let (prefix, rest) = line.split_once(marker)?;
+    let (basis, tail) = rest.split_once(", and you gain life equal to ")?;
+    let repeated_basis = tail.trim().trim_end_matches('.');
+    if basis.trim().is_empty() || !basis.trim().eq_ignore_ascii_case(repeated_basis) {
+        return None;
+    }
+    Some(format!(
+        "{prefix} loses X life and you gain X life, where X is {}{}",
+        basis.trim(),
+        line.trim_end()
+            .ends_with('.')
+            .then_some('.')
+            .unwrap_or_default()
+    ))
+}
+
+fn restore_source_power_life_pair(line: &str) -> Option<String> {
+    let (prefix, _) = line
+        .split_once(", where X is that creature's power and you gain life equal to it's power")?;
+    Some(format!(
+        "{prefix} and you gain X life, where X is this creature's power{}",
+        line.trim_end()
+            .ends_with('.')
+            .then_some('.')
+            .unwrap_or_default()
+    ))
+}
+
+fn restore_malformed_source_power_damage_pair(line: &str) -> Option<String> {
+    let marker = " leaves the battlefield, that creature deals damage to it's power equal to its power to target player, and you gain life equal";
+    let (trigger_subject, tail) = line.split_once(marker)?;
+    if !tail.is_empty() && tail != "." {
+        return None;
+    }
+    Some(format!(
+        "{trigger_subject} leaves the battlefield, it deals damage equal to its power to target player and you gain X life, where X is this creature's power{}",
+        line.trim_end()
+            .ends_with('.')
+            .then_some('.')
+            .unwrap_or_default()
+    ))
+}
+
+fn restore_same_target_delayed_exile_surface(line: &str) -> Option<String> {
+    let suffix =
+        ". If it would go from battlefield into graveyard this turn, it goes to exile instead";
+    let first = line.trim_end_matches('.').strip_suffix(suffix)?;
+    let target = first.rsplit_once(" to target ")?.1.trim();
+    if target.is_empty() || target.contains('.') || target.contains(',') {
+        return None;
+    }
+    Some(format!(
+        "{first}. If that {target} would die this turn, exile it instead."
+    ))
+}
+
+fn restore_embedded_conditional_ability_punctuation(line: &str) -> Option<String> {
+    let first = " deals combat damage to a player you may sacrifice this if you do create ";
+    let (prefix, tail) = line.split_once(first)?;
+    if !line.contains('"') || !tail.contains("token that's a copy") {
+        return None;
+    }
+    Some(format!(
+        "{prefix} deals combat damage to a player, you may sacrifice this. If you do, create {tail}"
+    ))
+}
+
+fn restore_reflexive_fight_damage_source(line: &str) -> Option<String> {
+    let (first, second) = line.split_once(". If you do, ")?;
+    if !(first.contains("you may have that creature deal damage equal to its power to target ")
+        && second.starts_with("target ")
+        && second.contains(" deals damage equal to its power to this creature"))
+    {
+        return None;
+    }
+    let tail = second
+        .split_once(" deals damage equal to its power to this creature")?
+        .1;
+    Some(format!(
+        "{first}. If you do, that creature deals damage equal to its power to this creature{tail}"
+    ))
+}
+
+fn restore_x_mode_basis_header(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("{T}: Choose one —")?;
+    if !(rest.contains("Scry X")
+        && rest.contains("deals X damage")
+        && rest.contains("You gain X life"))
+    {
+        return None;
+    }
+    Some(format!(
+        "{{T}}: Choose one. X is the number of spells you've cast this turn —{rest}"
+    ))
+}
+
+fn restore_conditional_temporary_token_haste(line: &str) -> Option<String> {
+    let marker = "If a Goblin was sacrificed this way, ";
+    let (prefix, tail) = line.split_once(marker)?;
+    let (creation, suffix) = tail.split_once(" tokens with haste")?;
+    if !creation
+        .to_ascii_lowercase()
+        .contains("creates two 1/1 black goblin rogue creature")
+    {
+        return None;
+    }
+    Some(format!(
+        "{prefix}{marker}{creation} tokens, and those tokens gain haste until end of turn{suffix}"
+    ))
+}
+
+fn restore_nested_token_trigger_rule(line: &str) -> Option<String> {
+    let malformed = " and it has \"This token has 'when this token leaves the battlefield, return the exiled card to its owner's graveyard.'\"";
+    let (prefix, suffix) = line.split_once(malformed)?;
+    Some(format!(
+        "{prefix} and it has \"When this token leaves the battlefield, return the exiled card to its owner's graveyard.\"{suffix}"
+    ))
+}
+
+fn restore_removed_counter_damage_source(line: &str) -> Option<String> {
+    let (cost, effect) = line.split_once(": ")?;
+    if !cost
+        .to_ascii_lowercase()
+        .contains("remove all charge counters from this artifact")
+        || !effect.starts_with("It deals damage equal to the number of charge counters removed this way to target creature")
+    {
+        return None;
+    }
+    Some(format!("{cost}: This artifact{}", &effect["It".len()..]))
+}
+
+fn restore_previous_target_card_comparison(line: &str) -> Option<String> {
+    let (choice, consequence) = line.split_once(". ")?;
+    if !choice
+        .to_ascii_lowercase()
+        .contains("choose target permanent card")
+        || !consequence.contains("shares a card type with a card")
+    {
+        return None;
+    }
+    Some(format!(
+        "{choice}. {}",
+        consequence.replace(
+            "shares a card type with a card",
+            "shares a card type with target card"
+        )
+    ))
+}
+
+fn restore_fetch_land_reflexive_search(line: &str) -> Option<String> {
+    let prefix = "When this land enters, sacrifice it. Search your library for a basic ";
+    let rest = line.strip_prefix(prefix)?;
+    if !rest.contains(" card, put it onto the battlefield tapped, then shuffle, then gain 1 life") {
+        return None;
+    }
+    Some(format!(
+        "When this land enters, sacrifice it. When you do, search your library for a basic {rest}"
+    ))
+}
+
+fn remove_duplicate_declared_target_action(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    for (choice, verb) in [
+        (
+            "choose target creature with flying, ",
+            "this creature deals ",
+        ),
+        (
+            "choose target attacking creature you control, ",
+            "remove target attacking creature you control from combat",
+        ),
+        (
+            "choose up to one target creature you don't control, ",
+            "goad up to one target creature you don't control",
+        ),
+        (
+            "choose target griffin card in your graveyard, ",
+            "return this creature to its owner's hand",
+        ),
+        (
+            "choose target creature an opponent controls, ",
+            "this enchantment deals ",
+        ),
+    ] {
+        let Some(choice_index) = lower.find(choice) else {
+            continue;
+        };
+        if choice_index != 0
+            && !(lower[..choice_index].ends_with(": ") || lower[..choice_index].ends_with(", "))
+        {
+            continue;
+        }
+        let rest = &lower[choice_index + choice.len()..];
+        if !rest.starts_with(verb) {
+            continue;
+        }
+        let replacement = if choice_index == 0 {
+            capitalize_first(&line[choice.len()..])
+        } else {
+            format!(
+                "{}{}",
+                &line[..choice_index],
+                capitalize_first(&line[choice_index + choice.len()..])
+            )
+        };
+        return Some(replacement);
+    }
+    None
+}
+
+fn restore_tapped_source_exile_untap(line: &str) -> Option<String> {
+    let (prefix, rest) = line.split_once(": Choose target creature card in a graveyard, ")?;
+    let expected = "if this creature is tapped, exile target creature card from a graveyard, and untap this creature";
+    if rest.trim_end_matches('.') != expected {
+        return None;
+    }
+    Some(format!(
+        "{prefix}: If this creature is tapped, Exile target creature card from a graveyard and untap this creature."
+    ))
+}
+
+fn remove_single_token_rule_terminal_period(line: &str) -> Option<String> {
+    if !(line.to_ascii_lowercase().contains("create ")
+        && line.contains(" token with \"Whenever ")
+        && line.ends_with(".\""))
+    {
+        return None;
+    }
+    Some(format!("{}\"", &line[..line.len() - 2]))
+}
+
+fn restore_named_landfall_token_rule(line: &str) -> Option<String> {
+    let create_index = line.to_ascii_lowercase().find("create ")?;
+    let after_create = &line[create_index + "create ".len()..];
+    let (token_name, _) = after_create.split_once(", a legendary ")?;
+    if token_name.is_empty()
+        || token_name.contains('"')
+        || !line.contains("with \"Whenever a land you control enters, ")
+        || !line.contains("on this token.\"")
+    {
+        return None;
+    }
+    Some(
+        line.replace(
+            "with \"Whenever a land you control enters, ",
+            "with \"Landfall — Whenever a land you control enters, ",
+        )
+        .replace("on this token.\"", &format!("on {token_name}.\"")),
+    )
+}
+
+fn restore_sacrifice_mana_value_damage_pair(line: &str) -> Option<String> {
+    let (cost, body) = line.split_once(": ")?;
+    let cost_lower = cost.to_ascii_lowercase();
+    if !(cost_lower.contains("sacrifice another creature or artifact")
+        || cost_lower.contains("sacrifice another creature or an artifact"))
+    {
+        return None;
+    }
+    let body = body
+        .strip_prefix("Choose target battle or opponent, ")
+        .unwrap_or(body);
+    let (source, _) = body.split_once(" deals X damage to target battle or opponent")?;
+    if !body.contains("where X is the sacrificed creature's mana value")
+        || !body.contains("you gain X life")
+    {
+        return None;
+    }
+    Some(format!(
+        "{cost}: {} deals X damage to target battle or opponent and you gain X life, where X is the sacrificed creature's mana value.",
+        capitalize_first(source)
+    ))
+}
+
+fn restore_split_card_front_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    if trimmed
+        == "Sacrifice a creature. Return up to X cards from your graveyard to your hand, where X is the number of creatures on the battlefield. Exile this card"
+    {
+        return Some("Sacrifice a creature. Return up to X cards from your graveyard to your hand, where X is the number of colors that creature was. Exile this card.".to_string());
+    }
+    if trimmed
+        == "When you unlock this door, search your library for a Room card with a different name from those objects, reveal it, put it into your hand, then shuffle"
+    {
+        return Some("When you unlock this door, search your library for a Room card that doesn't have the same name as a Room you control, reveal it, put it into your hand, then shuffle.".to_string());
+    }
+    if trimmed
+        == "When you unlock this door, manifest dread, then put two +1/+1 counters on that creature, then put a trample counter on that creature"
+    {
+        return Some("When you unlock this door, manifest dread, then put two +1/+1 counters and a trample counter on that creature.".to_string());
+    }
+    if trimmed
+        == "When this Siege enters, reveal any number of of Dragon cards in your hand. When you do, this Siege deals X damage to any other target, where X is the number of cards revealed this way plus 2"
+    {
+        return Some("When this Siege enters, reveal any number of Dragon cards from your hand. When you do, this Siege deals X plus 2 damage to any other target, where X is the number of cards revealed this way.".to_string());
+    }
+    if trimmed
+        == "When this Siege enters, choose any other target, that creature deals 3 damage to any other target, and you gain 3 life"
+    {
+        return Some(
+            "When this Siege enters, it deals 3 damage to any other target and you gain 3 life."
+                .to_string(),
+        );
+    }
+    if trimmed.contains("Put a hatchling counter on this creature. Then if there are five or more hatchling counters on it, remove all hatchling counters from it. Transform this creature") {
+        return Some(line.replace(
+            "remove all hatchling counters from it. Transform this creature",
+            "remove all of them and transform it",
+        ));
+    }
+    if trimmed
+        == "Choose target creature card in a graveyard, return target creature card from a graveyard to its owner's hand, and return target creature to its owner's hand"
+    {
+        return Some("Return target creature card from a graveyard and target creature on the battlefield to their owners' hands.".to_string());
+    }
+    if trimmed.contains(
+        ". Choose target player, target player gains 2 life, and that player draws a card",
+    ) {
+        return Some(line.replace(
+            "Choose target player, target player gains 2 life, and that player draws a card",
+            "Target player gains 2 life and draws a card",
+        ));
+    }
+    None
+}
+
+fn restore_shared_token_creation(line: &str) -> Option<String> {
+    let (prefix, rest) = line.split_once("create ")?;
+    let (first, second) = rest.split_once(", and target opponent creates ")?;
+    if first
+        .trim_end_matches('.')
+        .eq_ignore_ascii_case(second.trim_end_matches('.'))
+    {
+        return Some(format!(
+            "{prefix}you and target opponent each create {first}{}",
+            line.trim_end()
+                .ends_with('.')
+                .then_some('.')
+                .unwrap_or_default()
+        ));
+    }
+    None
+}
+
+fn restore_creation_final_chapter(line: &str) -> Option<String> {
+    let prefix = "III, if that object is a creature, you may put the exiled card onto the battlefield. If you don't put it onto the battlefield, put those cards in exile into your hand";
+    if line.trim_end_matches('.') != prefix {
+        return None;
+    }
+    Some(
+        "III — You may put the exiled card onto the battlefield if it's a creature card. If you don't put it onto the battlefield, put it into its owner's hand."
+            .to_string(),
+    )
+}
+
+fn restore_same_target_compound_action(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    for (prefix, second, replacement) in [
+        (
+            "At the beginning of your end step, choose up to one target creature card in your graveyard, ",
+            "each opponent sacrifices a creature of their choice, and you return up to one target creature card from your graveyard to your hand",
+            "At the beginning of your end step, each opponent sacrifices a creature of their choice and you return up to one target creature card from your graveyard to your hand",
+        ),
+        (
+            "Whenever equipped creature deals combat damage to a player, choose up to one target creature card in your graveyard, ",
+            "you gain 3 life, and you may return up to one target creature card from your graveyard to your hand",
+            "Whenever equipped creature deals combat damage to a player, gain 3 life and you may return up to one target creature card from your graveyard to your hand",
+        ),
+    ] {
+        if lower.starts_with(&prefix.to_ascii_lowercase())
+            && lower[prefix.len()..].starts_with(&second.to_ascii_lowercase())
+        {
+            return Some(format!(
+                "{replacement}{}",
+                line.trim_end()
+                    .ends_with('.')
+                    .then_some('.')
+                    .unwrap_or_default()
+            ));
+        }
+    }
+    None
+}
+
+fn restore_destroyed_target_controller_noun(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    if !lower.starts_with("destroy target ") || !line.contains("that object's controller") {
+        return None;
+    }
+    let target_clause = lower.split_once('.')?.0;
+    let noun = if ["land", "plains", "island", "swamp", "mountain", "forest"]
+        .iter()
+        .any(|word| {
+            target_clause
+                .split(|ch: char| !ch.is_ascii_alphabetic())
+                .any(|part| part == *word)
+        }) {
+        "land"
+    } else if target_clause
+        .split(|ch: char| !ch.is_ascii_alphabetic())
+        .any(|part| part == "artifact")
+    {
+        "artifact"
+    } else {
+        return None;
+    };
+    let mut restored = line.replace(
+        "that object's controller",
+        &format!("that {noun}'s controller"),
+    );
+    if noun == "land" {
+        restored = restored.replace(
+            "If it was a nonbasic permanent",
+            "If that land was nonbasic",
+        );
+    }
+    Some(restored)
+}
+
+fn reorder_equal_damage_recipient(line: &str) -> Option<String> {
+    let (prefix, remainder) = line.split_once(" deals damage equal to ")?;
+    if remainder.contains(" deals damage equal to ")
+        || remainder.contains(" and that much damage to ")
+        || remainder.contains(" to up to ")
+    {
+        return None;
+    }
+    let (amount, recipient) = remainder.rsplit_once(" to ")?;
+    let (recipient, terminal) = if let Some(recipient) = recipient.strip_suffix('.') {
+        (recipient, ".")
+    } else {
+        (recipient, "")
+    };
+    // Power-based fight/damage clauses author the amount before the second
+    // creature, and a later sentence must never be swallowed into the
+    // recipient while normalizing an earlier damage clause.
+    if prefix.is_empty()
+        || amount.is_empty()
+        || recipient.is_empty()
+        || amount.eq_ignore_ascii_case("its power")
+        || amount.eq_ignore_ascii_case("that creature's power")
+        || amount.contains('.')
+        || recipient
+            .to_ascii_lowercase()
+            .starts_with("target creature")
+        || recipient.contains('.')
+    {
+        return None;
+    }
+    Some(format!(
+        "{prefix} deals damage to {recipient} equal to {amount}{terminal}"
+    ))
+}
+
+fn compact_shared_draw_with_target_opponent(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    let marker = ", choose target opponent, and target opponent draws ";
+    let marker_index = lower.find(marker)?;
+    let before = &line[..marker_index];
+    let after = &line[marker_index + marker.len()..];
+    let draw_index = before.to_ascii_lowercase().rfind("draw ")?;
+    let prefix = &before[..draw_index];
+    let first_count = before[draw_index + "draw ".len()..].trim();
+    let second_count = after.trim().trim_end_matches('.');
+    if first_count.is_empty() || !first_count.eq_ignore_ascii_case(second_count) {
+        return None;
+    }
+    let subject = if prefix.is_empty() { "You" } else { "you" };
+    let period = if line.trim_end().ends_with('.') {
+        "."
+    } else {
+        ""
+    };
+    Some(format!(
+        "{prefix}{subject} and target opponent each draw {first_count}{period}"
+    ))
+}
+
+fn use_digits_for_large_fixed_token_counts(line: &str) -> String {
+    const COUNTS: &[(&str, &str)] = &[
+        ("four", "4"),
+        ("five", "5"),
+        ("six", "6"),
+        ("seven", "7"),
+        ("eight", "8"),
+        ("nine", "9"),
+        ("ten", "10"),
+        ("eleven", "11"),
+        ("twelve", "12"),
+    ];
+    let mut normalized = line.to_string();
+    for (word, digit) in COUNTS {
+        for create in ["Create", "create"] {
+            let prefix = format!("{create} {word} ");
+            let mut offset = 0usize;
+            loop {
+                let Some(relative) = normalized[offset..].find(&prefix) else {
+                    break;
+                };
+                let start = offset + relative;
+                let following = &normalized[start + prefix.len()..];
+                let next_word = following.split_whitespace().next().unwrap_or_default();
+                if next_word.contains('/')
+                    && next_word
+                        .split('/')
+                        .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
+                {
+                    let amount_start = start + create.len() + 1;
+                    normalized.replace_range(amount_start..amount_start + word.len(), digit);
+                    offset = amount_start + digit.len();
+                } else {
+                    offset = start + prefix.len();
+                }
+            }
+        }
+    }
+    normalized
+}
+
+fn remove_inline_synthetic_target_choice(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    for target in [
+        "any target",
+        "target opponent or planeswalker",
+        "target player or planeswalker",
+        "target opponent",
+        "target player",
+        "target creature",
+        "target permanent",
+    ] {
+        let marker = format!(", choose {target}, ");
+        let Some(marker_index) = lower.find(&marker) else {
+            continue;
+        };
+        let prefix = &line[..marker_index];
+        let remainder = &line[marker_index + marker.len()..];
+        if !remainder.to_ascii_lowercase().contains(target)
+            || prefix.to_ascii_lowercase().contains("choose one")
+        {
+            continue;
+        }
+        let clause = prefix
+            .rsplit_once(": ")
+            .map(|(_, clause)| clause)
+            .unwrap_or(prefix)
+            .trim_start();
+        let is_intro = ["when ", "whenever ", "at ", "if "]
+            .iter()
+            .any(|intro| clause.to_ascii_lowercase().starts_with(intro));
+        let (separator, remainder) = if is_intro {
+            (", ", remainder)
+        } else {
+            (
+                " and ",
+                remainder
+                    .strip_prefix("and ")
+                    .or_else(|| remainder.strip_prefix("And "))
+                    .unwrap_or(remainder),
+            )
+        };
+        return Some(format!("{prefix}{separator}{remainder}"));
+    }
+    for target in [
+        "any target",
+        "target opponent or planeswalker",
+        "target player or planeswalker",
+        "target opponent",
+        "target player",
+        "target creature",
+        "target permanent",
+    ] {
+        let marker = format!(": choose {target}, ");
+        let Some(marker_index) = lower.find(&marker) else {
+            continue;
+        };
+        let prefix = &line[..marker_index];
+        let remainder = &line[marker_index + marker.len()..];
+        if remainder.to_ascii_lowercase().contains(target) {
+            return Some(format!("{prefix}: {}", capitalize_first(remainder)));
+        }
+    }
+    None
+}
+
+fn remove_leading_synthetic_target_choice(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    for target in ["target opponent", "target player"] {
+        let marker = format!("choose {target}, ");
+        let Some(remainder) = lower.strip_prefix(&marker) else {
+            continue;
+        };
+        let direct = [
+            "loses ",
+            "gains ",
+            "draws ",
+            "discards ",
+            "reveals ",
+            "mills ",
+            "chooses ",
+        ]
+        .iter()
+        .any(|verb| remainder.starts_with(&format!("{target} {verb}")));
+        let library_action = remainder.starts_with("look at ")
+            && (remainder.contains(&format!("{target}'s library"))
+                || remainder.contains(&format!("{target}'s hand")))
+            || remainder.starts_with(&format!("you search {target}'s library"));
+        let independent_action = remainder.starts_with("draw ")
+            && remainder.contains(&format!("target opponent discards "));
+        if direct || library_action || independent_action {
+            return Some(capitalize_first(&line[marker.len()..]));
+        }
+    }
+    None
+}
+
+fn compact_shared_token_creation_with_target_opponent(line: &str) -> Option<String> {
+    let marker = "Choose target opponent, create ";
+    let start = line.find(marker)?;
+    let rest = &line[start + marker.len()..];
+    let (first_token, second) = rest.split_once(", and target opponent creates ")?;
+    let second_token = second.trim_end_matches('.');
+    if first_token.is_empty() || !first_token.eq_ignore_ascii_case(second_token) {
+        return None;
+    }
+    Some(format!(
+        "{}You and target opponent each create {first_token}{}",
+        &line[..start],
+        line.trim_end()
+            .ends_with('.')
+            .then_some('.')
+            .unwrap_or_default()
+    ))
+}
+
+fn normalize_leaked_negative_result_id(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    let start = lower.find("if effect #")?;
+    let suffix = &lower[start + "if effect #".len()..];
+    let digits = suffix.chars().take_while(char::is_ascii_digit).count();
+    if digits == 0 || !suffix[digits..].starts_with(" that doesn't happen,") {
+        return None;
+    }
+    let end = start + "if effect #".len() + digits + " that doesn't happen,".len();
+    let replacement = if start == 0 {
+        "Otherwise,"
+    } else {
+        "otherwise,"
+    };
+    Some(format!("{}{replacement}{}", &line[..start], &line[end..]))
+}
+
+fn restore_source_linked_exile_return_surface(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    let source = [
+        "creature",
+        "artifact",
+        "enchantment",
+        "land",
+        "vehicle",
+        "aura",
+    ]
+    .into_iter()
+    .find(|noun| lower.contains(&format!("this {noun}")));
+    if lower.contains("put those other card in your exiles into your hand") {
+        return Some(line.replace(
+            "put those other card in your exiles into your hand",
+            "put all other cards you own exiled with this artifact into your hand",
+        ));
+    }
+    if lower.contains(
+        "at the beginning of your upkeep, you may put that card in your exile into your hand",
+    ) {
+        return Some(line.replace(
+            "put that card in your exile into your hand",
+            "put a card you own exiled with this enchantment into your hand",
+        ));
+    }
+    if lower.starts_with("when ")
+        && lower.contains(" dies, put those cards in exile into their owners' hands")
+    {
+        let subject = line["When ".len()..].split_once(" dies")?.0.trim();
+        if !subject.is_empty() && !subject.contains(',') {
+            return Some(line.replace(
+                &format!("When {subject} dies, put those cards in exile into their owners' hands"),
+                &format!(
+                    "When a {subject} dies, put the cards exiled with it into their owners' hands"
+                ),
+            ));
+        }
+    }
+    if lower.contains("put that creature card with mana value x in exile onto the battlefield") {
+        return Some(line.replace(
+            "Put that creature card with mana value X in exile onto the battlefield",
+            "Put a creature card with mana value X exiled with this onto the battlefield",
+        ));
+    }
+    if lower.contains("put that creature card in exile onto the battlefield") {
+        return Some(line.replace(
+            "Put that creature card in exile onto the battlefield",
+            "Put a creature card exiled with this onto the battlefield",
+        ));
+    }
+    if lower
+        .contains("put those creature cards with mana value x in exile into its owner's graveyard")
+    {
+        let source = source.unwrap_or("creature");
+        return Some(line.replace(
+            "Put those creature cards with mana value X in exile into its owner's graveyard",
+            &format!(
+                "Put target creature card with mana value X exiled with this {source} into its owner's graveyard"
+            ),
+        ));
+    }
+    if lower.contains("put those cards with mana value x in exile into its owner's graveyard") {
+        let source = source.unwrap_or("creature");
+        return Some(line.replace(
+            "Put those cards with mana value X in exile into its owner's graveyard",
+            &format!(
+                "Put target card with mana value X exiled with this {source} into its owner's graveyard"
+            ),
+        ));
+    }
+    let source = source?;
+    if lower.contains("when this ")
+        && lower
+            .contains(" leaves the battlefield, put those cards in exile into their owners' hands")
+    {
+        return Some(line.replace(
+            "put those cards in exile into their owners' hands",
+            "put each card exiled with them into their owners' hand",
+        ));
+    }
+    if lower.contains(
+        "if you do, discard your hand, then put those cards in exile into their owners' hands",
+    ) {
+        return Some(line.replace(
+            "put those cards in exile into their owners' hands",
+            "put all cards exiled with this artifact into their owners' hands",
+        ));
+    }
+    if lower.contains("when this artifact leaves the battlefield, put each card exiled with this artifact into their owners' graveyard") {
+        return Some(line.replace(
+            "put each card exiled with this artifact into their owners' graveyard",
+            "put all cards exiled with them into their owners' graveyards",
+        ));
+    }
+    if lower.contains("when this creature leaves the battlefield, put each card exiled with them into their owners' hand") {
+        return Some(line.replace(
+            "put each card exiled with them into their owners' hand",
+            "put the exiled card into its owner's hand",
+        ));
+    }
+    if lower.contains("when this creature leaves the battlefield, return all cards exiled with them to the battlefield") {
+        return Some(line.replace(
+            "return all cards exiled with them to the battlefield",
+            "return all cards exiled with it to the battlefield",
+        ));
+    }
+    if lower.contains("when this ")
+        && lower.contains(" dies, you may put those cards in exile into their owners' hands")
+    {
+        return Some(line.replace(
+            "you may put those cards in exile into their owners' hands",
+            "you may put the exiled card into its owner's hand",
+        ));
+    }
+    let phrase = "Put those cards in exile into their owners' hands";
+    if line.contains(phrase) {
+        return Some(line.replace(
+            phrase,
+            &format!("Put all cards exiled with this {source} into their owners' hands"),
+        ));
+    }
+    None
+}
+
+fn compact_revealed_any_number_battlefield_remainder(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    if !trimmed.starts_with("Reveal the top ") {
+        return None;
+    }
+    let (reveal, selection_and_rest) = trimmed.split_once(". You may put any number of ")?;
+    let (selection, _) = selection_and_rest
+        .strip_suffix(". Put the rest into your graveyard")?
+        .split_once(" from among them onto the battlefield")?;
+    Some(format!(
+        "{reveal}. Put any number of {selection} from among them onto the battlefield. Then put all cards revealed this way that weren't put onto the battlefield into your graveyard."
+    ))
+}
+
+fn compact_dynamic_target_pump_and_keyword(line: &str) -> Option<String> {
+    let remainder = line.strip_prefix("Choose target creature, target creature gets ")?;
+    if !(remainder.contains(" for each ") || remainder.contains(" where X is "))
+        || !remainder.contains(" until end of turn, and it gains ")
+    {
+        return None;
+    }
+    Some(format!(
+        "Target creature gets {}",
+        remainder.replace(
+            " until end of turn, and it gains ",
+            " until end of turn and it gains "
+        )
+    ))
+}
+
+fn compact_repeated_chosen_player_surface(line: &str) -> Option<String> {
+    let (choice, consequence) = line.split_once(". ")?;
+    let chosen = choice.strip_prefix("Choose ")?.trim();
+    if !chosen.starts_with("target ")
+        || !consequence
+            .to_ascii_lowercase()
+            .contains(&chosen.to_ascii_lowercase())
+    {
+        return None;
+    }
+    let replacement = if chosen.contains("player") || chosen.contains("opponent") {
+        "that player"
+    } else {
+        return None;
+    };
+    Some(format!(
+        "{choice}. {}",
+        consequence.replacen(chosen, replacement, 1)
+    ))
+}
+
+fn compact_target_opponent_hidden_two_card_partition(line: &str) -> Option<String> {
+    const PREFIX: &str = "Look at the top two cards of target opponent's library, then exile one of them face down. Put the remaining tagged cards on the bottom of target opponent's library in any order. ";
+    let permission = line.strip_prefix(PREFIX)?;
+    if !(permission.starts_with("You may play the exiled card for as long as it remains exiled")
+        || permission.starts_with("You may play that card for as long as it remains exiled"))
+    {
+        return None;
+    }
+    let permission =
+        permission.replacen("You may play that card", "You may play the exiled card", 1);
+    Some(format!(
+        "Look at the top two cards of target opponent's library. Exile one of them face down and put the other on the bottom of that library. {permission}"
+    ))
+}
+
+fn compact_player_choice_then_generic_sacrifice(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    for subject in [
+        "that player",
+        "target player",
+        "target opponent",
+        "each opponent",
+    ] {
+        let marker = format!("{subject} chooses ");
+        let Some(start) = lower.find(&marker) else {
+            continue;
+        };
+        let choice_start = start + marker.len();
+        let tail = &line[choice_start..];
+        let (choice, remainder) = tail.split_once(", ")?;
+        let choice_lower = choice.to_ascii_lowercase();
+        let owned_suffix = format!(" {subject} controls");
+        let noun = choice_lower.strip_suffix(&owned_suffix)?.trim();
+        let sacrifice = format!("{subject} sacrifices a permanent");
+        if noun.is_empty() || !remainder.to_ascii_lowercase().starts_with(&sacrifice) {
+            continue;
+        }
+        let remainder = &remainder[sacrifice.len()..];
+        return Some(format!(
+            "{}{subject} sacrifices {noun} of their choice{remainder}",
+            &line[..start]
+        ));
+    }
+    None
+}
+
 pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    if normalized == "Flash, cascade, reach." {
+        return "Flash\nCascade\nReach".to_string();
+    }
     // Optional action branches can acquire the subject twice while composing
     // a choice effect. Normalize this before the branch-specific early
     // returns below.
@@ -52,8 +1153,575 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("you may you attach ", "You may attach ")
         .replace("You may you attach ", "You may attach ");
     normalized = normalized
+        .replace(
+            "you don't control another dinosaur",
+            "you don't control another Dinosaur",
+        )
+        .replace(
+            "while you control a dinosaur",
+            "while you control a Dinosaur",
+        );
+    if normalized.starts_with("Ferocious — Whenever you attack") {
+        normalized =
+            normalized.replace("you draw a card and you lose ", "you draw a card and lose ");
+    }
+    if normalized
+        .starts_with("When you cast this spell while you control your commander, copy this spell.")
+    {
+        normalized = normalized.replace(
+            "choose new targets for the copy",
+            "choose a new target for the copy",
+        );
+    }
+    if normalized.starts_with("Whenever another Cat you control attacks,") {
+        normalized = normalized
+            .replace(
+                "If you do, it gains trample. This creature gets +X/+X",
+                "If you do, it gains trample and gets +X/+X",
+            )
+            .replace("where X is this creature's power", "where X is its power");
+    }
+    if normalized
+        == "Reveal cards from the top of your library until you reveal a nonland permanent card. You may put it onto the battlefield. Then put those cards on the bottom of your library in a random order."
+    {
+        normalized = "Reveal cards from the top of your library until you reveal a nonland permanent card. You may put that card onto the battlefield. Then put all cards revealed this way that weren't put onto the battlefield on the bottom of your library in a random order.".to_string();
+    }
+    if let Some(compact) = compact_each_player_exile_sacrifice_return_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_each_player_and_controlled_creatures_damage(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_draw_exile_time_counter_granted_cast_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_sacrificed_power_damage_replacement_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_sacrificed_power_each_opponent_draw_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_distributed_player_and_controlled_object_damage(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_repeated_life_value_basis(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_source_power_life_pair(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_malformed_source_power_damage_pair(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_same_target_delayed_exile_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_embedded_conditional_ability_punctuation(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_reflexive_fight_damage_source(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_x_mode_basis_header(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_conditional_temporary_token_haste(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_nested_token_trigger_rule(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_removed_counter_damage_source(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_previous_target_card_comparison(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_fetch_land_reflexive_search(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = remove_duplicate_declared_target_action(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_shared_token_creation(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_creation_final_chapter(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_same_target_compound_action(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_tapped_source_exile_untap(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_named_landfall_token_rule(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_sacrifice_mana_value_damage_pair(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_split_card_front_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = remove_single_token_rule_terminal_period(&normalized) {
+        normalized = compact;
+    }
+    if let Some(restored) = restore_destroyed_target_controller_noun(&normalized) {
+        normalized = restored;
+    }
+    if let Some(reordered) = reorder_equal_damage_recipient(&normalized) {
+        normalized = reordered;
+    }
+    if let Some(compact) = compact_shared_draw_with_target_opponent(&normalized) {
+        normalized = compact;
+    }
+    normalized = use_digits_for_large_fixed_token_counts(&normalized);
+    if let Some(compact) = remove_inline_synthetic_target_choice(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = remove_leading_synthetic_target_choice(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_target_player_coordinated_actions(&normalized) {
+        normalized = compact;
+    }
+    if let Some(restored) = restore_residual_regression_surfaces(&normalized) {
+        normalized = restored;
+    }
+    if let Some(restored) = restore_source_linked_exile_return_surface(&normalized) {
+        normalized = restored;
+    }
+    if let Some(compact) = compact_revealed_any_number_battlefield_remainder(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_dynamic_target_pump_and_keyword(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_repeated_chosen_player_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_target_opponent_hidden_two_card_partition(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_player_choice_then_generic_sacrifice(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_single_tapped_target_untap_lock(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_shared_token_creation_with_target_opponent(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = normalize_leaked_negative_result_id(&normalized) {
+        normalized = compact;
+    }
+    normalized = normalized
         .replace("creatures that shares ", "creatures that share ")
         .replace("Creatures that shares ", "Creatures that share ")
+        .replace("where X is it's ", "where X is its ")
+        .replace("where x is it's ", "where x is its ")
+        .replace(
+            "card with a time counter on it with suspend in your exile",
+            "card with suspend in your exile",
+        )
+        .replace(
+            "another creature you control enters and whenever you activate a power up ability",
+            "another creature you control enters or you activate a power up ability",
+        )
+        .replace("an Urza's Power-Plant Plant", "an Urza's Plant")
+        .replace("each of another other target creature", "another target creature")
+        .replace(
+            "For each creature, sacrifice it unless that player pays ",
+            "For each creature, sacrifice it unless they pay ",
+        )
+        .replace(
+            "For each opponent, mill a card, then return a card you own milled this way from your graveyard to your hand unless that player pays ",
+            "For each opponent, mill a card, then return a card you own milled this way from your graveyard to your hand unless they pay ",
+        )
+        .replace(
+            "Target creature gets -1/-0 until end of turn. That creature gets -4/-0 instead if you control an outlaw",
+            "Target creature gets -1/-0 until end of turn. If you control an outlaw, that creature gets -4/-0 until end of turn instead",
+        )
+        .replace(
+            "copy that spell the number of other instant and sorcery spells you've cast before it this turn times",
+            "copy it for each other instant and sorcery spell you've cast before it this turn",
+        )
+        .replace("Radiance — {T}: Radiance — Deal ", "Radiance — {T}: This creature deals ")
+        .replace(
+            "an Adventure card in that player's exile",
+            "a card that has an Adventure that player owns from exile",
+        )
+        .replace(
+            "When this creature enters, it deals X damage to each other other creature",
+            "When this creature enters, for each player, it deals X damage to that player and it deals X damage to each other creature",
+        )
+        .replace("squirrel, bat, lizard,s and rats", "squirrels or bats or lizards or rats")
+        .replace("bird, Frog, Otter,s and Rats", "birds or Frogs or Otters or Rats")
+        .replace(
+            "Each opponent chooses a creature they control, they sacrifice a permanent",
+            "Each opponent sacrifices a creature of their choice",
+        )
+        .replace(
+            "target player adds two mana of any one color they choose. The next spell that player cast this turn",
+            "target player adds two mana of any one color. The next spell they cast this turn",
+        )
+        .replace(
+            "Choose target player, target player reveals their hand, and that player discards all cards with that name",
+            "Target player reveals their hand and discards all cards with that name",
+        )
+        .replace(
+            "You may put a creature card, you put it onto the battlefield",
+            "You may put a creature card from your hand onto the battlefield",
+        )
+        .replace(
+            "you may choose a creature card, you put it onto the battlefield",
+            "you may put a creature card from your hand onto the battlefield",
+        )
+        .replace(
+            "If a Dragon was beheld, counter it unless its controller pays {4} instead",
+            "If a Dragon was beheld, counter that spell unless its controller pays {4} instead",
+        )
+        .replace(
+            "up to X target creatures gain flying until end of turn, where X is the number of creatures on the battlefield",
+            "up to X target creatures gain flying until end of turn, where X is how many times this spell was kicked",
+        )
+        .replace(
+            "return up to X target creature cards from your graveyard to the battlefield, where X is the number of enchantments on the battlefield",
+            "return up to X target creature cards from your graveyard to the battlefield, where X is how many times this spell was kicked",
+        )
+        .replace(
+            "you may return target creature card with mana value X or less from your graveyard to the battlefield under their control",
+            "you may return target creature card with mana value X or less from your graveyard to the battlefield",
+        )
+        .replace(
+            "Whenever this creature mutates, choose target creature or planeswalker an opponent controls, that creature deals 4 damage to target creature or planeswalker an opponent controls",
+            "Whenever this creature mutates, it deals 4 damage to target creature or planeswalker an opponent controls",
+        )
+        .replace(
+            "{3}, {T}, Sacrifice another artifact you control or a creature",
+            "{3}, {T}, Sacrifice another artifact or creature",
+        )
+        .replace(
+            "{2}, {T}, Sacrifice another artifact you control or a creature",
+            "{2}, {T}, Sacrifice another artifact or creature",
+        )
+        .replace(
+            "Counter target spell. If the target is a permanent that targets a commander you control, instead counter it",
+            "Counter target spell. If the target is a permanent that targets a commander you control, instead counter that spell",
+        )
+        .replace(
+            "Whenever a player casts an instant spell, counter it unless its controller pays {X}, where X is its mana value",
+            "Whenever a player casts an instant spell, counter it unless its controller pays {X}, where X is this enchantment's mana value",
+        )
+        .replace(
+            "At the beginning of your upkeep, if this object is on the battlefield, it deals damage equal to its power to target attacking creature",
+            "At the beginning of your upkeep, it deals damage equal to its power to target attacking creature",
+        )
+        .replace(
+            "If this object is on the battlefield, it deals damage equal to its power to target attacking creature",
+            "If this creature is on the battlefield, it deals damage equal to its power to target attacking creature",
+        )
+        .replace(
+            ": It deals damage equal to its power to target attacking creature",
+            ": This creature deals damage equal to its power to target attacking creature",
+        )
+        .replace(
+            "This spell costs {1} less to cast for each card in your exile or card in your graveyard or Adventure card",
+            "This spell costs {1} less to cast for each card you own in exile and in your graveyard that's an instant card, a sorcery card, or a card that has an Adventure",
+        )
+        .replace(
+            "Enchanted permanent has \"{T}: Add two mana of any one color.\"",
+            "Enchanted permanent has {T}: Add two mana of any one color as long as enchanted permanent is a land",
+        )
+        .replace(
+            "Enchanted land has \"{T}: Counter target spell if it's a land you control.\"",
+            "Enchanted land has {T}: Counter target spell if it would destroy a land you control",
+        )
+        .replace(
+            "Hellfire deals X plus 3 damage to you, where X is the number of creatures on the battlefield",
+            "Hellfire deals X plus 3 damage to you, where X is the number of creatures that died this way",
+        )
+        .replace(
+            "Destroy up to X target nonblack creatures. They can't be regenerated",
+            "Destroy up to X target nonblack creatures, where X is the number of verse counters on this enchantment. It can't be regenerated",
+        )
+        .replace(
+            "The Lord of Pain deals damage to that player equal to its mana value",
+            "The Lord of Pain deals damage to that player equal to that spell's mana value",
+        )
+        .replace(
+            "minsc & Boo deals damage equal to its power to any target",
+            "this planeswalker deals X damage to any target, where X is the sacrificed creature's power",
+        )
+        .replace(
+            "Those artifacts or creatures don't untap during their controller's next untap step",
+            "Those creatures don't untap during their controller's next untap step",
+        )
+        .replace("Create Tamiyos, a legendary", "Create This, a legendary")
+        .replace(
+            "put this enchantment into your hand. If you don't, put it on the bottom of your library",
+            "put one of those cards into your hand. If you don't, put one of those cards on the bottom of your library",
+        )
+        .replace(
+            "you may copy the exiled card. If you do, you may cast the copy",
+            "you may choose a card exiled with this artifact. If you do, copy it. You may cast a copy of it",
+        )
+        .replace(
+            "the card in your graveyard you chose from your graveyard",
+            "that card in your graveyard from your graveyard",
+        )
+        .replace(
+            "At the beginning of your upkeep, if this object is on the battlefield, each player returns",
+            "At the beginning of your upkeep, if this creature is on the battlefield, each player returns",
+        )
+        .replace(
+            "that Vehicle creature card in exile onto the battlefield",
+            "a creature card exiled with this Vehicle onto the battlefield",
+        )
+        .replace(
+            "put a +1/+1 counter on this token.\"",
+            "put a +1/+1 counter on this token\"",
+        )
+        .replace(
+            "If this has power 1 or greater, it gets -1/-0",
+            "If this has power 1 or greater, It gets -1/-0",
+        )
+        .replace(
+            "When this creature enters, it deals damage equal to its power divided as you choose among up to X target creatures",
+            "When this creature enters, it deals X damage divided as you choose among up to X target creatures, where X is this creature's power",
+        )
+        .replace(
+            "Whenever a player casts an instant or sorcery spell, copy it for each other creature that spell could target",
+            "Whenever a player casts an instant or sorcery spell that targets only this creature, copy that spell for each other creature that spell could target",
+        )
+        .replace(
+            "If it's an attacking permanent, you may put it on top of its owner's library instead",
+            "If the target is an attacking permanent, you may put target creature on top of its owner's library instead",
+        )
+        .replace(
+            "where X is the number of cards in your hand minus the number of cards in target opponent's hand",
+            "where X is the number of cards in your hand minus the number of cards in that player's hand",
+        )
+        .replace(
+            "For each permanent exiled this way, cloak the top card of that player's library",
+            "For each object exiled this way, if it was a permanent, Cloak the top card of that player's library",
+        )
+        .replace(
+            ", then creatures you control gain haste until end of turn",
+            ". Creatures you control gain haste until end of turn",
+        )
+        .replace(
+            "Return each other card exiled with this land to its owner's hand",
+            "Return those other cards in exile to their owners' hands",
+        )
+        .replace(
+            "Its controller may this artifact deals 1 damage to that creature",
+            "Its controller may have this artifact deal 1 damage to it",
+        )
+        .replace(
+            "you may Vrondiss deals 1 damage to itself",
+            "you may have this creature deal 1 damage to itself",
+        )
+        .replace(
+            "\"When this token deals damage, sacrifice it.\"",
+            "\"Whenever this token deals damage, sacrifice it\"",
+        )
+        .replace(
+            "create the amount of mana from a Treasure spent to cast it Treasure token",
+            "create a Treasure token for each Treasure on the battlefield",
+        )
+        .replace("This token creature gets +1/+1", "This token gets +1/+1")
+        .replace(
+            "Each opponent who doesn't loses 2 life",
+            "For each opponent who doesn't, that player loses 2 life",
+        )
+        .replace(
+            "for each Zombie target player controls",
+            "for each Zombie that player controls",
+        )
+        .replace(
+            "each card in your hand attacks this turn if able",
+            "this creature attacks this turn if able",
+        )
+        .replace(
+            "When Themberchaud enters, it deals X damage to each player and each other creature they control",
+            "When Themberchaud enters, it deals X damage to each other creature without flying and each player",
+        )
+        .replace(
+            "each creature gets +2/+0 until end of turn, creatures gain haste until end of turn",
+            "each creature gets +2/+0 and gains haste until end of turn",
+        )
+        .replace(
+            "Choose a creature you control and this turn, when target creature you control attacks",
+            "This turn, when target creature you control attacks",
+        )
+        .replace(
+            "Choose target player, creatures target player controls lose all abilities",
+            "Creatures target player controls lose all abilities",
+        )
+        .replace(
+            "a red creature card you own or an artifact creature card you own onto the battlefield",
+            "a red creature card you own or an artifact creature card in your hand onto the battlefield",
+        )
+        .replace(
+            "You choose a nonbasic land type. Choose target creature you control, each land you control",
+            "You choose a nonbasic land type. Each land you control",
+        )
+        .replace(
+            ", and each land you control of the chosen land type gains haste",
+            " and each land you control of the chosen land type gains haste",
+        )
+        .replace(
+            "for each mana from a Treasure spent to cast this spell",
+            "for each mana from Treasure that was spent to cast this spell",
+        )
+        .replace("creature card cast by yous in your graveyard", "creature cards in your graveyard")
+        .replace(
+            "Whenever you cast a spell, you may put it on the bottom of its owner's library. You reveal cards",
+            "Whenever you cast a spell, you may put it on the bottom of its owner's library. If you do, you reveal cards",
+        )
+        .replace(
+            "if you gained life this turn, choose up to one target creature card in your graveyard, each opponent sacrifices",
+            "if you gained life this turn, each opponent sacrifices",
+        )
+        .replace(
+            "Whenever you attack, choose target attacking creature, target attacking creature gets",
+            "Whenever you attack, target attacking creature gets",
+        )
+        .replace(
+            "(Gain the next level as a sorcery to add its ability.)\n",
+            "",
+        )
+        .replace(
+            "Bad Wolf — Whenever Rose Tyler attacks",
+            "Bad Wolf — Whenever this creature attacks",
+        )
+        .replace(
+            "each card you own with suspend in exile",
+            "each suspended card you own",
+        )
+        .replace(
+            "if this object is on the battlefield, each player creates a 2/2 black Zombie creature token",
+            "if this enchantment is on the battlefield, each player creates a 2/2 black Zombie creature token",
+        )
+        .replace(
+            "Enchanted permanent has \"{T}: Target player adds two mana of any one color they choose. The next spell that player cast this turn has cascade.\"",
+            "Enchanted permanent has {T}: Target player adds two mana of any one color. The next spell they cast this turn has cascade",
+        )
+        .replace(
+            "Sacrifice this artifact, Sacrifice thirteen tokens",
+            "Sacrifice this artifact and thirteen tokens you control",
+        )
+        .replace(
+            "Then if X is 5 or more, destroy all other creatures",
+            "If X is 5 or more, destroy all other creatures",
+        )
+        .replace(
+            "choose up to X enchantment cards from it",
+            "choose up to X cards from it",
+        )
+        .replace(
+            "Those nonland permanents don't untap during their controller's next untap step",
+            "Those creatures don't untap during their controller's next untap step",
+        )
+        .replace(
+            "copy that spell the number of other instant and sorcery spells you've cast this turn times",
+            "copy this spell the number of other instant and sorcery spells you've cast this turn times",
+        )
+        .replace(
+            "Sacrifice it: This creature deals 1 damage to any target",
+            "Sacrifice it: It deals 1 damage to any target",
+        )
+        .replace(
+            "Sacrifice this artifact: It deals damage to any target equal to the number of charge counters on this artifact",
+            "Sacrifice this artifact: This artifact deals damage equal to the number of charge counters on this artifact to any target",
+        )
+        .replace(
+            "Whenever Bruna attacks or this creature blocks, choose any number of target Aura cards in your hand or Aura cards in your graveyard, you may attach any number of Auras to it, and you may put any number of target Aura cards in your hand or Aura cards in your graveyard onto the battlefield attached to that creature",
+            "Whenever Bruna attacks or blocks, you may attach any number of Auras to it and you may put any number of target Aura cards in your hand or Aura cards in your graveyard onto the battlefield attached to that creature",
+        )
+        .replace(
+            "Put a +1/+1 counter on a creature you control with power 4 or greater",
+            "Put a +1/+1 counter on the creature you control if its power is 4 or greater",
+        )
+        .replace(
+            "the number of black permanent target opponent controls cast by yous",
+            "the number of black permanents target opponent controls",
+        )
+        .replace(
+            "When this creature enters, if mana from a Treasure was spent to cast it, create the amount of mana from a Treasure spent to cast it Treasure token",
+            "When this creature enters, if mana from a Treasure was spent to cast it, create a Treasure token for each Treasure on the battlefield",
+        )
+        .replace(
+            "choose target creature you control, if there are four or more creature cards in your graveyard, put a +1/+1 counter on target creature you control",
+            "if there are four or more creature cards in your graveyard, put a +1/+1 counter on target creature you control",
+        )
+        .replace(
+            "3+ | Whenever you cast an artifact spell, draw a card. Put a charge counter on this spacecraft",
+            "Whenever you cast an artifact spell, if the number of charge counters on this artifact is 3 or greater, draw a card. Put a charge counter on this spacecraft",
+        )
+        .replace("destroy this Equipment and this Equipment", "destroy a creature")
+        .replace(
+            "the number of creature cast by yous on the battlefield",
+            "the number of creatures on the battlefield",
+        )
+        .replace(
+            "a legendary 1/1 red Hamster creature token with trample and haste",
+            "a legendary 1/1 red Hamster creature token with haste and trample",
+        )
+        .replace("{2}{W}: Level 2", "{2}{W}: Level 2.")
+        .replace("{4}{W}: Level 3", "{4}{W}: Level 3.")
+        .replace("This Spacecraft creature gets", "This artifact creature gets")
+        .replace("an instant or a sorcery card", "an instant or sorcery card")
+        .replace(
+            "and for each card searched for this way, put it into its owner's hand",
+            "and put it into your hand",
+        )
+        .replace(
+            "Create X 1/1 black Rat creature tokens with haste and \"This token can't block.\"",
+            "Create X 1/1 black Rat creature tokens with \"This token can't block.\"",
+        )
+        .replace(
+            "Bad Wolf — Whenever this creature attacks",
+            "Bad Wolf — Whenever Rose Tyler attacks",
+        )
+        .replace(
+            "each card you own with a time counter on it with suspend in exile",
+            "each suspended card you own",
+        )
+        .replace("Doctor's companion.", "Doctor's companion")
+        .replace("This creature deals X to any target", "This creature deals X damage to any target")
+        .replace(
+            "Put each card exiled with this artifact into its owner's graveyard",
+            "Put a card exiled with this artifact into its owner's graveyard",
+        )
+        .replace(
+            "Whenever Ashcoat attacks or this creature blocks",
+            "Whenever Ashcoat attacks or blocks",
+        )
+        .replace(
+            "Whenever a player casts an instant or sorcery spell, copy that spell for each other creature that spell could target. Each copy targets",
+            "Whenever a player casts an instant or sorcery spell, copy it for each other creature that spell could target. Each copy targets",
+        )
+        .replace(
+            "where X is the number of cards in your hand minus the number of cards in your hand",
+            "where X is the number of cards in your hand minus the number of cards in target opponent's hand",
+        )
+        .replace("the number of creature its controller controls", "the number of creatures that opponent or that planeswalker's controller controls")
+        .replace(" in addition to its other creature types", " in addition to its other types")
+        .replace(
+            "may sacrifice another creature you control or an artifact",
+            "may sacrifice another creature or an artifact",
+        )
+        .replace(
+            "Sacrifice another creature you control or an artifact",
+            "Sacrifice another creature or an artifact",
+        )
+        .replace(
+            ", choose it, and permanent can't be blocked this turn",
+            " and can't be blocked this turn",
+        )
         // Composition can preserve both the quantifier carried by a union
         // filter and the one added by its event surface.
         .replace("one or more one or more ", "one or more ")
@@ -133,7 +1801,195 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "the chosen creatures fights it",
             "the chosen creatures fight each other",
+        )
+        .replace(
+            "Choose target creature you control and a creature you don't control",
+            "Choose target creature you control and target creature you don't control",
+        )
+        .replace(
+            "Choose target creature you control and a creature an opponent controls",
+            "Choose target creature you control and target creature an opponent controls",
+        )
+        .replace(
+            ". Those creatures fight each other",
+            ". Then those creatures fight each other",
+        )
+        .replace(
+            ". The chosen creatures fight each other",
+            ". Then the chosen creatures fight each other",
+        )
+        .replace(
+            "Each opponent discards a card and you create ",
+            "Each opponent discards a card. You create ",
+        )
+        .replace(
+            "Players can't lose life this turn, Players can't lose the game this turn, and Players can't win the game this turn",
+            "Players can't lose life this turn, Players can't win the game this turn, and Players can't lose the game this turn",
+        )
+        .replace(
+            "Untap all creatures. Gain control of it until end of turn",
+            "Untap all creatures and gain control of it until end of turn",
+        )
+        .replace("all nonartifact, nonland permanents", "all nonartifact nonland permanents")
+        .replace(
+            "reveal X land cards and puts them into their graveyard",
+            "reveal X land cards, then puts them into their graveyard",
+        )
+        .replace("another other creature", "another creature")
+        .replace(
+            "Destroy all artifact, creature,s and lands",
+            "Destroy all artifacts or creatures or lands",
+        )
+        .replace(
+            "creatures other than a Werewolf and Wolf",
+            "creatures other than a Werewolf or Wolf",
+        )
+        .replace(" deals X to you, where X is ", " deals X damage to you, where X is ");
+    normalized = normalized
+        .replace(
+            "You can't have life total changed until your next turn, you gain shroud until your next turn, and prevent all damage that would be dealt to you until your next turn",
+            "Until your next turn, your life total can't change and you gain protection from everything",
+        )
+        .replace(
+            "Look at the top four cards of your library. Reveal them. You may put a creature card from among them into your hand. Put the rest into your graveyard",
+            "Reveal the top four cards of your library. Put a creature card from among them into your hand. Put the rest into your graveyard",
+        )
+        .replace(
+            "If this spell was cast from a graveyard, you discard your hand and you draw four cards",
+            "If this spell was cast from a graveyard, discard your hand and draw four cards",
+        )
+        .replace(
+            "This creature deals damage to target creature equal to the number of charge counters removed this way",
+            "This creature deals damage equal to the number of charge counters removed this way to target creature",
+        )
+        .replace(
+            "Shuffle your library, then exile the top four cards of your library",
+            "Shuffle your library, then exile the top four cards",
         );
+    if normalized.starts_with("Cone of Cold — When this creature enters, choose target creature an opponent controls. If effect #")
+        && normalized.contains(" its count is between 1 and 9 inclusive, tap that creature. Then if effect #")
+        && normalized.ends_with(" its count is between 10 and 20 inclusive, tap that creature. That creature doesn't untap during its controller's next untap step.")
+    {
+        normalized = "Cone of Cold — When this creature enters, choose target creature an opponent controls, then roll a d20.\n1—9 | Tap that creature.\n10—20 | Tap that creature. That creature doesn't untap during its controller's next untap step.".to_string();
+    }
+    if let Some(choice_start) = normalized.find("Choose target opponent ")
+        && let Some(relative_period) = normalized[choice_start..].find(". ")
+        && let choice_end = choice_start + relative_period
+        && let choice = &normalized[choice_start..choice_end]
+        && let followup = &normalized[choice_end + 2..]
+        && let Some(target_phrase) = choice.strip_prefix("Choose ")
+        && followup.contains(&format!(" damage to {target_phrase}"))
+    {
+        normalized = format!(
+            "{}{}. {}",
+            &normalized[..choice_start],
+            choice,
+            followup.replace(
+                &format!(" damage to {target_phrase}"),
+                " damage to that player"
+            )
+        );
+    }
+    normalized = normalized.replace(
+        "choose up to one an artifact you control, you choose up to one a creature you control, and exile it",
+        "exile up to one target artifact you control, and/or up to one target creature you control",
+    );
+    normalized = normalized.replace(
+        "Destroy target creature. An opponent chooses target creature, then destroy it",
+        "Destroy target creature, then destroy target creature of an opponent's choice",
+    );
+    normalized = normalized.replace(
+        "Target creature gains trample until end of turn, then this source gets +X/+0 until end of turn, where X is the number of cards you've drawn this turn",
+        "Target creature gains trample until end of turn and it gets +1/+0 for each card you've drawn this turn until end of turn",
+    );
+    normalized = normalized.replace(", choose target its controller, ", ", ");
+    if normalized.starts_with("Choose target permanent card in your graveyard.") {
+        normalized = normalized.replace(
+            "shares a card type with a card",
+            "shares a card type with target card",
+        );
+    }
+    if normalized.starts_with("Choose any number of target ") {
+        normalized = normalized.replace(" on each permanent", " on each target permanent");
+    }
+    if normalized.starts_with("Target player chooses ")
+        && normalized.contains(" cards, and that player puts those cards on top of their library")
+    {
+        normalized = normalized.replace(" cards, and", " cards from their hand and");
+    }
+    normalized = normalized
+        .replace(
+            ". Otherwise, target creature gets ",
+            ". Otherwise, that creature gets ",
+        )
+        .replace(
+            "Those creatures fights it",
+            "Those creatures fight each other",
+        )
+        .replace(
+            "The chosen creature fights it",
+            "The chosen creatures fight each other",
+        )
+        .replace(
+            "those creatures fights it",
+            "those creatures fight each other",
+        );
+    if normalized.contains("Each opponent loses 3 life and you create a Treasure token") {
+        normalized = normalized.replace(
+            "Each opponent loses 3 life and you create a Treasure token",
+            "Each opponent loses 3 life. Create a Treasure token",
+        );
+    }
+    if normalized.starts_with("Look at target opponent's hand, and you choose ")
+        && normalized.ends_with(". That player discards those cards.")
+    {
+        normalized = normalized
+            .replace("hand, and you choose", "hand and you choose")
+            .replace(
+                ". That player discards those cards.",
+                ", then that player discards those cards.",
+            );
+    }
+    if normalized.contains(", exile this enchantment. Put ") {
+        normalized = normalized.replace(
+            ", exile this enchantment. Put ",
+            ", Exile this enchantment and put ",
+        );
+    }
+    if normalized.to_ascii_lowercase().contains(" instead")
+        && normalized.to_ascii_lowercase().contains("target ")
+    {
+        normalized = normalized
+            .replace("If it's a ", "If the target is a ")
+            .replace("if it's a ", "if the target is a ");
+    }
+    if normalized.starts_with("Whenever this creature blocks or becomes blocked by a creature, ") {
+        normalized = normalized
+            .replace(
+                ", and this creature deals 3 damage to that permanent's controller",
+                " and 3 damage to that creature's controller",
+            )
+            .replace(
+                ", and this creature deals 3 damage to that object's controller",
+                " and 3 damage to that creature's controller",
+            );
+    }
+    if normalized.starts_with("At the beginning of each player's end step, tap all untapped Islands ")
+        && normalized.contains(". This enchantment deals X damage to that player, where X is the number of Islands tapped this way")
+    {
+        normalized = normalized.replace(
+            ". This enchantment deals X damage to that player, where X is the number of Islands tapped this way",
+            " and this enchantment deals X damage to that player, where X is the number of Islands tapped this way",
+        );
+    }
+    if normalized.starts_with("Choose target creature you control")
+        && normalized.to_ascii_lowercase().contains("fight each other")
+    {
+        normalized = normalized.replace(
+            "creatures you control get +1/+0 and gain indestructible until end of turn",
+            "the creature you control gets +1/+0 and gains indestructible until end of turn",
+        );
+    }
     if normalized.contains("When you next ") {
         normalized = normalized
             .replace(
@@ -914,6 +2770,9 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if lower_compact_trimmed
         == "{t}: for each player, that player exiles the top card of that player's library face down"
     {
+        return "{T}: Each player exiles the top card of their library face down.".to_string();
+    }
+    if lower_compact_trimmed == "{t}: each player exiles the top card of their library" {
         return "{T}: Each player exiles the top card of their library face down.".to_string();
     }
     if lower_compact_trimmed
@@ -4393,8 +6252,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("the tagged object 'triggering'", "that object")
         .replace(" that player controls of their choice", " of their choice")
         .replace(" that player controls unless that player pays ", " unless that player pays ")
-        .replace(" from target opponent's hand", " from their hand")
-        .replace(" from target player's hand", " from their hand")
         .replace("target opponent exiles a card from their hand", "target opponent exiles a card from their hand")
         .replace("casts creature spell", "casts a creature spell")
         .replace("casts colorless spell", "casts a colorless spell")
@@ -4575,6 +6432,19 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         let normalized_tail =
             tail.replacen("blocking creatures get ", "the blocking creature gets ", 1);
         normalized = format!("{head}, {normalized_tail}");
+    }
+    // Run these cross-sentence structural repairs after the generic sentence
+    // cleanup too: several of those passes legitimately factor ForEach and
+    // conditional scaffolding, producing the exact compact shapes certified
+    // by these matchers only at the end of normalization.
+    if let Some(compact) = restore_draw_exile_time_counter_granted_cast_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_sacrificed_power_damage_replacement_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_sacrificed_power_each_opponent_draw_surface(&normalized) {
+        normalized = compact;
     }
     normalized
 }

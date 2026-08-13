@@ -1345,6 +1345,20 @@ pub(super) fn compile_subject_verb_late(
             }
             _ => compile_effect_for_target(target, ctx, |spec| Effect::put_sticker(spec, *action)),
         },
+        SubjectVerbActionAst::UnlockRoomDoor => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            let room_filter = ObjectFilter::default()
+                .with_subtype(Subtype::Room)
+                .you_control()
+                .in_zone(Zone::Battlefield);
+            Ok((
+                vec![Effect::unlock_room_door(
+                    subject.into_player_filter(),
+                    room_filter,
+                )],
+                subject.into_choices(),
+            ))
+        }
         SubjectVerbActionAst::SwitchPowerToughness { target, duration } => {
             compile_tagged_effect_for_target(target, ctx, "switched_pt", |spec| {
                 Effect::new(

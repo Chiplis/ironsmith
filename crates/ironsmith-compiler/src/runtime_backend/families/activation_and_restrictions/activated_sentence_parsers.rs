@@ -368,4 +368,24 @@ mod tests {
         assert!(scan.additional_activation_restrictions.is_empty());
         assert!(scan.kept_sentences.is_empty());
     }
+
+    #[test]
+    fn mana_ability_keeps_a_trailing_spending_restriction() {
+        let tokens = lex(
+            "{T}: Add {C}. Spend this mana only to cast an artifact spell or activate an ability.",
+        );
+        let parsed =
+            crate::runtime_backend::activation_and_restrictions::parse_activated_line_with_raw(
+                &tokens,
+            )
+            .expect("restricted mana line should parse")
+            .expect("restricted mana ability");
+        let debug = format!("{parsed:#?}");
+        assert!(debug.contains("mana_usage_restrictions"), "{debug}");
+        assert!(
+            debug.contains("CastSpellOrActivateAbilitySourceMatching")
+                || debug.contains("PaymentTransaction"),
+            "{debug}"
+        );
+    }
 }

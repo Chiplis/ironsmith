@@ -606,7 +606,25 @@ fn describe_all_conjunctive_branch_union(filter: &ObjectFilter) -> Option<String
         .collect::<Option<Vec<_>>>()?;
     let branches = branches
         .iter()
-        .map(|branch| format!("all {}", describe_plural_conjunctive_union_branch(branch)))
+        .map(|branch| {
+            let mut semantic_branch = branch.clone();
+            let source_surface = semantic_branch.source_surface.take();
+            if semantic_branch == ObjectFilter::source()
+                && let Some(source_surface) = source_surface
+            {
+                return source_surface.display_text();
+            }
+            if branch.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Each) {
+                let mut singular = branch.clone();
+                singular.set_set_quantifier_surface(None);
+                if singular == ObjectFilter::creature().controlled_by(PlayerFilter::Opponent) {
+                    return "each creature your opponents control".to_string();
+                }
+                let singular = describe_object_filter_with_fixed_pt_shorthand(&singular);
+                return format!("each {}", strip_leading_article(singular.trim()).trim());
+            }
+            format!("all {}", describe_plural_conjunctive_union_branch(branch))
+        })
         .collect::<Vec<_>>();
     Some(join_with_and(&branches))
 }
@@ -966,6 +984,18 @@ pub(crate) fn describe_shared_tagged_attachment_union_count_subject(
     let mut unlinked = filter.clone();
     for branch in &mut unlinked.any_of {
         branch.tagged_constraints.clear();
+    }
+    if unlinked.any_of.len() == 2
+        && unlinked
+            .any_of
+            .iter()
+            .any(|branch| branch.subtypes == [crate::types::Subtype::Aura])
+        && unlinked
+            .any_of
+            .iter()
+            .any(|branch| branch.subtypes == [crate::types::Subtype::Equipment])
+    {
+        return Some("Aura and Equipment attached to it".to_string());
     }
     let subject = describe_count_filter_value_subject(&unlinked);
     let subject = subject
@@ -2033,6 +2063,16 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         }
         ChooseSpec::Target(inner) => {
             if let ChooseSpec::Object(filter) = inner.as_ref()
+                && filter.has_x_in_cost
+            {
+                return format!(
+                    "target {}",
+                    strip_indefinite_article(&describe_object_filter_with_fixed_pt_shorthand(
+                        filter
+                    ))
+                );
+            }
+            if let ChooseSpec::Object(filter) = inner.as_ref()
                 && filter.power_toughness_relation
                     == Some(ironsmith_core::PowerToughnessRelation::NotEqual)
             {
@@ -2112,6 +2152,18 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 return format!("target {target_text}");
             }
             let inner_text = describe_choose_spec(inner);
+            // A bare object inside `Target` denotes exactly one object. The
+            // object-filter renderer also serves plural set selections, so it
+            // keeps plural agreement; the typed target wrapper is where we can
+            // safely restore the singular oracle wording.
+            let inner_text = if matches!(inner.as_ref(), ChooseSpec::Object(_)) {
+                inner_text.replace(
+                    " that aren't of the chosen type",
+                    " that isn't of the chosen type",
+                )
+            } else {
+                inner_text
+            };
             if inner_text == "it" {
                 inner_text
             } else if inner_text.starts_with("this ") {
@@ -2193,6 +2245,9 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
             if tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG {
                 return "the exiled card".to_string();
+            }
+            if tag.as_str() == "__chosen_objects__" {
+                return "the chosen cards".to_string();
             }
             if tag.as_str() == "rest" {
                 return "the rest".to_string();
@@ -2657,6 +2712,7 @@ pub(crate) fn describe_goad_target(spec: &ChooseSpec) -> String {
                 && filter.excluded_subtypes.is_empty()
                 && filter.with_attached_object.is_none()
                 && filter.without_attached_object.is_none()
+                && !filter.suspected
                 && !filter.source;
             if looks_like_plain_creature_filter {
                 if let Some(controller) = filter.controller.as_ref() {
@@ -3571,7 +3627,7 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
     let mut target: Option<&ChooseSpec> = None;
     let mut color_mode_count = 0usize;
     let mut allow_colorless = false;
-    let mut allow_artifacts = false;
+    let mut card_type_modes = Vec::new();
 
     for mode in &choose_mode.modes {
         if mode.effects.len() != 1 {
@@ -3588,11 +3644,11 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
                 }
                 allow_colorless = true;
             }
-            crate::ability::ProtectionFrom::CardType(crate::types::CardType::Artifact) => {
-                if allow_artifacts {
+            crate::ability::ProtectionFrom::CardType(card_type) => {
+                if card_type_modes.contains(card_type) {
                     return None;
                 }
-                allow_artifacts = true;
+                card_type_modes.push(*card_type);
             }
             crate::ability::ProtectionFrom::Color(colors) => {
                 if colors.count() != 1 {
@@ -3612,9 +3668,6 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
         }
     }
 
-    if color_mode_count != 5 || (allow_colorless && allow_artifacts) {
-        return None;
-    }
     let target_desc = describe_choose_spec(target?);
     let choice_owner = match choose_mode.chooser.as_ref() {
         None | Some(PlayerFilter::You) => "your".to_string(),
@@ -3623,6 +3676,33 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
         }
         Some(chooser) => describe_possessive_player_filter(chooser),
     };
+    const CHOOSABLE_CARD_TYPES: [crate::types::CardType; 9] = [
+        crate::types::CardType::Artifact,
+        crate::types::CardType::Battle,
+        crate::types::CardType::Creature,
+        crate::types::CardType::Enchantment,
+        crate::types::CardType::Instant,
+        crate::types::CardType::Kindred,
+        crate::types::CardType::Land,
+        crate::types::CardType::Planeswalker,
+        crate::types::CardType::Sorcery,
+    ];
+    if color_mode_count == 0
+        && !allow_colorless
+        && card_type_modes.len() == CHOOSABLE_CARD_TYPES.len()
+        && CHOOSABLE_CARD_TYPES
+            .iter()
+            .all(|card_type| card_type_modes.contains(card_type))
+    {
+        return Some(format!(
+            "{target_desc} gains protection from the card type of {choice_owner} choice until end of turn"
+        ));
+    }
+
+    let allow_artifacts = card_type_modes.as_slice() == [crate::types::CardType::Artifact];
+    if color_mode_count != 5 || (allow_colorless && allow_artifacts) {
+        return None;
+    }
     Some(if allow_artifacts {
         format!(
             "{target_desc} gains protection from artifacts or from the color of {choice_owner} choice until end of turn"
@@ -5499,6 +5579,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::ColorPairsAmong(filter) => format!(
             "the number of different color pairs among {}",
+            describe_count_filter_value_subject(filter)
+        ),
+        Value::DistinctCounterTypesAmong(filter) => format!(
+            "the number of kinds of counters among {}",
             describe_count_filter_value_subject(filter)
         ),
         Value::DistinctNames(filter) => format!(

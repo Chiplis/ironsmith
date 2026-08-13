@@ -21,7 +21,7 @@ fn synthetic_target_with_one_value_consumer_folds_into_that_action() {
 }
 
 #[test]
-fn synthetic_target_with_two_consumers_retains_explicit_tag_identity() {
+fn synthetic_target_with_two_consumers_folds_when_first_consumer_names_target() {
     let tag = TagKey::from("targeted_0");
     let target = ChooseSpec::target_creature();
     let effects = vec![
@@ -38,8 +38,8 @@ fn synthetic_target_with_two_consumers_retains_explicit_tag_identity() {
 
     let rendered = describe_effect_list(&effects);
     assert!(
-        rendered.starts_with("Choose target creature"),
-        "shared target declaration was lost: {rendered}"
+        !rendered.starts_with("Choose target creature"),
+        "{rendered}"
     );
     let lowercase = rendered.to_ascii_lowercase();
     assert!(lowercase.contains("put a +1/+1 counter on target creature"));
@@ -49,10 +49,29 @@ fn synthetic_target_with_two_consumers_retains_explicit_tag_identity() {
     );
 
     let clause = describe_effect_clause_list(&effects).expect("clause rendering");
-    assert!(
-        clause.starts_with("choose target creature"),
-        "shared target declaration was lost in clause rendering: {clause}"
-    );
+    assert!(!clause.starts_with("choose target creature"), "{clause}");
+}
+
+#[test]
+fn synthetic_target_with_anaphoric_consumers_retains_declaration() {
+    let tag = TagKey::from("targeted_0");
+    let effects = vec![
+        Effect::new(crate::effects::TargetOnlyEffect::new(
+            ChooseSpec::target_creature(),
+        ))
+        .tag(tag.clone()),
+        Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            ChooseSpec::Tagged(tag.clone()),
+        )),
+        Effect::new(crate::effects::DrawCardsEffect::you(Value::PowerOf(
+            Box::new(ChooseSpec::Tagged(tag)),
+        ))),
+    ];
+
+    let rendered = describe_effect_list(&effects);
+    assert!(rendered.starts_with("Choose target creature"), "{rendered}");
 }
 
 #[test]

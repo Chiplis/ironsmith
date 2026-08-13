@@ -3290,6 +3290,7 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         PlayerFilter::DamagedPlayer
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
+        | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
         | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
         | PlayerFilter::ChosenPlayer
         | PlayerFilter::TaggedPlayer(_)
@@ -3845,6 +3846,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || !filter.characteristic_relations.is_empty()
         || filter.cast_this_turn
         || filter.first_spell_cast_each_turn
+        || filter.spell_cast_ordinal_each_turn.is_some()
         || filter.mana_from_source_spent_to_cast.is_some()
         || filter.single_graveyard
         || filter.targets_player.is_some()

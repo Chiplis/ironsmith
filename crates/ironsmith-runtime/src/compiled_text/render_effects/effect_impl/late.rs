@@ -125,6 +125,43 @@
         if choose_mode.tiered {
             header = "Tiered (Choose one additional cost.)".to_string();
         }
+        if let Some(range) = &choose_mode.conditional_mode_range
+            && !choose_mode.spree
+            && !choose_mode.tiered
+        {
+            let condition = match &range.required_optional_cost.kind {
+                crate::cost::OptionalCostKind::Kicker => "this spell was kicked".to_string(),
+                crate::cost::OptionalCostKind::Additional => {
+                    "this spell's additional cost was paid".to_string()
+                }
+                _ => describe_condition(&crate::effect::Condition::ThisSpellPaidLabel(
+                    range.required_optional_cost.clone(),
+                )),
+            };
+            let selection = match (&range.min_modes, &range.max_modes) {
+                (Value::Fixed(0), Value::Fixed(max))
+                    if usize::try_from(*max).ok() == Some(choose_mode.modes.len()) =>
+                {
+                    "any number".to_string()
+                }
+                (Value::Fixed(1), Value::Fixed(max))
+                    if usize::try_from(*max).ok() == Some(choose_mode.modes.len()) =>
+                {
+                    "one or more".to_string()
+                }
+                (Value::Fixed(1), Value::Fixed(2)) if choose_mode.modes.len() == 2 => {
+                    "both".to_string()
+                }
+                (_, max) => describe_value(max),
+            };
+            let base = header
+                .trim_end_matches('-')
+                .trim_end_matches('—')
+                .trim()
+                .trim_end_matches('.')
+                .to_string();
+            header = format!("{base}. If {condition}, choose {selection} instead.");
+        }
         if choose_mode.random {
             if let Some(prefix) = header.strip_suffix(" —") {
                 header = format!("{prefix} at random —");
@@ -183,6 +220,13 @@
                 .trim_end_matches('.')
                 .to_string();
             header = format!("{normalized_header}. {common_suffix}");
+        }
+        if let Some(label) = choose_mode
+            .presentation_label
+            .as_ref()
+            .and_then(crate::ability::PresentationLabel::display_prefix)
+        {
+            header = format!("{} — {header}", label.trim());
         }
         let use_mode_source_text = choose_mode.modes.iter().all(|mode| {
             let source = mode.source_text.trim();
@@ -506,6 +550,9 @@
         return append_token_cleanup_sentences(text, singular_count);
     }
     if let Some(create_copy) = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>() {
+        if let Some(text) = describe_source_exiled_retyped_keyword_token_copy(create_copy) {
+            return text;
+        }
         if let Some(text) =
             describe_retyped_token_copy_with_granted_activated_ability(create_copy)
         {
@@ -1374,6 +1421,9 @@
                 "Put all cards revealed this way that weren't put onto the battlefield"
             }
             ironsmith_core::LibraryRemainderSurface::RestBare => "Put the rest",
+            ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => {
+                "Then put the rest"
+            }
             ironsmith_core::LibraryRemainderSurface::Rest => {
                 if remainder.keep_tagged.is_some()
                     && crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "revealed")
@@ -1604,7 +1654,7 @@
             (describe_value(&amass.amount), String::new())
         };
         if let Some(subtype) = amass.subtype {
-            let subtype_name = subtype.to_string().to_ascii_lowercase();
+            let subtype_name = subtype.to_string();
             return format!("Amass {} {amount}{where_x}", pluralize_word(&subtype_name));
         }
         return format!("Amass {amount}{where_x}");
@@ -1950,6 +2000,39 @@
         return describe_copy_spell_for_each_target(copy_for_each);
     }
     if let Some(copy_spell) = effect.downcast_ref::<crate::effects::CopySpellEffect>() {
+        if matches!(
+            copy_spell.count.unhinted(),
+            Value::CommanderCastCount(PlayerFilter::You)
+        ) && (matches!(&copy_spell.target, ChooseSpec::Source)
+            || matches!(&copy_spell.target, ChooseSpec::Tagged(tag)
+                if tag.as_str() == "triggering" || tag.as_str() == "__it__"))
+            && copy_spell.removed_supertypes.is_empty()
+            && !copy_spell.has_characteristic_modifiers()
+        {
+            return "Copy it for each time you've cast your commander from the command zone this game"
+                .to_string();
+        }
+        if let Value::DistinctCounterTypesAmong(filter) = copy_spell.count.unhinted()
+            && matches!(
+                &copy_spell.target,
+                ChooseSpec::Tagged(tag) if tag.as_str() == "triggering"
+            )
+            && copy_spell.target_reference_pronoun
+            && matches!(
+                copy_spell.target_reference_kind,
+                None | Some(StackObjectKind::Spell)
+            )
+            && filter
+                == &ObjectFilter::permanent_card()
+                    .in_zone(Zone::Battlefield)
+                    .you_control()
+            && copy_spell.count_surface.is_none()
+            && copy_spell.copier == PlayerFilter::You
+            && copy_spell.removed_supertypes.is_empty()
+            && !copy_spell.has_characteristic_modifiers()
+        {
+            return "Copy it for each kind of counter among permanents you control".to_string();
+        }
         if copy_spell.count == Value::Fixed(1)
             && matches!(
                 &copy_spell.target,
@@ -3158,6 +3241,9 @@
         );
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+        if let Some(text) = describe_delayed_target_land_damages_tagged_creature(schedule) {
+            return text;
+        }
         if let Some(text) = describe_delayed_exile_referenced_controller_graveyard(schedule) {
             return text;
         }
@@ -3191,6 +3277,9 @@
             return text;
         }
         if let Some(text) = describe_play_card_this_way_delayed_trigger(schedule) {
+            return text;
+        }
+        if let Some(text) = describe_next_spell_each_other_opponent_copy_loop(schedule) {
             return text;
         }
         if let Some(text) = describe_next_spell_delayed_trigger(schedule, false) {
@@ -4461,6 +4550,15 @@
             crate::grant::GrantDuration::UntilYourNextTurnEnd => " until the end of your next turn",
             crate::grant::GrantDuration::Forever => "",
         };
+        if grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
+            && matches!(grant.target.base(), ChooseSpec::Source)
+            && let crate::grant::Grantable::Ability(ability) = &grant.grantable
+            && let Some(model) = ability.compiled_model()
+            && let ironsmith_core::StaticAbilityPayload::TargetingAsThoughNoAbility(spec) =
+                &model.payload
+        {
+            return format!("Until end of turn, {}", lowercase_first(&spec.display));
+        }
         if let crate::grant::Grantable::DerivedAlternativeCast(
             crate::grant::DerivedAlternativeCast::FlashbackFromCardManaCost { additional_costs },
         ) = &grant.grantable

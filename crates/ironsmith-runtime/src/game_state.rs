@@ -1342,6 +1342,10 @@ pub struct CantEffectTracker {
     /// Example: Stranglehold, Aven Mindcensor (partial)
     pub cant_search: HashSet<PlayerId>,
 
+    /// Positive targeting permissions that ignore one named ability without
+    /// removing it or widening permissions for other source controllers.
+    pub targeting_as_though_overrides: Vec<TargetingAsThoughOverride>,
+
     /// Creatures that can't attack.
     /// Example: Pacifism, Propaganda (if unpaid), Maze of Ith
     pub cant_attack: HashSet<ObjectId>,
@@ -1525,6 +1529,16 @@ pub struct ObjectCantBeTargetedFrom {
     pub object: ObjectId,
     pub source_filter: crate::target::ObjectFilter,
     pub controller: PlayerId,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetingAsThoughOverride {
+    pub objects: Option<crate::target::ObjectFilter>,
+    pub players: Option<crate::target::PlayerFilter>,
+    pub allowed_source_controller: Option<PlayerId>,
+    pub ignored_ability: crate::static_abilities::StaticAbilityId,
+    pub controller: PlayerId,
+    pub source: ObjectId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1719,9 +1733,52 @@ impl CantEffectTracker {
         Self::default()
     }
 
+    pub fn ignores_target_ability_for_object(
+        &self,
+        game: &GameState,
+        target: ObjectId,
+        source_controller: PlayerId,
+        ability: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        let Some(target_object) = game.object(target) else {
+            return false;
+        };
+        self.targeting_as_though_overrides.iter().any(|permission| {
+            permission.ignored_ability == ability
+                && permission
+                    .allowed_source_controller
+                    .is_none_or(|allowed| allowed == source_controller)
+                && permission.objects.as_ref().is_some_and(|filter| {
+                    let ctx = game.filter_context_for(permission.controller, Some(permission.source));
+                    filter.matches(target_object, &ctx, game)
+                })
+        })
+    }
+
+    pub fn ignores_target_ability_for_player(
+        &self,
+        game: &GameState,
+        target: PlayerId,
+        source_controller: PlayerId,
+        ability: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        self.targeting_as_though_overrides.iter().any(|permission| {
+            permission.ignored_ability == ability
+                && permission
+                    .allowed_source_controller
+                    .is_none_or(|allowed| allowed == source_controller)
+                && permission.players.as_ref().is_some_and(|filter| {
+                    let ctx = game.filter_context_for(permission.controller, Some(permission.source));
+                    filter.matches_player(target, &ctx)
+                })
+        })
+    }
+
     pub fn merge(&mut self, other: CantEffectTracker) {
         self.cant_gain_life.extend(other.cant_gain_life);
         self.cant_search.extend(other.cant_search);
+        self.targeting_as_though_overrides
+            .extend(other.targeting_as_though_overrides);
         self.cant_attack.extend(other.cant_attack);
         for (creature, defenders) in other.cant_attack_defenders {
             self.cant_attack_defenders
@@ -1819,6 +1876,7 @@ impl CantEffectTracker {
     pub fn clear(&mut self) {
         self.cant_gain_life.clear();
         self.cant_search.clear();
+        self.targeting_as_though_overrides.clear();
         self.cant_attack.clear();
         self.cant_attack_defenders.clear();
         self.cant_attack_players.clear();
@@ -2219,6 +2277,15 @@ impl CantEffectTracker {
         let Some(source) = game.object(source_id) else {
             return true;
         };
+
+        if self.ignores_target_ability_for_player(
+            game,
+            player,
+            game.controller_of(source),
+            crate::static_abilities::StaticAbilityId::Hexproof,
+        ) {
+            return true;
+        }
 
         !self.cant_target_players_from.iter().any(|restriction| {
             if restriction.player != player {
@@ -3641,6 +3708,21 @@ impl GameState {
         action: KeywordActionKind,
         max_name_letters: Option<u32>,
     ) -> u32 {
+        self.sticker_count_on_object_with_name_letter_range(
+            object_id,
+            action,
+            None,
+            max_name_letters,
+        )
+    }
+
+    pub fn sticker_count_on_object_with_name_letter_range(
+        &self,
+        object_id: ObjectId,
+        action: KeywordActionKind,
+        min_name_letters: Option<u32>,
+        max_name_letters: Option<u32>,
+    ) -> u32 {
         let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
             return 0;
         };
@@ -3651,6 +3733,11 @@ impl GameState {
             .flatten()
             .filter(|sticker| {
                 action.matches_performed_action(sticker.action)
+                    && min_name_letters.is_none_or(|min| {
+                        sticker
+                            .name_letter_count
+                            .is_some_and(|letter_count| letter_count >= min)
+                    })
                     && max_name_letters.is_none_or(|max| {
                         sticker
                             .name_letter_count
@@ -3984,6 +4071,7 @@ impl GameState {
     fn object_filter_is_turn_context_sensitive(filter: &crate::target::ObjectFilter) -> bool {
         filter.cast_this_turn
             || filter.first_spell_cast_each_turn
+            || filter.spell_cast_ordinal_each_turn.is_some()
             || filter.mana_from_source_spent_to_cast.is_some()
             || filter.attacking
             || filter.attacked_this_turn

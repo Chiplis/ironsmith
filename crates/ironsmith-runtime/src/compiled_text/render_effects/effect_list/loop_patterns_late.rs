@@ -3262,6 +3262,22 @@
         }
         if idx + 2 < filtered.len()
             && let Some((source_tag, mill)) = mill_with_collection_tag(filtered[idx])
+            && let Some(matching) = filtered[idx + 1]
+                .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+            && let Some((_, move_matching)) = for_each_tagged_for_compaction(filtered[idx + 2])
+            && let Some(compact) = describe_tagged_mill_then_put_all_matching_milled_cards(
+                source_tag.as_str(),
+                mill,
+                matching,
+                move_matching,
+            )
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some((source_tag, mill)) = mill_with_collection_tag(filtered[idx])
             && let Some(choose) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some((_, move_chosen)) = for_each_tagged_for_compaction(filtered[idx + 2])

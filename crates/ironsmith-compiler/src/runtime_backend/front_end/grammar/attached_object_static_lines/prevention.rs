@@ -34,6 +34,7 @@ pub(crate) struct RemoveCounterPreventionSpec<'a> {
     pub(crate) condition_tokens: Option<&'a [OwnedLexToken]>,
     pub(crate) follow_up: Option<RemoveCounterPreventionFollowUp>,
     pub(crate) one_damage_per_counter: bool,
+    pub(crate) separate_removal_sentence: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,7 +101,7 @@ fn parse_standard_remove_counter_prevention_lexed<'a>(
         None
     };
     semantic_phrase(&["prevent", "that", "damage"]).parse_next(input)?;
-    opt(semantic_kw("and")).parse_next(input)?;
+    let conjoined = opt(semantic_kw("and")).parse_next(input)?.is_some();
     semantic_kw("remove").parse_next(input)?;
     let amount = opt(alt((
         semantic_phrase(&["that", "many"]).value(RemoveCounterPreventionAmount::DamageAmount),
@@ -143,6 +144,7 @@ fn parse_standard_remove_counter_prevention_lexed<'a>(
             counters_per_removed: follow_up.counters_per_removed,
         }),
         one_damage_per_counter: false,
+        separate_removal_sentence: !conjoined,
     })
 }
 
@@ -205,6 +207,7 @@ fn parse_one_damage_per_counter_prevention_lexed<'a>(
         condition_tokens: Some(trim_lexed_commas(condition_tokens)),
         follow_up: None,
         one_damage_per_counter: true,
+        separate_removal_sentence: false,
     })
 }
 

@@ -80,6 +80,38 @@ pub(super) fn describe_effect_list_compacts_choose_sacrifice_then_source_damage(
         describe_effect_list(&effects),
         "Sacrifice a land and deal 1 damage to you"
     );
+    let wrapped = vec![Effect::new(crate::effects::SequenceEffect::coordinated(
+        effects,
+    ))];
+    assert_eq!(
+        describe_effect_list(&wrapped),
+        "Sacrifice a land and deal 1 damage to you"
+    );
+}
+
+#[test]
+pub(super) fn combat_damage_discard_and_untap_keeps_one_coordinated_sentence() {
+    let filter = ObjectFilter::land()
+        .you_control()
+        .in_zone(Zone::Battlefield);
+    let effects = vec![
+        Effect::discard_player(1, PlayerFilter::DamagedPlayer, false),
+        Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+            filter.clone(),
+            TagKey::from("untapped_0"),
+        )),
+        Effect::untap_all(filter),
+    ];
+
+    assert_eq!(
+        describe_damaged_player_discard_then_untap_lands(&effects).as_deref(),
+        Some("that player discards a card and you untap all lands you control"),
+        "{effects:#?}"
+    );
+    assert_eq!(
+        describe_effect_list(&effects),
+        "that player discards a card and you untap all lands you control"
+    );
 }
 
 #[test]
@@ -214,6 +246,26 @@ pub(super) fn describe_effect_list_compacts_untap_attackers_then_additional_comb
     assert_eq!(
         describe_effect_list(&effects),
         "Untap each attacking creature. After this phase, there is an additional combat phase"
+    );
+}
+
+#[test]
+pub(super) fn result_conjunction_keeps_untap_attackers_and_additional_combat_in_one_clause() {
+    let mut attacking_creature = ObjectFilter::creature();
+    attacking_creature.attacking = true;
+    let sequence = crate::effects::SequenceEffect::result_conjunction(
+        vec![
+            Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::All(
+                attacking_creature,
+            ))),
+            Effect::new(crate::effects::AdditionalPhasesEffect::combat()),
+        ],
+        false,
+    );
+
+    assert_eq!(
+        describe_effect(&Effect::new(sequence)),
+        "Untap all attacking creatures and after this phase, there is an additional combat phase"
     );
 }
 
@@ -4297,6 +4349,30 @@ pub(super) fn describe_effect_list_compacts_exile_top_choose_one_then_play_chose
     assert_eq!(
         describe_effect_list(&trailing_duration_effects),
         "Exile the top two cards of your library. Choose one of them. You may play that card this turn"
+    );
+
+    let mut next_turn_effects = effects.clone();
+    let mut next_turn_grant = next_turn_effects[2]
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .expect("third effect should grant the chosen-card permission")
+        .clone();
+    next_turn_grant.duration = crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd;
+    next_turn_effects[2] = Effect::new(next_turn_grant);
+    assert_eq!(
+        describe_effect_list(&next_turn_effects),
+        "Exile the top two cards of your library. Choose one of them. Until the end of your next turn, you may play that card"
+    );
+
+    let mut changed_tag_effects = next_turn_effects;
+    let mut changed_tag_grant = changed_tag_effects[2]
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .expect("third effect should grant the chosen-card permission")
+        .clone();
+    changed_tag_grant.tag = TagKey::from("unrelated_chosen_card");
+    changed_tag_effects[2] = Effect::new(changed_tag_grant);
+    assert_ne!(
+        describe_effect_list(&changed_tag_effects),
+        "Exile the top two cards of your library. Choose one of them. Until the end of your next turn, you may play that card"
     );
 }
 

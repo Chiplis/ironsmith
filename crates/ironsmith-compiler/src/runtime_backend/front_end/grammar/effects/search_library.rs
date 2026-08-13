@@ -993,6 +993,34 @@ pub(crate) fn find_search_library_discard_before_shuffle_followup_lexed(
     })
 }
 
+/// Return the exact discard clause in the authored search sequence
+/// `..., shuffle, then discard ...`. The ordering and separator guard keep an
+/// unrelated later discard from being absorbed into the search program.
+pub(crate) fn find_search_library_discard_after_shuffle_followup_lexed(
+    search_tokens: &[OwnedLexToken],
+    put_idx: Option<usize>,
+) -> Option<&[OwnedLexToken]> {
+    let put_idx = put_idx?;
+    let shuffle_idx =
+        find_search_library_marker_lexed(search_tokens, search_library_shuffle_marker)?;
+    let discard_idx =
+        find_search_library_marker_lexed(search_tokens, search_library_discard_marker)?;
+    if !(put_idx < shuffle_idx && shuffle_idx < discard_idx) {
+        return None;
+    }
+    if search_tokens[shuffle_idx + 1..discard_idx]
+        .iter()
+        .any(|token| {
+            !token.is_comma()
+                && !search_library_token_is_any_word(token, &["and", "then"])
+        })
+    {
+        return None;
+    }
+    let discard_tokens = trim_lexed_commas(&search_tokens[discard_idx..]);
+    (!discard_tokens.is_empty()).then_some(discard_tokens)
+}
+
 pub(crate) fn find_search_library_trailing_life_followup_lexed<'a>(
     search_tokens: &'a [OwnedLexToken],
     start_idx: usize,
@@ -1187,7 +1215,16 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         } else {
             Some(PlayerFilter::You)
         };
-        search_zones_override = Some(vec![Zone::Library, Zone::Graveyard]);
+        let graveyard_first = search_body_words
+            .iter()
+            .position(|word| *word == "graveyard")
+            .zip(search_body_words.iter().position(|word| *word == "library"))
+            .is_some_and(|(graveyard, library)| graveyard < library);
+        search_zones_override = Some(if graveyard_first {
+            vec![Zone::Graveyard, Zone::Library]
+        } else {
+            vec![Zone::Library, Zone::Graveyard]
+        });
     } else if search_word_stream_starts_with_any(
         search_body_words,
         YOUR_OR_THEIR_LIBRARY_FOR_PREFIX_PATTERN,
@@ -1371,7 +1408,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
         count_used = 4;
     } else if token_slice_first_is(count_tokens, "exactly") {
         if let Some((value, used)) = parse_number(&count_tokens[1..]) {
-            count = ChoiceCount::exactly(value as usize);
+            count = ChoiceCount::exactly(value as usize).with_explicit_exactly();
             count_used = 1 + used;
         }
     } else if let Some((parsed_count, used)) =
@@ -1946,6 +1983,53 @@ mod tests {
     }
 
     #[test]
+    fn explicit_exactly_search_count_retains_its_surface() {
+        let tokens = lex_line("exactly four legendary creature cards", 0)
+            .expect("exact search count should lex");
+        let parsed = parse_search_library_count_prefix_lexed(&tokens);
+
+        assert_eq!(parsed.count, ChoiceCount::exactly(4).with_explicit_exactly());
+        assert_eq!(parsed.count_used, 2);
+        assert_eq!(parsed.search_mode, SearchSelectionMode::Exact);
+    }
+
+    #[test]
+    fn refreshed_instead_trailing_random_discard_after_shuffle_has_a_strict_search_boundary() {
+        let tokens = lex_line(
+            "Search your library for up to three cards, put them into your hand, shuffle, then discard three cards at random.",
+            0,
+        )
+        .expect("search/discard fixture should lex");
+        let markers = scan_search_library_clause_markers_lexed(&tokens)
+            .expect("search/discard fixture should route");
+        let discard = find_search_library_discard_after_shuffle_followup_lexed(
+            &tokens,
+            markers.put_idx,
+        )
+        .expect("trailing random discard should be isolated");
+        assert_eq!(
+            render_token_slice(discard),
+            "discard three cards at random."
+        );
+
+        let near_miss = lex_line(
+            "Search your library for a card, put it into your hand, shuffle, then draw a card, then discard a card.",
+            0,
+        )
+        .expect("intervening-effect near miss should lex");
+        let markers = scan_search_library_clause_markers_lexed(&near_miss)
+            .expect("near miss should still route as a search");
+        assert!(
+            find_search_library_discard_after_shuffle_followup_lexed(
+                &near_miss,
+                markers.put_idx,
+            )
+            .is_none(),
+            "an intervening effect must not be absorbed into the search tail"
+        );
+    }
+
+    #[test]
     fn that_players_library_remains_a_contextual_player_reference() {
         let tokens = lex_line("search that player's library for a card", 0)
             .expect("search surface should lex");
@@ -1971,6 +2055,19 @@ mod tests {
         assert_eq!(
             routing.search_zones_override,
             Some(vec![Zone::Library, Zone::Graveyard])
+        );
+    }
+
+    #[test]
+    fn graveyard_and_or_library_search_keeps_authored_origin_order() {
+        let tokens = lex_line("search your graveyard and/or library for a card", 0)
+            .expect("multi-zone search surface should lex");
+        let routing = derive_search_library_subject_routing_lexed(&tokens, PlayerAst::Implicit)
+            .expect("multi-zone search should route");
+
+        assert_eq!(
+            routing.search_zones_override,
+            Some(vec![Zone::Graveyard, Zone::Library])
         );
     }
 

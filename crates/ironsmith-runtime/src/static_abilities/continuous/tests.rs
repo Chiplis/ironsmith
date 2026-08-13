@@ -391,6 +391,52 @@ fn equal_per_count_anthem_keeps_trailing_graveyard_condition() {
 }
 
 #[test]
+fn graveyard_threshold_anthem_counts_graveyards_and_preserves_surface() {
+    let count = AnthemCountExpression::GraveyardsWithAtLeastCards { minimum_cards: 7 };
+    let anthem = Anthem::for_source(0, 0)
+        .with_values(AnthemValue::scaled(2, count.clone()), AnthemValue::Fixed(0));
+    assert_eq!(
+        anthem.display(),
+        "this creature gets +2/+0 for each graveyard with seven or more cards in it"
+    );
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = CardBuilder::new(CardId::new(), "Threshold Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let source = game.create_object_from_card(&source, alice, Zone::Battlefield);
+    for index in 0..7 {
+        let card = CardBuilder::new(CardId::new(), &format!("Alice Graveyard {index}"))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Graveyard);
+    }
+    for index in 0..6 {
+        let card = CardBuilder::new(CardId::new(), &format!("Bob Graveyard {index}"))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        game.create_object_from_card(&card, bob, Zone::Graveyard);
+    }
+
+    assert_eq!(
+        resolve_anthem_count_expression(&count, &game, source, alice),
+        1
+    );
+
+    let seventh = CardBuilder::new(CardId::new(), "Bob Graveyard Seventh")
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_card(&seventh, bob, Zone::Graveyard);
+    assert_eq!(
+        resolve_anthem_count_expression(&count, &game, source, alice),
+        2
+    );
+}
+
+#[test]
 fn source_only_conditions_use_same_source_pronouns() {
     assert_eq!(
         Anthem::for_source(1, 0)
@@ -1753,6 +1799,23 @@ fn verb_phrase_grants_conjugate_without_has_or_have() {
     assert_eq!(
         GrantAbility::source(StaticAbility::must_attack()).display(),
         "this creature attacks each combat if able"
+    );
+}
+
+#[test]
+fn no_defender_permission_grants_keep_the_as_though_verb_phrase() {
+    let creatures_you_control = ObjectFilter::creature().you_control();
+    assert_eq!(
+        GrantAbility::new(
+            creatures_you_control,
+            StaticAbility::can_attack_as_though_no_defender(),
+        )
+        .display(),
+        "creatures you control can attack as though they didn't have defender"
+    );
+    assert_eq!(
+        GrantAbility::source(StaticAbility::can_attack_as_though_no_defender()).display(),
+        "this creature can attack as though it didn't have defender"
     );
 }
 

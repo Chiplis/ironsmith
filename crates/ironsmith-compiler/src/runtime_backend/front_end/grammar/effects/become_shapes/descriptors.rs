@@ -1,7 +1,7 @@
 use crate::color::ColorSet;
 use crate::effect::Value;
 use crate::runtime_backend::front_end::lexer::{
-    OwnedLexToken, parser_token_word_refs, trim_lexed_commas,
+    OwnedLexToken, parser_token_word_positions, parser_token_word_refs, trim_lexed_commas,
 };
 use crate::types::{CardType, Subtype};
 use winnow::combinator::alt;
@@ -242,6 +242,14 @@ const STILL_A_LAND_TAILS: &[&[&str]] = &[
     &["its", "still", "a", "land"],
 ];
 
+const STILL_A_CARD_TYPE_PREFIXES: &[&[&str]] = &[
+    &["that", "s", "still", "a"],
+    &["thats", "still", "a"],
+    &["it", "s", "still", "a"],
+    &["its", "still", "a"],
+    &["still", "a"],
+];
+
 fn strip_still_a_land_tail_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     primitives::strip_lexed_suffix_phrases(tokens, STILL_A_LAND_TAILS)
         .map(|(_, head)| trim_lexed_commas(head))
@@ -253,6 +261,28 @@ fn still_a_land(tokens: &[OwnedLexToken]) -> bool {
     STILL_A_LAND_TAILS
         .iter()
         .any(|expected| permission_shapes::exact_words(&words, expected))
+}
+
+fn split_still_a_card_type_tail_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], CardType)> {
+    let positions = parser_token_word_positions(tokens);
+    let (_, card_type_word) = positions.last()?;
+    let card_type = leaf::parse_leaf_card_type_complete(card_type_word).ok()?;
+    let words = positions.iter().map(|(_, word)| *word).collect::<Vec<_>>();
+    for prefix in STILL_A_CARD_TYPE_PREFIXES {
+        let suffix_len = prefix.len() + 1;
+        if positions.len() < suffix_len {
+            continue;
+        }
+        let suffix_start = positions.len() - suffix_len;
+        let prefix_matches = words[suffix_start..words.len() - 1] == **prefix;
+        if prefix_matches {
+            let start_token = positions[suffix_start].0;
+            return Some((trim_lexed_commas(&tokens[..start_token]), card_type));
+        }
+    }
+    None
 }
 
 fn split_all_creature_types(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -274,23 +304,46 @@ pub(crate) fn parse_become_animation_suffix_shape(
         };
     }
     let stripped_addition = strip_addition_tail_tokens(tokens);
+    let retained_card_type = split_still_a_card_type_tail_tokens(stripped_addition);
+    if let Some((head, card_type)) = retained_card_type
+        && head.is_empty()
+    {
+        let type_retention_surface = if card_type == CardType::Land {
+            ironsmith_core::TypeRetentionSurface::StillALand
+        } else {
+            ironsmith_core::TypeRetentionSurface::StillACardType(card_type)
+        };
+        return BecomeAnimationSuffixShape::Ignored {
+            preserve_other_types: true,
+            type_retention_surface: Some(type_retention_surface),
+        };
+    }
     let stripped_still_land = strip_still_a_land_tail_tokens(stripped_addition);
+    let stripped_retention = retained_card_type
+        .map(|(head, _)| head)
+        .unwrap_or(stripped_still_land);
     let type_retention_surface = if stripped_addition.len() != tokens.len() {
         Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes)
+    } else if let Some((_, CardType::Land)) = retained_card_type {
+        Some(ironsmith_core::TypeRetentionSurface::StillALand)
+    } else if let Some((_, card_type)) = retained_card_type {
+        Some(ironsmith_core::TypeRetentionSurface::StillACardType(
+            card_type,
+        ))
     } else if stripped_still_land.len() != stripped_addition.len() || still_a_land(tokens) {
         Some(ironsmith_core::TypeRetentionSurface::StillALand)
     } else {
         None
     };
     let preserve_other_types = type_retention_surface.is_some();
-    if stripped_still_land.is_empty() || still_a_land(tokens) {
+    if stripped_retention.is_empty() || still_a_land(tokens) {
         return BecomeAnimationSuffixShape::Ignored {
             preserve_other_types,
             type_retention_surface,
         };
     }
     let Some((_, after_with)) =
-        primitives::parse_prefix(stripped_still_land, primitives::kw("with").void())
+        primitives::parse_prefix(stripped_retention, primitives::kw("with").void())
     else {
         return BecomeAnimationSuffixShape::Unsupported;
     };
@@ -445,6 +498,24 @@ mod tests {
                 ..
             }
         ));
+
+        let tokens = lex_line("that's still a planeswalker", 0).expect("lex retained planeswalker");
+        let retained_planeswalker = parse_become_animation_suffix_shape(&tokens);
+        assert!(
+            matches!(
+                retained_planeswalker,
+                BecomeAnimationSuffixShape::Ignored {
+                    preserve_other_types: true,
+                    type_retention_surface: Some(
+                        ironsmith_core::TypeRetentionSurface::StillACardType(
+                            CardType::Planeswalker
+                        )
+                    ),
+                }
+            ),
+            "{retained_planeswalker:#?}; words={:?}",
+            parser_token_word_refs(&tokens)
+        );
 
         assert!(matches!(
             parse_become_simple_descriptor_words(&[

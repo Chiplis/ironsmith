@@ -5027,6 +5027,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    // Qualitative life comparisons such as "you have the most life" share
+    // the `you have ... life` prefix with fixed life-total bounds. Give the
+    // typed relation parser first refusal so the numeric parser does not turn
+    // an ordinary nonnumeric amount into a hard parse error.
+    if let Some(predicate) = parse_player_life_relation_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_you_life_total_at_most_predicate(predicate_tokens)? {
         return Ok(predicate);
     }

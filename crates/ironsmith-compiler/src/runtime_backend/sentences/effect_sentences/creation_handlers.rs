@@ -26,7 +26,16 @@ use super::dispatch_entry::{target_references_it, with_where_x_surface_hints};
 use creation_grammar::{CreationPhrase as CreatePhrase, CreationWordClass as CreateWord};
 
 fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
-    crate::runtime_backend::families::keyword_static::parse_where_x_is_aggregate_filter_value(tokens)
+    // Give only the complete typed static-ability count first refusal. Other
+    // number-of expressions still need the established aggregate dispatcher
+    // (notably counters on a referenced object).
+    crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(tokens)
+        .filter(|value| matches!(value.unhinted(), Value::StaticAbilitiesAmong { .. }))
+        .or_else(|| {
+        crate::runtime_backend::families::keyword_static::parse_where_x_is_aggregate_filter_value(
+            tokens,
+        )
+    })
         .or_else(|| {
             crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(tokens)
         })
@@ -38,10 +47,6 @@ fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
                 tokens,
             )
         })
-        // Prefer the complete typed number-of filter family before the broad
-        // value-binding dispatcher. In particular, "the number of abilities
-        // from among ... found among creatures" is a StaticAbilitiesAmong
-        // aggregate, not merely the number of creatures in its scope.
         .or_else(|| {
             crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
                 tokens,
@@ -182,6 +187,15 @@ fn double_quoted_rule_bodies(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
             open = Some(idx + 1);
         }
     }
+    // Preprocessed Oracle text can retain an opening quote while folding the
+    // final quote into the sentence terminator. The remainder of that same
+    // physical sentence is still the authored rule body; retaining it here
+    // prevents a later quoted rule in an inline token list from disappearing.
+    if let Some(start) = open
+        && start < tokens.len()
+    {
+        bodies.push(&tokens[start..]);
+    }
     bodies
 }
 
@@ -259,7 +273,9 @@ fn parse_unquoted_token_dynamic_power_toughness(
             (!in_quote).then(|| token.clone())
         })
         .collect::<Vec<_>>();
-    token_definition_grammar::parse_token_dynamic_power_toughness_tokens(&unquoted)
+    (0..unquoted.len()).find_map(|start| {
+        token_definition_grammar::parse_token_dynamic_power_toughness_tokens(&unquoted[start..])
+    })
 }
 
 fn parse_quoted_token_dynamic_power_toughness(tokens: &[OwnedLexToken]) -> Option<(Value, Value)> {
@@ -321,7 +337,7 @@ fn quoted_rule_creates_a_nested_token(tokens: &[OwnedLexToken]) -> bool {
 /// body loses siblings such as `indestructible` and a trailing `equip`;
 /// parsing the complete list lets the ordinary grant grammar preserve all
 /// three typed abilities and their source order.
-fn mixed_pronoun_token_rule_list(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub(crate) fn mixed_pronoun_token_rule_list(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let start = tokens.windows(2).position(|pair| {
         (pair[0].is_word("it") && pair[1].is_word("has"))
             || (pair[0].is_word("they") && pair[1].is_word("have"))
@@ -406,6 +422,13 @@ fn parse_inline_token_granted_abilities(
                 abilities.push(ability);
             }
         }
+        // Every member of this grammar-proven list has been retained as an
+        // executable granted ability.  Do not run the per-quote reminder
+        // fallback afterward: it can compact only one member and would both
+        // duplicate the activation and drop the ordinary keyword/P/T grant.
+        if !abilities.is_empty() {
+            return abilities;
+        }
     }
     // The public create-clause route reconstructs a compact token-definition
     // slice that may omit quoted suffixes. Recover the typed authored order
@@ -478,6 +501,56 @@ fn parse_inline_token_granted_abilities(
         {
             creature.keywords = keywords;
         }
+        // A complete quoted static rule with its own filtered subject is a
+        // granted ability of the created token. Reminder extraction may have
+        // already cached the same text as an embedded token-rule shape,
+        // which makes the generic ability parser think the rule was fully
+        // lowered even though that compact cache cannot carry the filtered
+        // grant. Probe a surface-neutral copy first and keep only the typed
+        // filtered grant; intrinsic self rules continue through the compact
+        // reminder path below.
+        let mut filtered_probe = definition.clone();
+        match &mut filtered_probe {
+            crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature) => {
+                creature.rules.combat_restriction = None;
+                creature.rules.token_rules.embedded_rules.clear();
+            }
+            crate::runtime_backend::token_definition::TokenDefinitionSpec::Artifact(artifact) => {
+                artifact.token_rules.embedded_rules.clear();
+            }
+            _ => {}
+        }
+        if let Ok(parsed) =
+            super::parse_granted_abilities_for_token_definition(&filtered_probe, rule_tokens)
+        {
+            let filtered_grants = parsed.into_iter().filter(|ability| {
+                let static_ability = match ability {
+                    GrantedAbilityAst::StaticAbility(ability) => ability,
+                    GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
+                        let crate::ability::AbilityKind::Static(ability) = ability.kind() else {
+                            return false;
+                        };
+                        ability
+                    }
+                    _ => return false,
+                };
+                matches!(
+                    &static_ability.payload,
+                    crate::static_abilities::StaticAbilityPayload::GrantAbility(_)
+                        | crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
+                )
+            });
+            let mut attached_filtered_grant = false;
+            for ability in filtered_grants {
+                if !abilities.contains(&ability) {
+                    abilities.push(ability);
+                }
+                attached_filtered_grant = true;
+            }
+            if attached_filtered_grant {
+                continue;
+            }
+        }
         if merged {
             // Specialized token rules belong to the token blueprint. This is
             // particularly important after outer dispatch strips the quoted
@@ -489,7 +562,9 @@ fn parse_inline_token_granted_abilities(
             token_definition_grammar::merge_token_reminder_definition(definition, &outer_reminder);
             continue;
         }
-        if append_inline_token_embedded_rule(definition, rule_tokens) {
+        if !conflicting_combat_restriction
+            && append_inline_token_embedded_rule(definition, rule_tokens)
+        {
             continue;
         }
         let parse_definition = conflicting_combat_restriction.then(|| {
@@ -781,6 +856,51 @@ pub(crate) fn attach_inline_token_granted_abilities_to_last_create(
     false
 }
 
+/// Attach a separately authored pronoun sentence whose ability list mixes a
+/// keyword, a quoted rule, and a trailing activation. The caller proves that
+/// this sentence immediately follows one token creation.
+pub(crate) fn attach_mixed_pronoun_token_rules_to_last_create(
+    effects: &mut [EffectAst],
+    tokens: &[OwnedLexToken],
+) -> bool {
+    if mixed_pronoun_token_rule_list(tokens).is_none() {
+        return false;
+    }
+    fn mark_combined_separate_sentence(effect: &mut EffectAst) -> bool {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::CreateTokenWithMods {
+                ability_presentation,
+                ..
+            } = &mut subject_verb.action
+        {
+            *ability_presentation =
+                Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined);
+            return true;
+        }
+
+        let mut found = false;
+        crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effects_mut(
+            effect,
+            true,
+            |nested| {
+                for nested_effect in nested.iter_mut().rev() {
+                    if !found {
+                        found = mark_combined_separate_sentence(nested_effect);
+                    }
+                }
+            },
+        );
+        found
+    }
+
+    for effect in effects.iter_mut().rev() {
+        if attach_inline_token_granted_abilities_to_effect(effect, tokens) {
+            return mark_combined_separate_sentence(effect);
+        }
+    }
+    false
+}
+
 /// "Create your choice of a Clue token, a Food token, or a Treasure token" —
 /// exactly one of the listed tokens is created, so lower one create mode per
 /// option instead of splitting into sequential creates.
@@ -840,6 +960,15 @@ pub(crate) fn parse_create(
     // Capture the authored actor before imperative/chain normalization can
     // turn an implicit create action into the same semantic `PlayerAst::You`.
     let actor_surface_explicit = matches!(subject, Some(SubjectAst::Player(PlayerAst::You)));
+    let authored_dynamic_count =
+        crate::runtime_backend::front_end::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)
+            .and_then(|binding| {
+                parse_create_value_binding(
+                    crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(
+                        binding.binding_tokens,
+                    ),
+                )
+            });
     let tokens = creation_grammar::creation_body_tokens(tokens);
     if let Some(choice) = parse_create_choice_of_options(tokens)? {
         return Ok(choice);
@@ -883,6 +1012,27 @@ pub(crate) fn parse_create(
         ))
     })?;
     let mut count_value = creation_grammar::create_count_head_value(&head.count);
+    if let Some(authored_dynamic_count) = authored_dynamic_count
+        && (value_contains_unbound_x(&count_value)
+            || matches!(
+                authored_dynamic_count.unhinted(),
+                Value::StaticAbilitiesAmong { .. }
+            ))
+    {
+        count_value = with_where_x_surface_hints(authored_dynamic_count, tokens);
+    }
+    if let Some(ability_token_index) =
+        crate::runtime_backend::lexer::parser_token_word_positions(tokens)
+            .into_iter()
+            .find_map(|(index, word)| {
+                matches!(word, "ability" | "abilities").then_some(index)
+            })
+        && let Some(value) = crate::runtime_backend::families::keyword_static::parse_static_abilities_among_scope_value(
+            &tokens[ability_token_index..],
+        )
+    {
+        count_value = with_where_x_surface_hints(value, tokens);
+    }
     let needs_equal_to_dynamic_count = matches!(
         head.count,
         creation_grammar::CreateCountHead::EqualToDynamic
@@ -955,6 +1105,13 @@ pub(crate) fn parse_create(
             let filter = parse_object_filter(filter_tokens, false)?;
             for_each_object_filter = Some(filter);
         }
+    }
+    if let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&tail_tokens)
+        && let Some(where_value) = parse_create_value_binding(where_tokens)
+        && (value_contains_unbound_x(&count_value)
+            || matches!(where_value.unhinted(), Value::StaticAbilitiesAmong { .. }))
+    {
+        count_value = with_where_x_surface_hints(where_value, tokens);
     }
     let resolve_create_count = |references_iterated_object: bool| {
         if let Some(dynamic) = for_each_dynamic_count.clone() {
@@ -2572,21 +2729,40 @@ mod tests {
 
     #[test]
     fn mixed_pronoun_token_rules_keep_prefix_quote_and_trailing_activation() {
-        let tokens = lex_line(
-            "Create a colorless Equipment artifact token named Stoneforged Blade. It has indestructible, \"Equipped creature gets +5/+5 and has double strike,\" and equip {0}.",
+        let create_tokens = lex_line(
+            "Create a colorless Equipment artifact token named Stoneforged Blade.",
+            0,
+        )
+        .expect("token creation should lex");
+        let mut effects =
+            vec![parse_create(&create_tokens, None).expect("token creation should parse")];
+        let rule_tokens = lex_line(
+            "It has indestructible, \"Equipped creature gets +5/+5 and has double strike,\" and equip {0}.",
             0,
         )
         .expect("mixed token rules should lex");
-        let effect = parse_create(&tokens, None).expect("mixed token rules should parse");
+        assert!(attach_mixed_pronoun_token_rules_to_last_create(
+            &mut effects,
+            &rule_tokens
+        ));
+        let [effect] = effects.as_slice() else {
+            panic!("expected one token creation: {effects:#?}");
+        };
         let EffectAst::SubjectVerb(subject_verb) = &effect else {
             panic!("expected token creation: {effect:#?}");
         };
         let SubjectVerbActionAst::CreateTokenWithMods {
-            granted_abilities, ..
+            granted_abilities,
+            ability_presentation,
+            ..
         } = &subject_verb.action
         else {
             panic!("expected token creation with modifiers: {subject_verb:#?}");
         };
+        assert_eq!(
+            *ability_presentation,
+            Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined)
+        );
         let debug = format!("{granted_abilities:#?}");
         assert!(debug.contains("Indestructible"), "{debug}");
         assert!(

@@ -70,7 +70,7 @@ fn parse_effect_sentence_inner_lexed_unstacked(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(effects) = super::dispatch_entry::parse_if_you_dont_sentence(tokens)? {
         return Ok(vec![EffectAst::IfResult {
-            predicate: crate::cards::builders::IfResultPredicate::DidNot,
+            predicate: crate::cards::builders::IfResultPredicate::ExplicitDidNot,
             effects,
         }]);
     }

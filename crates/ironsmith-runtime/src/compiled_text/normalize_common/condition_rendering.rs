@@ -1071,7 +1071,122 @@ fn describe_negated_tagged_object_identity_disjunction(condition: &Condition) ->
     ))
 }
 
+fn exact_attachment_state_reference(
+    reference_tag: &TagKey,
+    filter: &ObjectFilter,
+) -> Option<Vec<&'static str>> {
+    fn state(filter: &ObjectFilter) -> Option<&'static str> {
+        let [constraint] = filter.tagged_constraints.as_slice() else {
+            return None;
+        };
+        if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+            return None;
+        }
+        let state = match constraint.tag.as_str() {
+            "enchanted" => "enchanted",
+            "equipped" => "equipped",
+            _ => return None,
+        };
+        let mut remainder = filter.clone();
+        remainder.tagged_constraints.clear();
+        (remainder == ObjectFilter::default()).then_some(state)
+    }
+
+    if filter.any_of.is_empty() {
+        let state = state(filter)?;
+        return (reference_tag.as_str() == state).then_some(vec![state]);
+    }
+    let mut outer = filter.clone();
+    let branches = std::mem::take(&mut outer.any_of);
+    if outer != ObjectFilter::default() || branches.len() != 2 {
+        return None;
+    }
+    let states = branches.iter().map(state).collect::<Option<Vec<_>>>()?;
+    (states.contains(&"enchanted") && states.contains(&"equipped")).then_some(states)
+}
+
+fn describe_attachment_state_disjunction(condition: &Condition) -> Option<String> {
+    fn branch(condition: &Condition) -> Option<(bool, &TagKey, &'static str)> {
+        let (past, tag, filter) = match condition {
+            Condition::TaggedObjectMatches(tag, filter) => (false, tag, filter),
+            Condition::TaggedObjectMatchedLastKnown(tag, filter) => (true, tag, filter),
+            _ => return None,
+        };
+        if !matches!(tag.as_str(), "enchanted" | "equipped") {
+            return None;
+        }
+        let [constraint] = filter.tagged_constraints.as_slice() else {
+            return None;
+        };
+        if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+            return None;
+        }
+        let state = match constraint.tag.as_str() {
+            "enchanted" => "enchanted",
+            "equipped" => "equipped",
+            _ => return None,
+        };
+        let mut remainder = filter.clone();
+        remainder.tagged_constraints.clear();
+        (remainder == ObjectFilter::default()).then_some((past, tag, state))
+    }
+
+    let Condition::Or(left, right) = condition else {
+        return None;
+    };
+    let (left_past, left_tag, left_state) = branch(left)?;
+    let (right_past, right_tag, right_state) = branch(right)?;
+    if left_tag != right_tag
+        || left_state == right_state
+        || ![left_state, right_state].contains(&"enchanted")
+        || ![left_state, right_state].contains(&"equipped")
+    {
+        return None;
+    }
+    let subject = if left_past || right_past {
+        "it was"
+    } else {
+        "it's"
+    };
+    Some(format!("{subject} {left_state} or {right_state}"))
+}
+
+pub(in crate::compiled_text) fn attachment_state_disjunction_reference_tag(
+    condition: &Condition,
+) -> Option<&TagKey> {
+    let Condition::Or(left, right) = condition else {
+        return None;
+    };
+    fn exact_branch(condition: &Condition) -> Option<(&TagKey, &str)> {
+        let (tag, filter) = match condition {
+            Condition::TaggedObjectMatches(tag, filter)
+            | Condition::TaggedObjectMatchedLastKnown(tag, filter) => (tag, filter),
+            _ => return None,
+        };
+        if !matches!(tag.as_str(), "enchanted" | "equipped") {
+            return None;
+        }
+        let [constraint] = filter.tagged_constraints.as_slice() else {
+            return None;
+        };
+        if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            || !matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+        {
+            return None;
+        }
+        let mut remainder = filter.clone();
+        remainder.tagged_constraints.clear();
+        (remainder == ObjectFilter::default()).then_some((tag, constraint.tag.as_str()))
+    }
+    let (left_tag, left_state) = exact_branch(left)?;
+    let (right_tag, right_state) = exact_branch(right)?;
+    (left_tag == right_tag && left_state != right_state).then_some(left_tag)
+}
+
 pub(crate) fn describe_condition(condition: &Condition) -> String {
+    if let Some(attachment) = describe_attachment_state_disjunction(condition) {
+        return attachment;
+    }
     if let Some(compact) = describe_happily_ever_after_condition(condition) {
         return compact;
     }
@@ -1876,6 +1991,21 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::TargetWasKicked => "the target spell was kicked".to_string(),
         Condition::ThisSpellWasKicked => "this spell was kicked".to_string(),
         Condition::ThisSpellPaidLabel(label) => {
+            if let crate::cost::OptionalCostKind::AlternativeCast(reference) = &label.kind {
+                return match reference.surface() {
+                    ironsmith_core::AlternativeCostReferenceSurface::ManaCost => format!(
+                        "the {} cost was paid",
+                        reference.mana_cost_text().unwrap_or("alternative")
+                    ),
+                    ironsmith_core::AlternativeCostReferenceSurface::NamedCost => format!(
+                        "this spell's {} cost was paid",
+                        reference.method_name().to_ascii_lowercase()
+                    ),
+                    ironsmith_core::AlternativeCostReferenceSurface::ThatCost => {
+                        "that cost was paid".to_string()
+                    }
+                };
+            }
             let display_label = label.display_label();
             if label.kind == crate::cost::OptionalCostKind::Behold {
                 return label.discriminator.as_deref().map_or_else(
@@ -1997,6 +2127,17 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SourceIsFaceDown => "this source is transformed".to_string(),
         Condition::SourceMatches(filter) => {
+            let exact_zone_branch = |branch: &ObjectFilter, zone: Zone| {
+                let mut expected = ObjectFilter::default();
+                expected.zone = Some(zone);
+                branch == &expected
+            };
+            if matches!(filter.any_of.as_slice(), [command, battlefield]
+                if exact_zone_branch(command, Zone::Command)
+                    && exact_zone_branch(battlefield, Zone::Battlefield))
+            {
+                return "this source is in the command zone or on the battlefield".to_string();
+            }
             let mut entered_this_turn = ObjectFilter::creature();
             entered_this_turn.entered_battlefield_this_turn = true;
             if *filter == entered_this_turn {
@@ -2149,6 +2290,19 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "the target is paired with another creature".to_string()
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            if matches!(tag.as_str(), "equipped" | "enchanted")
+                && let Some(states) = exact_attachment_state_reference(tag, filter)
+            {
+                return format!("it's {}", states.join(" or "));
+            }
+            if filter.zone == Some(Zone::Hand)
+                && filter.prior_effect_action_surface()
+                    == Some(crate::effect::PriorEffectAction::Returned)
+                && filter.demonstrative_antecedent_surface()
+                    == Some(ironsmith_core::DemonstrativeAntecedentSurface::Card)
+            {
+                return "that card is returned to its owner's hand this way".to_string();
+            }
             if tag.as_str() == "triggering"
                 && filter.has_trailing_candidate_ability_condition_surface()
                 && filter.ability_markers.len() == 1
@@ -2187,7 +2341,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     .demonstrative_antecedent_surface()
                     .map(|surface| surface.phrase().to_string())
                     .unwrap_or_else(|| "it".to_string());
-                return format!("{subject} is {colors}");
+                return if subject == "it" {
+                    format!("it's {colors}")
+                } else {
+                    format!("{subject} is {colors}")
+                };
             }
             let mut same_name_comparison_set = filter.clone();
             let before = same_name_comparison_set.tagged_constraints.len();
@@ -2676,6 +2834,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 format!("the tagged object '{}' matches {desc}", tag.as_str())
             }
         Condition::TaggedObjectMatchedLastKnown(tag, filter) => {
+            if matches!(tag.as_str(), "equipped" | "enchanted")
+                && let Some(states) = exact_attachment_state_reference(tag, filter)
+            {
+                return format!("it was {}", states.join(" or "));
+            }
             describe_last_known_tagged_object_condition(tag, filter)
         }
         Condition::TaggedObjectIsTopOfLibrary { tag, .. } => {
@@ -3733,6 +3896,21 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             ) {
                 "you cast this spell any time a sorcery couldn't have been cast".to_string()
             } else if let Condition::ThisSpellPaidLabel(label) = inner.as_ref() {
+                if let crate::cost::OptionalCostKind::AlternativeCast(reference) = &label.kind {
+                    return match reference.surface() {
+                        ironsmith_core::AlternativeCostReferenceSurface::ManaCost => format!(
+                            "the {} cost wasn't paid",
+                            reference.mana_cost_text().unwrap_or("alternative")
+                        ),
+                        ironsmith_core::AlternativeCostReferenceSurface::NamedCost => format!(
+                            "this spell's {} cost wasn't paid",
+                            reference.method_name().to_ascii_lowercase()
+                        ),
+                        ironsmith_core::AlternativeCostReferenceSurface::ThatCost => {
+                            "that cost wasn't paid".to_string()
+                        }
+                    };
+                }
                 // Render the negation as a flat clause (no parentheses): the generic
                 // `not (...)` fallback collides with the reminder-text paren stripping
                 // in debug_safe and would silently drop the condition.
@@ -5257,6 +5435,85 @@ mod greatest_power_control_tests {
         assert_eq!(
             describe_condition(&condition),
             "it isn't a creature or Vehicle"
+        );
+    }
+
+    #[test]
+    fn attachment_state_reference_uses_present_and_last_known_pronouns() {
+        let state_filter = |state: &str| {
+            ObjectFilter::default().match_tagged(
+                TagKey::from(state),
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            )
+        };
+        let mut either = ObjectFilter::default();
+        either.any_of = vec![state_filter("enchanted"), state_filter("equipped")];
+
+        assert_eq!(
+            describe_condition(&Condition::TaggedObjectMatches(
+                TagKey::from("equipped"),
+                either.clone(),
+            )),
+            "it's enchanted or equipped"
+        );
+        assert_eq!(
+            describe_condition(&Condition::TaggedObjectMatchedLastKnown(
+                TagKey::from("equipped"),
+                either,
+            )),
+            "it was enchanted or equipped"
+        );
+
+        let present = Condition::Or(
+            Box::new(Condition::TaggedObjectMatches(
+                TagKey::from("equipped"),
+                state_filter("enchanted"),
+            )),
+            Box::new(Condition::TaggedObjectMatches(
+                TagKey::from("equipped"),
+                state_filter("equipped"),
+            )),
+        );
+        assert_eq!(describe_condition(&present), "it's enchanted or equipped");
+
+        let last_known = Condition::Or(
+            Box::new(Condition::TaggedObjectMatches(
+                TagKey::from("equipped"),
+                state_filter("enchanted"),
+            )),
+            Box::new(Condition::TaggedObjectMatchedLastKnown(
+                TagKey::from("equipped"),
+                state_filter("equipped"),
+            )),
+        );
+        assert_eq!(
+            describe_condition(&last_known),
+            "it was enchanted or equipped"
+        );
+    }
+
+    #[test]
+    fn attachment_state_reference_rejects_changed_tag_and_extra_filter() {
+        let equipped = ObjectFilter::default().match_tagged(
+            TagKey::from("equipped"),
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        assert!(
+            describe_condition(&Condition::TaggedObjectMatches(
+                TagKey::from("enchanted"),
+                equipped.clone(),
+            ))
+            .contains("tagged object")
+        );
+
+        let mut extra = equipped;
+        extra.card_types.push(CardType::Creature);
+        assert!(
+            describe_condition(&Condition::TaggedObjectMatches(
+                TagKey::from("equipped"),
+                extra,
+            ))
+            .contains("tagged object")
         );
     }
 }

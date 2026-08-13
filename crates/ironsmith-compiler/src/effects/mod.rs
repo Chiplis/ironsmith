@@ -90,9 +90,10 @@ pub use ironsmith_core::{
     TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TagTriggeringSourceEffect,
     TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect, TapEffect,
     TargetOnlyEffect, TicketCountersEffect, TransformEffect, UnattachObjectsEffect, UnearthEffect,
-    UnlessActionEffect, UnlessPaysEffect, UntapEffect, VariableCasualtyPlaneswalkerCopyEffect,
-    VentureIntoDungeonEffect, VillainousChoiceEffect as CoreVillainousChoiceEffect,
-    WinTheGameEffect, WithIdEffect as CoreWithIdEffect,
+    UnlessActionEffect, UnlessPaysEffect, UnlockRoomDoorEffect, UntapEffect,
+    VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect,
+    VillainousChoiceEffect as CoreVillainousChoiceEffect, WinTheGameEffect,
+    WithIdEffect as CoreWithIdEffect,
 };
 
 pub type ChooseModeEffect = CoreChooseModeEffect<Effect>;

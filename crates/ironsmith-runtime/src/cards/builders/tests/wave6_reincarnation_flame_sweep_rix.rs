@@ -14,7 +14,6 @@ fn assert_exact(name: &str, definition: &CardDefinition) {
 #[test]
 fn reincarnation_binds_the_delayed_return_to_the_watched_creatures_owner() {
     let definition = parse_oracle_card_definition("Reincarnation");
-    eprintln!("REINCARNATION DEFINITION: {definition:#?}");
     assert_exact("Reincarnation", &definition);
     let debug = format!("{:#?}", definition.spell_effect);
     assert!(debug.contains("TagTriggeringObjectEffect"), "{debug}");
@@ -134,7 +133,6 @@ fn flame_sweep_keeps_the_complement_of_controlled_fliers() {
 #[test]
 fn rix_maadi_target_legality_reads_current_turn_life_loss_history() {
     let definition = parse_oracle_card_definition("Rix Maadi Guildmage");
-    eprintln!("RIX DEFINITION: {definition:#?}");
     assert_exact("Rix Maadi Guildmage", &definition);
     let debug = format!("{definition:#?}");
     assert!(debug.contains("LostLifeThisTurn"), "{debug}");
@@ -163,7 +161,13 @@ fn rix_maadi_target_legality_reads_current_turn_life_loss_history() {
     assert!(!crate::filter::player_filter_matches_game(
         &filter, bob, &game, &context
     ));
-    game.lose_life(bob, 1);
+    let life_loss = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::LifeLossEvent::new(bob, 1, false),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.turn_store
+        .turn_history
+        .record_event(&life_loss, None, None);
     let context = game.filter_context_for(alice, None);
     assert!(crate::filter::player_filter_matches_game(
         &filter, bob, &game, &context

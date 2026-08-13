@@ -18,6 +18,249 @@ use super::shard_16::*;
 use super::shard_17::*;
 use super::*;
 
+#[test]
+pub(super) fn controller_selects_the_opponent_who_makes_a_delegated_target_choice() {
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+            "Diana".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let bob_creature = create_creature(&mut game, "Bob's creature", bob, 2, 2);
+    let charlie_creature = create_creature(&mut game, "Charlie's creature", charlie, 2, 2);
+    let spell = CardBuilder::new(CardId::new(), "Delegated Target Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+    let mut requirement = crate::decision::TargetRequirement::single(
+        ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
+        )),
+        Vec::new(),
+        "target creature they control".to_string(),
+    );
+    requirement.chooser = Some(PlayerFilter::Opponent);
+
+    let pending = PendingCast::new(
+        spell_id,
+        Zone::Hand,
+        alice,
+        crate::provenance::ProvNodeId::default(),
+        CastStage::ChoosingTargets,
+        None,
+        vec![requirement],
+        CastingMethod::Normal,
+        crate::cost::OptionalCostsPaid::default(),
+        None,
+        spell_id,
+    );
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = AutoPassDecisionMaker;
+
+    let progress = continue_to_targets_or_mana_payment(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        pending,
+        &mut dm,
+    )
+    .expect("delegated target choice should ask Alice to choose an opponent");
+    let chooser_ctx = match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected opponent-selection prompt, got {other:?}"),
+    };
+    assert_eq!(chooser_ctx.player, alice);
+    let charlie_option = chooser_ctx
+        .options
+        .iter()
+        .find(|option| option.description == "Charlie")
+        .expect("Charlie should be an eligible delegated chooser")
+        .index;
+
+    let progress = apply_target_chooser_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        charlie_option,
+        &mut dm,
+    )
+    .expect("Alice should be able to delegate the target choice to Charlie");
+    let target_ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(
+            ctx,
+        )) => ctx,
+        other => panic!("expected Charlie's target prompt, got {other:?}"),
+    };
+    assert_eq!(target_ctx.player, charlie);
+    assert_eq!(target_ctx.requirements.len(), 1);
+    assert_eq!(
+        target_ctx.requirements[0].legal_targets,
+        vec![Target::Object(charlie_creature)]
+    );
+    assert!(
+        !target_ctx.requirements[0]
+            .legal_targets
+            .contains(&Target::Object(bob_creature)),
+        "Charlie must not be allowed to choose a creature controlled by a different opponent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn tasigur_graveyard_card_is_chosen_by_an_opponent_during_resolution() {
+    struct TasigurDecisionMaker {
+        activator: PlayerId,
+        opponent: PlayerId,
+        chosen_name: &'static str,
+        saw_opponent_choice: bool,
+        saw_choice: bool,
+    }
+
+    impl DecisionMaker for TasigurDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            assert_eq!(
+                ctx.player, self.activator,
+                "Tasigur's controller chooses which opponent will choose the card"
+            );
+            self.saw_opponent_choice = true;
+            ctx.options
+                .iter()
+                .find(|option| option.legal && option.description == "Charlie")
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            assert_eq!(
+                ctx.player, self.opponent,
+                "Tasigur's opponent must make the graveyard choice"
+            );
+            self.saw_choice = true;
+            ctx.candidates
+                .iter()
+                .find(|candidate| {
+                    candidate.legal
+                        && game
+                            .object(candidate.id)
+                            .is_some_and(|object| object.name == self.chosen_name)
+                })
+                .map(|candidate| vec![candidate.id])
+                .unwrap_or_default()
+        }
+    }
+
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+            "Diana".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let charlie = PlayerId::from_index(2);
+    let tasigur = CardDefinitionBuilder::new(CardId::new(), "Tasigur, the Golden Fang")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{2}{G/U}{G/U}: Mill two cards, then return a nonland card of an opponent's choice from your graveyard to your hand.",
+        )
+        .expect("Tasigur's activated ability should parse");
+    let activated = tasigur
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Tasigur should have an activated ability");
+    let effects_debug = format!("{:#?}", activated.effects);
+    assert!(
+        effects_debug.contains("ChooseObjectsEffect"),
+        "{effects_debug}"
+    );
+    assert!(
+        effects_debug.contains("ChoosePlayerEffect"),
+        "{effects_debug}"
+    );
+    assert!(
+        effects_debug.contains("filter: Opponent"),
+        "{effects_debug}"
+    );
+    assert!(
+        effects_debug.contains("chooser: TaggedPlayer"),
+        "{effects_debug}"
+    );
+    assert!(
+        !effects_debug.contains("TargetOnlyEffect"),
+        "the untargeted graveyard choice must not be made during activation: {effects_debug}"
+    );
+
+    let source = game.create_object_from_definition(&tasigur, alice, Zone::Battlefield);
+    let card = |name| {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .build()
+    };
+    let _chosen = game.create_object_from_card(&card("Opponent's Pick"), alice, Zone::Graveyard);
+    let _other =
+        game.create_object_from_card(&card("Other Graveyard Card"), alice, Zone::Graveyard);
+    let _milled_one = game.create_object_from_card(&card("Milled One"), alice, Zone::Library);
+    let _milled_two = game.create_object_from_card(&card("Milled Two"), alice, Zone::Library);
+
+    let mut dm = TasigurDecisionMaker {
+        activator: alice,
+        opponent: charlie,
+        chosen_name: "Opponent's Pick",
+        saw_opponent_choice: false,
+        saw_choice: false,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Tasigur's ability should resolve");
+
+    assert!(
+        dm.saw_opponent_choice,
+        "Tasigur should ask Alice which opponent will choose"
+    );
+    assert!(dm.saw_choice, "Tasigur should ask Charlie to choose");
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .hand
+            .iter()
+            .any(|object_id| game
+                .object(*object_id)
+                .is_some_and(|object| object.name == "Opponent's Pick")),
+        "the card selected by Tasigur's opponent should move to Alice's hand"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn roshan_hidden_magister_applies_assassin_subtype_across_zones_for_you_only() {

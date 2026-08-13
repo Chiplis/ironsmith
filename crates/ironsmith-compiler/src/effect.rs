@@ -1892,6 +1892,16 @@ impl Effect {
         Self::new(crate::effects::PutStickerEffect::new(target, action))
     }
 
+    pub fn unlock_room_door(
+        player: crate::target::PlayerFilter,
+        room_filter: crate::target::ObjectFilter,
+    ) -> Self {
+        Self::new(crate::effects::UnlockRoomDoorEffect::new(
+            player,
+            room_filter,
+        ))
+    }
+
     pub fn investigate_player(
         count: impl Into<Value>,
         player: crate::target::PlayerFilter,
@@ -2179,6 +2189,7 @@ impl Effect {
             allow_land,
             as_copy,
             copy_cast_reminder_surface,
+            copy_instruction_surface: None,
             without_paying_mana_cost,
             additional_mana_cost,
             cost_reduction,

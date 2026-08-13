@@ -5005,6 +5005,7 @@ fn resolve_condition_player_simple(
             }
         }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
+        | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }

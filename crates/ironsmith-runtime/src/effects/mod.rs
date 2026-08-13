@@ -174,7 +174,7 @@ pub use permanents::{
     PutStickerEffect, ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect,
     SneakCostEffect, SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect,
     TransformEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect,
-    UntapEffect,
+    UnlockRoomDoorEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,

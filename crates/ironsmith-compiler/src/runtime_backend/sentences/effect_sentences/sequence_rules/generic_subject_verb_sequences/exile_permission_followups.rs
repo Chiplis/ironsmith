@@ -14,12 +14,19 @@ use crate::runtime_backend::util::helper_tag_for_tokens;
 use crate::target::PlayerFilter;
 use crate::types::CardType;
 
-fn rebind_permission_tag(mut permission: EffectAst, tag: crate::tag::TagKey) -> Option<EffectAst> {
+pub(super) fn rebind_permission_tag(
+    mut permission: EffectAst,
+    tag: crate::tag::TagKey,
+) -> Option<EffectAst> {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = &mut permission else {
         return None;
     };
     match action {
         SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+            tag: permission_tag,
+            ..
+        }
+        | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
             tag: permission_tag,
             ..
         }

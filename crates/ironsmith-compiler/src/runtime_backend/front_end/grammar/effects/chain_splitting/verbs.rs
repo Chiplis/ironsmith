@@ -82,6 +82,7 @@ fn parse_chain_verb_kind(input: &mut &[&str]) -> WResult<ChainVerbKind> {
         "unattaches" | "unattach" => ChainVerbKind::Unattach,
         "attaches" | "attach" => ChainVerbKind::Attach,
         "untaps" | "untap" => ChainVerbKind::Untap,
+        "unlocks" | "unlock" => ChainVerbKind::Unlock,
         "scries" | "scry" => ChainVerbKind::Scry,
         "discards" | "discard" => ChainVerbKind::Discard,
         "transforms" | "transform" => ChainVerbKind::Transform,

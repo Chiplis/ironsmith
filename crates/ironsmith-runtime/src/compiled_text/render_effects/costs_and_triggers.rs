@@ -256,6 +256,9 @@ pub(super) fn describe_case_to_solve_triggered_ability(
 }
 
 pub(crate) fn granted_ability_self_subject_for_filter(filter: &ObjectFilter) -> &'static str {
+    if filter.token && !filter.nontoken {
+        return "this token";
+    }
     let card_types = if !filter.all_card_types.is_empty() {
         &filter.all_card_types
     } else {
@@ -429,6 +432,9 @@ pub(crate) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
                 describe_put_counter_phrase(&remove.count, remove.counter_type)
             );
         }
+        if let Some(compact) = describe_effect_cost_program(effect) {
+            return compact;
+        }
         if let Some(cost_text) = effect.0.cost_description() {
             return normalize_cost_phrase(&cost_text);
         }
@@ -462,6 +468,78 @@ pub(crate) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
     } else {
         display
     }
+}
+
+fn describe_effect_cost_program(effect: &Effect) -> Option<String> {
+    let sequence = structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    if !matches!(
+        sequence.surface,
+        ironsmith_core::SequenceSurface::Sequential | ironsmith_core::SequenceSurface::Coordinated
+    ) {
+        return None;
+    }
+
+    let mut compacted_choice = false;
+    let mut parts = Vec::new();
+    let mut index = 0usize;
+    while index < sequence.effects.len() {
+        let member = structural_unwrap_render_wrappers(&sequence.effects[index]);
+        if let Some(choose) = member.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(next) = sequence.effects.get(index + 1)
+            && let Some(sacrifice) = sacrifice_view(structural_unwrap_render_wrappers(next))
+            && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice)
+        {
+            parts.push(normalize_cost_phrase(&compact));
+            compacted_choice = true;
+            index += 2;
+            continue;
+        }
+        if member
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .is_some()
+            || member.0.as_cost_executable().is_none()
+        {
+            return None;
+        }
+        if let Some(discard) = member.downcast_ref::<crate::effects::DiscardEffect>()
+            && let Some(text) = describe_simple_discard_cost(discard)
+        {
+            parts.push(text);
+        } else {
+            parts.push(normalize_cost_phrase(&describe_effect(member)));
+        }
+        index += 1;
+    }
+    compacted_choice.then(|| {
+        for part in parts.iter_mut().skip(1) {
+            *part = lowercase_first(part);
+        }
+        join_with_and(&parts)
+    })
+}
+
+#[cfg(test)]
+#[test]
+fn coordinated_effect_cost_hides_choose_sacrifice_scaffolding() {
+    let tag = crate::TagKey::from("sacrificed_0");
+    let effect = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+        Effect::discard(1),
+        Effect::new(crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature()
+                .you_control()
+                .in_zone(Zone::Battlefield),
+            ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            tag.clone(),
+        )),
+        Effect::sacrifice_player(ObjectFilter::tagged(tag), 1, PlayerFilter::You),
+    ]));
+
+    assert_eq!(
+        describe_effect_cost_program(&effect).as_deref(),
+        Some("Discard a card and sacrifice a creature")
+    );
 }
 
 pub(super) fn describe_loyalty_activation_prefix(costs: &[crate::costs::Cost]) -> Option<String> {
@@ -2957,23 +3035,25 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
     if let Some(rest) = base.strip_prefix("another ") {
         return format!("other {}{}", pluralize_noun_phrase(rest), trailing);
     }
-    for (relation, plural_relation) in [
-        (" that's ", " that are "),
-        (" that is ", " that are "),
-        (" that isn't ", " that aren't "),
-        (" that is not ", " that aren't "),
+    for (relation, plural_relation, predicate_is_adjectival) in [
+        (" that's ", " that are ", false),
+        (" that is ", " that are ", false),
+        (" that isn't ", " that aren't ", true),
+        (" that is not ", " that aren't ", true),
     ] {
         if let Some((head, selectors)) = base.split_once(relation) {
             let selectors = strip_indefinite_article(selectors.trim());
             // A participial combat relation is a predicate over the noun on
             // the left, not another noun phrase.  Recursing into its object
             // would pluralize "that player" into "that players".
-            let selectors =
-                if selectors.starts_with("attacking ") || selectors.starts_with("blocking ") {
-                    selectors.to_string()
-                } else {
-                    pluralize_noun_phrase(selectors)
-                };
+            let selectors = if predicate_is_adjectival
+                || selectors.starts_with("attacking ")
+                || selectors.starts_with("blocking ")
+            {
+                selectors.to_string()
+            } else {
+                pluralize_noun_phrase(selectors)
+            };
             return format!(
                 "{}{}{}{}",
                 pluralize_noun_phrase(head.trim()),
@@ -3426,6 +3506,21 @@ pub(super) fn describe_for_players_choose_then_destroy_chosen_collection(
         PlayerFilter::Opponent => "opponent",
         _ => return None,
     };
+    if let ChooseSpec::WithCount(spec, count) = &destroy.spec
+        && matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        && count.min == 1
+        && count.max == Some(1)
+        && !count.dynamic_x
+        && !count.up_to_x
+        && count.random
+        && !count.explicit_exactly
+    {
+        let selection = describe_choose_selection(choose);
+        return Some(format!(
+            "For each {quantified}, choose {selection}. Destroy one of them chosen at random"
+        ));
+    }
+
     let destroy_filter = match destroy.spec.base() {
         ChooseSpec::All(filter) | ChooseSpec::Object(filter) => filter,
         _ => return None,
@@ -3461,6 +3556,73 @@ pub(in crate::compiled_text) fn describe_for_players_choose_then_destroy_chosen_
         .downcast_ref::<crate::effects::ForPlayersEffect>()?;
     let destroy = destroy_effect_for_choose_compaction(consumer)?;
     describe_for_players_choose_then_destroy_chosen_collection(for_players, destroy)
+}
+
+#[cfg(test)]
+mod random_participant_choice_destroy_tests {
+    use super::*;
+
+    fn choice_and_destroy(
+        destroy_tag: &str,
+        random: bool,
+    ) -> (
+        crate::effects::ForPlayersEffect,
+        crate::effects::DestroyEffect,
+    ) {
+        let choice_tag = TagKey::from("participant_choice");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::permanent()
+                .in_zone(Zone::Battlefield)
+                .controlled_by(PlayerFilter::IteratedPlayer)
+                .without_type(CardType::Land),
+            ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            choice_tag,
+        )
+        .in_zone(Zone::Battlefield);
+        let destroy = crate::effects::DestroyEffect::with_spec(
+            ChooseSpec::Tagged(TagKey::from(destroy_tag)).with_count(if random {
+                ChoiceCount::exactly(1).at_random()
+            } else {
+                ChoiceCount::exactly(1)
+            }),
+        );
+        (
+            crate::effects::ForPlayersEffect {
+                filter: PlayerFilter::Opponent,
+                effects: vec![Effect::new(choose)],
+                starting_with_controller: false,
+                stop_after_first_happened: false,
+            },
+            destroy,
+        )
+    }
+
+    #[test]
+    fn shared_random_collection_renders_one_of_them() {
+        let (players, destroy) = choice_and_destroy("participant_choice", true);
+        assert_eq!(
+            describe_for_players_choose_then_destroy_chosen_collection(&players, &destroy)
+                .as_deref(),
+            Some(
+                "For each opponent, choose a nonland permanent that player controls. Destroy one of them chosen at random"
+            )
+        );
+    }
+
+    #[test]
+    fn changed_tag_or_nonrandom_consumer_does_not_claim_random_correlation() {
+        let (players, changed_tag) = choice_and_destroy("other_choice", true);
+        assert!(
+            describe_for_players_choose_then_destroy_chosen_collection(&players, &changed_tag)
+                .is_none()
+        );
+        let (players, nonrandom) = choice_and_destroy("participant_choice", false);
+        assert!(
+            describe_for_players_choose_then_destroy_chosen_collection(&players, &nonrandom)
+                .is_none()
+        );
+    }
 }
 
 /// Render a per-player choice followed by destruction of that same player's
@@ -4537,7 +4699,7 @@ pub(super) fn apply_continuous_grants_decayed(
     })
 }
 
-pub(super) fn describe_for_players_choose_move_then_characteristics(
+pub(crate) fn describe_for_players_choose_move_then_characteristics(
     effects: &[&Effect],
 ) -> Option<String> {
     let [
@@ -4591,6 +4753,89 @@ pub(super) fn describe_for_players_choose_move_then_characteristics(
         .collect::<Vec<_>>()
         .join(" ");
     let subtype_words = pluralize_noun_phrase(&subtype_words);
+    let color_words = describe_token_color_words(colors, false);
+    Some(format!(
+        "{base}. They're {color_words} {subtype_words} in addition to their other colors and types and they gain decayed"
+    ))
+}
+
+/// The same typed procedure after lowering coalesces the permanent color,
+/// subtype, and decayed grants into one continuous effect. Every executable
+/// modification is still checked before the internal decayed implementation
+/// abilities are collapsed back to the keyword surface.
+pub(crate) fn describe_for_players_choose_move_then_combined_characteristics(
+    effects: &[&Effect],
+) -> Option<String> {
+    let [for_players_effect, move_effect, apply_effect] = effects else {
+        return None;
+    };
+    let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let move_to_zone = unwrap_basic_tag_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let base = describe_for_players_choose_then_move_to_battlefield(for_players, move_to_zone)?;
+    let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let apply = tagged_apply_continuous_effect(apply_effect)?;
+    if !apply_continuous_is_forever_tagged(apply, &choose.tag)
+        || apply.runtime_modifications.len() != 0
+    {
+        return None;
+    }
+
+    let mut colors = None;
+    let mut subtypes = None;
+    let mut decayed = false;
+    let mut cant_block = false;
+    let mut decayed_delayed_sacrifice = false;
+    for modification in apply
+        .modification
+        .iter()
+        .chain(apply.additional_modifications.iter())
+    {
+        match modification {
+            crate::continuous::Modification::AddColors(value) if colors.is_none() => {
+                colors = Some(*value);
+            }
+            crate::continuous::Modification::AddSubtypes(value) if subtypes.is_none() => {
+                subtypes = Some(value);
+            }
+            crate::continuous::Modification::AddAbility(ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                    && ability.display().eq_ignore_ascii_case("decayed")
+                    && !decayed =>
+            {
+                decayed = true;
+            }
+            crate::continuous::Modification::AddAbility(ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::CantBlock
+                    && !cant_block =>
+            {
+                cant_block = true;
+            }
+            crate::continuous::Modification::AddAbilityGeneric(_) if !decayed_delayed_sacrifice => {
+                decayed_delayed_sacrifice = true;
+            }
+            _ => return None,
+        }
+    }
+    let (Some(colors), Some(subtypes)) = (colors, subtypes) else {
+        return None;
+    };
+    if colors.is_empty()
+        || subtypes.is_empty()
+        || !decayed
+        || !cant_block
+        || !decayed_delayed_sacrifice
+    {
+        return None;
+    }
+
+    let subtype_words = pluralize_noun_phrase(
+        &subtypes
+            .iter()
+            .map(|subtype| subtype.display_name())
+            .collect::<Vec<_>>()
+            .join(" "),
+    );
     let color_words = describe_token_color_words(colors, false);
     Some(format!(
         "{base}. They're {color_words} {subtype_words} in addition to their other colors and types and they gain decayed"

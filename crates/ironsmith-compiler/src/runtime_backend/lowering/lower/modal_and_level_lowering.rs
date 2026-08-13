@@ -1,4 +1,6 @@
 use super::*;
+use crate::runtime_backend::compile_support::compile_condition_from_predicate_ast;
+use crate::runtime_backend::EffectLoweringContext;
 
 pub(crate) fn try_merge_modal_into_remove_mode(
     effects: &mut crate::resolution::ResolutionProgram,
@@ -73,6 +75,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
                 .disallow_previously_chosen_modes_this_turn,
             distinct_player_targets_per_mode: choose_mode.distinct_player_targets_per_mode,
             conditional_mode_range: choose_mode.conditional_mode_range.clone(),
+            presentation_label: choose_mode.presentation_label.clone(),
         },
     ));
     true
@@ -101,6 +104,8 @@ pub(crate) fn rewrite_lower_parsed_modal(
         mode_must_be_unchosen_this_turn,
         distinct_player_targets_per_mode,
         if_kicked_choose_any_number,
+        conditional_mode_change,
+        presentation_label,
         commander_allows_both,
         choose_both_control_card_types,
         choose_both_exact_life_total,
@@ -114,6 +119,10 @@ pub(crate) fn rewrite_lower_parsed_modal(
         line_text,
     } = header;
     let common_suffix_effect_count = common_suffix_effects_ast.len();
+    let modal_spell_presentation = trigger
+        .is_none()
+        .then(|| presentation_label.clone())
+        .flatten();
 
     let (prefix_effects, mut prefix_choices) = if prepared_prefix.is_none() {
         (crate::resolution::ResolutionProgram::default(), Vec::new())
@@ -233,6 +242,40 @@ pub(crate) fn rewrite_lower_parsed_modal(
     };
     let is_fixed_one =
         |value: &crate::effect::Value| matches!(value, crate::effect::Value::Fixed(1));
+    let compiled_conditional_mode_change = conditional_mode_change
+        .as_ref()
+        .map(|change| {
+            let mut ctx = EffectLoweringContext::new();
+            compile_condition_from_predicate_ast(&change.condition, &mut ctx, &None)
+                .map(|condition| (condition, change.selection))
+        })
+        .transpose()?;
+    let conditional_optional_range = compiled_conditional_mode_change
+        .as_ref()
+        .and_then(|(condition, selection)| {
+            let required_cost = match condition {
+                crate::effect::Condition::ThisSpellWasKicked => {
+                    crate::cost::OptionalCostRef::from("Kicker")
+                }
+                crate::effect::Condition::ThisSpellPaidLabel(label)
+                    if label.kind == crate::cost::OptionalCostKind::Additional =>
+                {
+                    crate::cost::OptionalCostRef::new(crate::cost::OptionalCostKind::Additional)
+                }
+                _ => return None,
+            };
+            let (min_modes, max_modes) = match selection {
+                crate::cards::builders::ConditionalModeSelection::BothOrTwo => (1, 2),
+                crate::cards::builders::ConditionalModeSelection::AnyNumber => (0, mode_count),
+                crate::cards::builders::ConditionalModeSelection::OneOrMore => (1, mode_count),
+                crate::cards::builders::ConditionalModeSelection::One => (1, 1),
+            };
+            Some(crate::effect::ConditionalModeRange::new(
+                required_cost,
+                crate::effect::Value::Fixed(min_modes),
+                crate::effect::Value::Fixed(max_modes.min(mode_count).max(min_modes)),
+            ))
+        });
     let apply_modal_metadata = |effect: crate::effect::Effect| {
         let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() else {
             return effect;
@@ -275,11 +318,20 @@ pub(crate) fn rewrite_lower_parsed_modal(
                     crate::effect::Value::Fixed(0),
                     crate::effect::Value::Fixed(mode_count),
                 ));
+        } else if let Some(range) = conditional_optional_range.clone() {
+            choose_mode = choose_mode.with_conditional_mode_range(range);
+        }
+        if let Some(label) = modal_spell_presentation.clone() {
+            choose_mode = choose_mode.with_presentation_label(label);
         }
         crate::effect::Effect::new(choose_mode)
     };
 
-    let choose_both_condition = if commander_allows_both {
+    let choose_both_condition = if conditional_optional_range.is_some() {
+        None
+    } else if let Some((condition, _)) = &compiled_conditional_mode_change {
+        Some(condition.clone())
+    } else if commander_allows_both {
         Some(crate::effect::Condition::YouControlCommander)
     } else if let Some(life_total) = choose_both_exact_life_total {
         Some(crate::effect::Condition::ValueComparison {
@@ -308,23 +360,57 @@ pub(crate) fn rewrite_lower_parsed_modal(
     };
 
     let modal_effect = if let Some(choose_both_condition) = choose_both_condition {
-        let max_both = (mode_count.min(2)).max(1);
+        let (min_both, max_both) = compiled_conditional_mode_change
+            .as_ref()
+            .map(|(_, selection)| match selection {
+                crate::cards::builders::ConditionalModeSelection::BothOrTwo => {
+                    (1, (mode_count.min(2)).max(1))
+                }
+                crate::cards::builders::ConditionalModeSelection::AnyNumber => {
+                    (0, mode_count.max(1))
+                }
+                crate::cards::builders::ConditionalModeSelection::OneOrMore => {
+                    (1, mode_count.max(1))
+                }
+                crate::cards::builders::ConditionalModeSelection::One => (1, 1),
+            })
+            .unwrap_or((1, (mode_count.min(2)).max(1)));
         let choose_both = if max_both == 1 {
-            apply_modal_metadata(crate::effect::Effect::choose_one(compiled_modes.clone()))
+            let mut effect = apply_modal_metadata(crate::effect::Effect::choose_one(
+                compiled_modes.clone(),
+            ));
+            if compiled_conditional_mode_change.is_some()
+                && random_mode_choice
+                && let Some(choice) = effect.downcast_ref::<crate::effects::ChooseModeEffect>()
+            {
+                let mut choice = choice.clone();
+                choice.random = false;
+                effect = crate::effect::Effect::new(choice);
+            }
+            effect
         } else {
             #[cfg(not(feature = "serialization"))]
             let choose_up_to = crate::effect::Effect::choose_up_to_with_min(
                 crate::effect::Value::Fixed(max_both),
-                crate::effect::Value::Fixed(1),
+                crate::effect::Value::Fixed(min_both),
                 compiled_modes.clone(),
             );
             #[cfg(feature = "serialization")]
             let choose_up_to = crate::effect::Effect::choose_up_to(
                 crate::effect::Value::Fixed(max_both),
-                crate::effect::Value::Fixed(1),
+                crate::effect::Value::Fixed(min_both),
                 compiled_modes.clone(),
             );
-            apply_modal_metadata(choose_up_to)
+            let mut effect = apply_modal_metadata(choose_up_to);
+            if compiled_conditional_mode_change.is_some()
+                && random_mode_choice
+                && let Some(choice) = effect.downcast_ref::<crate::effects::ChooseModeEffect>()
+            {
+                let mut choice = choice.clone();
+                choice.random = false;
+                effect = crate::effect::Effect::new(choice);
+            }
+            effect
         };
         let choose_one =
             apply_modal_metadata(crate::effect::Effect::choose_one(compiled_modes.clone()));
@@ -425,6 +511,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         if let AbilityKind::Triggered(triggered) = &mut ability.kind {
             triggered.effects = combined_effects.clone();
             triggered.choices = prefix_choices;
+            triggered.presentation_label = presentation_label;
         }
         builder = builder.with_ability(ability);
     } else if let Some(activated) = activated {

@@ -313,27 +313,39 @@ pub(crate) fn parse_gain_control(
             clause_words.join(" ")
         ))
     };
-    let (target_ast, trailing_predicate, is_unless) = if let Some(spec) =
-        split_trailing_if_clause_lexed(shape.target_tokens)
-    {
-        (
-            parse_target_phrase(spec.leading_tokens)?,
-            Some(spec.predicate),
-            false,
+    let opponent_choice =
+        crate::runtime_backend::front_end::grammar::choices::parse_possessive_object_choice_tokens(
+            shape.target_tokens,
         )
-    } else if crate::runtime_backend::lexer::contains_token_word(shape.target_tokens, "if") {
-        return Err(invalid_conditional_error());
-    } else if let Some(spec) = split_trailing_unless_clause_lexed(shape.target_tokens) {
-        (
-            parse_target_phrase(spec.leading_tokens)?,
-            Some(spec.predicate),
-            true,
-        )
-    } else if crate::runtime_backend::lexer::contains_token_word(shape.target_tokens, "unless") {
-        return Err(invalid_conditional_error());
-    } else {
-        (parse_target_phrase(shape.target_tokens)?, None, false)
-    };
+        .filter(|choice| {
+            choice.actor
+                == crate::runtime_backend::front_end::grammar::choices::PossessiveObjectChoiceActor::Opponent
+        });
+    let target_tokens = opponent_choice
+        .as_ref()
+        .map_or(shape.target_tokens, |choice| {
+            choice.object_tokens.as_slice()
+        });
+    let (target_ast, trailing_predicate, is_unless) =
+        if let Some(spec) = split_trailing_if_clause_lexed(target_tokens) {
+            (
+                parse_target_phrase(spec.leading_tokens)?,
+                Some(spec.predicate),
+                false,
+            )
+        } else if crate::runtime_backend::lexer::contains_token_word(target_tokens, "if") {
+            return Err(invalid_conditional_error());
+        } else if let Some(spec) = split_trailing_unless_clause_lexed(target_tokens) {
+            (
+                parse_target_phrase(spec.leading_tokens)?,
+                Some(spec.predicate),
+                true,
+            )
+        } else if crate::runtime_backend::lexer::contains_token_word(target_tokens, "unless") {
+            return Err(invalid_conditional_error());
+        } else {
+            (parse_target_phrase(target_tokens)?, None, false)
+        };
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let mut base_effect = match target_ast {
         TargetAst::Player(filter, _) => {
@@ -370,6 +382,34 @@ pub(crate) fn parse_gain_control(
         } = &mut subject_verb.action
     {
         *controller_reference = Some(crate::target::ObjectRef::tagged("triggering_source"));
+    }
+
+    if opponent_choice.is_some()
+        && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GainControl { target, .. },
+            ..
+        }) = &mut base_effect
+    {
+        let target_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            target_tokens,
+            "opponent_chosen_target",
+        );
+        let declared = std::mem::replace(
+            target,
+            TargetAst::Tagged(target_tag.clone(), span_from_tokens(target_tokens)),
+        );
+        base_effect = EffectAst::Sequence {
+            effects: vec![
+                EffectAst::TagAffected {
+                    effect: Box::new(EffectAst::subject_verb_explicit_target_only_for_chooser(
+                        declared,
+                        PlayerAst::Opponent,
+                    )),
+                    tag: target_tag,
+                },
+                base_effect,
+            ],
+        };
     }
 
     let effect = if let Some(predicate) = trailing_predicate {
@@ -783,6 +823,11 @@ pub(crate) fn parse_put_into_hand(
             .any(|window| window == ["from", "your", "library"])
         {
             Some((Zone::Library, Some(PlayerFilter::You)))
+        } else if words
+            .windows(4)
+            .any(|window| window == ["from", "the", "command", "zone"])
+        {
+            Some((Zone::Command, Some(PlayerFilter::You)))
         } else {
             None
         };
@@ -1328,10 +1373,11 @@ pub(crate) fn parse_put_into_hand(
 
             let (target_tokens, source_top_only) =
                 strip_source_top_only_prefix(shape.target_tokens);
-            let target = preserve_exiled_with_source_subject_cardinality(
+            let mut target = preserve_exiled_with_source_subject_cardinality(
                 parse_target_phrase(target_tokens)?,
                 exiled_with_source_surface.as_ref(),
             );
+            apply_explicit_source_location(&mut target, tokens);
             let effect = if cca_shapes::starts_with_all_or_each(target_tokens) {
                 EffectAst::subject_verb_move_all_to_zone(
                     target,
@@ -1727,6 +1773,21 @@ mod looked_card_count_tests {
                 ..
             }) if sources.subtypes == [Subtype::Pirate]
         ));
+    }
+
+    #[test]
+    fn gain_control_of_opponents_choice_declares_a_delegated_target() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "control of target creature of an opponent's choice they control.",
+            0,
+        )
+        .expect("lex opponent-chosen control target");
+        let effect =
+            parse_gain_control(&tokens, None).expect("parse opponent-chosen control target");
+        let debug = format!("{effect:#?}");
+        assert!(debug.contains("player: Opponent"), "{debug}");
+        assert!(debug.contains("explicit_declaration: true"), "{debug}");
+        assert!(debug.contains("opponent_chosen_target"), "{debug}");
     }
 
     #[test]

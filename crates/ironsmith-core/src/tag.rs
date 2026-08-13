@@ -66,6 +66,14 @@ pub const MANIFEST_DREAD_GRAVEYARD_TAG: &str = "__manifest_dread_graveyard__";
 /// The complete set of attackers captured by a group attack trigger.
 pub const ATTACKING_GROUP_TAG: &str = "__attacking_group__";
 
+/// The complete set of sources captured by a one-or-more combat-damage
+/// trigger.
+///
+/// This preserves the individual source controllers for follow-ups such as
+/// "the controller of those creatures," even though the trigger itself is
+/// coalesced into one simultaneous damage-batch event.
+pub const COMBAT_DAMAGE_GROUP_TAG: &str = "__combat_damage_group__";
+
 /// The complete set of objects captured by a one-or-more zone-change trigger.
 ///
 /// The snapshots are the matched objects' last-known information, so aggregate

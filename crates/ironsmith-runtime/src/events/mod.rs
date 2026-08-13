@@ -333,6 +333,7 @@ impl Event {
                 enters_as_copy_of: None,
                 copy_duration: None,
                 copy_name_override: None,
+                added_colors: crate::color::ColorSet::new(),
                 added_card_types: Vec::new(),
                 removed_supertypes: Vec::new(),
                 added_subtypes: Vec::new(),

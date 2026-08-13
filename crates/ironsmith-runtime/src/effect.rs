@@ -1976,6 +1976,16 @@ impl Effect {
         Self::new(PutStickerEffect::new(target, action))
     }
 
+    pub fn unlock_room_door(
+        player: crate::target::PlayerFilter,
+        room_filter: crate::target::ObjectFilter,
+    ) -> Self {
+        Self::new(crate::effects::UnlockRoomDoorEffect::new(
+            player,
+            room_filter,
+        ))
+    }
+
     /// Create a "manifest dread" effect.
     pub fn manifest_dread() -> Self {
         use crate::effects::ManifestDreadEffect;

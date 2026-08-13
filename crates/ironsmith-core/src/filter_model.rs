@@ -1227,6 +1227,12 @@ pub enum PlayerFilter {
     WasDealtDamageBySourceThisGame {
         base: Box<PlayerFilter>,
     },
+    /// A player matching `base` who was dealt positive combat damage this
+    /// game by an object matching `sources` at the time it dealt that damage.
+    WasDealtCombatDamageBySourcesThisGame {
+        base: Box<PlayerFilter>,
+        sources: Box<ObjectFilter>,
+    },
     /// A player matching `base` who has lost life during the current turn.
     ///
     /// This is a target-legality fact as well as a resolution-time filter:
@@ -1349,6 +1355,16 @@ impl PlayerFilter {
         }
     }
 
+    pub fn was_dealt_combat_damage_by_sources_this_game(
+        base: PlayerFilter,
+        sources: ObjectFilter,
+    ) -> Self {
+        Self::WasDealtCombatDamageBySourcesThisGame {
+            base: Box::new(base),
+            sources: Box::new(sources),
+        }
+    }
+
     pub fn lost_life_this_turn(base: PlayerFilter) -> Self {
         Self::LostLifeThisTurn {
             base: Box::new(base),
@@ -1373,6 +1389,9 @@ impl PlayerFilter {
             Self::Target(inner) | Self::AliasedTarget(inner) => inner.mentions_iterated_player(),
             Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_iterated_player(),
             Self::WasDealtDamageBySourceThisGame { base } => base.mentions_iterated_player(),
+            Self::WasDealtCombatDamageBySourcesThisGame { base, sources } => {
+                base.mentions_iterated_player() || sources.mentions_iterated_player()
+            }
             Self::LostLifeThisTurn { base } => base.mentions_iterated_player(),
             Self::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
                 base.mentions_iterated_player() || sources.mentions_iterated_player()
@@ -1444,6 +1463,11 @@ impl PlayerFilter {
             Self::WasDealtDamageBySourceThisGame { base } => format!(
                 "{} this source has dealt damage to this game",
                 base.description()
+            ),
+            Self::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
+                "{} dealt combat damage this game by {}",
+                base.description(),
+                sources.description()
             ),
             Self::LostLifeThisTurn { base } => {
                 format!("{} who lost life this turn", base.description())
@@ -1628,6 +1652,10 @@ pub struct ObjectFilter {
     pub excluded_cast_origin_zone: Option<Zone>,
     pub cast_this_turn: bool,
     pub first_spell_cast_each_turn: bool,
+    /// Exact ordinal among spells matching this filter that the caster has
+    /// cast this turn. `None` is the ordinary unrestricted set; `Some(2)` is
+    /// the reusable surface used by "the second spell you cast each turn".
+    pub spell_cast_ordinal_each_turn: Option<u32>,
     /// A stack spell must have had mana produced by a matching source spent
     /// to cast it. The runtime evaluates this against the source snapshots
     /// recorded on the spell as each mana unit is paid.
@@ -2662,6 +2690,7 @@ impl ObjectFilter {
         generic.cast_by = self.cast_by.clone();
         generic.excluded_cast_origin_zone = self.excluded_cast_origin_zone;
         generic.first_spell_cast_each_turn = self.first_spell_cast_each_turn;
+        generic.spell_cast_ordinal_each_turn = self.spell_cast_ordinal_each_turn;
         generic.single_graveyard = self.single_graveyard;
         self != &generic
     }
@@ -2754,6 +2783,11 @@ impl ObjectFilter {
 
     pub fn first_spell_cast_each_turn(mut self) -> Self {
         self.first_spell_cast_each_turn = true;
+        self
+    }
+
+    pub fn spell_cast_ordinal_each_turn(mut self, ordinal: u32) -> Self {
+        self.spell_cast_ordinal_each_turn = Some(ordinal);
         self
     }
 
@@ -3399,6 +3433,9 @@ impl ObjectFilter {
                 PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::LostLifeThisTurn { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -3534,6 +3571,15 @@ impl ObjectFilter {
         if self.first_spell_cast_each_turn {
             post_noun_qualifiers.push("first spell cast each turn".to_string());
         }
+        if let Some(ordinal) = self.spell_cast_ordinal_each_turn {
+            let word = match ordinal {
+                1 => "first".to_string(),
+                2 => "second".to_string(),
+                3 => "third".to_string(),
+                other => format!("{other}th"),
+            };
+            post_noun_qualifiers.push(format!("{word} spell cast each turn"));
+        }
         if let Some(source_filter) = &self.mana_from_source_spent_to_cast {
             post_noun_qualifiers.push(format!(
                 "that mana from {} was spent to cast",
@@ -3575,6 +3621,9 @@ impl ObjectFilter {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::LostLifeThisTurn { .. } => {
@@ -5950,6 +5999,11 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             "{} this source has dealt damage to this game's",
             describe_player_filter(base)
         ),
+        PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
+            "{} dealt combat damage this game by {}'s",
+            describe_player_filter(base),
+            sources.description()
+        ),
         PlayerFilter::LostLifeThisTurn { base } => {
             format!("{} who lost life this turn's", describe_player_filter(base))
         }
@@ -6049,6 +6103,11 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
             "{} this source has dealt damage to this game",
             describe_player_filter(base)
+        ),
+        PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
+            "{} dealt combat damage this game by {}",
+            describe_player_filter(base),
+            sources.description()
         ),
         PlayerFilter::LostLifeThisTurn { base } => {
             format!("{} who lost life this turn", describe_player_filter(base))

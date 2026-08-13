@@ -1520,6 +1520,13 @@ pub(super) fn parse_fully_typed_mixed_restriction_action_chain(
 fn parse_effect_sentence_lexed_inner_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // This permission contains the words `have defender`, but those words are
+    // inside an `as though` comparison rather than an ability to grant. Claim
+    // the complete typed combat-permission clause before the broad gain-
+    // ability routes can reduce it to granting defender itself.
+    if let Some(effect) = parse_can_attack_as_though_no_defender_clause(tokens)? {
+        return Ok(vec![effect]);
+    }
     // Keep a demonstrative per-object reward ahead of the broad gain-life
     // sentence parser. The latter can otherwise reduce "the controller of
     // each of those artifacts" to the ability controller and discard both
@@ -1586,7 +1593,7 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     }
     if let Some(effects) = super::dispatch_entry::parse_if_you_dont_sentence(tokens)? {
         return Ok(vec![EffectAst::IfResult {
-            predicate: crate::cards::builders::IfResultPredicate::DidNot,
+            predicate: crate::cards::builders::IfResultPredicate::ExplicitDidNot,
             effects,
         }]);
     }
@@ -1652,6 +1659,14 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     // or prohibition route can reinterpret the leading source/pump words as
     // the blocked-object filter and silently retain only the restriction.
     if let Some(effects) = parse_source_gets_unblockable_subject_verb(tokens)? {
+        return Ok(effects);
+    }
+    // The target variant is the same atomic program: one explicit target,
+    // one P/T modification, and a same-target blocking restriction. Give it
+    // the same early ownership as the source form so the broad pump route
+    // cannot accept only the leading `gets ...` clause and discard the
+    // coordinated `can't be blocked this turn` tail.
+    if let Some(effects) = parse_target_gets_unblockable_subject_verb(tokens)? {
         return Ok(effects);
     }
 
@@ -3115,6 +3130,30 @@ fn parse_effect_sentence_with_where_x_lexed(
 mod spent_mana_repeat_tests {
     use super::*;
     use crate::IfResultPredicate;
+
+    #[test]
+    fn as_though_no_defender_preempts_the_broad_defender_grant_route() {
+        let tokens = crate::runtime_backend::lex_line(
+            "This creature can attack this turn as though it didn't have defender.",
+            0,
+        )
+        .expect("permission should lex");
+        let effects = parse_effect_sentence_lexed(&tokens).expect("permission should parse");
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("CanAttackAsThoughNoDefender"), "{debug}");
+        assert!(!debug.contains("KeywordAction(Defender)"), "{debug}");
+
+        let near_miss = crate::runtime_backend::lex_line(
+            "This creature gains defender until end of turn.",
+            0,
+        )
+        .expect("ordinary defender grant should lex");
+        let effects = parse_effect_sentence_lexed(&near_miss)
+            .expect("ordinary defender grant should still parse");
+        let debug = format!("{effects:#?}");
+        assert!(!debug.contains("CanAttackAsThoughNoDefender"), "{debug}");
+        assert!(debug.contains("Defender"), "{debug}");
+    }
 
     #[test]
     fn direct_sentence_route_keeps_put_history_inside_target_declaration() {

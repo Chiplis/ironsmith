@@ -1342,6 +1342,27 @@ pub(super) fn rewrite_sequence_registry_matches_counted_revealed_cards_hand_rest
 }
 
 #[test]
+pub(super) fn rewrite_sequence_registry_preserves_sentence_leading_then_on_looked_remainder() {
+    let sentences = registry_sentence_inputs(
+        "Look at the top five cards of your library. You may reveal a creature card from among them and put it into your hand. Then put the rest on the bottom of your library in a random order.",
+    );
+
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("looked-card remainder bundle should match");
+    assert_eq!(
+        matched.name,
+        "top-cards-reveal-any-matching-to-hand-rest-bottom"
+    );
+    assert!(
+        format!("{:#?}", matched.effects).contains("SentenceLeadingThenRest"),
+        "the explicit sentence-leading Then must survive lowering: {:#?}",
+        matched.effects
+    );
+}
+
+#[test]
 pub(super) fn rewrite_sequence_registry_splits_and_or_single_revealed_cards_hand_rest_bottom_bundle()
  {
     let sentences = registry_sentence_inputs(

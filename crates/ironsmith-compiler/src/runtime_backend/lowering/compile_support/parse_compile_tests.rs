@@ -8,6 +8,43 @@ use crate::target::ChooseSpec;
 use crate::types::{CardType, Subtype};
 use std::path::Path;
 
+#[test]
+fn quantified_damage_binds_that_players_life_total_to_each_recipient() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Quantified Life Damage Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: This creature deals damage to each player equal to half that player's life total, rounded down.",
+        )
+        .expect("quantified player-relative damage should compile");
+    let activated = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("activated damage ability");
+    let effects = activated.effects.flattened_default_effects();
+    let for_players = effects[0]
+        .downcast_ref::<crate::effects::ForPlayersEffect<Effect>>()
+        .expect("quantified player effect");
+    let damage = for_players.effects[0]
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .expect("damage action");
+    assert_eq!(
+        damage.target.unhinted(),
+        &ChooseSpec::Player(crate::target::PlayerFilter::IteratedPlayer)
+    );
+    let Value::HalfRoundedDown(inner) = damage.amount.unhinted() else {
+        panic!("expected half-rounded-down amount: {damage:#?}");
+    };
+    assert_eq!(
+        inner.as_ref(),
+        &Value::LifeTotal(crate::target::PlayerFilter::IteratedPlayer),
+        "the amount must use the same participant as the recipient"
+    );
+}
+
 fn find_create_token_effect(effects: &[Effect]) -> Option<&crate::effects::CreateTokenEffect> {
     effects.iter().find_map(|effect| {
         if let Some(create) = effect.as_create_token() {
@@ -3118,5 +3155,125 @@ fn serial_keyword_filters_survive_trigger_and_effect_comma_boundaries() {
     assert_eq!(
         keyword_branches,
         vec![FirstStrike, DoubleStrike, Vigilance, Haste]
+    );
+}
+
+#[test]
+fn delegated_subset_and_other_reuse_exact_prior_target_collection() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Delegated Pair Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose up to two target creature cards in your graveyard. An opponent chooses one of them. Return that card to your hand. Return the other to the battlefield under your control.",
+        )
+        .expect("delegated subset procedure should compile");
+    let debug = format!("{:#?}", definition.spell_effect.expect("spell effect"));
+    let compact = debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+
+    assert!(
+        compact.contains("__ability_controller_target_choice_0__delegated_subset"),
+        "the opponent's subset needs a tag distinct from the original target pool: {debug}"
+    );
+    assert!(
+        compact.contains("IsNotTaggedObject") && compact.contains("battlefield_controller:You"),
+        "the other card must be the exact pool-minus-subset object returned under your control: {debug}"
+    );
+    assert!(
+        !compact.contains("AnyOtherTarget"),
+        "the other card is not a fresh target: {debug}"
+    );
+}
+
+#[test]
+fn conditional_delegated_subset_keeps_remainder_move_in_false_branch() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Conditional Partition Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose up to four target cards in your graveyard. If you control a planeswalker, return those cards to your hand. Otherwise, an opponent chooses two of them. Leave the chosen cards in your graveyard and put the rest into your hand.",
+        )
+        .expect("conditional delegated partition should compile");
+    let debug = format!("{:#?}", definition.spell_effect.expect("spell effect"));
+    let compact = debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+
+    assert!(
+        compact.contains("__ability_controller_target_choice_0__delegated_subset"),
+        "the opponent-selected keep set needs its own stable tag: {debug}"
+    );
+    assert!(
+        compact.contains("ForEachTagged") && compact.contains("IsTaggedObject"),
+        "the false branch must move exactly the original pool minus the kept subset: {debug}"
+    );
+    assert!(
+        !compact.contains("TagKey(\"rest\")"),
+        "no literal unbound rest marker may reach runtime lowering: {debug}"
+    );
+}
+
+#[test]
+fn delegated_choice_from_activation_cost_exile_returns_exact_other_card() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Exiled Cost Partition Probe")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{3}, Exile two creature cards from your graveyard, Sacrifice this artifact: An opponent chooses one of the exiled cards. You put that card on the bottom of your library and return the other to the battlefield tapped.",
+        )
+        .expect("activation-cost exile partition should compile");
+    let ability = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("activated ability");
+    let debug = format!("{:#?}", ability.effects);
+    let compact = debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+
+    assert!(
+        compact.contains("__source_exiled____delegated_subset"),
+        "the opponent-selected exiled card needs a stable subset tag: {debug}"
+    );
+    assert!(
+        compact.contains("IsNotTaggedObject") && compact.contains("enters_tapped:true"),
+        "the other exact source-exiled card must return tapped: {debug}"
+    );
+    assert!(
+        !compact.contains("AnyOtherTarget"),
+        "the other exiled card is not a fresh graveyard target: {debug}"
+    );
+}
+
+#[test]
+fn delegated_choice_from_revealed_top_collection_exiles_exact_other_card() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Revealed Partition Probe")
+        .card_types(vec![CardType::Planeswalker])
+        .parse_text(
+            "+1: Reveal the top two cards of your library. An opponent chooses one of them. Put that card into your hand and exile the other with a silver counter on it.",
+        )
+        .expect("revealed collection partition should compile");
+    let debug = format!("{definition:#?}");
+    let compact = debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+
+    assert!(
+        compact.contains("__delegated_subset"),
+        "the opponent-selected revealed card needs its own subset tag: {debug}"
+    );
+    assert!(
+        compact.contains("IsNotTaggedObject") && compact.contains("zone:Exile"),
+        "the other exact revealed card must be exiled: {debug}"
+    );
+    assert!(
+        !compact.contains("target:Source"),
+        "the complement exile must not move the planeswalker source: {debug}"
     );
 }

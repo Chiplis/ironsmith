@@ -1798,6 +1798,62 @@ fn restore_distinct_combat_damage_controller_target(
 }
 
 pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    // A plural historical graveyard target has an embedded `put` verb that
+    // belongs to the object filter, not to the surrounding action chain.
+    // Preserve this exact target envelope before the generic target-head
+    // parser can expose that verb as a second effect clause.
+    let historical_words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(
+        historical_words.as_slice(),
+        [
+            "up",
+            "to",
+            "three" | "3",
+            "target",
+            "permanent",
+            "cards",
+            "in",
+            "graveyards",
+            "that",
+            "were",
+            "put",
+            "there",
+            "from",
+            "the",
+            "battlefield",
+            "this",
+            "turn"
+        ] | [
+            "up",
+            "to",
+            "three" | "3",
+            "target",
+            "permanent",
+            "cards",
+            "in",
+            "graveyards",
+            "that",
+            "were",
+            "put",
+            "there",
+            "from",
+            "battlefield",
+            "this",
+            "turn"
+        ]
+    ) {
+        let mut filter = ObjectFilter::permanent_card().in_zone(Zone::Graveyard);
+        filter.entered_graveyard_this_turn = true;
+        filter.entered_graveyard_from_battlefield_this_turn = true;
+        filter.set_graveyard_entry_history_surface(Some(
+            ironsmith_core::GraveyardEntryHistorySurface::PutThereFromBattlefieldThisTurn,
+        ));
+        return Ok(TargetAst::WithCount(
+            Box::new(TargetAst::Object(filter, span_from_tokens(tokens), None)),
+            ChoiceCount::up_to(3),
+        ));
+    }
+
     // A bare object AST does not itself distinguish the chosen singleton in
     // "a creature" from the complete set in "each/all creature". Preserve
     // that authored quantifier on the filter so action lowering can retain

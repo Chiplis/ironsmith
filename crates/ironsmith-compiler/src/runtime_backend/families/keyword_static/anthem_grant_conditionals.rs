@@ -1423,7 +1423,6 @@ pub(crate) fn parse_heterogeneous_granted_tail(
             continue;
         };
         let segment = segment.body_tokens.to_vec();
-
         if matches!(
             crate::runtime_backend::token_word_refs(&segment).as_slice(),
             ["lose" | "loses", "all", "other", "abilities"]
@@ -1434,6 +1433,13 @@ pub(crate) fn parse_heterogeneous_granted_tail(
 
         if let Some(additions) = parse_type_color_addition_clause(&segment)? {
             parsed.type_color_additions.push(additions);
+            continue;
+        }
+
+        if is_can_block_shadow_as_though_no_shadow_clause(&segment) {
+            parsed
+                .granted_static
+                .push(StaticAbility::can_block_as_though_no_shadow().into());
             continue;
         }
 
@@ -1535,6 +1541,138 @@ pub(crate) fn parse_heterogeneous_granted_tail(
     }
 
     Ok(Some(parsed))
+}
+
+fn is_can_block_shadow_as_though_no_shadow_clause(tokens: &[OwnedLexToken]) -> bool {
+    matches!(
+        crate::runtime_backend::token_word_refs(&trim_edge_punctuation(tokens)).as_slice(),
+        [
+            "can",
+            "block",
+            "creatures",
+            "with",
+            "shadow",
+            "as",
+            "though",
+            "they",
+            "didnt" | "didn't",
+            "have",
+            "shadow"
+        ]
+    )
+}
+
+/// Parse an attached-creature characteristic line whose final coordinated
+/// member is the rules permission to block shadow creatures. Keeping this
+/// complete line together prevents the ordinary granted-ability grammar from
+/// reducing the permission's final `shadow` noun to a quoted ability marker.
+pub(crate) fn parse_attached_anthem_reach_shadow_permission_line(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<StaticAbilityAst>> {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
+    if !matches!(
+        words.as_slice(),
+        [
+            "enchanted",
+            "creature",
+            "gets",
+            "+1/+1",
+            "has",
+            "reach",
+            "and",
+            "can",
+            "block",
+            "creatures",
+            "with",
+            "shadow",
+            "as",
+            "though",
+            "they",
+            "didnt" | "didn't",
+            "have",
+            "shadow"
+        ]
+    ) {
+        return None;
+    }
+
+    let filter = ObjectFilter::creature().in_zone(Zone::Battlefield).match_tagged(
+        "enchanted",
+        crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+    );
+    Some(vec![
+        StaticAbilityAst::Static(StaticAbility::new(Anthem::new(filter.clone(), 1, 1))),
+        StaticAbilityAst::GrantStaticAbility {
+            filter: filter.clone(),
+            ability: Box::new(StaticAbilityAst::Static(StaticAbility::reach())),
+            condition: None,
+        },
+        StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability: Box::new(StaticAbilityAst::Static(
+                StaticAbility::can_block_as_though_no_shadow(),
+            )),
+            condition: None,
+        },
+    ])
+}
+
+pub(crate) fn parse_source_can_block_shadow_as_though_no_shadow_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let trimmed = trim_edge_punctuation(tokens);
+    let words = crate::runtime_backend::token_word_refs(&trimmed);
+    if !matches!(words.as_slice(), ["this", "creature", ..])
+        || !is_can_block_shadow_as_though_no_shadow_clause(&tokens[2..])
+    {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbilityAst::Static(
+        StaticAbility::can_block_as_though_no_shadow(),
+    )))
+}
+
+pub(crate) fn parse_targeting_as_though_no_ability_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let Some(spec) = crate::runtime_backend::effect_sentences::
+        parse_targeting_as_though_no_ability_spec(tokens)?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(StaticAbilityAst::Static(
+        StaticAbility::targeting_as_though_no_ability(spec),
+    )))
+}
+
+#[test]
+fn shadow_block_permission_is_typed_and_rejects_plain_shadow() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "This creature can block creatures with shadow as though they didn't have shadow.",
+        0,
+    )
+    .expect("permission should lex");
+    let parsed = parse_source_can_block_shadow_as_though_no_shadow_line(&tokens)
+        .expect("permission should parse")
+        .expect("permission should be claimed");
+    assert!(
+        format!("{parsed:#?}").contains("CanBlockAsThoughNoShadow"),
+        "{parsed:#?}"
+    );
+
+    for near_miss in [
+        "This creature has shadow.",
+        "This creature can block creatures with shadow.",
+    ] {
+        let tokens = crate::runtime_backend::lexer::lex_line(near_miss, 0)
+            .expect("near miss should lex");
+        assert!(
+            parse_source_can_block_shadow_as_though_no_shadow_line(&tokens)
+                .expect("near miss should parse safely")
+                .is_none(),
+            "claimed near miss: {near_miss}"
+        );
+    }
 }
 
 pub(crate) fn lower_granted_tail_for_anthem_subject(
@@ -2323,6 +2461,81 @@ pub(crate) fn parse_attached_can_attack_as_though_no_defender_line(
         display: format!("{subject} can attack as though it didn't have defender"),
         condition: None,
     }))
+}
+
+pub(crate) fn parse_plain_can_attack_as_though_no_defender_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let Some(shape) = anthem_grant_grammar::parse_plain_no_defender_shape(tokens) else {
+        return Ok(None);
+    };
+    let subject = parse_anthem_subject(shape.subject_tokens)?;
+    let permission = StaticAbilityAst::Static(
+        StaticAbility::can_attack_as_though_no_defender(),
+    );
+    Ok(Some(match subject {
+        AnthemSubjectAst::Source => permission,
+        AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability: Box::new(permission),
+            condition: None,
+        },
+    }))
+}
+
+pub(crate) fn parse_attacked_player_can_attack_as_though_no_defender_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let trimmed = trim_edge_punctuation(tokens);
+    let words = crate::runtime_backend::token_word_refs(&trimmed);
+    if words.as_slice()
+        != [
+            "this", "creature", "can", "attack", "players", "who", "attacked", "you",
+            "during", "their", "last", "turn", "as", "though", "it", "didn't", "have",
+            "defender",
+        ]
+        && words.as_slice()
+            != [
+                "this", "creature", "can", "attack", "players", "who", "attacked", "you",
+                "during", "their", "last", "turn", "as", "though", "it", "didnt", "have",
+                "defender",
+            ]
+    {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbilityAst::Static(
+        StaticAbility::can_attack_players_who_attacked_controller_last_turn_as_though_no_defender(),
+    )))
+}
+
+#[test]
+fn plain_no_defender_permissions_lower_to_the_typed_combat_ability() {
+    for text in [
+        "Wall creatures can attack as though they didn't have defender.",
+        "Creatures you control can attack as though they didn't have defender.",
+        "Modified creatures you control can attack as though they didn't have defender.",
+        "This creature can attack as though it didn't have defender.",
+    ] {
+        let tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("lex permission");
+        let parsed = parse_plain_can_attack_as_though_no_defender_line(&tokens)
+            .expect("parse permission")
+            .expect("plain permission shape");
+        assert!(
+            format!("{parsed:#?}").contains("CanAttackAsThoughNoDefender"),
+            "{text}: {parsed:#?}"
+        );
+    }
+
+    let near_miss = crate::runtime_backend::lexer::lex_line(
+        "Wall creatures have defender.",
+        0,
+    )
+    .expect("lex near miss");
+    assert!(
+        parse_plain_can_attack_as_though_no_defender_line(&near_miss)
+            .expect("parse near miss")
+            .is_none()
+    );
 }
 
 pub(crate) fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(

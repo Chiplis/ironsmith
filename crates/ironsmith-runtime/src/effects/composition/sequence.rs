@@ -44,6 +44,14 @@ impl SequenceEffect {
         }
     }
 
+    pub fn repeated_comma_then(effects: Vec<Effect>) -> Self {
+        Self {
+            effects,
+            surface: ironsmith_core::SequenceSurface::RepeatedCommaThen,
+            result_label: None,
+        }
+    }
+
     pub fn coordinated(effects: Vec<Effect>) -> Self {
         Self {
             effects,

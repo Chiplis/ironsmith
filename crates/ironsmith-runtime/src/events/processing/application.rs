@@ -453,6 +453,7 @@ pub(super) fn apply_trait_replacement(
             linked_exile_objects,
             additional_counters,
             name_override,
+            added_colors,
             added_card_types,
             removed_supertypes,
             added_subtypes,
@@ -467,6 +468,7 @@ pub(super) fn apply_trait_replacement(
                 linked_exile_objects,
                 additional_counters,
                 name_override.clone(),
+                *added_colors,
                 added_card_types,
                 removed_supertypes,
                 added_subtypes,
@@ -1220,6 +1222,7 @@ fn apply_trait_enter_as_copy(
     linked_exile_objects: &[crate::ids::ObjectId],
     additional_counters: &[(CounterType, u32)],
     name_override: Option<String>,
+    added_colors: crate::color::ColorSet,
     added_card_types: &[crate::types::CardType],
     removed_supertypes: &[crate::types::Supertype],
     added_subtypes: &[crate::types::Subtype],
@@ -1234,6 +1237,7 @@ fn apply_trait_enter_as_copy(
             .with_copy_duration(copy_duration.clone())
             .with_linked_exile_objects(linked_exile_objects)
             .with_copy_name_override(name_override.clone())
+            .with_added_colors(added_colors)
             .with_added_card_types(added_card_types)
             .with_removed_supertypes(removed_supertypes)
             .with_added_subtypes(added_subtypes)
@@ -1420,6 +1424,7 @@ fn resolve_value_for_replacement(
     let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm);
 
     if let Some(source_obj) = game.object(source) {
+        ctx.x_value = source_obj.x_value;
         ctx.optional_costs_paid = source_obj.optional_costs_paid.clone();
         if !source_obj.cast_tagged_objects.is_empty() {
             ctx = ctx.with_tagged_objects(source_obj.cast_tagged_objects.clone());

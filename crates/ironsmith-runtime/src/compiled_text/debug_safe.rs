@@ -201,6 +201,21 @@ fn revealed_hand_union_keeps_explicit_draw_subject(
             })
 }
 
+fn returned_set_control_gate_keeps_explicit_draw_subject(
+    prefix: &str,
+    explicit: &str,
+    tail: &str,
+) -> bool {
+    matches!(explicit, ". You draw " | ". you draw ")
+        && prefix.trim_end().ends_with("under their owners' control")
+        && tail
+            .split(['.', '\n', ';', '—'])
+            .next()
+            .is_some_and(|clause| {
+                clause == "a card for each opponent who controls one or more of those permanents"
+            })
+}
+
 fn replace_imperative_draw_subject(segment: &str, explicit: &str, imperative: &str) -> String {
     let mut output = String::with_capacity(segment.len());
     let mut remainder = segment;
@@ -209,6 +224,7 @@ fn replace_imperative_draw_subject(segment: &str, explicit: &str, imperative: &s
         let tail = &remainder[index + explicit.len()..];
         if draw_clause_keeps_coordinated_controller_subject(tail)
             || revealed_hand_union_keeps_explicit_draw_subject(&output, explicit, tail)
+            || returned_set_control_gate_keeps_explicit_draw_subject(&output, explicit, tail)
         {
             output.push_str(explicit);
         } else {
@@ -662,6 +678,20 @@ mod tests {
             ),
             "Target opponent reveals their hand. Draw two cards.",
             "an ordinary follow-up draw remains imperative"
+        );
+    }
+
+    #[test]
+    fn cleanup_preserves_explicit_draw_for_a_returned_set_control_gate() {
+        let text = "Choose up to three target permanent cards in graveyards that were put there from the battlefield this turn. Return them to the battlefield tapped under their owners' control. You draw a card for each opponent who controls one or more of those permanents.";
+        assert_eq!(normalize_debug_safe_spelling_surface(text), text);
+
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(
+                "Return those permanents under their owners' control. You draw two cards."
+            ),
+            "Return those permanents under their owners' control. Draw two cards.",
+            "an unrelated follow-up draw remains imperative"
         );
     }
 

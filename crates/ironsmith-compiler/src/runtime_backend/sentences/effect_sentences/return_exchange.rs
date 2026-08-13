@@ -500,6 +500,21 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             } else {
                 parse_target_phrase(&target_tokens)?
             };
+            let words = crate::runtime_backend::token_word_refs(tokens);
+            if destination.zone
+                == crate::runtime_backend::grammar::effects::ReturnZoneShape::Battlefield
+                && words.windows(3).any(|window| {
+                    window == ["from", "your", "graveyard"]
+                })
+                && let Some(filter) = crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
+            {
+                // A historical attachment predicate defaults to the
+                // battlefield for ordinary "attached to" queries. In a
+                // return instruction, an explicit later origin phrase owns
+                // the selected-card zone and owner instead.
+                filter.zone = Some(Zone::Graveyard);
+                filter.owner = Some(PlayerFilter::You);
+            }
             let count_value = dynamic_count.then_some(crate::effect::Value::EventValue(
                 crate::effect::EventValueSpec::Amount,
             ));

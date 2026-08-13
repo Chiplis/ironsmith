@@ -273,6 +273,26 @@ impl StaticAbilityKind for CanBlockOnlyFlying {
     }
 }
 
+/// This creature can block an attacker with shadow by ignoring only the
+/// attacker's shadow evasion restriction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CanBlockAsThoughNoShadow;
+
+impl StaticAbilityKind for CanBlockAsThoughNoShadow {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanBlockAsThoughNoShadow
+    }
+
+    fn display(&self) -> String {
+        "This creature can block creatures with shadow as though they didn't have shadow"
+            .to_string()
+    }
+
+    fn blocks_as_though_no_shadow(&self) -> bool {
+        true
+    }
+}
+
 /// Can block creatures with a subtype as though this creature had reach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CanBlockSubtypeAsThoughReach {
@@ -1075,6 +1095,47 @@ define_combat_ability!(
     CanAttackAsThoughNoDefender,
     "Can attack as though it didn't have defender"
 );
+
+/// A defender exception scoped to defending players who attacked this
+/// creature's controller during their most recent turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender;
+
+impl StaticAbilityKind for CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanAttackAsThoughNoDefender
+    }
+
+    fn display(&self) -> String {
+        "This creature can attack players who attacked you during their last turn as though it didn't have defender".to_string()
+    }
+
+    fn can_attack_specific_defender(
+        &self,
+        game: &GameState,
+        _source: ObjectId,
+        controller: PlayerId,
+        defending_player: PlayerId,
+    ) -> Option<bool> {
+        let attacked_controller = game
+            .last_turn_history_for_player(defending_player)
+            .is_some_and(|history| {
+                history.projected_records().any(|record| {
+                    record
+                        .event
+                        .downcast::<crate::events::combat::CreatureAttackedEvent>()
+                        .is_some_and(|event| {
+                            matches!(
+                                event.target,
+                                crate::triggers::event::AttackEventTarget::Player(player)
+                                    if player == controller
+                            )
+                        })
+                })
+            });
+        Some(attacked_controller)
+    }
+}
 
 // Can attack as though it had haste. This is attack-only, not the haste keyword.
 define_combat_ability!(

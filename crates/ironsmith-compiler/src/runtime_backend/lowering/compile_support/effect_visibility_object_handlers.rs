@@ -97,7 +97,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             tag,
             constraint,
         } => {
-            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let subject =
+                LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?;
             let chooser = subject.clone_player_filter();
             let mut resolved_filter =
                 subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
@@ -132,7 +133,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             {
                 LoweredSubject::from_resolved(chooser, Vec::new()).as_role(SubjectRole::Chooser)
             } else {
-                LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?
+                LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?
             };
             let chooser = subject.clone_player_filter();
             let references_revealed_hand = filter.zone == Some(Zone::Hand)
@@ -288,7 +289,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             tag,
             zone,
         } => {
-            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let subject =
+                LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?;
             let followup_player = subject.clone_player_filter();
             let mut resolved_filter =
                 subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
@@ -314,7 +316,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             player,
             tag,
         } => {
-            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let subject =
+                LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?;
             let chooser = subject.clone_player_filter();
             let mut resolved_filter =
                 subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
@@ -343,7 +346,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             player,
             tag,
         } => {
-            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let subject =
+                LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?;
             let chooser = subject.clone_player_filter();
             let mut resolved_filter =
                 subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
@@ -383,7 +387,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
                     .as_role(SubjectRole::Chooser)
             } else {
-                LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?
+                LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?
             };
             let chooser = subject.as_chooser();
             let references_revealed_hand = filter.zone == Some(Zone::Hand)

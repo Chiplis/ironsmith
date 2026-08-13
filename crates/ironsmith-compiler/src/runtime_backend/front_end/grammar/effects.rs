@@ -1902,6 +1902,8 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
 
     let discard_before_shuffle_followup =
         find_search_library_discard_before_shuffle_followup_lexed(search_tokens, put_idx);
+    let discard_after_shuffle_followup =
+        find_search_library_discard_after_shuffle_followup_lexed(search_tokens, put_idx);
     let trailing_discard_before_shuffle = discard_before_shuffle_followup.is_some();
     let effect_routing = derive_search_library_effect_routing_lexed(
         tokens,
@@ -2312,6 +2314,10 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             player,
             SubjectVerbActionAst::ShuffleLibrary,
         ));
+    }
+
+    if let Some(discard_tokens) = discard_after_shuffle_followup {
+        effects.push(parse_effect_clause_lexed(discard_tokens)?);
     }
 
     if trailing_that_player_shuffle {

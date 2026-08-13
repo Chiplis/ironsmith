@@ -10,7 +10,7 @@ use crate::runtime_backend::util::{
     is_article, source_choose_spec_for_surface, source_reference_surface_for_words,
     this_source_surface_for_words,
 };
-use crate::target::{ChooseSpec, PlayerFilter, TaggedOpbjectRelation};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 
 use super::super::permission_shapes;
 use super::value_helper_shapes;
@@ -125,6 +125,19 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
 
     if let Some(value) = parse_mana_from_source_spent_count(words, idx) {
         return Some(value);
+    }
+
+    // Commander products use this count in several otherwise unrelated
+    // consumers (spell copies, token creation, P/T changes, and cost
+    // reductions).  Recover the history metric before the permissive object
+    // filter fallback can reinterpret "commander" as a current object set.
+    // The runtime value deliberately counts casts from the command zone, not
+    // commanders that happen to exist in a zone now.
+    let commander_count_end = value_boundary(&words[idx..]) + idx;
+    if let Some(player) = super::value_helper_shapes::parse_commander_cast_count_player(
+        &words[idx..commander_count_end],
+    ) {
+        return Some((Value::CommanderCastCount(player), commander_count_end));
     }
 
     if words
@@ -350,9 +363,18 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
             } else {
                 None
             };
+            let coordinated_stack_filter = matches!(
+                filter_words,
+                ["spell" | "spells", "and", "ability" | "abilities"]
+            )
+            .then(|| {
+                let mut filter = ObjectFilter::spell_or_ability();
+                filter.set_conjunctive_set_surface(true);
+                filter
+            });
             if !filter_words.is_empty()
-                && let Some(mut filter) =
-                    parse_for_each_object_filter_words(filter_words, head.other)
+                && let Some(mut filter) = coordinated_stack_filter
+                    .or_else(|| parse_for_each_object_filter_words(filter_words, head.other))
             {
                 let action_words = &this_way_subject[action_start..];
                 if action == ironsmith_core::PriorEffectAction::Returned
@@ -850,6 +872,36 @@ mod tests {
     }
 
     #[test]
+    fn commander_cast_history_precedes_generic_commander_object_counts() {
+        let words = [
+            "for",
+            "each",
+            "time",
+            "you",
+            "ve",
+            "cast",
+            "your",
+            "commander",
+            "from",
+            "the",
+            "command",
+            "zone",
+            "this",
+            "game",
+        ];
+        let (value, used) = parse_for_each_count_value_words(&words)
+            .expect("commander cast history count should parse");
+        assert_eq!(used, words.len());
+        assert_eq!(value, Value::CommanderCastCount(PlayerFilter::You));
+
+        let current_set = ["for", "each", "commander", "you", "control"];
+        let (value, used) = parse_for_each_count_value_words(&current_set)
+            .expect("ordinary commander object count should remain supported");
+        assert_eq!(used, current_set.len());
+        assert!(matches!(value.unhinted(), Value::Count(filter) if filter.is_commander));
+    }
+
+    #[test]
     fn parses_for_each_creature_in_your_party_as_party_size() {
         assert_eq!(
             parse_for_each_count_value_words(&["for", "each", "creature", "in", "your", "party"]),
@@ -1102,5 +1154,35 @@ mod tests {
         assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
         assert_eq!(filter.controller, Some(PlayerFilter::You));
         assert!(filter.other);
+    }
+
+    #[test]
+    fn coordinated_countered_stack_objects_keep_spells_and_abilities() {
+        let words = [
+            "for",
+            "each",
+            "spell",
+            "and",
+            "ability",
+            "countered",
+            "this",
+            "way",
+        ];
+        let (value, used) =
+            parse_for_each_count_value_words(&words).expect("coordinated stack count");
+        assert_eq!(used, words.len());
+        let Value::PendingPriorEffectMetric(query) = value else {
+            panic!("expected typed prior-effect count");
+        };
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Countered)
+        );
+        let filter = query.filter.expect("stack filter");
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::SpellOrAbility)
+        );
+        assert!(filter.has_conjunctive_set_surface());
     }
 }

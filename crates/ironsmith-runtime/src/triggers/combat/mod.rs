@@ -20,6 +20,7 @@ mod this_attacks;
 mod this_attacks_and_isnt_blocked;
 mod this_attacks_player_with_most_life;
 mod this_attacks_while_saddled;
+mod this_attacks_while_you_control;
 mod this_attacks_with_greater_power;
 mod this_attacks_with_n_others;
 mod this_becomes_blocked;
@@ -52,6 +53,7 @@ pub use this_attacks::{
 pub use this_attacks_and_isnt_blocked::ThisAttacksAndIsntBlockedTrigger;
 pub use this_attacks_player_with_most_life::ThisAttacksPlayerWithMostLifeTrigger;
 pub use this_attacks_while_saddled::ThisAttacksWhileSaddledTrigger;
+pub use this_attacks_while_you_control::ThisAttacksWhileYouControlTrigger;
 pub use this_attacks_with_greater_power::ThisAttacksWithGreaterPowerTrigger;
 pub use this_attacks_with_n_others::ThisAttacksWithNOthersTrigger;
 pub use this_becomes_blocked::ThisBecomesBlockedTrigger;

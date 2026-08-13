@@ -1427,3 +1427,23 @@ fn behold_surfaces_preserve_subtype_optional_verb_and_condition_provenance() {
         "this spell's behold cost was paid"
     );
 }
+#[test]
+fn demonstrative_for_each_damage_keeps_each_of_those_surface() {
+    let tag = TagKey::from("chosen_targets");
+    let mut filter = ObjectFilter::creature()
+        .in_zone(Zone::Battlefield)
+        .match_tagged(tag, crate::filter::TaggedOpbjectRelation::IsTaggedObject);
+    filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those));
+    let damage = Effect::new(crate::effects::ForEachObject::new(
+        filter,
+        vec![Effect::new(crate::effects::DealDamageEffect::new(
+            Value::X,
+            ChooseSpec::Iterated,
+        ))],
+    ));
+
+    assert_eq!(
+        describe_effect(&damage),
+        "Deal X damage to each of those creatures"
+    );
+}

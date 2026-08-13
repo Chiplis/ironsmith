@@ -3080,3 +3080,73 @@ fn source_damage_recipient_filters_persist_across_turns_and_keep_exact_identity(
     assert_eq!(game.damage_on(damaged_planeswalker), 1);
     assert_eq!(game.damage_on(untouched_planeswalker), 0);
 }
+
+#[test]
+fn named_creature_combat_damage_recipient_filter_uses_full_game_source_lki() {
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::events::{DamageEvent, DamageTarget};
+    use crate::ids::CardId;
+    use crate::provenance::ProvNodeId;
+    use crate::triggers::TriggerEvent;
+
+    let mut game = GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let cara = PlayerId::from_index(2);
+    let gollum = CardBuilder::new(CardId::from_raw(60_130), "Gollum, Obsessed Stalker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let other = CardBuilder::new(CardId::from_raw(60_131), "Other Stalker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let gollum_id = game.create_object_from_card(&gollum, alice, Zone::Battlefield);
+    let other_id = game.create_object_from_card(&other, alice, Zone::Battlefield);
+
+    let combat = TriggerEvent::new_with_provenance(
+        DamageEvent::with_cause(
+            gollum_id,
+            DamageTarget::Player(bob),
+            1,
+            true,
+            crate::events::cause::EventCause::from_combat_damage(gollum_id, alice),
+        ),
+        ProvNodeId::default(),
+    );
+    let noncombat = TriggerEvent::new_with_provenance(
+        DamageEvent::with_cause(
+            gollum_id,
+            DamageTarget::Player(cara),
+            1,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        ProvNodeId::default(),
+    );
+    let wrong_name = TriggerEvent::new_with_provenance(
+        DamageEvent::with_cause(
+            other_id,
+            DamageTarget::Player(cara),
+            1,
+            true,
+            crate::events::cause::EventCause::from_combat_damage(other_id, alice),
+        ),
+        ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&combat);
+    game.record_turn_history_event(&noncombat);
+    game.record_turn_history_event(&wrong_name);
+    game.next_turn();
+
+    let mut sources = ObjectFilter::creature();
+    sources.name = Some("Gollum, Obsessed Stalker".to_string());
+    let filter =
+        PlayerFilter::was_dealt_combat_damage_by_sources_this_game(PlayerFilter::Opponent, sources);
+    let ctx = game.filter_context_for(alice, None);
+    assert!(player_filter_matches_game(&filter, bob, &game, &ctx));
+    assert!(!player_filter_matches_game(&filter, cara, &game, &ctx));
+}

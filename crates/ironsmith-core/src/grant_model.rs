@@ -852,6 +852,9 @@ where
                 PlayerFilter::WasDealtDamageBySourceThisGame { .. } => {
                     "A player this source has dealt damage to this game may".to_string()
                 }
+                PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => {
+                    "A player dealt combat damage this game by a matching source may".to_string()
+                }
                 PlayerFilter::LostLifeThisTurn { .. } => {
                     "A player who lost life this turn may".to_string()
                 }

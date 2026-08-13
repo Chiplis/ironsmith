@@ -2,7 +2,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, KeywordAction, LineAst, PredicateAst, StaticAbilityAst,
     SubjectVerbActionAst, TargetAst, TriggerSpec,
 };
-use crate::effect::{EventValueSpec, Value};
+use crate::effect::{ChoiceAggregateMetric, EventValueSpec, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -197,6 +197,57 @@ fn parse_source_and_or_filter_attack_with_trigger(
     }
     filter.set_union_one_or_more(true);
     Ok(Some(TriggerSpec::AttacksOneOrMore(filter)))
+}
+
+/// Parse an aggregate qualification on the whole declared attacker group.
+///
+/// The ordinary object-filter parser correctly treats `creature with power N`
+/// as a per-object predicate. It must not consume `creatures with total power
+/// N`, whose comparison applies to the sum across the declaration instead.
+fn parse_attack_group_aggregate_constraint(
+    object_tokens: &[OwnedLexToken],
+) -> Result<
+    Option<(
+        ObjectFilter,
+        ChoiceAggregateMetric,
+        crate::filter::Comparison,
+    )>,
+    CardTextError,
+> {
+    let view = TokenWordView::new(object_tokens);
+    let words = view.word_refs();
+    let Some(metric_word) = words
+        .windows(3)
+        .rposition(|window| window == ["with", "total", "power"])
+    else {
+        return Ok(None);
+    };
+    if metric_word == 0 || metric_word + 3 >= words.len() {
+        return Ok(None);
+    }
+    let comparison_tail = &words[metric_word + 3..];
+    let Some((comparison, consumed)) =
+        parse_filter_comparison_tokens("power", comparison_tail, &words)?
+    else {
+        return Ok(None);
+    };
+    if consumed != comparison_tail.len() {
+        return Ok(None);
+    }
+    let Some(&metric_token) = view.token_start_indices().get(metric_word) else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&object_tokens[..metric_token]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = parse_object_filter_lexed(&subject_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported aggregate attacking-object filter (clause: '{}')",
+            words.join(" ")
+        ))
+    })?;
+    Ok(Some((filter, ChoiceAggregateMetric::Power, comparison)))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1062,6 +1113,29 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                 let mut min_total_attackers = None;
                 let mut exact_total_attackers = None;
                 let mut one_or_more = false;
+                if let Some((mut filter, metric, comparison)) =
+                    parse_attack_group_aggregate_constraint(object_tokens)?
+                {
+                    if filter.controller.is_none() {
+                        filter.controller = Some(player);
+                    }
+                    filter.set_union_one_or_more(true);
+                    let trigger = TriggerSpec::AttacksOneOrMoreWithAggregate {
+                        filter,
+                        metric,
+                        comparison,
+                    };
+                    let effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
+                        trigger_tokens,
+                        &tokens[split_idx + 1..],
+                    );
+                    let effects = parse_effect_sentences_lexed(&effects_tokens)?;
+                    return Ok(LineAst::Triggered {
+                        trigger,
+                        effects,
+                        max_triggers_per_turn: None,
+                    });
+                }
                 if let Some((count, stripped)) =
                     super::activation_and_restrictions::parse_leading_or_more_quantifier(
                         object_tokens,
@@ -1567,6 +1641,39 @@ mod tests {
         );
         assert!(filter.targets_only_player.is_none());
         assert!(filter.power.is_some());
+    }
+
+    #[test]
+    fn typed_attack_with_total_power_keeps_group_aggregate() {
+        let tokens = lex_line(
+            "Whenever you attack with creatures with total power 12 or greater, draw a card.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_triggered_line_lexed(&tokens).unwrap();
+        let LineAst::Triggered {
+            trigger:
+                TriggerSpec::AttacksOneOrMoreWithAggregate {
+                    filter,
+                    metric,
+                    comparison,
+                },
+            ..
+        } = &parsed
+        else {
+            panic!("expected aggregate-power attack trigger, got {parsed:#?}");
+        };
+        assert!(filter.union_is_one_or_more());
+        assert_eq!(filter.controller.as_ref(), Some(&PlayerFilter::You));
+        assert!(
+            filter.power.is_none(),
+            "aggregate power is not per-attacker power"
+        );
+        assert_eq!(*metric, ChoiceAggregateMetric::Power);
+        assert_eq!(
+            *comparison,
+            crate::filter::Comparison::GreaterThanOrEqual(12)
+        );
     }
 
     #[test]

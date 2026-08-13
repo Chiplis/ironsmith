@@ -1967,7 +1967,16 @@ fn normalize_granted_alternative_spell_filter(
         filter.zone = None;
         filter.stack_kind = None;
         filter.cast_by = None;
-        return (filter, vec![Zone::Hand, Zone::Exile, Zone::Graveyard]);
+        return (
+            filter,
+            vec![
+                Zone::Hand,
+                Zone::Exile,
+                Zone::Graveyard,
+                Zone::Library,
+                Zone::Command,
+            ],
+        );
     }
 
     filter.zone = None;
@@ -3245,6 +3254,7 @@ fn parse_sticker_count_expression(tokens: &[OwnedLexToken]) -> Option<AnthemCoun
     Some(AnthemCountExpression::StickersOnSource {
         action,
         surface,
+        min_name_letters: shape.min_name_letters,
         max_name_letters: shape.max_name_letters,
     })
 }
@@ -3276,6 +3286,11 @@ pub(crate) fn parse_anthem_for_each_expression(
                 return Ok(AnthemCountExpression::CreatureTypesAmong(
                     ObjectFilter::source(),
                 ));
+            }
+            anthem_grant_grammar::ForEachSpecialShape::GraveyardsWithAtLeastCards {
+                minimum_cards,
+            } => {
+                return Ok(AnthemCountExpression::GraveyardsWithAtLeastCards { minimum_cards });
             }
             anthem_grant_grammar::ForEachSpecialShape::BlockingSource => {
                 return Ok(AnthemCountExpression::BlockingSource);
@@ -4655,6 +4670,22 @@ mod dynamic_anthem_tests {
     }
 
     #[test]
+    fn graveyard_threshold_anthem_counts_qualifying_graveyards_not_cards() {
+        let clause = parse_clause(
+            "This creature gets +2/+0 for each graveyard with seven or more cards in it.",
+        );
+
+        assert_eq!(
+            clause.power,
+            AnthemValue::PerCount {
+                multiplier: 2,
+                count: AnthemCountExpression::GraveyardsWithAtLeastCards { minimum_cards: 7 },
+            }
+        );
+        assert_eq!(clause.toughness, AnthemValue::Fixed(0));
+    }
+
+    #[test]
     fn affected_creature_type_scaling_keeps_per_object_identity_and_maximum() {
         let clause = parse_clause(
             "Each non-Human creature you control gets +1/+1 for each of its creature types, to a maximum of 10.",
@@ -4817,6 +4848,8 @@ mod dynamic_anthem_tests {
                 multiplier: 2,
                 count: AnthemCountExpression::StickersOnSource {
                     action: crate::events::KeywordActionKind::NameSticker,
+                    min_name_letters: Some(8),
+                    max_name_letters: None,
                     ..
                 },
             }

@@ -1686,19 +1686,6 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
     let trigger_tokens = &leading_tokens[start_idx..];
     let after_first_comma = trim_lexed_commas(after_first_comma);
 
-    if let Some(while_idx) = find_token_word(trigger_tokens, "while")
-        && while_idx > 0
-    {
-        let predicate_tokens = trim_lexed_commas(&trigger_tokens[while_idx + 1..]);
-        if let Some(predicate) = parse_modeled_predicate(predicate_tokens) {
-            return Some(TriggeredConditionalClauseSpec {
-                trigger_tokens: trim_lexed_commas(&trigger_tokens[..while_idx]),
-                predicate,
-                effects_tokens: after_first_comma,
-            });
-        }
-    }
-
     let (_, after_if) = primitives::parse_prefix(after_first_comma, primitives::kw("if"))?;
 
     let mut comma_indices = Vec::new();

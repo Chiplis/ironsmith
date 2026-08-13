@@ -17,6 +17,11 @@ pub(crate) struct RevealSelectedHandShape<'a> {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(crate) struct EachPlayerMayRevealSelectedHandShape<'a> {
+    pub(crate) action_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct RandomHandRevealShape<'a> {
     pub(crate) subject_tokens: &'a [OwnedLexToken],
     pub(crate) descriptor_tokens: &'a [OwnedLexToken],
@@ -88,8 +93,26 @@ fn hand_suffix<'a>(
         primitives::phrase(&["in", "your", "hands"]),
         primitives::phrase(&["from", "your", "hand"]),
         primitives::phrase(&["from", "your", "hands"]),
+        primitives::phrase(&["in", "their", "hand"]),
+        primitives::phrase(&["in", "their", "hands"]),
+        primitives::phrase(&["from", "their", "hand"]),
+        primitives::phrase(&["from", "their", "hands"]),
     ))
     .parse_next(input)
+}
+
+fn each_player_may_prefix<'a>(
+    input: &mut crate::runtime_backend::front_end::lexer::LexStream<'a>,
+) -> winnow::error::ModalResult<()> {
+    primitives::phrase(&["each", "player", "may"]).parse_next(input)
+}
+
+pub(crate) fn parse_each_player_may_reveal_selected_hand_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<EachPlayerMayRevealSelectedHandShape<'_>> {
+    let (_, action_tokens) = primitives::parse_prefix(tokens, each_player_may_prefix)?;
+    parse_reveal_selected_hand_shape(action_tokens)?;
+    Some(EachPlayerMayRevealSelectedHandShape { action_tokens })
 }
 
 pub(crate) fn parse_reveal_selected_hand_shape(

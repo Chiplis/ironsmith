@@ -36,6 +36,7 @@ use super::super::util::{
     remove_through_first_may_word as remove_through_first_may_word_tokens,
 };
 use super::clause_pattern_helpers::{parse_copy_spell_clause, parse_keyword_mechanic_clause};
+use super::dispatch_entry::SentenceInput;
 use super::dispatch_inner::parse_subject_verb_extension_sentence;
 use super::lex_chain_helpers::{
     find_verb_lexed, has_authored_comma_then_surface_lexed, has_effect_head_without_verb_lexed,
@@ -48,7 +49,9 @@ use super::sentence_helpers::*;
 use super::{
     SubjectVerbPrimitiveClause, has_unless_sacrifice_or_pay_choice,
     parse_cant_effect_sentence_lexed, parse_effect_clause_lexed,
-    parse_search_library_sentence_lexed, parse_sentence_exile_source_with_counters_lexed,
+    parse_search_library_sentence_lexed,
+    parse_sentence_each_player_may_reveal_selected_cards_in_their_hand,
+    parse_sentence_exile_source_with_counters_lexed,
     parse_sentence_put_onto_battlefield_with_counters_on_it_lexed,
     parse_sentence_return_with_counters_on_it_lexed, parse_sentence_unless_pays,
     parse_simple_gain_ability_clause_lexed, parse_simple_lose_ability_clause_lexed,
@@ -957,6 +960,12 @@ fn parse_effect_chain_uncoordinated_lexed(
         ))
     }
 
+    if let Some(effects) = parse_sentence_each_player_may_reveal_selected_cards_in_their_hand(
+        SubjectVerbPrimitiveClause::new(tokens),
+    )? {
+        return Ok(effects);
+    }
+
     let comma_then_segments = split_segments_on_comma_then_lexed(vec![tokens]);
     if let [look_tokens, partition_tokens] = comma_then_segments.as_slice()
         && let Some(effects) =
@@ -966,6 +975,38 @@ fn parse_effect_chain_uncoordinated_lexed(
             )
     {
         return Ok(effects);
+    }
+    if let [mill_tokens, followup_tokens] = comma_then_segments.as_slice() {
+        let inline_sentences = [
+            SentenceInput::from_lexed(mill_tokens),
+            SentenceInput::from_lexed(followup_tokens),
+        ];
+        if let Some(effects) =
+            super::sequence_rules::generic_subject_verb_sequences::pairs::parse_mill_then_may_put_from_among_into_hand(
+                &inline_sentences,
+                0,
+            )?
+        {
+            return Ok(effects);
+        }
+    }
+    if let [leading_tokens, shuffle_tokens] = comma_then_segments.as_slice() {
+        let leading_segments = split_segments_on_comma_effect_head_lexed(vec![leading_tokens]);
+        if let [look_tokens, deployment_tokens] = leading_segments.as_slice() {
+            let inline_sentences = [
+                SentenceInput::from_lexed(look_tokens),
+                SentenceInput::from_lexed(deployment_tokens),
+                SentenceInput::from_lexed(shuffle_tokens),
+            ];
+            if let Some(effects) =
+                super::sequence_rules::generic_subject_verb_sequences::triples::parse_look_at_top_put_matching_onto_battlefield_then_shuffle(
+                    &inline_sentences,
+                    0,
+                )?
+            {
+                return Ok(effects);
+            }
+        }
     }
     if let Some(effects) = parse_reveal_source_exiled_permanents_sentence_lexed(tokens) {
         return Ok(effects);
@@ -5011,6 +5052,7 @@ pub(crate) enum Verb {
     Destroy,
     Exile,
     Untap,
+    Unlock,
     Scry,
     Discard,
     Transform,

@@ -1927,6 +1927,7 @@ pub(super) fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell()
         &[],
         None,
         0,
+        Zone::Hand,
     );
     assert!(
         steps.iter().any(|step| matches!(
@@ -1959,6 +1960,7 @@ pub(super) fn per_target_life_cost_becomes_one_locked_payment_after_targets() {
         &[],
         None,
         2,
+        Zone::Hand,
     );
     assert!(
         steps.iter().any(|step| matches!(
@@ -1990,6 +1992,56 @@ pub(super) fn per_target_life_cost_becomes_one_locked_payment_after_targets() {
         crate::costs::CostPaymentResult::Paid
     ));
     assert_eq!(game.player(alice).expect("alice exists").life, 14);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn commander_tax_life_substitution_replaces_mana_tax_and_locks_life_payment() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Commander Tax Life Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Rather than pay {2} for each previous time you've cast this spell from the command zone this game, pay 2 life that many times.",
+        )
+        .expect("commander-tax life substitution should parse");
+    let commander = game.create_object_from_definition(&definition, alice, Zone::Command);
+    game.set_as_commander(commander, alice);
+    game.record_commander_cast_from_command_zone(commander);
+    game.record_commander_cast_from_command_zone(commander);
+
+    let object = game.object(commander).expect("commander should exist");
+    let mana = crate::decision::spell_mana_cost_for_cast(
+        &game,
+        alice,
+        object,
+        &CastingMethod::Normal,
+        Zone::Command,
+    )
+    .expect("commander should retain its printed mana cost");
+    assert_eq!(mana.generic_mana_total(), 3, "mana tax should be replaced");
+    assert_eq!(
+        crate::decision::commander_tax_life_payment_amount(&game, object, Zone::Command),
+        4
+    );
+
+    let steps = super::priority_cast::collect_spell_cost_steps(
+        &game,
+        commander,
+        alice,
+        &CastingMethod::Normal,
+        &crate::cost::OptionalCostsPaid::default(),
+        &[],
+        None,
+        0,
+        Zone::Command,
+    );
+    assert!(steps.iter().any(|step| matches!(
+        step,
+        super::priority_state::ActivationCostStep::Cost(cost)
+            if cost.life_amount() == Some(4)
+    )));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

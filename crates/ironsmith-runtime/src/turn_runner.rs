@@ -2964,6 +2964,7 @@ mod tests {
                         right: crate::effect::Value::Fixed(0),
                     },
                     vec![crate::effect::Effect::win_the_game()],
+                    false,
                     "If you would draw a card while your library has no cards in it, you win the game instead.",
                 ),
             ));

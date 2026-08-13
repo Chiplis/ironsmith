@@ -48,7 +48,7 @@ pub(super) use chain_copy::*;
 pub(crate) use clause_and_ability_surfaces::triggered_search_devotion_color;
 pub(super) use clause_and_ability_surfaces::*;
 pub(super) use continuous_and_choices::*;
-pub(super) use costs_and_triggers::*;
+pub(crate) use costs_and_triggers::*;
 pub(super) use effect_lists::*;
 pub(super) use effect_lists::{
     describe_face_down_pile_then_manifest, rendered_action_target, target_specs_select_same_objects,

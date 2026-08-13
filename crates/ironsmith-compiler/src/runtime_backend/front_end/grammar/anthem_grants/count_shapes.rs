@@ -19,6 +19,7 @@ pub(crate) enum StickerCountKind {
 pub(crate) struct StickerCountShape<'a> {
     pub(crate) kind: StickerCountKind,
     pub(crate) source_tokens: &'a [OwnedLexToken],
+    pub(crate) min_name_letters: Option<u32>,
     pub(crate) max_name_letters: Option<u32>,
 }
 
@@ -27,6 +28,7 @@ pub(crate) enum ForEachSpecialShape<'a> {
     AffectedAttackedThisTurn,
     ColorsOfAffected,
     CreatureTypesOfAffected,
+    GraveyardsWithAtLeastCards { minimum_cards: u32 },
     BlockingSource,
     AttachedToSource { filter_tokens: &'a [OwnedLexToken] },
     UnspentGreenManaYouHave,
@@ -42,6 +44,13 @@ pub(crate) fn parse_for_each_special_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachSpecialShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
+    if let Ok(minimum_cards) = primitives::parse_all(
+        tokens,
+        parse_graveyard_card_threshold,
+        "graveyard threshold",
+    ) {
+        return Some(ForEachSpecialShape::GraveyardsWithAtLeastCards { minimum_cards });
+    }
     if parse_complete_phrase(tokens, &["time", "it", "has", "attacked", "this", "turn"]) {
         return Some(ForEachSpecialShape::AffectedAttackedThisTurn);
     }
@@ -95,6 +104,16 @@ pub(crate) fn parse_for_each_special_shape(
         return None;
     }
     Some(ForEachSpecialShape::AttachedToSource { filter_tokens })
+}
+
+fn parse_graveyard_card_threshold(input: &mut LexStream<'_>) -> WResult<u32> {
+    alt((primitives::kw("graveyard"), primitives::kw("graveyards"))).parse_next(input)?;
+    primitives::kw("with").parse_next(input)?;
+    let minimum_cards = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["or", "more", "cards"]).parse_next(input)?;
+    primitives::phrase(&["in", "it"]).parse_next(input)?;
+    eof.parse_next(input)?;
+    Ok(minimum_cards)
 }
 
 pub(crate) fn parse_sticker_count_shape(tokens: &[OwnedLexToken]) -> Option<StickerCountShape<'_>> {
@@ -153,18 +172,20 @@ fn parse_sticker_count_lexed<'a>(input: &mut LexStream<'a>) -> WResult<StickerCo
     let kind = parse_sticker_head.parse_next(input)?;
     primitives::kw("on").parse_next(input)?;
     let remaining: &'a [OwnedLexToken] = rest.parse_next(input)?;
-    if let Some((source_tokens, max_name_letters)) =
-        primitives::split_lexed_once_before_suffix(remaining, 0, || parse_letter_cap)
+    if let Some((source_tokens, (minimum, maximum))) =
+        primitives::split_lexed_once_before_suffix(remaining, 0, || parse_letter_bound)
     {
         return Ok(StickerCountShape {
             kind,
             source_tokens: trim_lexed_commas(source_tokens),
-            max_name_letters: Some(max_name_letters),
+            min_name_letters: minimum,
+            max_name_letters: maximum,
         });
     }
     Ok(StickerCountShape {
         kind,
         source_tokens: trim_lexed_commas(remaining),
+        min_name_letters: None,
         max_name_letters: None,
     })
 }
@@ -190,16 +211,22 @@ fn parse_sticker_word(input: &mut LexStream<'_>) -> WResult<()> {
         .parse_next(input)
 }
 
-fn parse_letter_cap(input: &mut LexStream<'_>) -> WResult<u32> {
+fn parse_letter_bound(input: &mut LexStream<'_>) -> WResult<(Option<u32>, Option<u32>)> {
     primitives::kw("with").parse_next(input)?;
     let count = leaf::parse_leaf_number_prefix_lexed(input)?;
-    alt((
-        primitives::phrase(&["or", "fewer", "letters"]),
-        primitives::phrase(&["or", "less", "letters"]),
+    let minimum = alt((
+        primitives::phrase(&["or", "more", "letters"]).value(true),
+        primitives::phrase(&["or", "greater", "letters"]).value(true),
+        primitives::phrase(&["or", "fewer", "letters"]).value(false),
+        primitives::phrase(&["or", "less", "letters"]).value(false),
     ))
     .parse_next(input)?;
     eof.parse_next(input)?;
-    Ok(count)
+    Ok(if minimum {
+        (Some(count), None)
+    } else {
+        (None, Some(count))
+    })
 }
 
 fn parse_each_or_every(input: &mut LexStream<'_>) -> WResult<()> {
@@ -247,7 +274,17 @@ mod tests {
         let tokens = lex("name stickers on it with two or fewer letters");
         let shape = parse_sticker_count_shape(&tokens).expect("sticker count");
         assert_eq!(shape.kind, StickerCountKind::Name);
+        assert_eq!(shape.min_name_letters, None);
         assert_eq!(shape.max_name_letters, Some(2));
+    }
+
+    #[test]
+    fn parses_typed_minimum_name_sticker_letters() {
+        let tokens = lex("name stickers on this Aura with eight or more letters");
+        let shape = parse_sticker_count_shape(&tokens).expect("sticker count");
+        assert_eq!(shape.kind, StickerCountKind::Name);
+        assert_eq!(shape.min_name_letters, Some(8));
+        assert_eq!(shape.max_name_letters, None);
     }
 
     #[test]

@@ -11,6 +11,62 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::target::{ObjectFilter, PlayerFilter};
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetingAsThoughNoAbility {
+    pub spec: ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec,
+}
+
+impl StaticAbilityKind for TargetingAsThoughNoAbility {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::TargetingAsThoughNoAbility
+    }
+
+    fn display(&self) -> String {
+        self.spec.display.clone()
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        let allowed_source_controller = match self.spec.sources_controlled_by {
+            PlayerFilter::Any => None,
+            PlayerFilter::You | PlayerFilter::EffectController => Some(controller),
+            PlayerFilter::Specific(player) => Some(player),
+            _ => return,
+        };
+        game.effect_store
+            .cant_effects
+            .targeting_as_though_overrides
+            .push(crate::game_state::TargetingAsThoughOverride {
+                objects: self.spec.objects.clone(),
+                players: self.spec.players.clone(),
+                allowed_source_controller,
+                ignored_ability: self.spec.ignored_ability,
+                controller,
+                source,
+            });
+    }
+
+    fn materialize_resolution_values(
+        &self,
+        game: &GameState,
+        ctx: &mut crate::effects::ExecutionContext<'_>,
+    ) -> Result<Option<StaticAbility>, crate::effects::ExecutionError> {
+        if !matches!(
+            self.spec.sources_controlled_by,
+            PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)
+        ) {
+            return Ok(None);
+        }
+        let player = crate::effects::helpers::resolve_player_filter(
+            game,
+            &self.spec.sources_controlled_by,
+            ctx,
+        )?;
+        let mut spec = self.spec.clone();
+        spec.sources_controlled_by = PlayerFilter::Specific(player);
+        Ok(Some(StaticAbility::targeting_as_though_no_ability(spec)))
+    }
+}
+
 /// "Players can't gain life"
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PlayersCantGainLife;

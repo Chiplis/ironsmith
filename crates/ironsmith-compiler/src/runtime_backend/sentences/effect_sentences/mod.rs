@@ -85,11 +85,13 @@ pub(crate) use chain_carry::{
 };
 pub(crate) use clause_dispatch::parse_effect_clause_lexed;
 pub(crate) use clause_dispatch::*;
+pub(crate) use clause_pattern_helpers::parse_choose_target_prelude_sentence;
 #[cfg(test)]
 pub(crate) use conditionals::parse_conditional_sentence_lexed;
 pub(crate) use conditionals::*;
 pub(crate) use creation_handlers::{
-    attach_inline_token_granted_abilities_to_last_create, parse_create,
+    attach_inline_token_granted_abilities_to_last_create,
+    attach_mixed_pronoun_token_rules_to_last_create, mixed_pronoun_token_rule_list, parse_create,
 };
 pub(crate) use dispatch_entry::SentenceInput;
 pub(crate) use dispatch_entry::*;
@@ -99,13 +101,16 @@ pub(crate) use fanout_family::{
     parse_same_name_gets_fanout_sentence, parse_same_name_target_fanout_sentence,
     parse_serial_target_pt_modifiers_sentence, parse_shared_color_target_fanout_sentence,
 };
+pub(crate) use for_each_helpers::parse_get_for_each_count_value;
 pub(crate) use gain_ability::*;
 pub(crate) use search_library::parse_search_library_sentence;
 pub(crate) use search_library::parse_search_library_sentence as parse_search_library_sentence_lexed;
 pub(crate) use search_library::*;
 pub(crate) use sequence_rules::generic_subject_verb_sequences::exile_permission_followups::parse_dynamic_exile_top_then_play_for_as_long_as_exiled;
 pub(crate) use sequence_rules::generic_subject_verb_sequences::pairs::parse_look_at_players_hand_then_may_cast_from_those_cards;
+pub(crate) use sequence_rules::generic_subject_verb_sequences::pairs::parse_tempting_offer_copy_spell_sequence;
 pub(crate) use sequence_rules::generic_subject_verb_sequences::parse_destroy_then_no_regeneration_sequence;
+pub(crate) use sequence_rules::generic_subject_verb_sequences::quads::parse_look_at_top_optional_battlefield_then_conditional_remainder;
 pub(crate) use sequence_rules::generic_subject_verb_sequences::triples::parse_look_at_top_partition_face_down_then_filtered_permission;
 pub(crate) use sequence_rules::try_parse_subject_verb_sequence_rule;
 pub(crate) use subject_verb_primitives::*;
@@ -118,3 +123,4 @@ pub(crate) use zone_counter_helpers::target_object_filter_mut;
 pub(crate) use zone_counter_helpers::{
     parse_half_starting_life_total_value, parse_sentence_put_multiple_counters_on_target,
 };
+pub(crate) use zone_handlers::parse_destroy;
