@@ -8,6 +8,7 @@ pub(crate) mod control_flow;
 pub(crate) mod coordination;
 pub mod costs;
 pub(crate) mod facts;
+pub(crate) mod interaction_clauses;
 pub mod ir;
 pub(crate) mod legality;
 pub(crate) mod library_clauses;
@@ -48,6 +49,13 @@ pub(crate) use coordination::{
     CarriedFactAst, CoordinationAst, CoordinationBoundaryAst, CoordinationCarryAst,
     CoordinationKindAst, CoordinationMemberAst, CoordinationOperatorAst, EffectDependencyAst,
     EffectOrderingAst,
+};
+pub(crate) use interaction_clauses::{
+    CompilerCharacteristicClauseAst, CompilerCharacteristicOperationAst, CompilerCombatClauseAst,
+    CompilerCombatOperationAst, CompilerCombatRoleAst, CompilerCounterAmountAst,
+    CompilerCounterClauseAst, CompilerCounterOperationAst, CompilerDamageClauseAst,
+    CompilerDamageDivisionAst, CompilerInteractionClauseAst, CompilerModificationModeAst,
+    CompilerPreventionClauseAst, CompilerPreventionKindAst,
 };
 pub(crate) use legality::{
     CompilerActivationLegalityAst, CompilerCastingLegalityAst, CompilerPermissionAst,

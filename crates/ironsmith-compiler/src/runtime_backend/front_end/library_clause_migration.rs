@@ -664,6 +664,7 @@ impl<'migration, 'symbols> LibraryMigration<'migration, 'symbols> {
             complements: Vec::new(),
             library: Some(library),
             object_action: None,
+            interaction: None,
             provenance: None,
         }))
     }

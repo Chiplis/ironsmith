@@ -46,6 +46,7 @@
         "crates/ironsmith-compiler/src/model/activated_abilities.rs",
         "crates/ironsmith-compiler/src/model/costs.rs",
         "crates/ironsmith-compiler/src/model/legality.rs",
+        "crates/ironsmith-compiler/src/model/interaction_clauses.rs",
         "crates/ironsmith-compiler/src/model/library_clauses.rs",
         "crates/ironsmith-compiler/src/model/object_action_clauses.rs",
         "crates/ironsmith-compiler/src/model/selections.rs",
@@ -161,6 +162,15 @@
       ],
       "removal_pr": 31,
       "reason": "Legacy movement, creation, copy, control, and attachment leaves are converted to typed common clauses until those clauses lower mechanically."
+    },
+    {
+      "id": "BRIDGE-INTERACTION-CLAUSE-MIGRATION",
+      "paths": [
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/interaction_clause_migration.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_migration_context.rs"
+      ],
+      "removal_pr": 31,
+      "reason": "Legacy damage, prevention, counter, combat, and characteristic-change leaves are converted to typed common clauses until those clauses lower mechanically."
     },
     {
       "id": "BRIDGE-RUNTIME-PARSER-OUTPUT",

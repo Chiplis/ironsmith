@@ -6,6 +6,9 @@
 
 use crate::effect::ValueComparisonOperator;
 use crate::model::costs::CompilerTotalCost;
+use crate::model::interaction_clauses::{
+    CompilerInteractionClauseAst, CompilerPreventionClauseAst,
+};
 use crate::model::library_clauses::CompilerLibraryClauseAst;
 use crate::model::object_action_clauses::{
     CompilerCreationKindAst, CompilerEntryStateAst, CompilerObjectActionClauseAst,
@@ -254,6 +257,7 @@ pub(crate) struct CompilerClauseAst {
     pub complements: Vec<ClauseComplementAst>,
     pub library: Option<CompilerLibraryClauseAst>,
     pub object_action: Option<CompilerObjectActionClauseAst>,
+    pub interaction: Option<CompilerInteractionClauseAst>,
     pub provenance: Option<SemanticProvenance>,
 }
 
@@ -312,6 +316,57 @@ impl CompilerClauseAst {
         if let Some(object_action) = &mut self.object_action {
             strip_object_action_provenance(object_action);
         }
+        if let Some(interaction) = &mut self.interaction {
+            strip_interaction_provenance(interaction);
+        }
+    }
+}
+
+fn strip_interaction_provenance(interaction: &mut CompilerInteractionClauseAst) {
+    match interaction {
+        CompilerInteractionClauseAst::Damage(damage) => {
+            strip_object_operand_provenance(&mut damage.source);
+            strip_object_operand_provenance(&mut damage.recipients);
+        }
+        CompilerInteractionClauseAst::Prevention(prevention) => {
+            strip_prevention_provenance(prevention);
+        }
+        CompilerInteractionClauseAst::Counter(counter) => {
+            strip_object_operand_provenance(&mut counter.object);
+            if let Some(destination) = &mut counter.destination {
+                strip_object_operand_provenance(destination);
+            }
+        }
+        CompilerInteractionClauseAst::Combat(combat) => {
+            strip_object_operand_provenance(&mut combat.primary);
+            if let Some(opposing) = &mut combat.opposing {
+                strip_object_operand_provenance(opposing);
+            }
+            if let Some(duration) = &mut combat.duration {
+                strip_duration_provenance(duration);
+            }
+        }
+        CompilerInteractionClauseAst::Characteristic(characteristic) => {
+            strip_object_operand_provenance(&mut characteristic.object);
+            if let Some(duration) = &mut characteristic.duration {
+                strip_duration_provenance(duration);
+            }
+        }
+    }
+}
+
+fn strip_prevention_provenance(prevention: &mut CompilerPreventionClauseAst) {
+    if let Some(source) = &mut prevention.source {
+        strip_object_operand_provenance(source);
+    }
+    if let Some(recipient) = &mut prevention.recipient {
+        strip_object_operand_provenance(recipient);
+    }
+    if let Some(duration) = &mut prevention.duration {
+        strip_duration_provenance(duration);
+    }
+    if let Some(redirect_to) = &mut prevention.redirect_to {
+        strip_object_operand_provenance(redirect_to);
     }
 }
 

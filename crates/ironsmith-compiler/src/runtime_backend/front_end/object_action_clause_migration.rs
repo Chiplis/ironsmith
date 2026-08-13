@@ -1,6 +1,6 @@
 //! Finite PR-26 adapter from object-action leaves to common compiler clauses.
 
-use crate::effect::{ChoiceCount, Until};
+use crate::effect::Until;
 use crate::model::ast::{EffectAst, SubjectVerbActionAst};
 use crate::model::clauses::{
     ClauseActionAst, ClauseActorAst, ClauseDestinationAst, ClauseDestinationRelationAst,
@@ -16,15 +16,11 @@ use crate::model::object_action_clauses::{
     CompilerDelayedDispositionAst, CompilerEntryStateAst, CompilerMovementClauseAst,
     CompilerObjectActionClauseAst, CompilerObjectOperandAst,
 };
-use crate::model::parse_types::{ReturnControllerAst, TargetAst};
-use crate::model::selections::{
-    CompilerFilterAst, CompilerSelectionAst, CompilerValueAst, SelectionCardinalityAst,
-    SelectionDomainAst, SelectionKindAst, SelectionLegalityAst,
-};
+use crate::model::parse_types::ReturnControllerAst;
+use crate::model::selections::{CompilerFilterAst, CompilerValueAst};
 use crate::model::symbols::{Cardinality, ReferenceRole, SymbolResolutionError};
 use crate::model::visit::for_each_nested_effect_vec_mut;
 use crate::runtime_backend::front_end::semantic_migration_context::SemanticMigrationContext;
-use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
 struct ObjectActionMigration<'migration, 'symbols> {
@@ -75,7 +71,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
         let (verb, object, destination, duration, action) = match &subject_verb.action {
             SubjectVerbActionAst::MayMoveToZone { target, zone } => Self::movement(
                 ClauseVerbAst::Move,
-                self.target_operand(target)?,
+                self.context.target_operand(target)?,
                 *zone,
                 ClauseZonePlacementAst::Default,
                 false,
@@ -89,7 +85,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                 cloak,
                 ..
             } => {
-                let object = self.target_operand(target)?;
+                let object = self.context.target_operand(target)?;
                 let controller = compiler_controller(*controller);
                 let destination = zone_destination(
                     Zone::Battlefield,
@@ -138,7 +134,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                 all,
                 ..
             } => {
-                let object = self.target_operand(target)?;
+                let object = self.context.target_operand(target)?;
                 let controller = compiler_controller(*battlefield_controller);
                 let destination = zone_destination(
                     *zone,
@@ -179,7 +175,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                             cloaked: false,
                             attached_to: attached_to
                                 .as_ref()
-                                .map(|target| self.target_operand(target))
+                                .map(|target| self.context.target_operand(target))
                                 .transpose()?,
                         },
                         all: *all,
@@ -198,7 +194,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                 as_aura,
                 ..
             } if as_aura.is_none() => {
-                let object = self.target_operand(target)?;
+                let object = self.context.target_operand(target)?;
                 let controller = compiler_controller(*controller);
                 let destination = zone_destination(
                     Zone::Battlefield,
@@ -242,7 +238,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                 ..
             } => Self::movement(
                 ClauseVerbAst::Exile,
-                self.target_operand(target)?,
+                self.context.target_operand(target)?,
                 Zone::Exile,
                 if *face_down {
                     ClauseZonePlacementAst::FaceDown
@@ -268,7 +264,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
             ),
             SubjectVerbActionAst::ReturnToHand { target, random, .. } => Self::movement(
                 ClauseVerbAst::Return,
-                self.target_operand(target)?,
+                self.context.target_operand(target)?,
                 Zone::Hand,
                 ClauseZonePlacementAst::Default,
                 false,
@@ -287,7 +283,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
             ),
             SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target, all, .. } => Self::movement(
                 ClauseVerbAst::Shuffle,
-                self.target_operand(target)?,
+                self.context.target_operand(target)?,
                 Zone::Library,
                 ClauseZonePlacementAst::Shuffled,
                 *all,
@@ -295,8 +291,8 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                 false,
             ),
             SubjectVerbActionAst::Attach { object, target } => {
-                let attachment = self.target_operand(object)?;
-                let target = self.target_operand(target)?;
+                let attachment = self.context.target_operand(object)?;
+                let target = self.context.target_operand(target)?;
                 (
                     ClauseVerbAst::Attach,
                     Some(attachment.clone()),
@@ -311,7 +307,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                 )
             }
             SubjectVerbActionAst::Unattach { object } => {
-                let attachment = self.target_operand(object)?;
+                let attachment = self.context.target_operand(object)?;
                 (
                     ClauseVerbAst::Attach,
                     Some(attachment.clone()),
@@ -346,7 +342,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                 let Some(duration) = compiler_duration(duration) else {
                     return Ok(None);
                 };
-                let object = self.target_operand(target)?;
+                let object = self.context.target_operand(target)?;
                 (
                     ClauseVerbAst::Control,
                     Some(object.clone()),
@@ -415,7 +411,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                                 .map(super::library_clause_migration::compiler_actor),
                             attached_to: attached_to
                                 .as_ref()
-                                .map(|target| self.target_operand(target))
+                                .map(|target| self.context.target_operand(target))
                                 .transpose()?,
                             ..default_entry_state()
                         },
@@ -442,7 +438,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                 set_base_power_toughness,
                 ..
             } => {
-                let source = self.target_operand(target)?;
+                let source = self.context.target_operand(target)?;
                 let result =
                     self.context
                         .bind_object(None, ReferenceRole::Copied, Cardinality::Any)?;
@@ -498,6 +494,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
             complements: Vec::new(),
             library: None,
             object_action: Some(action),
+            interaction: None,
             provenance: None,
         }))
     }
@@ -529,92 +526,6 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
                 replacement: false,
             }),
         )
-    }
-
-    fn target_operand(
-        &mut self,
-        target: &TargetAst,
-    ) -> Result<CompilerObjectOperandAst, SymbolResolutionError> {
-        self.target_operand_with_count(target, ChoiceCount::exactly(1), None)
-    }
-
-    fn target_operand_with_count(
-        &mut self,
-        target: &TargetAst,
-        count: ChoiceCount,
-        count_value: Option<crate::effect::Value>,
-    ) -> Result<CompilerObjectOperandAst, SymbolResolutionError> {
-        let domain = match target {
-            TargetAst::Source(_) => return Ok(CompilerObjectOperandAst::Source),
-            TargetAst::Tagged(tag, _) => {
-                let reference = if let Some(reference) = self.context.object_reference(tag) {
-                    reference
-                } else {
-                    self.context.bind_object(
-                        Some(tag.clone()),
-                        ReferenceRole::Affected,
-                        choice_cardinality(count),
-                    )?
-                };
-                return Ok(CompilerObjectOperandAst::Reference(reference));
-            }
-            TargetAst::WithCount(target, count) => {
-                return self.target_operand_with_count(target, *count, None);
-            }
-            TargetAst::WithCountValue(target, count, value) => {
-                return self.target_operand_with_count(target, *count, Some(value.clone()));
-            }
-            TargetAst::AnyTarget(_) => SelectionDomainAst::AnyTarget,
-            TargetAst::AnyOtherTarget(_) => SelectionDomainAst::AnyOtherTarget,
-            TargetAst::ObjectOrPlayer(object, player, _) => SelectionDomainAst::ObjectOrPlayer {
-                object: object.clone(),
-                player: player.clone(),
-            },
-            TargetAst::PlayerOrPlaneswalker(player, _) => {
-                SelectionDomainAst::PlayerOrPlaneswalker(player.clone())
-            }
-            TargetAst::AttackedPlayerOrPlaneswalker(_) => {
-                SelectionDomainAst::AttackedPlayerOrPlaneswalker
-            }
-            TargetAst::Spell(_) => SelectionDomainAst::Spell(ObjectFilter::default()),
-            TargetAst::Player(player, _) => {
-                SelectionDomainAst::Filter(CompilerFilterAst::Player(player.clone()))
-            }
-            TargetAst::Object(object, _, _) => {
-                SelectionDomainAst::Filter(CompilerFilterAst::Object(object.clone()))
-            }
-        };
-        let reference_cardinality = choice_cardinality(count);
-        let binding = self.context.bind_selection(
-            ReferenceRole::Target,
-            domain.symbol_domain(),
-            reference_cardinality,
-        )?;
-        Ok(CompilerObjectOperandAst::Selection(CompilerSelectionAst {
-            kind: SelectionKindAst::Target,
-            domain,
-            cardinality: SelectionCardinalityAst {
-                min: if count.dynamic_x {
-                    CompilerValueAst::X
-                } else {
-                    fixed_usize(count.min)
-                },
-                max: count_value
-                    .map(CompilerValueAst::Dynamic)
-                    .or_else(|| count.max.map(fixed_usize)),
-                reference_cardinality,
-            },
-            legality: SelectionLegalityAst {
-                targetable: true,
-                zones: Vec::new(),
-                controller_only: false,
-                owner_only: false,
-                distinct: true,
-                random: count.random,
-            },
-            binding,
-            provenance: None,
-        }))
     }
 }
 
@@ -794,19 +705,4 @@ fn delayed_dispositions(
         dispositions.push(CompilerDelayedDispositionAst::SacrificeNextEndStep);
     }
     dispositions
-}
-
-fn fixed_usize(value: usize) -> CompilerValueAst {
-    CompilerValueAst::Fixed(i32::try_from(value).unwrap_or(i32::MAX))
-}
-
-fn choice_cardinality(count: ChoiceCount) -> Cardinality {
-    match (count.min, count.max) {
-        (1, Some(1)) if !count.dynamic_x => Cardinality::ExactlyOne,
-        (0, Some(1)) if !count.dynamic_x => Cardinality::ZeroOrOne,
-        (min, max) => Cardinality::Range {
-            min: u32::try_from(min).unwrap_or(u32::MAX),
-            max: max.map(|max| u32::try_from(max).unwrap_or(u32::MAX)),
-        },
-    }
 }

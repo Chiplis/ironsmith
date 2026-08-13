@@ -12,6 +12,9 @@ use crate::model::control_flow::{
 };
 use crate::model::coordination::CarriedFactAst;
 use crate::model::costs::CompilerTotalCost;
+use crate::model::interaction_clauses::{
+    CompilerCounterAmountAst, CompilerInteractionClauseAst, CompilerPreventionClauseAst,
+};
 use crate::model::library_clauses::{
     CompilerLibraryClauseAst, LibraryPositionAst, LibraryRemainderAst,
 };
@@ -690,7 +693,85 @@ pub(crate) fn visit_clause_tree<V: SemanticVisitor + ?Sized>(
     if let Some(object_action) = &clause.object_action {
         visit_object_action_clause(visitor, object_action)?;
     }
+    if let Some(interaction) = &clause.interaction {
+        visit_interaction_clause(visitor, interaction)?;
+    }
     ControlFlow::Continue(())
+}
+
+fn visit_interaction_clause<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    interaction: &CompilerInteractionClauseAst,
+) -> ControlFlow<V::Break> {
+    match interaction {
+        CompilerInteractionClauseAst::Damage(damage) => {
+            visit_object_operand(visitor, &damage.source)?;
+            visit_object_operand(visitor, &damage.recipients)?;
+            visit_compiler_value_tree(visitor, &damage.amount)?;
+            if let Some(chooser) = &damage.chooser {
+                visit_compiler_filter(visitor, chooser)?;
+            }
+            visitor.visit_reference_binding(&damage.result)?;
+        }
+        CompilerInteractionClauseAst::Prevention(prevention) => {
+            visit_prevention_clause(visitor, prevention)?;
+        }
+        CompilerInteractionClauseAst::Counter(counter) => {
+            if let CompilerCounterAmountAst::Value(amount) = &counter.amount {
+                visit_compiler_value_tree(visitor, amount)?;
+            }
+            visit_object_operand(visitor, &counter.object)?;
+            if let Some(destination) = &counter.destination {
+                visit_object_operand(visitor, destination)?;
+            }
+            visitor.visit_reference_binding(&counter.affected)?;
+        }
+        CompilerInteractionClauseAst::Combat(combat) => {
+            visit_object_operand(visitor, &combat.primary)?;
+            if let Some(opposing) = &combat.opposing {
+                visit_object_operand(visitor, opposing)?;
+            }
+            if let Some(duration) = &combat.duration {
+                visit_clause_duration(visitor, duration)?;
+            }
+        }
+        CompilerInteractionClauseAst::Characteristic(characteristic) => {
+            visit_object_operand(visitor, &characteristic.object)?;
+            if let Some(power) = &characteristic.power {
+                visit_compiler_value_tree(visitor, power)?;
+            }
+            if let Some(toughness) = &characteristic.toughness {
+                visit_compiler_value_tree(visitor, toughness)?;
+            }
+            if let Some(duration) = &characteristic.duration {
+                visit_clause_duration(visitor, duration)?;
+            }
+            visitor.visit_reference_binding(&characteristic.affected)?;
+        }
+    }
+    ControlFlow::Continue(())
+}
+
+fn visit_prevention_clause<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    prevention: &CompilerPreventionClauseAst,
+) -> ControlFlow<V::Break> {
+    if let Some(source) = &prevention.source {
+        visit_object_operand(visitor, source)?;
+    }
+    if let Some(recipient) = &prevention.recipient {
+        visit_object_operand(visitor, recipient)?;
+    }
+    if let Some(amount) = &prevention.amount {
+        visit_compiler_value_tree(visitor, amount)?;
+    }
+    if let Some(duration) = &prevention.duration {
+        visit_clause_duration(visitor, duration)?;
+    }
+    if let Some(redirect_to) = &prevention.redirect_to {
+        visit_object_operand(visitor, redirect_to)?;
+    }
+    visitor.visit_reference_binding(&prevention.shield)
 }
 
 fn visit_object_action_clause<V: SemanticVisitor + ?Sized>(
@@ -1277,7 +1358,86 @@ pub(crate) fn fold_clause_tree<F: SemanticFolder + ?Sized>(
     clause.object_action = clause
         .object_action
         .map(|action| fold_object_action_clause(folder, action));
+    clause.interaction = clause
+        .interaction
+        .map(|interaction| fold_interaction_clause(folder, interaction));
     folder.fold_clause(clause)
+}
+
+fn fold_interaction_clause<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    interaction: CompilerInteractionClauseAst,
+) -> CompilerInteractionClauseAst {
+    match interaction {
+        CompilerInteractionClauseAst::Damage(mut damage) => {
+            damage.source = fold_object_operand(folder, damage.source);
+            damage.recipients = fold_object_operand(folder, damage.recipients);
+            damage.amount = fold_compiler_value_tree(folder, damage.amount);
+            damage.chooser = damage
+                .chooser
+                .map(|chooser| fold_compiler_filter(folder, chooser));
+            damage.result = folder.fold_reference(damage.result);
+            CompilerInteractionClauseAst::Damage(damage)
+        }
+        CompilerInteractionClauseAst::Prevention(mut prevention) => {
+            prevention.source = prevention
+                .source
+                .map(|source| fold_object_operand(folder, source));
+            prevention.recipient = prevention
+                .recipient
+                .map(|recipient| fold_object_operand(folder, recipient));
+            prevention.amount = prevention
+                .amount
+                .map(|amount| fold_compiler_value_tree(folder, amount));
+            prevention.duration = prevention
+                .duration
+                .map(|duration| fold_clause_duration(folder, duration));
+            prevention.redirect_to = prevention
+                .redirect_to
+                .map(|redirect_to| fold_object_operand(folder, redirect_to));
+            prevention.shield = folder.fold_reference(prevention.shield);
+            CompilerInteractionClauseAst::Prevention(prevention)
+        }
+        CompilerInteractionClauseAst::Counter(mut counter) => {
+            counter.amount = match counter.amount {
+                CompilerCounterAmountAst::Value(amount) => {
+                    CompilerCounterAmountAst::Value(fold_compiler_value_tree(folder, amount))
+                }
+                CompilerCounterAmountAst::All => CompilerCounterAmountAst::All,
+                CompilerCounterAmountAst::Existing => CompilerCounterAmountAst::Existing,
+            };
+            counter.object = fold_object_operand(folder, counter.object);
+            counter.destination = counter
+                .destination
+                .map(|destination| fold_object_operand(folder, destination));
+            counter.affected = folder.fold_reference(counter.affected);
+            CompilerInteractionClauseAst::Counter(counter)
+        }
+        CompilerInteractionClauseAst::Combat(mut combat) => {
+            combat.primary = fold_object_operand(folder, combat.primary);
+            combat.opposing = combat
+                .opposing
+                .map(|opposing| fold_object_operand(folder, opposing));
+            combat.duration = combat
+                .duration
+                .map(|duration| fold_clause_duration(folder, duration));
+            CompilerInteractionClauseAst::Combat(combat)
+        }
+        CompilerInteractionClauseAst::Characteristic(mut characteristic) => {
+            characteristic.object = fold_object_operand(folder, characteristic.object);
+            characteristic.power = characteristic
+                .power
+                .map(|power| fold_compiler_value_tree(folder, power));
+            characteristic.toughness = characteristic
+                .toughness
+                .map(|toughness| fold_compiler_value_tree(folder, toughness));
+            characteristic.duration = characteristic
+                .duration
+                .map(|duration| fold_clause_duration(folder, duration));
+            characteristic.affected = folder.fold_reference(characteristic.affected);
+            CompilerInteractionClauseAst::Characteristic(characteristic)
+        }
+    }
 }
 
 fn fold_object_action_clause<F: SemanticFolder + ?Sized>(
