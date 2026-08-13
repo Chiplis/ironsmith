@@ -1,5 +1,6 @@
 pub(crate) mod ast;
 pub(crate) mod compiler_semantic;
+pub mod costs;
 pub(crate) mod facts;
 pub mod ir;
 pub mod parse_types;
@@ -15,6 +16,10 @@ pub(crate) mod visit;
 pub use ast::{
     CompilerAbility, CompilerAbilityKind, CompilerAbilityPayload, CompilerActivatedAbility,
     CompilerDocument, CompilerDocumentItem, CompilerTriggeredAbility,
+};
+pub use costs::{
+    CastingConditionAst, CompilerAlternativeCastingMethod, CompilerCost, CompilerOptionalCost,
+    CompilerTotalCost, CostRelationship,
 };
 
 pub use ir::{
