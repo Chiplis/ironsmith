@@ -49,6 +49,7 @@
         "crates/ironsmith-compiler/src/model/interaction_clauses.rs",
         "crates/ironsmith-compiler/src/model/library_clauses.rs",
         "crates/ironsmith-compiler/src/model/object_action_clauses.rs",
+        "crates/ironsmith-compiler/src/model/resource_choice_clauses.rs",
         "crates/ironsmith-compiler/src/model/selections.rs",
         "crates/ironsmith-compiler/src/model/static_abilities.rs",
         "crates/ironsmith-compiler/src/model/structured_abilities.rs",
@@ -171,6 +172,15 @@
       ],
       "removal_pr": 31,
       "reason": "Legacy damage, prevention, counter, combat, and characteristic-change leaves are converted to typed common clauses until those clauses lower mechanically."
+    },
+    {
+      "id": "BRIDGE-RESOURCE-CHOICE-CLAUSE-MIGRATION",
+      "paths": [
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/resource_choice_clause_migration.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_migration_context.rs"
+      ],
+      "removal_pr": 31,
+      "reason": "Legacy resource, choice, vote, and repetition leaves are converted to typed common clauses and scoped programs until direct clause lowering replaces them."
     },
     {
       "id": "BRIDGE-RUNTIME-PARSER-OUTPUT",

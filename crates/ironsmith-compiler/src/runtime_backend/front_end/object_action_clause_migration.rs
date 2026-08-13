@@ -495,6 +495,7 @@ impl<'migration, 'symbols> ObjectActionMigration<'migration, 'symbols> {
             library: None,
             object_action: Some(action),
             interaction: None,
+            resource_choice: None,
             provenance: None,
         }))
     }

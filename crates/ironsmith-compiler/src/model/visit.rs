@@ -22,6 +22,11 @@ use crate::model::object_action_clauses::{
     CompilerCreationKindAst, CompilerEntryStateAst, CompilerObjectActionClauseAst,
     CompilerObjectOperandAst,
 };
+use crate::model::resource_choice_clauses::{
+    CompilerChoiceDomainAst, CompilerIterationAst, CompilerIterationSourceAst,
+    CompilerManaResourceAst, CompilerResourceAmountAst, CompilerResourceChoiceClauseAst,
+    CompilerVoteAst,
+};
 use crate::model::selections::{
     CompilerFilterAst, CompilerSelectionAst, CompilerValueAst, SelectionDomainAst,
 };
@@ -60,6 +65,7 @@ pub(crate) fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalRes
             .last()
             .and_then(|program| program.effects.last())
             .and_then(terminal_result_producer),
+        EffectAst::Iteration(iteration) => iteration.body.last().and_then(terminal_result_producer),
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
@@ -248,6 +254,8 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::Clause(_) => {}
         EffectAst::Coordination(_) => {}
         EffectAst::ControlFlow(_) => {}
+        EffectAst::Iteration(_) => {}
+        EffectAst::Vote(_) => {}
         EffectAst::SubjectVerb(_) => {}
         EffectAst::SolveCase => {}
         EffectAst::RestartGame { .. } => {}
@@ -371,6 +379,7 @@ pub(crate) fn for_each_nested_effects(
                 visit(&program.effects);
             }
         }
+        EffectAst::Iteration(iteration) => visit(&iteration.body),
         nested_effects_variants!(effects) => {
             visit(effects);
         }
@@ -432,6 +441,7 @@ pub(crate) fn for_each_nested_effects_mut(
                 visit(&mut program.effects);
             }
         }
+        EffectAst::Iteration(iteration) => visit(&mut iteration.body),
         nested_effects_variants!(effects) => {
             visit(effects);
         }
@@ -504,6 +514,7 @@ pub(crate) fn for_each_nested_effect_vec_mut(
                     visit(&mut program.effects);
                 }
             }
+            EffectAst::Iteration(iteration) => visit(&mut iteration.body),
             nested_effects_variants!(effects) => {
                 visit(effects);
             }
@@ -568,6 +579,7 @@ pub(crate) fn try_for_each_nested_effects_mut<E>(
                 visit(&mut program.effects)?;
             }
         }
+        EffectAst::Iteration(iteration) => visit(&mut iteration.body)?,
         nested_effects_variants!(effects) => {
             visit(effects)?;
         }
@@ -696,7 +708,106 @@ pub(crate) fn visit_clause_tree<V: SemanticVisitor + ?Sized>(
     if let Some(interaction) = &clause.interaction {
         visit_interaction_clause(visitor, interaction)?;
     }
+    if let Some(resource_choice) = &clause.resource_choice {
+        visit_resource_choice_clause(visitor, resource_choice)?;
+    }
     ControlFlow::Continue(())
+}
+
+fn visit_resource_choice_clause<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    resource_choice: &CompilerResourceChoiceClauseAst,
+) -> ControlFlow<V::Break> {
+    match resource_choice {
+        CompilerResourceChoiceClauseAst::Resource(resource) => {
+            visit_clause_actor(visitor, &resource.owner)?;
+            match &resource.amount {
+                CompilerResourceAmountAst::Value(amount) => {
+                    visit_compiler_value_tree(visitor, amount)?
+                }
+                CompilerResourceAmountAst::Any { minimum } => {
+                    visit_compiler_value_tree(visitor, minimum)?
+                }
+                CompilerResourceAmountAst::All => {}
+            }
+            if let Some(objects) = &resource.objects {
+                visit_object_operand(visitor, objects)?;
+            }
+            if let crate::model::resource_choice_clauses::CompilerResourceKindAst::Mana(mana) =
+                &resource.resource
+            {
+                visit_mana_resource(visitor, mana)?;
+            }
+            visitor.visit_reference_binding(&resource.result)?;
+        }
+        CompilerResourceChoiceClauseAst::Choice(choice) => {
+            visit_clause_actor(visitor, &choice.chooser)?;
+            visit_choice_domain(visitor, &choice.domain)?;
+            visit_compiler_value_tree(visitor, &choice.cardinality.min)?;
+            if let Some(maximum) = &choice.cardinality.max {
+                visit_compiler_value_tree(visitor, maximum)?;
+            }
+            if let Some(aggregate) = &choice.aggregate {
+                if let Some(minimum) = &aggregate.minimum {
+                    visit_compiler_value_tree(visitor, minimum)?;
+                }
+                visit_compiler_value_tree(visitor, &aggregate.maximum)?;
+            }
+            visitor.visit_reference_binding(&choice.chosen)?;
+        }
+    }
+    ControlFlow::Continue(())
+}
+
+fn visit_mana_resource<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    mana: &CompilerManaResourceAst,
+) -> ControlFlow<V::Break> {
+    match mana {
+        CompilerManaResourceAst::Cost {
+            x_value, x_maximum, ..
+        } => {
+            if let Some(value) = x_value {
+                visit_compiler_value_tree(visitor, value)?;
+            }
+            if let Some(maximum) = x_maximum {
+                visit_compiler_value_tree(visitor, maximum)?;
+            }
+        }
+        CompilerManaResourceAst::LandCouldProduce { filter, .. }
+        | CompilerManaResourceAst::ColorsAmong(filter) => visitor.visit_filter(filter)?,
+        CompilerManaResourceAst::Fixed(_)
+        | CompilerManaResourceAst::AnyColor { .. }
+        | CompilerManaResourceAst::AnyOneColor
+        | CompilerManaResourceAst::ChosenColor(_)
+        | CompilerManaResourceAst::CommanderIdentity
+        | CompilerManaResourceAst::Pool => {}
+    }
+    ControlFlow::Continue(())
+}
+
+fn visit_choice_domain<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    domain: &CompilerChoiceDomainAst,
+) -> ControlFlow<V::Break> {
+    match domain {
+        CompilerChoiceDomainAst::CardName(Some(filter)) => visitor.visit_filter(filter),
+        CompilerChoiceDomainAst::Number { minimum, maximum } => {
+            visit_compiler_value_tree(visitor, minimum)?;
+            if let Some(maximum) = maximum {
+                visit_compiler_value_tree(visitor, maximum)?;
+            }
+            ControlFlow::Continue(())
+        }
+        CompilerChoiceDomainAst::Object(object) => visit_object_operand(visitor, object),
+        CompilerChoiceDomainAst::Color
+        | CompilerChoiceDomainAst::CardType(_)
+        | CompilerChoiceDomainAst::Named(_)
+        | CompilerChoiceDomainAst::CreatureType { .. }
+        | CompilerChoiceDomainAst::LandType { .. }
+        | CompilerChoiceDomainAst::CardName(None)
+        | CompilerChoiceDomainAst::Player { .. } => ControlFlow::Continue(()),
+    }
 }
 
 fn visit_interaction_clause<V: SemanticVisitor + ?Sized>(
@@ -1147,7 +1258,52 @@ pub(crate) fn visit_effect_node<V: SemanticVisitor + ?Sized>(
     if let EffectAst::ControlFlow(control) = effect {
         visit_control_flow_semantics(visitor, control)?;
     }
+    if let EffectAst::Iteration(iteration) = effect {
+        visit_iteration_semantics(visitor, iteration)?;
+    }
+    if let EffectAst::Vote(vote) = effect {
+        visit_vote_semantics(visitor, vote)?;
+    }
     ControlFlow::Continue(())
+}
+
+fn visit_iteration_semantics<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    iteration: &CompilerIterationAst,
+) -> ControlFlow<V::Break> {
+    match &iteration.source {
+        CompilerIterationSourceAst::Reference(reference) => visitor.visit_reference(reference)?,
+        CompilerIterationSourceAst::SelectedPlayers { collection, .. } => {
+            visitor.visit_reference(collection)?
+        }
+        CompilerIterationSourceAst::Count(count) => visit_compiler_value_tree(visitor, count)?,
+        CompilerIterationSourceAst::Objects(filter) => visitor.visit_filter(filter)?,
+        CompilerIterationSourceAst::Opponents | CompilerIterationSourceAst::Players(_) => {}
+    }
+    visitor.visit_reference_binding(&iteration.iterator)?;
+    if let Some(cardinality) = &iteration.selection_cardinality {
+        visit_compiler_value_tree(visitor, &cardinality.min)?;
+        if let Some(maximum) = &cardinality.max {
+            visit_compiler_value_tree(visitor, maximum)?;
+        }
+    }
+    if let Some(aggregate) = &iteration.aggregate {
+        visitor.visit_reference_binding(aggregate)?;
+    }
+    ControlFlow::Continue(())
+}
+
+fn visit_vote_semantics<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    vote: &CompilerVoteAst,
+) -> ControlFlow<V::Break> {
+    visit_choice_domain(visitor, &vote.options)?;
+    visit_compiler_value_tree(visitor, &vote.votes_per_voter.min)?;
+    if let Some(maximum) = &vote.votes_per_voter.max {
+        visit_compiler_value_tree(visitor, maximum)?;
+    }
+    visitor.visit_reference_binding(&vote.choices)?;
+    visitor.visit_reference_binding(&vote.tally)
 }
 
 fn visit_control_flow_semantics<V: SemanticVisitor + ?Sized>(
@@ -1361,7 +1517,119 @@ pub(crate) fn fold_clause_tree<F: SemanticFolder + ?Sized>(
     clause.interaction = clause
         .interaction
         .map(|interaction| fold_interaction_clause(folder, interaction));
+    clause.resource_choice = clause
+        .resource_choice
+        .map(|resource_choice| fold_resource_choice_clause(folder, resource_choice));
     folder.fold_clause(clause)
+}
+
+fn fold_resource_choice_clause<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    resource_choice: CompilerResourceChoiceClauseAst,
+) -> CompilerResourceChoiceClauseAst {
+    match resource_choice {
+        CompilerResourceChoiceClauseAst::Resource(mut resource) => {
+            resource.owner = fold_clause_actor(folder, resource.owner);
+            resource.amount = match resource.amount {
+                CompilerResourceAmountAst::Value(amount) => {
+                    CompilerResourceAmountAst::Value(fold_compiler_value_tree(folder, amount))
+                }
+                CompilerResourceAmountAst::Any { minimum } => CompilerResourceAmountAst::Any {
+                    minimum: fold_compiler_value_tree(folder, minimum),
+                },
+                CompilerResourceAmountAst::All => CompilerResourceAmountAst::All,
+            };
+            resource.objects = resource
+                .objects
+                .map(|objects| fold_object_operand(folder, objects));
+            resource.resource = match resource.resource {
+                crate::model::resource_choice_clauses::CompilerResourceKindAst::Mana(mana) => {
+                    crate::model::resource_choice_clauses::CompilerResourceKindAst::Mana(
+                        fold_mana_resource(folder, mana),
+                    )
+                }
+                resource => resource,
+            };
+            resource.result = folder.fold_reference(resource.result);
+            CompilerResourceChoiceClauseAst::Resource(resource)
+        }
+        CompilerResourceChoiceClauseAst::Choice(mut choice) => {
+            choice.chooser = fold_clause_actor(folder, choice.chooser);
+            choice.domain = fold_choice_domain(folder, choice.domain);
+            choice.cardinality.min = fold_compiler_value_tree(folder, choice.cardinality.min);
+            choice.cardinality.max = choice
+                .cardinality
+                .max
+                .map(|maximum| fold_compiler_value_tree(folder, maximum));
+            if let Some(aggregate) = &mut choice.aggregate {
+                aggregate.minimum = aggregate
+                    .minimum
+                    .take()
+                    .map(|minimum| fold_compiler_value_tree(folder, minimum));
+                aggregate.maximum = fold_compiler_value_tree(folder, aggregate.maximum.clone());
+            }
+            choice.chosen = folder.fold_reference(choice.chosen);
+            CompilerResourceChoiceClauseAst::Choice(choice)
+        }
+    }
+}
+
+fn fold_mana_resource<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    mana: CompilerManaResourceAst,
+) -> CompilerManaResourceAst {
+    match mana {
+        CompilerManaResourceAst::Cost {
+            cost,
+            x_value,
+            x_maximum,
+        } => CompilerManaResourceAst::Cost {
+            cost,
+            x_value: x_value.map(|value| fold_compiler_value_tree(folder, value)),
+            x_maximum: x_maximum.map(|maximum| fold_compiler_value_tree(folder, maximum)),
+        },
+        CompilerManaResourceAst::LandCouldProduce {
+            filter,
+            allow_colorless,
+            same_type,
+            source,
+        } => CompilerManaResourceAst::LandCouldProduce {
+            filter: folder.fold_filter(filter),
+            allow_colorless,
+            same_type,
+            source,
+        },
+        CompilerManaResourceAst::ColorsAmong(filter) => {
+            CompilerManaResourceAst::ColorsAmong(folder.fold_filter(filter))
+        }
+        mana => mana,
+    }
+}
+
+fn fold_choice_domain<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    domain: CompilerChoiceDomainAst,
+) -> CompilerChoiceDomainAst {
+    match domain {
+        CompilerChoiceDomainAst::CardName(filter) => {
+            CompilerChoiceDomainAst::CardName(filter.map(|filter| folder.fold_filter(filter)))
+        }
+        CompilerChoiceDomainAst::Player {
+            filter,
+            exclude_previous,
+        } => CompilerChoiceDomainAst::Player {
+            filter,
+            exclude_previous,
+        },
+        CompilerChoiceDomainAst::Number { minimum, maximum } => CompilerChoiceDomainAst::Number {
+            minimum: fold_compiler_value_tree(folder, minimum),
+            maximum: maximum.map(|maximum| fold_compiler_value_tree(folder, maximum)),
+        },
+        CompilerChoiceDomainAst::Object(object) => {
+            CompilerChoiceDomainAst::Object(fold_object_operand(folder, object))
+        }
+        domain => domain,
+    }
 }
 
 fn fold_interaction_clause<F: SemanticFolder + ?Sized>(
@@ -1847,9 +2115,59 @@ pub(crate) fn fold_effect_tree<F: SemanticFolder + ?Sized>(
         EffectAst::ControlFlow(control) => {
             EffectAst::ControlFlow(Box::new(fold_control_flow_tree(folder, *control)))
         }
+        EffectAst::Iteration(iteration) => {
+            EffectAst::Iteration(Box::new(fold_iteration_tree(folder, *iteration)))
+        }
+        EffectAst::Vote(mut vote) => {
+            vote.options = fold_choice_domain(folder, vote.options);
+            vote.votes_per_voter.min = fold_compiler_value_tree(folder, vote.votes_per_voter.min);
+            vote.votes_per_voter.max = vote
+                .votes_per_voter
+                .max
+                .map(|maximum| fold_compiler_value_tree(folder, maximum));
+            vote.choices = folder.fold_reference(vote.choices);
+            vote.tally = folder.fold_reference(vote.tally);
+            EffectAst::Vote(vote)
+        }
         effect => effect,
     };
     folder.fold_effect(effect)
+}
+
+fn fold_iteration_tree<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    mut iteration: CompilerIterationAst,
+) -> CompilerIterationAst {
+    iteration.source = match iteration.source {
+        CompilerIterationSourceAst::Objects(filter) => {
+            CompilerIterationSourceAst::Objects(folder.fold_filter(filter))
+        }
+        CompilerIterationSourceAst::Reference(reference) => {
+            CompilerIterationSourceAst::Reference(folder.fold_reference(reference))
+        }
+        CompilerIterationSourceAst::SelectedPlayers { filter, collection } => {
+            CompilerIterationSourceAst::SelectedPlayers {
+                filter,
+                collection: folder.fold_reference(collection),
+            }
+        }
+        CompilerIterationSourceAst::Count(count) => {
+            CompilerIterationSourceAst::Count(fold_compiler_value_tree(folder, count))
+        }
+        source => source,
+    };
+    iteration.iterator = folder.fold_reference(iteration.iterator);
+    if let Some(cardinality) = &mut iteration.selection_cardinality {
+        cardinality.min = fold_compiler_value_tree(folder, cardinality.min.clone());
+        cardinality.max = cardinality
+            .max
+            .take()
+            .map(|maximum| fold_compiler_value_tree(folder, maximum));
+    }
+    iteration.aggregate = iteration
+        .aggregate
+        .map(|aggregate| folder.fold_reference(aggregate));
+    iteration
 }
 
 fn fold_control_flow_tree<F: SemanticFolder + ?Sized>(

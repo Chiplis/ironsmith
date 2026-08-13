@@ -19,6 +19,10 @@ pub(crate) enum EffectAst {
     /// Compiler-owned conditions, replacements, prevention, permissions,
     /// durations, delayed execution, and nested programs.
     ControlFlow(Box<CompilerControlFlowAst>),
+    /// One typed repeated program with a scope-owned iterator symbol.
+    Iteration(Box<CompilerIterationAst>),
+    /// One typed vote whose individual choices and aggregate tally are bound.
+    Vote(CompilerVoteAst),
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
     RestartGame {

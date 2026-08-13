@@ -8,6 +8,7 @@ use crate::model::RedirectNextTimeDamageDestinationAst;
 use crate::model::clauses::CompilerClauseAst;
 use crate::model::control_flow::CompilerControlFlowAst;
 use crate::model::coordination::CoordinationAst;
+use crate::model::resource_choice_clauses::{CompilerIterationAst, CompilerVoteAst};
 use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;

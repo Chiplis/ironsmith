@@ -13,22 +13,43 @@ use crate::model::selections::{
     SelectionDomainAst, SelectionKindAst, SelectionLegalityAst,
 };
 use crate::model::symbols::{
-    Cardinality, ObjectDomain, ReferenceRole, SymbolReference, SymbolResolutionError, SymbolTable,
+    Cardinality, ObjectDomain, ReferenceRole, SymbolReference, SymbolResolutionError,
+    SymbolScopeId, SymbolScopeKind, SymbolTable,
 };
 use crate::tag::TagKey;
 use crate::target::ObjectFilter;
 
 pub(crate) struct SemanticMigrationContext<'a> {
     symbols: &'a mut SymbolTable,
-    tagged_objects: HashMap<TagKey, SymbolReference>,
+    tagged_objects: HashMap<TagKey, Vec<(SymbolScopeId, SymbolReference)>>,
+    current_scope: SymbolScopeId,
 }
 
 impl<'a> SemanticMigrationContext<'a> {
     pub(crate) fn new(symbols: &'a mut SymbolTable) -> Self {
+        let current_scope = symbols.root_scope();
         Self {
             symbols,
             tagged_objects: HashMap::new(),
+            current_scope,
         }
+    }
+
+    pub(crate) fn current_scope(&self) -> SymbolScopeId {
+        self.current_scope
+    }
+
+    pub(crate) fn enter_scope(
+        &mut self,
+        kind: SymbolScopeKind,
+    ) -> Result<SymbolScopeId, SymbolResolutionError> {
+        let parent = self.current_scope;
+        self.current_scope = self.symbols.create_scope(parent, kind)?;
+        Ok(parent)
+    }
+
+    pub(crate) fn restore_scope(&mut self, scope: SymbolScopeId) {
+        self.current_scope = scope;
     }
 
     pub(crate) fn bind_object(
@@ -37,29 +58,54 @@ impl<'a> SemanticMigrationContext<'a> {
         role: ReferenceRole,
         cardinality: Cardinality,
     ) -> Result<SymbolReference, SymbolResolutionError> {
-        if let Some(reference) = tag.as_ref().and_then(|tag| self.tagged_objects.get(tag)) {
-            return Ok(*reference);
+        self.bind_tagged(tag, role, cardinality, ObjectDomain::Card)
+    }
+
+    pub(crate) fn bind_tagged(
+        &mut self,
+        tag: Option<TagKey>,
+        role: ReferenceRole,
+        cardinality: Cardinality,
+        domain: ObjectDomain,
+    ) -> Result<SymbolReference, SymbolResolutionError> {
+        if let Some(reference) = tag.as_ref().and_then(|tag| self.object_reference(tag)) {
+            return Ok(reference);
         }
         let reference = SymbolReference {
-            symbol: self.symbols.bind(
-                self.symbols.root_scope(),
-                role,
-                cardinality,
-                ObjectDomain::Card,
-                None,
-            )?,
+            symbol: self
+                .symbols
+                .bind(self.current_scope, role, cardinality, domain, None)?,
             role,
-            domain: ObjectDomain::Card,
+            domain,
             cardinality,
         };
         if let Some(tag) = tag {
-            self.tagged_objects.insert(tag, reference);
+            self.tagged_objects
+                .entry(tag)
+                .or_default()
+                .push((self.current_scope, reference));
         }
         Ok(reference)
     }
 
     pub(crate) fn object_reference(&self, tag: &TagKey) -> Option<SymbolReference> {
-        self.tagged_objects.get(tag).copied()
+        self.tagged_objects.get(tag).and_then(|bindings| {
+            bindings
+                .iter()
+                .rev()
+                .find(|(scope, _)| {
+                    self.symbols
+                        .scope_is_ancestor_of(*scope, self.current_scope)
+                })
+                .map(|(_, reference)| *reference)
+        })
+    }
+
+    pub(crate) fn remember_reference(&mut self, tag: TagKey, reference: SymbolReference) {
+        self.tagged_objects
+            .entry(tag)
+            .or_default()
+            .push((self.current_scope, reference));
     }
 
     pub(crate) fn bind_selection(
@@ -69,13 +115,9 @@ impl<'a> SemanticMigrationContext<'a> {
         cardinality: Cardinality,
     ) -> Result<SymbolReference, SymbolResolutionError> {
         Ok(SymbolReference {
-            symbol: self.symbols.bind(
-                self.symbols.root_scope(),
-                role,
-                cardinality,
-                domain,
-                None,
-            )?,
+            symbol: self
+                .symbols
+                .bind(self.current_scope, role, cardinality, domain, None)?,
             role,
             domain,
             cardinality,

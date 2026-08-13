@@ -450,6 +450,7 @@ impl<'migration, 'symbols> InteractionMigration<'migration, 'symbols> {
             library: None,
             object_action: None,
             interaction: Some(interaction),
+            resource_choice: None,
             provenance: None,
         }))
     }

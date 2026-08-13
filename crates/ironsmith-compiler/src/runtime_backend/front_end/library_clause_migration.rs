@@ -665,6 +665,7 @@ impl<'migration, 'symbols> LibraryMigration<'migration, 'symbols> {
             library: Some(library),
             object_action: None,
             interaction: None,
+            resource_choice: None,
             provenance: None,
         }))
     }

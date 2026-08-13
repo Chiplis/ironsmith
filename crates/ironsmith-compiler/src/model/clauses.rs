@@ -15,6 +15,7 @@ use crate::model::object_action_clauses::{
     CompilerObjectOperandAst,
 };
 use crate::model::provenance::SemanticProvenance;
+use crate::model::resource_choice_clauses::CompilerResourceChoiceClauseAst;
 use crate::model::selections::{CompilerFilterAst, CompilerSelectionAst, CompilerValueAst};
 use crate::model::symbols::SymbolReference;
 use crate::zone::Zone;
@@ -258,6 +259,7 @@ pub(crate) struct CompilerClauseAst {
     pub library: Option<CompilerLibraryClauseAst>,
     pub object_action: Option<CompilerObjectActionClauseAst>,
     pub interaction: Option<CompilerInteractionClauseAst>,
+    pub resource_choice: Option<CompilerResourceChoiceClauseAst>,
     pub provenance: Option<SemanticProvenance>,
 }
 
@@ -318,6 +320,28 @@ impl CompilerClauseAst {
         }
         if let Some(interaction) = &mut self.interaction {
             strip_interaction_provenance(interaction);
+        }
+        if let Some(resource_choice) = &mut self.resource_choice {
+            strip_resource_choice_provenance(resource_choice);
+        }
+    }
+}
+
+fn strip_resource_choice_provenance(resource_choice: &mut CompilerResourceChoiceClauseAst) {
+    match resource_choice {
+        CompilerResourceChoiceClauseAst::Resource(resource) => {
+            strip_actor_provenance(&mut resource.owner);
+            if let Some(objects) = &mut resource.objects {
+                strip_object_operand_provenance(objects);
+            }
+        }
+        CompilerResourceChoiceClauseAst::Choice(choice) => {
+            strip_actor_provenance(&mut choice.chooser);
+            if let crate::model::resource_choice_clauses::CompilerChoiceDomainAst::Object(object) =
+                &mut choice.domain
+            {
+                strip_object_operand_provenance(object);
+            }
         }
     }
 }

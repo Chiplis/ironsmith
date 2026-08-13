@@ -17,6 +17,7 @@ pub mod parse_types;
 pub mod provenance;
 pub mod reference;
 pub(crate) mod reference_state;
+pub(crate) mod resource_choice_clauses;
 pub mod restrictions;
 pub(crate) mod selections;
 pub mod semantic;
@@ -72,6 +73,14 @@ pub(crate) use object_action_clauses::{
     CompilerCopyModificationsAst, CompilerCreationClauseAst, CompilerCreationKindAst,
     CompilerDelayedDispositionAst, CompilerEntryStateAst, CompilerMovementClauseAst,
     CompilerObjectActionClauseAst, CompilerObjectOperandAst,
+};
+pub(crate) use resource_choice_clauses::{
+    CompilerAggregateConstraintAst, CompilerAggregateMetricAst, CompilerChoiceClauseAst,
+    CompilerChoiceDomainAst, CompilerChoiceVisibilityAst, CompilerIterationAst,
+    CompilerIterationSourceAst, CompilerManaResourceAst, CompilerManaTypeSourceAst,
+    CompilerRepetitionKindAst, CompilerResourceAmountAst, CompilerResourceChoiceClauseAst,
+    CompilerResourceClauseAst, CompilerResourceKindAst, CompilerResourceOperationAst,
+    CompilerVoteAst, CompilerVoteOrderAst,
 };
 pub(crate) use selections::{
     ArithmeticOperatorAst, CompilerFilterAst, CompilerSelectionAst, CompilerValueAst,
