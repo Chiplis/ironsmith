@@ -1083,6 +1083,7 @@ fn common_clause(
         object_action: None,
         interaction: None,
         resource_choice: Some(resource_choice),
+        permission: None,
         provenance: None,
     }
 }

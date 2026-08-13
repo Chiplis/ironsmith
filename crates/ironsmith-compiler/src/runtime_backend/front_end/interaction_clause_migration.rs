@@ -451,6 +451,7 @@ impl<'migration, 'symbols> InteractionMigration<'migration, 'symbols> {
             object_action: None,
             interaction: Some(interaction),
             resource_choice: None,
+            permission: None,
             provenance: None,
         }))
     }

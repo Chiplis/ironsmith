@@ -12,6 +12,9 @@ use crate::model::control_flow::{
 };
 use crate::model::coordination::CarriedFactAst;
 use crate::model::costs::CompilerTotalCost;
+use crate::model::document_program::{
+    CompilerDocumentProgramAst, CompilerStatementEdgeKindAst,
+};
 use crate::model::interaction_clauses::{
     CompilerCounterAmountAst, CompilerInteractionClauseAst, CompilerPreventionClauseAst,
 };
@@ -21,6 +24,10 @@ use crate::model::library_clauses::{
 use crate::model::object_action_clauses::{
     CompilerCreationKindAst, CompilerEntryStateAst, CompilerObjectActionClauseAst,
     CompilerObjectOperandAst,
+};
+use crate::model::permission_clauses::{
+    CompilerCastingOriginAst, CompilerCostAdjustmentAst, CompilerPermissionActorAst,
+    CompilerPermissionClauseAst, CompilerPermissionExpirationAst,
 };
 use crate::model::resource_choice_clauses::{
     CompilerChoiceDomainAst, CompilerIterationAst, CompilerIterationSourceAst,
@@ -66,6 +73,11 @@ pub(crate) fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalRes
             .and_then(|program| program.effects.last())
             .and_then(terminal_result_producer),
         EffectAst::Iteration(iteration) => iteration.body.last().and_then(terminal_result_producer),
+        EffectAst::DocumentProgram(program) => program
+            .statements
+            .last()
+            .and_then(|statement| statement.effects.last())
+            .and_then(terminal_result_producer),
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
@@ -256,6 +268,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ControlFlow(_) => {}
         EffectAst::Iteration(_) => {}
         EffectAst::Vote(_) => {}
+        EffectAst::DocumentProgram(_) => {}
         EffectAst::SubjectVerb(_) => {}
         EffectAst::SolveCase => {}
         EffectAst::RestartGame { .. } => {}
@@ -380,6 +393,11 @@ pub(crate) fn for_each_nested_effects(
             }
         }
         EffectAst::Iteration(iteration) => visit(&iteration.body),
+        EffectAst::DocumentProgram(program) => {
+            for statement in &program.statements {
+                visit(&statement.effects);
+            }
+        }
         nested_effects_variants!(effects) => {
             visit(effects);
         }
@@ -442,6 +460,11 @@ pub(crate) fn for_each_nested_effects_mut(
             }
         }
         EffectAst::Iteration(iteration) => visit(&mut iteration.body),
+        EffectAst::DocumentProgram(program) => {
+            for statement in &mut program.statements {
+                visit(&mut statement.effects);
+            }
+        }
         nested_effects_variants!(effects) => {
             visit(effects);
         }
@@ -515,6 +538,11 @@ pub(crate) fn for_each_nested_effect_vec_mut(
                 }
             }
             EffectAst::Iteration(iteration) => visit(&mut iteration.body),
+            EffectAst::DocumentProgram(program) => {
+                for statement in &mut program.statements {
+                    visit(&mut statement.effects);
+                }
+            }
             nested_effects_variants!(effects) => {
                 visit(effects);
             }
@@ -580,6 +608,11 @@ pub(crate) fn try_for_each_nested_effects_mut<E>(
             }
         }
         EffectAst::Iteration(iteration) => visit(&mut iteration.body)?,
+        EffectAst::DocumentProgram(program) => {
+            for statement in &mut program.statements {
+                visit(&mut statement.effects)?;
+            }
+        }
         nested_effects_variants!(effects) => {
             visit(effects)?;
         }
@@ -711,7 +744,78 @@ pub(crate) fn visit_clause_tree<V: SemanticVisitor + ?Sized>(
     if let Some(resource_choice) = &clause.resource_choice {
         visit_resource_choice_clause(visitor, resource_choice)?;
     }
+    if let Some(permission) = &clause.permission {
+        visit_permission_clause(visitor, permission)?;
+    }
     ControlFlow::Continue(())
+}
+
+fn visit_permission_clause<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    permission: &CompilerPermissionClauseAst,
+) -> ControlFlow<V::Break> {
+    match &permission.actor {
+        CompilerPermissionActorAst::Actor(actor) => visit_clause_actor(visitor, actor)?,
+        CompilerPermissionActorAst::Players(_) => {}
+    }
+    visit_object_operand(visitor, &permission.object)?;
+    if let Some(qualification) = &permission.qualification {
+        visit_compiler_filter(visitor, qualification)?;
+    }
+    match &permission.origin {
+        CompilerCastingOriginAst::Zones { owner, .. }
+        | CompilerCastingOriginAst::TopOfLibrary { owner } => {
+            if let Some(owner) = owner {
+                visit_clause_actor(visitor, owner)?;
+            }
+        }
+        CompilerCastingOriginAst::Default
+        | CompilerCastingOriginAst::CurrentZone
+        | CompilerCastingOriginAst::ExiledWithSource => {}
+    }
+    for adjustment in &permission.cost.adjustments {
+        if let CompilerCostAdjustmentAst::ReduceValue(value) = adjustment {
+            visit_compiler_value_tree(visitor, value)?;
+        }
+    }
+    visit_permission_expiration(visitor, &permission.expiration)?;
+    if let Some(reference) = &permission.linked_object {
+        visitor.visit_reference(reference)?;
+    }
+    ControlFlow::Continue(())
+}
+
+fn visit_permission_expiration<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    expiration: &CompilerPermissionExpirationAst,
+) -> ControlFlow<V::Break> {
+    match expiration {
+        CompilerPermissionExpirationAst::Until(predicate) => visitor.visit_predicate(predicate),
+        CompilerPermissionExpirationAst::BoundedBy(expirations) => {
+            for expiration in expirations {
+                visit_permission_expiration(visitor, expiration)?;
+            }
+            ControlFlow::Continue(())
+        }
+        CompilerPermissionExpirationAst::Immediate
+        | CompilerPermissionExpirationAst::UntilEndOfTurn
+        | CompilerPermissionExpirationAst::UntilYourNextTurn
+        | CompilerPermissionExpirationAst::UntilYourNextEndStep
+        | CompilerPermissionExpirationAst::UntilYourNextUpkeep
+        | CompilerPermissionExpirationAst::UntilControllerNextUntap
+        | CompilerPermissionExpirationAst::UntilEndOfCombat
+        | CompilerPermissionExpirationAst::UntilSourceLeavesBattlefield
+        | CompilerPermissionExpirationAst::UntilSourceUntaps
+        | CompilerPermissionExpirationAst::WhileExiled
+        | CompilerPermissionExpirationAst::WhileYouControlSource
+        | CompilerPermissionExpirationAst::WhileOnTopOfLibrary
+        | CompilerPermissionExpirationAst::UntilSourceExilesAnother
+        | CompilerPermissionExpirationAst::DuringTurnsCounterPutOnSource(_)
+        | CompilerPermissionExpirationAst::Permanent => ControlFlow::Continue(()),
+        CompilerPermissionExpirationAst::ForTurns(value) => {
+            visit_compiler_value_tree(visitor, value)
+        }
+    }
 }
 
 fn visit_resource_choice_clause<V: SemanticVisitor + ?Sized>(
@@ -1207,6 +1311,28 @@ pub(crate) fn visit_effect_tree<V: SemanticVisitor + ?Sized>(
             }
         }
     }
+    if let EffectAst::DocumentProgram(program) = effect {
+        for statement in &program.statements {
+            for reference in &statement.imports {
+                visitor.visit_reference(reference)?;
+            }
+            for reference in &statement.exports {
+                visitor.visit_reference_binding(reference)?;
+            }
+        }
+        for edge in &program.edges {
+            for reference in &edge.references {
+                match edge.kind {
+                    CompilerStatementEdgeKindAst::Reference
+                    | CompilerStatementEdgeKindAst::Result => {
+                        visitor.visit_reference(reference)?;
+                    }
+                    CompilerStatementEdgeKindAst::Ordered
+                    | CompilerStatementEdgeKindAst::Then => {}
+                }
+            }
+        }
+    }
     let mut flow = ControlFlow::Continue(());
     for_each_nested_effects(effect, true, |nested| {
         if matches!(&flow, ControlFlow::Break(_)) {
@@ -1520,7 +1646,73 @@ pub(crate) fn fold_clause_tree<F: SemanticFolder + ?Sized>(
     clause.resource_choice = clause
         .resource_choice
         .map(|resource_choice| fold_resource_choice_clause(folder, resource_choice));
+    clause.permission = clause
+        .permission
+        .map(|permission| fold_permission_clause(folder, permission));
     folder.fold_clause(clause)
+}
+
+fn fold_permission_clause<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    mut permission: CompilerPermissionClauseAst,
+) -> CompilerPermissionClauseAst {
+    permission.actor = match permission.actor {
+        CompilerPermissionActorAst::Actor(actor) => {
+            CompilerPermissionActorAst::Actor(fold_clause_actor(folder, actor))
+        }
+        actor => actor,
+    };
+    permission.object = fold_object_operand(folder, permission.object);
+    permission.qualification = permission
+        .qualification
+        .map(|qualification| fold_compiler_filter(folder, qualification));
+    permission.origin = match permission.origin {
+        CompilerCastingOriginAst::Zones { zones, owner } => {
+            CompilerCastingOriginAst::Zones {
+                zones,
+                owner: owner.map(|owner| fold_clause_actor(folder, owner)),
+            }
+        }
+        CompilerCastingOriginAst::TopOfLibrary { owner } => {
+            CompilerCastingOriginAst::TopOfLibrary {
+                owner: owner.map(|owner| fold_clause_actor(folder, owner)),
+            }
+        }
+        origin => origin,
+    };
+    for adjustment in &mut permission.cost.adjustments {
+        if let CompilerCostAdjustmentAst::ReduceValue(value) = adjustment {
+            *value = fold_compiler_value_tree(folder, value.clone());
+        }
+    }
+    permission.expiration = fold_permission_expiration(folder, permission.expiration);
+    permission.linked_object = permission
+        .linked_object
+        .map(|reference| folder.fold_reference(reference));
+    permission
+}
+
+fn fold_permission_expiration<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    expiration: CompilerPermissionExpirationAst,
+) -> CompilerPermissionExpirationAst {
+    match expiration {
+        CompilerPermissionExpirationAst::Until(predicate) => {
+            CompilerPermissionExpirationAst::Until(folder.fold_predicate(predicate))
+        }
+        CompilerPermissionExpirationAst::BoundedBy(expirations) => {
+            CompilerPermissionExpirationAst::BoundedBy(
+                expirations
+                    .into_iter()
+                    .map(|expiration| fold_permission_expiration(folder, expiration))
+                    .collect(),
+            )
+        }
+        CompilerPermissionExpirationAst::ForTurns(value) => {
+            CompilerPermissionExpirationAst::ForTurns(fold_compiler_value_tree(folder, value))
+        }
+        expiration => expiration,
+    }
 }
 
 fn fold_resource_choice_clause<F: SemanticFolder + ?Sized>(
@@ -2129,9 +2321,29 @@ pub(crate) fn fold_effect_tree<F: SemanticFolder + ?Sized>(
             vote.tally = folder.fold_reference(vote.tally);
             EffectAst::Vote(vote)
         }
+        EffectAst::DocumentProgram(program) => EffectAst::DocumentProgram(Box::new(
+            fold_document_program_tree(folder, *program),
+        )),
         effect => effect,
     };
     folder.fold_effect(effect)
+}
+
+fn fold_document_program_tree<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    mut program: CompilerDocumentProgramAst,
+) -> CompilerDocumentProgramAst {
+    for statement in &mut program.statements {
+        for reference in statement.imports.iter_mut().chain(&mut statement.exports) {
+            *reference = folder.fold_reference(*reference);
+        }
+    }
+    for edge in &mut program.edges {
+        for reference in &mut edge.references {
+            *reference = folder.fold_reference(*reference);
+        }
+    }
+    program
 }
 
 fn fold_iteration_tree<F: SemanticFolder + ?Sized>(

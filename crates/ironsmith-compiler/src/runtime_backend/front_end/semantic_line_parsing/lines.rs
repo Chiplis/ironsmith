@@ -1358,15 +1358,6 @@ fn parse_statement_to_chunks_impl(
     {
         return Ok(vec![LineAst::Statement { effects }]);
     }
-    // A graveyard card is not a spell on the stack. The exact reusable
-    // graveyard-copy/cast sequence lowers the authored card copy directly to
-    // CastTagged(as_copy); splitting its sentences for statement-surface
-    // preservation would instead reparse `copy it` as CopySpell. Give the
-    // grammar-proven sequence the same first refusal here that it receives in
-    // triggered lines.
-    if let Some(effects) = exact_graveyard_card_copy_cast_sequence(parse_tokens) {
-        return Ok(vec![LineAst::Statement { effects }]);
-    }
     // Rewrites may replace the selected hand collection in the first
     // sentence with its later pronoun before the token-count followup is
     // grouped. Give the grammar-proven source sequence first refusal so the
@@ -1387,12 +1378,6 @@ fn parse_statement_to_chunks_impl(
         .or_else(|| exact_hidden_partition_permission_statement(parse_tokens))
         .or_else(|| exact_historical_target_return_statement(parse_tokens))
     {
-        return Ok(vec![LineAst::Statement { effects }]);
-    }
-    // The second sentence's `in it` refers to the exact hand revealed by the
-    // first. Parsing statement groups independently loses both that player
-    // and the hand domain before the registered pair rule can bind them.
-    if let Some(effects) = exact_revealed_hand_union_count_statement(parse_tokens) {
         return Ok(vec![LineAst::Statement { effects }]);
     }
     if effect_grammar::parse_kicked_counter_replacement_tokens(parse_tokens).is_some() {
@@ -2632,28 +2617,8 @@ fn parse_triggered_line_impl(
     ) {
         apply_spell_cast_single_target_source_exclusion(&mut parsed, &source_surface);
     }
-    // The graveyard-card copy/cast sequence owns executable semantics across
-    // its first two sentences. Re-splitting those sentences for presentation
-    // would turn the exiled card into an invalid stack CopySpellEffect. Keep
-    // the semantic parse intact, including any later `If you do` follow-up.
     let mut parsed =
-        if let Some(effects) = exact_graveyard_card_copy_cast_sequence(effect_parse_tokens) {
-            match &mut parsed {
-                LineAst::Triggered {
-                    effects: parsed_effects,
-                    ..
-                } => *parsed_effects = effects,
-                LineAst::Ability(ability) if ability.effects_ast.is_some() => {
-                    ability.effects_ast = Some(effects)
-                }
-                _ => {}
-            }
-            parsed
-        } else if starts_with_exact_graveyard_card_copy_cast_sequence(effect_parse_tokens) {
-            parsed
-        } else {
-            preserve_triggered_effect_surfaces(parsed, effect_parse_tokens, full_parse_tokens)
-        };
+        preserve_triggered_effect_surfaces(parsed, effect_parse_tokens, full_parse_tokens);
     // Surface preservation reparses the effect body and can replace the raw
     // effect vector. Reapply the idempotent typed transport so neither public
     // trigger route can leave a copied-object retarget on the outer program.
@@ -2834,113 +2799,6 @@ fn transport_delayed_copy_retarget_in_line(parsed: &mut LineAst) {
         }
         _ => {}
     }
-}
-
-fn starts_with_exact_graveyard_card_copy_cast_sequence(
-    effect_parse_tokens: &[OwnedLexToken],
-) -> bool {
-    let sentences = split_lexed_sentences(effect_parse_tokens)
-        .into_iter()
-        .map(crate::runtime_backend::effect_sentences::SentenceInput::from_lexed)
-        .collect::<Vec<_>>();
-    let Ok(Some(matched)) =
-        crate::runtime_backend::effect_sentences::try_parse_subject_verb_sequence_rule(
-            &sentences, 0,
-        )
-    else {
-        return false;
-    };
-    matched.feature_tag == Some("graveyard-card-copy-cast")
-        && matched.consumed_sentences <= sentences.len()
-}
-
-pub(crate) fn exact_graveyard_card_copy_cast_sequence(
-    effect_parse_tokens: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
-    let sentences = split_lexed_sentences(effect_parse_tokens)
-        .into_iter()
-        .map(crate::runtime_backend::effect_sentences::SentenceInput::from_lexed)
-        .collect::<Vec<_>>();
-    let Ok(Some(matched)) =
-        crate::runtime_backend::effect_sentences::try_parse_subject_verb_sequence_rule(
-            &sentences, 0,
-        )
-    else {
-        return None;
-    };
-    if !matches!(
-        matched.feature_tag,
-        Some("graveyard-card-copy-cast" | "conditional-graveyard-card-copy-cast")
-    ) {
-        return None;
-    }
-    let trailing = &sentences[matched.consumed_sentences..];
-    let has_standard_copy_cast_reminder = matches!(
-        trailing,
-        [costs, permanent_copy]
-            if matches!(
-                crate::runtime_backend::lexer::parser_token_word_refs(costs.lowered()).as_slice(),
-                ["you", "still", "pay", "its", "costs"]
-            ) && matches!(
-                crate::runtime_backend::lexer::parser_token_word_refs(permanent_copy.lowered()).as_slice(),
-                ["a", "copy", "of", "a", "permanent", "spell", "becomes", "a", "token"]
-            )
-    );
-    let trailing_cast_result = match trailing {
-        [] => None,
-        [sentence] => {
-            let Ok(effects) = crate::runtime_backend::effect_sentences::parse_effect_sentence_lexed(
-                sentence.lowered(),
-            ) else {
-                return None;
-            };
-            let [
-                effect @ EffectAst::IfResult {
-                    predicate: crate::cards::builders::IfResultPredicate::Did,
-                    effects: result_effects,
-                },
-            ] = effects.as_slice()
-            else {
-                return None;
-            };
-            if result_effects.is_empty() {
-                return None;
-            }
-            Some(effect.clone())
-        }
-        [_, _] if has_standard_copy_cast_reminder => None,
-        _ => return None,
-    };
-
-    let mut effects = matched.effects;
-    if has_standard_copy_cast_reminder {
-        fn mark_cast_copy(effects: &mut [EffectAst]) {
-            for effect in effects {
-                if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action:
-                        SubjectVerbActionAst::CastTagged {
-                            as_copy: true,
-                            copy_cast_reminder_surface,
-                            ..
-                        },
-                    ..
-                }) = effect
-                {
-                    *copy_cast_reminder_surface = true;
-                }
-                crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effects_mut(
-                    effect,
-                    true,
-                    mark_cast_copy,
-                );
-            }
-        }
-        mark_cast_copy(&mut effects);
-    }
-    if let Some(trailing_cast_result) = trailing_cast_result {
-        effects.push(trailing_cast_result);
-    }
-    Some(effects)
 }
 
 fn exact_dynamic_exile_permission_bundle(
@@ -3282,25 +3140,6 @@ pub(crate) fn is_authored_look_hand_optional_cast_bundle(
             "paying", "its", "mana", "cost"
         ]
     )
-}
-
-fn exact_revealed_hand_union_count_statement(
-    effect_parse_tokens: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
-    let sentences = split_lexed_sentences(effect_parse_tokens)
-        .into_iter()
-        .map(crate::runtime_backend::effect_sentences::SentenceInput::from_lexed)
-        .collect::<Vec<_>>();
-    let Ok(Some(matched)) =
-        crate::runtime_backend::effect_sentences::try_parse_subject_verb_sequence_rule(
-            &sentences, 0,
-        )
-    else {
-        return None;
-    };
-    (matched.feature_tag == Some("revealed-hand-union-count")
-        && matched.consumed_sentences == sentences.len())
-    .then_some(matched.effects)
 }
 
 fn preserve_triggered_effect_surfaces(
@@ -4277,11 +4116,7 @@ fn parse_triggered_ability_line_impl(
         sentences_have_temporary_static_followup_after_first(&effect_sentences);
     let effect_has_bound_characteristic_followup_after_first =
         sentences_have_bound_characteristic_followup_after_first(&effect_sentences);
-    let effect_is_linked_typed_bundle =
-        crate::runtime_backend::effect_sentences::parse_typed_effect_bundle_lexed(
-            effect_parse_tokens,
-        )
-        .is_some();
+    let effect_is_document_program = effect_sentences.len() > 1;
     let effect_is_linked_collect_evidence =
         is_optional_source_exile_collect_evidence_procedure(effect_parse_tokens);
     if let Some(effects) = linked_created_token_next_turn_sacrifice_effects(effect_parse_tokens)?
@@ -4313,7 +4148,7 @@ fn parse_triggered_ability_line_impl(
         // Keep any complete typed bundle together so its linked target and
         // duration survive into the triggered ability instead of becoming a
         // top-level battlefield static ability.
-        && !effect_is_linked_typed_bundle
+        && !effect_is_document_program
         && let Some(first_static_idx) =
             effect_sentences
                 .iter()
@@ -4374,9 +4209,9 @@ fn parse_triggered_ability_line_impl(
         && (!full_parse_tokens_have_triggered_intervening_if_clause(full_parse_tokens)
             || effect_is_linked_collect_evidence)
         && (!full_text_facts.has_if_you_do
-            || effect_is_linked_typed_bundle
+            || effect_is_document_program
             || effect_is_linked_collect_evidence)
-        && (!full_text_facts.has_if_you_dont || effect_is_linked_typed_bundle)
+        && (!full_text_facts.has_if_you_dont || effect_is_document_program)
         && !effect_text_facts.starts_with_if
     {
         let direct_trigger = parse_trigger_clause_lexed(trigger_parse_tokens).map(|mut trigger| {
@@ -4386,7 +4221,7 @@ fn parse_triggered_ability_line_impl(
             trigger
         });
         let direct_effects =
-            if effect_is_linked_typed_bundle || effect_is_linked_collect_evidence {
+            if effect_is_document_program || effect_is_linked_collect_evidence {
                 // These procedures deliberately correlate effects across their
                 // authored sentence boundaries. The ordinary boundary-preserving
                 // route parses each sentence in isolation and loses the linked

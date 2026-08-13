@@ -16,6 +16,7 @@ pub(crate) use super::semantic_document;
 pub(crate) mod interaction_clause_migration;
 pub(crate) mod library_clause_migration;
 pub(crate) mod object_action_clause_migration;
+pub(crate) mod permission_program_migration;
 pub(crate) mod resource_choice_clause_migration;
 pub(crate) mod semantic_migration_context;
 pub(crate) mod shared {

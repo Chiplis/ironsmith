@@ -43,12 +43,14 @@
         "crates/ironsmith-compiler/src/model/ast",
         "crates/ironsmith-compiler/src/model/clauses.rs",
         "crates/ironsmith-compiler/src/model/card_document.rs",
+        "crates/ironsmith-compiler/src/model/document_program.rs",
         "crates/ironsmith-compiler/src/model/activated_abilities.rs",
         "crates/ironsmith-compiler/src/model/costs.rs",
         "crates/ironsmith-compiler/src/model/legality.rs",
         "crates/ironsmith-compiler/src/model/interaction_clauses.rs",
         "crates/ironsmith-compiler/src/model/library_clauses.rs",
         "crates/ironsmith-compiler/src/model/object_action_clauses.rs",
+        "crates/ironsmith-compiler/src/model/permission_clauses.rs",
         "crates/ironsmith-compiler/src/model/resource_choice_clauses.rs",
         "crates/ironsmith-compiler/src/model/selections.rs",
         "crates/ironsmith-compiler/src/model/static_abilities.rs",
@@ -118,15 +120,6 @@
       "reason": "Legacy Result recognizers require one adapter until committed diagnostics are native throughout recognition."
     },
     {
-      "id": "BRIDGE-LEGACY-REGISTRY",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/document/line_dispatch.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences"
-      ],
-      "removal_pr": 29,
-      "reason": "Two finite sequence/follow-up recipe registries remain registration-ordered until their dedicated PR-29 migration."
-    },
-    {
       "id": "BRIDGE-TAGKEY-SYMBOL",
       "paths": [
         "crates/ironsmith-compiler/src/runtime_backend/references/legacy_tag_symbol_bridge.rs"
@@ -183,6 +176,15 @@
       "reason": "Legacy resource, choice, vote, and repetition leaves are converted to typed common clauses and scoped programs until direct clause lowering replaces them."
     },
     {
+      "id": "BRIDGE-PERMISSION-PROGRAM-MIGRATION",
+      "paths": [
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/permission_program_migration.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_migration_context.rs"
+      ],
+      "removal_pr": 31,
+      "reason": "Legacy permission leaves and source-sentence wrappers are converted to typed casting clauses and reference-linked document programs until direct clause lowering replaces them."
+    },
+    {
       "id": "BRIDGE-RUNTIME-PARSER-OUTPUT",
       "paths": [
         "crates/ironsmith-compiler/src/model/ast/nodes.rs",
@@ -190,26 +192,6 @@
       ],
       "removal_pr": 33,
       "reason": "Legacy parser facades expose runtime-backed output until every consumer uses canonical compiler AST plus explicit lowering."
-    }
-  ],
-  "legacy_compatibility_registries": [
-    {
-      "id": "subject-verb-primitive-legacy-compatibility-registry",
-      "path": "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives",
-      "rule_count": 101,
-      "removal_pr": 21
-    },
-    {
-      "id": "subject-verb-sequence-legacy-compatibility-registry",
-      "path": "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sequence_rules/mod.rs",
-      "rule_count": 145,
-      "removal_pr": 29
-    },
-    {
-      "id": "subject-verb-followup-legacy-compatibility-registry",
-      "path": "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_entry/subject_verb_followups.rs",
-      "rule_count": 38,
-      "removal_pr": 29
     }
   ],
   "exceptions": [
@@ -238,8 +220,8 @@
       "id": "EX-SENTENCE-RUNTIME-OUTPUT",
       "finding_kinds": ["forbidden_import"],
       "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/sentences"],
-      "removal_pr": 29,
-      "reason": "Legacy sentence recipes construct complete effect programs."
+      "removal_pr": 32,
+      "reason": "Residual sentence leaf parsers construct runtime-shaped ability payloads until the legacy sentence tree is removed."
     },
     {
       "id": "EX-LOWERING-GRAMMAR-IMPORTS",
@@ -297,16 +279,6 @@
       "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs"],
       "removal_pr": 31,
       "reason": "The line lowerer contains the post-lowering semantic repair chain."
-    },
-    {
-      "id": "EX-WHOLE-PROGRAM-RECIPES",
-      "finding_kinds": ["legacy_path", "first_match_registry"],
-      "path_prefixes": [
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/bundle_rules",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sequence_rules"
-      ],
-      "removal_pr": 29,
-      "reason": "Bundle and sequence registries encode complete oracle programs."
     },
     {
       "id": "EX-LEGACY-SENTENCE-TREE",

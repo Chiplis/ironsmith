@@ -1,8 +1,4 @@
-use self::subject_verb_followups::{
-    PostParseFollowupResult, PreParseFollowupResult,
-    is_conditional_token_entry_followup_sentence, run_post_parse_followup_registry,
-    run_pre_parse_followup_registry, try_bind_conditional_token_entry_followup,
-};
+use self::subject_verb_followups::try_bind_conditional_token_entry_followup;
 use super::super::activation_and_restrictions::{
     parse_mana_usage_restriction_sentence_lexed, parse_single_word_keyword_action,
 };
@@ -22,14 +18,11 @@ use super::super::lexer::{
 };
 use super::super::token_primitives::{LeadingMayActor, find_window_by};
 use super::super::util::{span_from_tokens, trim_commas};
-use super::bundle_rules::{
-    parse_same_sentence_copy_and_may_cast_copy, parse_typed_effect_bundle_lexed,
-};
+use super::bundle_rules::parse_same_sentence_copy_and_may_cast_copy;
 use super::consult_family;
 use super::divvy::try_parse_divvy_sentence_sequence;
 use super::looked_cards_family;
 use super::sentence_helpers::*;
-use super::sequence_rules::{subject_verb_sequence_route, try_parse_subject_verb_sequence_rule};
 use super::{
     SubjectVerbPrimitiveClause, parse_effect_sentence_lexed, parse_token_copy_modifier_sentence,
     trim_edge_punctuation, try_build_unless,
@@ -2234,82 +2227,6 @@ fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
-        // These compound authoring surfaces carry semantics across their
-        // sentence boundary. Keep them ahead of every single-sentence public
-        // route as a final dispatch guard; otherwise the first clause can be
-        // committed before the linked follow-up is observed.
-        if sentence_idx + 2 < sentences.len()
-            && let Some(mut linked) = super::sequence_rules::generic_subject_verb_sequences::triples::parse_look_at_top_may_put_with_counter_then_rest_bottom(&sentences, sentence_idx)?
-        {
-            effects.append(&mut linked);
-            carried_context = None;
-            sentence_idx += 3;
-            continue;
-        }
-        if sentence_idx + 2 < sentences.len()
-            && let Some(mut linked) = super::sequence_rules::generic_subject_verb_sequences::triples::parse_look_at_top_partition_face_down_then_filtered_permission(&sentences, sentence_idx)?
-        {
-            effects.append(&mut linked);
-            carried_context = None;
-            sentence_idx += 3;
-            continue;
-        }
-        if sentence_idx + 2 < sentences.len()
-            && let Some(mut linked) = super::sequence_rules::generic_subject_verb_sequences::triples::parse_exile_until_match_cast_rest_bottom(&sentences, sentence_idx)?
-        {
-            effects.append(&mut linked);
-            carried_context = None;
-            sentence_idx += 3;
-            continue;
-        }
-        // The two-sentence destroy/no-regeneration carry below is a prefix of
-        // the historical-block reanimation rule. Give the exact three-part
-        // program first refusal so its target, successful-result tag, and
-        // controller-at-last-blocked provenance cannot be split apart.
-        if sentence_idx + 2 < sentences.len()
-            && let Some(mut linked) = super::sequence_rules::generic_subject_verb_sequences::triples::parse_destroy_historically_blocked_then_reanimate_from_historical_controller(&sentences, sentence_idx)?
-        {
-            effects.append(&mut linked);
-            carried_context = None;
-            sentence_idx += 3;
-            continue;
-        }
-        if sentence_idx + 1 < sentences.len() {
-            // Keep a looked hand and the immediately following optional free
-            // cast together before either standalone sentence can commit.
-            // In particular, the standalone cast route treats "those cards"
-            // as an exiled collection and lowers a mandatory CastTagged.
-            if let Some(mut linked) = super::sequence_rules::generic_subject_verb_sequences::pairs::parse_look_at_players_hand_then_may_cast_from_those_cards(&sentences, sentence_idx)? {
-                effects.append(&mut linked);
-                carried_context = None;
-                sentence_idx += 2;
-                continue;
-            }
-            if let Some(mut linked) = super::sequence_rules::generic_subject_verb_sequences::exile_permission_followups::parse_dynamic_exile_top_then_play_for_as_long_as_exiled(&sentences, sentence_idx)? {
-                effects.append(&mut linked);
-                carried_context = None;
-                sentence_idx += 2;
-                continue;
-            }
-            if let Some(mut linked) = super::sequence_rules::generic_subject_verb_sequences::parse_destroy_then_no_regeneration_sequence(&sentences, sentence_idx)? {
-                effects.append(&mut linked);
-                carried_context = None;
-                sentence_idx += 2;
-                continue;
-            }
-            if let Some(mut linked) = super::sequence_rules::generic_subject_verb_sequences::parse_reveal_then_exile_noncreature_nonland_hand_graveyard_sequence(&sentences, sentence_idx)? {
-                effects.append(&mut linked);
-                carried_context = None;
-                sentence_idx += 2;
-                continue;
-            }
-            if let Some(mut linked) = super::sequence_rules::generic_subject_verb_sequences::parse_damage_prevention_delayed_counter_sequence(&sentences, sentence_idx)? {
-                effects.append(&mut linked);
-                carried_context = None;
-                sentence_idx += 2;
-                continue;
-            }
-        }
         if is_outside_game_art_rating_sentence(sentence) {
             sentence_idx += 1;
             continue;
@@ -2472,81 +2389,10 @@ fn parse_effect_sentences_from_sentence_inputs(
             }
         }
 
-        // Strip a token blueprint's quoted rule before broad sequence
-        // recognition. A nested activated rule has its own colon and verbs;
-        // allowing the outer sequence registry to inspect those tokens can
-        // claim or reject the create sentence before the dedicated create
-        // parser gets the rule-free token definition. The untouched `sentence`
-        // is retained below so the quoted rule can be attached afterward.
+        // Strip a token blueprint's quoted rule before parsing the outer
+        // statement. The untouched `sentence` is retained so the quoted rule
+        // can be attached afterward.
         let embedded_rule_free_sentence = strip_embedded_token_rules_text(sentence);
-        let stripped_embedded_rule = embedded_rule_free_sentence.as_slice() != sentence;
-        let conditional_token_entry_boundary =
-            is_conditional_token_entry_followup_sentence(authored_sentence)
-                || sentences.get(sentence_idx + 1).is_some_and(|next| {
-                    is_conditional_token_entry_followup_sentence(next.lexed())
-                });
-        if !stripped_embedded_rule
-            && !conditional_token_entry_boundary
-            && let Some(mut matched) =
-                try_parse_subject_verb_sequence_rule(&sentences, sentence_idx)?
-        {
-            let sequence_where_x = (0..matched.consumed_sentences).find_map(|offset| {
-                sentences
-                    .get(sentence_idx + offset)
-                    .and_then(|sentence| where_x_value_from_tokens(sentence.lowered()))
-            });
-            if let Some(where_value) = sequence_where_x.as_ref() {
-                let mut sequence_words = Vec::new();
-                for offset in 0..matched.consumed_sentences {
-                    if let Some(sentence) = sentences.get(sentence_idx + offset) {
-                        sequence_words
-                            .extend(crate::runtime_backend::token_word_refs(sentence.lowered()));
-                    }
-                }
-                replace_unbound_x_in_effects_anywhere(
-                    &mut matched.effects,
-                    where_value,
-                    &sequence_words.join(" "),
-                )?;
-            }
-            super::chain_carry::bind_adjacent_shared_x_life_stat_values(
-                &mut matched.effects,
-                sentence,
-            );
-            super::chain_carry::dedupe_shared_target_player_draw_lose_x(
-                &mut matched.effects,
-                sentence,
-            );
-            preserve_leading_result_prefix_for_sequence(sentence, &mut matched.effects);
-            let stage = if let Some(feature_tag) = matched.feature_tag {
-                format!(
-                    "parse_effect_sentences:subject-verb-sequence:{}:{feature_tag}",
-                    matched.name
-                )
-            } else {
-                format!(
-                    "parse_effect_sentences:subject-verb-sequence:{}",
-                    matched.name
-                )
-            };
-            parser_trace(stage.as_str(), sentence);
-            parse_trace::event(format!(
-                "sequence subject/verb rule: {} -> {}",
-                matched.name,
-                summarize_effects(&matched.effects)
-            ));
-            parse_trace::event(format!(
-                "effect-route: {}",
-                subject_verb_sequence_route(matched.name)
-            ));
-            if let Some(where_value) = sequence_where_x {
-                carried_where_x = Some(where_value);
-            }
-            effects.append(&mut matched.effects);
-            sentence_idx += matched.consumed_sentences;
-            continue;
-        }
-
         if let Some(mut exact_type_effects) =
             parse_tagged_exact_type_with_quoted_ability_sentence(sentence)?
         {
@@ -2690,37 +2536,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
-        let mut parse_plan = {
-            let mut state = SentenceDispatchState {
-                effects: &mut effects,
-                carried_context: &mut carried_context,
-            };
-            match run_pre_parse_followup_registry(
-                &mut state,
-                &sentences,
-                sentence_idx,
-                &sentence_tokens,
-            )? {
-                Some(PreParseFollowupResult::Handled {
-                    consumed_sentences,
-                    route,
-                }) => {
-                    parse_trace::event(format!(
-                        "pre-parse followup handled sentence(s): {consumed_sentences}"
-                    ));
-                    parse_trace::event(format!(
-                        "effect-route: {}",
-                        route.unwrap_or(
-                            "subject-verb verb=Do subject=implicit recognizer=pre-parse-followup",
-                        )
-                    ));
-                    sentence_idx += consumed_sentences;
-                    continue;
-                }
-                Some(PreParseFollowupResult::Plan(plan)) => plan,
-                None => SentenceParsePlan::new(sentence_tokens.clone()),
-            }
-        };
+        let mut parse_plan = SentenceParsePlan::new(sentence_tokens.clone());
         parser_trace("parse_effect_sentences:sentence", &parse_plan.tokens);
         let sentence_where_x = where_x_value_from_tokens(&parse_plan.tokens);
 
@@ -2897,28 +2713,6 @@ fn parse_effect_sentences_from_sentence_inputs(
                 result_predicate: predicate,
             };
         }
-        {
-            let mut state = SentenceDispatchState {
-                effects: &mut effects,
-                carried_context: &mut carried_context,
-            };
-            if let Some(PostParseFollowupResult::Handled { consumed_sentences }) =
-                run_post_parse_followup_registry(
-                    &mut state,
-                    &sentences,
-                    sentence_idx,
-                    &parse_plan.tokens,
-                    &mut sentence_effects,
-                )?
-            {
-                parse_trace::event(format!(
-                    "post-parse followup handled sentence(s): {consumed_sentences}"
-                ));
-                sentence_idx += consumed_sentences;
-                continue;
-            }
-        }
-
         scope_partitioned_prior_metric_followup(
             &effects,
             &parse_plan.tokens,
@@ -4498,16 +4292,6 @@ fn parse_effect_sentences_lexed_inner(
         // Activated-line preprocessing can remove quote delimiters around a
         // nested granted rule. Preserve the outer leading-duration gain
         // before a `can't` inside the rule is claimed as the top-level effect.
-        return Ok(effects);
-    }
-
-    if let Some(mut effects) = parse_typed_effect_bundle_lexed(tokens) {
-        apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
-        maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
-        parse_trace::event(format!(
-            "typed effect bundle -> {}",
-            summarize_effects(&effects)
-        ));
         return Ok(effects);
     }
 

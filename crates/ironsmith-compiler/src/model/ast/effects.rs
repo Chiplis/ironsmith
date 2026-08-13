@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::document_program::CompilerDocumentProgramAst;
 
 /// One mode of an `EffectAst::ChooseOneOf` modal choice: a label shown to the
 /// player and the effects that resolve when that mode is chosen.
@@ -23,6 +24,8 @@ pub(crate) enum EffectAst {
     Iteration(Box<CompilerIterationAst>),
     /// One typed vote whose individual choices and aggregate tally are bound.
     Vote(CompilerVoteAst),
+    /// A document sequence of typed statements with explicit reference edges.
+    DocumentProgram(Box<CompilerDocumentProgramAst>),
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
     RestartGame {

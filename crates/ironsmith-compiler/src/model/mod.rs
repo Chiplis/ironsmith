@@ -7,6 +7,7 @@ pub(crate) mod compiler_semantic;
 pub(crate) mod control_flow;
 pub(crate) mod coordination;
 pub mod costs;
+pub(crate) mod document_program;
 pub(crate) mod facts;
 pub(crate) mod interaction_clauses;
 pub mod ir;
@@ -14,6 +15,7 @@ pub(crate) mod legality;
 pub(crate) mod library_clauses;
 pub(crate) mod object_action_clauses;
 pub mod parse_types;
+pub(crate) mod permission_clauses;
 pub mod provenance;
 pub mod reference;
 pub(crate) mod reference_state;
@@ -51,6 +53,10 @@ pub(crate) use coordination::{
     CoordinationKindAst, CoordinationMemberAst, CoordinationOperatorAst, EffectDependencyAst,
     EffectOrderingAst,
 };
+pub(crate) use document_program::{
+    CompilerDocumentProgramAst, CompilerDocumentStatementAst, CompilerStatementEdgeAst,
+    CompilerStatementEdgeKindAst, CompilerStatementId,
+};
 pub(crate) use interaction_clauses::{
     CompilerCharacteristicClauseAst, CompilerCharacteristicOperationAst, CompilerCombatClauseAst,
     CompilerCombatOperationAst, CompilerCombatRoleAst, CompilerCounterAmountAst,
@@ -73,6 +79,13 @@ pub(crate) use object_action_clauses::{
     CompilerCopyModificationsAst, CompilerCreationClauseAst, CompilerCreationKindAst,
     CompilerDelayedDispositionAst, CompilerEntryStateAst, CompilerMovementClauseAst,
     CompilerObjectActionClauseAst, CompilerObjectOperandAst,
+};
+pub(crate) use permission_clauses::{
+    CompilerAlternativeCastAst, CompilerCastingActionAst, CompilerCastingCostAst,
+    CompilerCastingOriginAst, CompilerCastingPaymentAst, CompilerCostAdjustmentAst,
+    CompilerManaFlexibilityAst, CompilerPermissionActorAst, CompilerPermissionClauseAst,
+    CompilerPermissionDispositionAst, CompilerPermissionExpirationAst,
+    CompilerPermissionFrequencyAst, CompilerPermissionStartAst,
 };
 pub(crate) use resource_choice_clauses::{
     CompilerAggregateConstraintAst, CompilerAggregateMetricAst, CompilerChoiceClauseAst,

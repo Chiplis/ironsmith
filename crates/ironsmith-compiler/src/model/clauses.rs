@@ -15,6 +15,7 @@ use crate::model::object_action_clauses::{
     CompilerObjectOperandAst,
 };
 use crate::model::provenance::SemanticProvenance;
+use crate::model::permission_clauses::CompilerPermissionClauseAst;
 use crate::model::resource_choice_clauses::CompilerResourceChoiceClauseAst;
 use crate::model::selections::{CompilerFilterAst, CompilerSelectionAst, CompilerValueAst};
 use crate::model::symbols::SymbolReference;
@@ -24,6 +25,7 @@ use crate::zone::Zone;
 pub(crate) enum ClauseVerbAst {
     Add,
     Attach,
+    Activate,
     Become,
     Cast,
     Choose,
@@ -260,6 +262,7 @@ pub(crate) struct CompilerClauseAst {
     pub object_action: Option<CompilerObjectActionClauseAst>,
     pub interaction: Option<CompilerInteractionClauseAst>,
     pub resource_choice: Option<CompilerResourceChoiceClauseAst>,
+    pub permission: Option<CompilerPermissionClauseAst>,
     pub provenance: Option<SemanticProvenance>,
 }
 
@@ -324,6 +327,29 @@ impl CompilerClauseAst {
         if let Some(resource_choice) = &mut self.resource_choice {
             strip_resource_choice_provenance(resource_choice);
         }
+        if let Some(permission) = &mut self.permission {
+            strip_permission_provenance(permission);
+        }
+    }
+}
+
+fn strip_permission_provenance(permission: &mut CompilerPermissionClauseAst) {
+    if let crate::model::permission_clauses::CompilerPermissionActorAst::Actor(actor) =
+        &mut permission.actor
+    {
+        strip_actor_provenance(actor);
+    }
+    strip_object_operand_provenance(&mut permission.object);
+    match &mut permission.origin {
+        crate::model::permission_clauses::CompilerCastingOriginAst::Zones { owner, .. }
+        | crate::model::permission_clauses::CompilerCastingOriginAst::TopOfLibrary { owner } => {
+            if let Some(owner) = owner {
+                strip_actor_provenance(owner);
+            }
+        }
+        crate::model::permission_clauses::CompilerCastingOriginAst::Default
+        | crate::model::permission_clauses::CompilerCastingOriginAst::CurrentZone
+        | crate::model::permission_clauses::CompilerCastingOriginAst::ExiledWithSource => {}
     }
 }
 
