@@ -39,7 +39,8 @@
         "crates/ironsmith-compiler/src/model/ast",
         "crates/ironsmith-compiler/src/model/activated_abilities.rs",
         "crates/ironsmith-compiler/src/model/costs.rs",
-        "crates/ironsmith-compiler/src/model/static_abilities.rs"
+        "crates/ironsmith-compiler/src/model/static_abilities.rs",
+        "crates/ironsmith-compiler/src/model/triggered_abilities.rs"
       ]
     },
     {

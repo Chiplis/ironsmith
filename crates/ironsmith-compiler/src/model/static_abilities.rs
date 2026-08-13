@@ -1,5 +1,5 @@
 use crate::mana::ManaSymbol;
-use crate::model::ast::{EffectAst, PredicateAst, TriggerSpec};
+use crate::model::ast::{EffectAst, PredicateAst};
 use crate::model::provenance::SemanticProvenance;
 use crate::payload::KeywordAction;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -98,17 +98,7 @@ pub(crate) enum CompilerGrantedAbilityAst {
             >,
         >,
     ),
-    Triggered(
-        Box<
-            crate::model::CompilerTriggeredAbility<
-                TriggerSpec,
-                EffectAst,
-                ChooseSpec,
-                PredicateAst,
-                String,
-            >,
-        >,
-    ),
+    Triggered(Box<crate::model::CompilerTriggeredAbilityAst>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

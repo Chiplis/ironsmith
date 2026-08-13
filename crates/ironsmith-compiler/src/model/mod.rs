@@ -13,6 +13,7 @@ pub mod semantic;
 pub mod symbols;
 pub(crate) mod static_abilities;
 pub(crate) mod token_definition;
+pub(crate) mod triggered_abilities;
 pub(crate) mod visit;
 
 pub(crate) use activated_abilities::{
@@ -33,6 +34,11 @@ pub(crate) use static_abilities::{
     CharacteristicChangeAst, CharacteristicValueAst, CompilerGrantedAbilityAst,
     CompilerStaticAbilityAst, ContinuousLayerAst, StaticOperationAst, StaticRestrictionAst,
     StaticScopeAst, StaticSubjectAst,
+};
+pub(crate) use triggered_abilities::{
+    CompilerTriggerEventAst, CompilerTriggeredAbilityAst, LinkedTriggerEffectAst,
+    TriggerBindingsAst, TriggerFrequencyAst, TriggerKindAst, TriggerSubjectAst,
+    TriggerZoneTransitionAst,
 };
 
 pub use ir::{

@@ -4,6 +4,7 @@ pub(crate) use super::compile_support;
 pub(crate) mod activated_ability_materialization;
 pub(crate) mod cost_materialization;
 pub(crate) mod static_ability_materialization;
+pub(crate) mod triggered_ability_materialization;
 pub(crate) use super::effect_pipeline;
 pub(crate) use super::lower;
 pub(crate) use super::lowering_support;
