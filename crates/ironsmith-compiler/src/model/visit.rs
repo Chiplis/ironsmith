@@ -15,6 +15,10 @@ use crate::model::costs::CompilerTotalCost;
 use crate::model::library_clauses::{
     CompilerLibraryClauseAst, LibraryPositionAst, LibraryRemainderAst,
 };
+use crate::model::object_action_clauses::{
+    CompilerCreationKindAst, CompilerEntryStateAst, CompilerObjectActionClauseAst,
+    CompilerObjectOperandAst,
+};
 use crate::model::selections::{
     CompilerFilterAst, CompilerSelectionAst, CompilerValueAst, SelectionDomainAst,
 };
@@ -683,6 +687,91 @@ pub(crate) fn visit_clause_tree<V: SemanticVisitor + ?Sized>(
     if let Some(library) = &clause.library {
         visit_library_clause(visitor, library)?;
     }
+    if let Some(object_action) = &clause.object_action {
+        visit_object_action_clause(visitor, object_action)?;
+    }
+    ControlFlow::Continue(())
+}
+
+fn visit_object_action_clause<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    action: &CompilerObjectActionClauseAst,
+) -> ControlFlow<V::Break> {
+    match action {
+        CompilerObjectActionClauseAst::Movement(movement) => {
+            visit_object_operand(visitor, &movement.object)?;
+            visit_clause_destination(visitor, &movement.destination)?;
+            visit_entry_state(visitor, &movement.state)?;
+        }
+        CompilerObjectActionClauseAst::Creation(creation) => {
+            match &creation.kind {
+                CompilerCreationKindAst::Token {
+                    dynamic_power_toughness,
+                    ..
+                } => {
+                    if let Some((power, toughness)) = dynamic_power_toughness {
+                        visit_compiler_value_tree(visitor, power)?;
+                        visit_compiler_value_tree(visitor, toughness)?;
+                    }
+                }
+                CompilerCreationKindAst::TokenCopy { source }
+                | CompilerCreationKindAst::SpellCopy { source, .. } => {
+                    visit_object_operand(visitor, source)?;
+                }
+            }
+            visit_compiler_value_tree(visitor, &creation.count)?;
+            visit_clause_actor(visitor, &creation.controller)?;
+            visit_entry_state(visitor, &creation.state)?;
+            if let Some((power, toughness)) = &creation.modifications.set_base_power_toughness {
+                visit_compiler_value_tree(visitor, power)?;
+                visit_compiler_value_tree(visitor, toughness)?;
+            }
+            visitor.visit_reference_binding(&creation.result)?;
+        }
+        CompilerObjectActionClauseAst::Control(control) => {
+            visit_object_operand(visitor, &control.object)?;
+            visit_clause_actor(visitor, &control.controller)?;
+            if let Some(duration) = &control.duration {
+                visit_clause_duration(visitor, duration)?;
+            }
+            if let Some(exchange) = &control.exchange_with {
+                visit_object_operand(visitor, exchange)?;
+            }
+        }
+        CompilerObjectActionClauseAst::Attachment(attachment) => {
+            visit_object_operand(visitor, &attachment.attachment)?;
+            if let Some(target) = &attachment.target {
+                visit_object_operand(visitor, target)?;
+            }
+        }
+    }
+    ControlFlow::Continue(())
+}
+
+fn visit_object_operand<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    operand: &CompilerObjectOperandAst,
+) -> ControlFlow<V::Break> {
+    match operand {
+        CompilerObjectOperandAst::Source => ControlFlow::Continue(()),
+        CompilerObjectOperandAst::Selection(selection) => {
+            visit_compiler_selection(visitor, selection)
+        }
+        CompilerObjectOperandAst::Reference(reference) => visitor.visit_reference(reference),
+        CompilerObjectOperandAst::Filter(filter) => visit_compiler_filter(visitor, filter),
+    }
+}
+
+fn visit_entry_state<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    state: &CompilerEntryStateAst,
+) -> ControlFlow<V::Break> {
+    if let Some(actor) = &state.attack_target {
+        visit_clause_actor(visitor, actor)?;
+    }
+    if let Some(attachment) = &state.attached_to {
+        visit_object_operand(visitor, attachment)?;
+    }
     ControlFlow::Continue(())
 }
 
@@ -859,7 +948,8 @@ fn visit_compiler_selection<V: SemanticVisitor + ?Sized>(
         SelectionDomainAst::Source
         | SelectionDomainAst::AnyTarget
         | SelectionDomainAst::AnyOtherTarget
-        | SelectionDomainAst::PlayerOrPlaneswalker(_) => {}
+        | SelectionDomainAst::PlayerOrPlaneswalker(_)
+        | SelectionDomainAst::AttackedPlayerOrPlaneswalker => {}
     }
     visit_compiler_value_tree(visitor, &selection.cardinality.min)?;
     if let Some(max) = &selection.cardinality.max {
@@ -1184,7 +1274,119 @@ pub(crate) fn fold_clause_tree<F: SemanticFolder + ?Sized>(
     clause.library = clause
         .library
         .map(|library| fold_library_clause(folder, library));
+    clause.object_action = clause
+        .object_action
+        .map(|action| fold_object_action_clause(folder, action));
     folder.fold_clause(clause)
+}
+
+fn fold_object_action_clause<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    action: CompilerObjectActionClauseAst,
+) -> CompilerObjectActionClauseAst {
+    match action {
+        CompilerObjectActionClauseAst::Movement(mut movement) => {
+            movement.object = fold_object_operand(folder, movement.object);
+            movement.destination = fold_clause_destination(folder, movement.destination);
+            movement.state = fold_entry_state(folder, movement.state);
+            CompilerObjectActionClauseAst::Movement(movement)
+        }
+        CompilerObjectActionClauseAst::Creation(mut creation) => {
+            creation.kind = match creation.kind {
+                CompilerCreationKindAst::Token {
+                    name,
+                    definition,
+                    dynamic_power_toughness,
+                    granted_abilities,
+                } => CompilerCreationKindAst::Token {
+                    name,
+                    definition,
+                    dynamic_power_toughness: dynamic_power_toughness.map(|(power, toughness)| {
+                        (
+                            fold_compiler_value_tree(folder, power),
+                            fold_compiler_value_tree(folder, toughness),
+                        )
+                    }),
+                    granted_abilities,
+                },
+                CompilerCreationKindAst::TokenCopy { source } => {
+                    CompilerCreationKindAst::TokenCopy {
+                        source: fold_object_operand(folder, source),
+                    }
+                }
+                CompilerCreationKindAst::SpellCopy {
+                    source,
+                    may_choose_new_targets,
+                } => CompilerCreationKindAst::SpellCopy {
+                    source: fold_object_operand(folder, source),
+                    may_choose_new_targets,
+                },
+            };
+            creation.count = fold_compiler_value_tree(folder, creation.count);
+            creation.controller = fold_clause_actor(folder, creation.controller);
+            creation.state = fold_entry_state(folder, creation.state);
+            creation.modifications.set_base_power_toughness = creation
+                .modifications
+                .set_base_power_toughness
+                .map(|(power, toughness)| {
+                    (
+                        fold_compiler_value_tree(folder, power),
+                        fold_compiler_value_tree(folder, toughness),
+                    )
+                });
+            creation.result = folder.fold_reference(creation.result);
+            CompilerObjectActionClauseAst::Creation(creation)
+        }
+        CompilerObjectActionClauseAst::Control(mut control) => {
+            control.object = fold_object_operand(folder, control.object);
+            control.controller = fold_clause_actor(folder, control.controller);
+            control.duration = control
+                .duration
+                .map(|duration| fold_clause_duration(folder, duration));
+            control.exchange_with = control
+                .exchange_with
+                .map(|operand| fold_object_operand(folder, operand));
+            CompilerObjectActionClauseAst::Control(control)
+        }
+        CompilerObjectActionClauseAst::Attachment(mut attachment) => {
+            attachment.attachment = fold_object_operand(folder, attachment.attachment);
+            attachment.target = attachment
+                .target
+                .map(|target| fold_object_operand(folder, target));
+            CompilerObjectActionClauseAst::Attachment(attachment)
+        }
+    }
+}
+
+fn fold_object_operand<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    operand: CompilerObjectOperandAst,
+) -> CompilerObjectOperandAst {
+    match operand {
+        CompilerObjectOperandAst::Source => CompilerObjectOperandAst::Source,
+        CompilerObjectOperandAst::Selection(selection) => {
+            CompilerObjectOperandAst::Selection(fold_compiler_selection(folder, selection))
+        }
+        CompilerObjectOperandAst::Reference(reference) => {
+            CompilerObjectOperandAst::Reference(folder.fold_reference(reference))
+        }
+        CompilerObjectOperandAst::Filter(filter) => {
+            CompilerObjectOperandAst::Filter(fold_compiler_filter(folder, filter))
+        }
+    }
+}
+
+fn fold_entry_state<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    mut state: CompilerEntryStateAst,
+) -> CompilerEntryStateAst {
+    state.attack_target = state
+        .attack_target
+        .map(|actor| fold_clause_actor(folder, actor));
+    state.attached_to = state
+        .attached_to
+        .map(|operand| fold_object_operand(folder, operand));
+    state
 }
 
 fn fold_library_clause<F: SemanticFolder + ?Sized>(
@@ -1393,6 +1595,9 @@ fn fold_compiler_selection<F: SemanticFolder + ?Sized>(
             }
         }
         SelectionDomainAst::Spell(filter) => SelectionDomainAst::Spell(folder.fold_filter(filter)),
+        SelectionDomainAst::AttackedPlayerOrPlaneswalker => {
+            SelectionDomainAst::AttackedPlayerOrPlaneswalker
+        }
         domain => domain,
     };
     selection.cardinality.min = fold_compiler_value_tree(folder, selection.cardinality.min);

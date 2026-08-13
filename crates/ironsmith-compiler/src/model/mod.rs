@@ -11,6 +11,7 @@ pub(crate) mod facts;
 pub mod ir;
 pub(crate) mod legality;
 pub(crate) mod library_clauses;
+pub(crate) mod object_action_clauses;
 pub mod parse_types;
 pub mod provenance;
 pub mod reference;
@@ -57,6 +58,12 @@ pub(crate) use library_clauses::{
     CompilerLibraryClauseAst, LibraryExposureAst, LibraryOrderAst, LibraryPositionAst,
     LibraryRemainderAst, LibraryResultBindingAst, LibraryResultKindAst, LibrarySelectionAst,
     LibrarySelectionModeAst,
+};
+pub(crate) use object_action_clauses::{
+    CompilerAttachmentClauseAst, CompilerControlClauseAst, CompilerControllerAst,
+    CompilerCopyModificationsAst, CompilerCreationClauseAst, CompilerCreationKindAst,
+    CompilerDelayedDispositionAst, CompilerEntryStateAst, CompilerMovementClauseAst,
+    CompilerObjectActionClauseAst, CompilerObjectOperandAst,
 };
 pub(crate) use selections::{
     ArithmeticOperatorAst, CompilerFilterAst, CompilerSelectionAst, CompilerValueAst,

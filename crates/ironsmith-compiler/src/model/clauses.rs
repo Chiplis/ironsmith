@@ -7,6 +7,10 @@
 use crate::effect::ValueComparisonOperator;
 use crate::model::costs::CompilerTotalCost;
 use crate::model::library_clauses::CompilerLibraryClauseAst;
+use crate::model::object_action_clauses::{
+    CompilerCreationKindAst, CompilerEntryStateAst, CompilerObjectActionClauseAst,
+    CompilerObjectOperandAst,
+};
 use crate::model::provenance::SemanticProvenance;
 use crate::model::selections::{CompilerFilterAst, CompilerSelectionAst, CompilerValueAst};
 use crate::model::symbols::SymbolReference;
@@ -249,6 +253,7 @@ pub(crate) struct CompilerClauseAst {
     pub bindings: Vec<ClauseReferenceBindingAst>,
     pub complements: Vec<ClauseComplementAst>,
     pub library: Option<CompilerLibraryClauseAst>,
+    pub object_action: Option<CompilerObjectActionClauseAst>,
     pub provenance: Option<SemanticProvenance>,
 }
 
@@ -304,6 +309,61 @@ impl CompilerClauseAst {
                 strip_destination_provenance(&mut remainder.destination);
             }
         }
+        if let Some(object_action) = &mut self.object_action {
+            strip_object_action_provenance(object_action);
+        }
+    }
+}
+
+fn strip_object_action_provenance(action: &mut CompilerObjectActionClauseAst) {
+    match action {
+        CompilerObjectActionClauseAst::Movement(movement) => {
+            strip_object_operand_provenance(&mut movement.object);
+            strip_destination_provenance(&mut movement.destination);
+            strip_entry_state_provenance(&mut movement.state);
+        }
+        CompilerObjectActionClauseAst::Creation(creation) => {
+            match &mut creation.kind {
+                CompilerCreationKindAst::TokenCopy { source }
+                | CompilerCreationKindAst::SpellCopy { source, .. } => {
+                    strip_object_operand_provenance(source)
+                }
+                CompilerCreationKindAst::Token { .. } => {}
+            }
+            strip_actor_provenance(&mut creation.controller);
+            strip_entry_state_provenance(&mut creation.state);
+        }
+        CompilerObjectActionClauseAst::Control(control) => {
+            strip_object_operand_provenance(&mut control.object);
+            strip_actor_provenance(&mut control.controller);
+            if let Some(duration) = &mut control.duration {
+                strip_duration_provenance(duration);
+            }
+            if let Some(exchange) = &mut control.exchange_with {
+                strip_object_operand_provenance(exchange);
+            }
+        }
+        CompilerObjectActionClauseAst::Attachment(attachment) => {
+            strip_object_operand_provenance(&mut attachment.attachment);
+            if let Some(target) = &mut attachment.target {
+                strip_object_operand_provenance(target);
+            }
+        }
+    }
+}
+
+fn strip_entry_state_provenance(state: &mut CompilerEntryStateAst) {
+    if let Some(actor) = &mut state.attack_target {
+        strip_actor_provenance(actor);
+    }
+    if let Some(attachment) = &mut state.attached_to {
+        strip_object_operand_provenance(attachment);
+    }
+}
+
+fn strip_object_operand_provenance(operand: &mut CompilerObjectOperandAst) {
+    if let CompilerObjectOperandAst::Selection(selection) = operand {
+        strip_selection_provenance(selection);
     }
 }
 

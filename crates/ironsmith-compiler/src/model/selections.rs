@@ -69,6 +69,7 @@ pub(crate) enum SelectionDomainAst {
         player: PlayerFilter,
     },
     PlayerOrPlaneswalker(PlayerFilter),
+    AttackedPlayerOrPlaneswalker,
     Spell(ObjectFilter),
 }
 
@@ -79,7 +80,9 @@ impl SelectionDomainAst {
                 ObjectDomain::Object
             }
             Self::Filter(filter) => filter.domain(),
-            Self::PlayerOrPlaneswalker(_) => ObjectDomain::Player,
+            Self::PlayerOrPlaneswalker(_) | Self::AttackedPlayerOrPlaneswalker => {
+                ObjectDomain::Player
+            }
             Self::Spell(_) => ObjectDomain::Spell,
         }
     }

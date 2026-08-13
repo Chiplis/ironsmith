@@ -99,26 +99,36 @@ pub(crate) fn parse_semantic_document(
     let mut items = parse_rewrite_items(items)?;
     let mut overload_branch = overload_branch;
     let mut cleave_branch = cleave_branch;
-    super::front_end::library_clause_migration::migrate_library_clauses(&mut items, &mut symbols)
+    let mut migration =
+        super::front_end::semantic_migration_context::SemanticMigrationContext::new(&mut symbols);
+    super::front_end::library_clause_migration::migrate_library_clauses(&mut items, &mut migration)
         .map_err(|error| {
-        CardTextError::ParseError(format!("library clause binding failed: {error:?}"))
-    })?;
+            CardTextError::ParseError(format!("library clause binding failed: {error:?}"))
+        })?;
     if let Some(branch) = &mut overload_branch {
+        let mut migration =
+            super::front_end::semantic_migration_context::SemanticMigrationContext::new(
+                &mut symbols,
+            );
         super::front_end::library_clause_migration::migrate_library_clauses(
             &mut branch.items,
-            &mut symbols,
+            &mut migration,
         )
         .map_err(|error| {
-            CardTextError::ParseError(format!("overload library clause binding failed: {error:?}"))
+            CardTextError::ParseError(format!("overload library binding failed: {error:?}"))
         })?;
     }
     if let Some(branch) = &mut cleave_branch {
+        let mut migration =
+            super::front_end::semantic_migration_context::SemanticMigrationContext::new(
+                &mut symbols,
+            );
         super::front_end::library_clause_migration::migrate_library_clauses(
             &mut branch.items,
-            &mut symbols,
+            &mut migration,
         )
         .map_err(|error| {
-            CardTextError::ParseError(format!("cleave library clause binding failed: {error:?}"))
+            CardTextError::ParseError(format!("cleave library binding failed: {error:?}"))
         })?;
     }
     let mut reference_resolution =

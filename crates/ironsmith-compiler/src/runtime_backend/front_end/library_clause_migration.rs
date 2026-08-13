@@ -5,8 +5,6 @@
 //! no such shape leaves the front end. PR-31 removes the now-dead recipe AST
 //! variants after lowering consumes these clauses directly.
 
-use std::collections::HashMap;
-
 use crate::model::ast::{EffectAst, SubjectVerbActionAst};
 use crate::model::clauses::{
     ClauseActionAst, ClauseActorAst, ClauseDestinationAst, ClauseDestinationRelationAst,
@@ -28,24 +26,19 @@ use crate::model::library_clauses::{
 };
 use crate::model::parse_types::{LibraryBottomOrderAst, LibraryConsultModeAst, PlayerAst};
 use crate::model::selections::{CompilerFilterAst, CompilerValueAst};
-use crate::model::symbols::{
-    Cardinality, ObjectDomain, ReferenceRole, SymbolReference, SymbolResolutionError, SymbolTable,
-};
+use crate::model::symbols::{Cardinality, ReferenceRole, SymbolReference, SymbolResolutionError};
 use crate::model::visit::for_each_nested_effect_vec_mut;
+use crate::runtime_backend::front_end::semantic_migration_context::SemanticMigrationContext;
 use crate::tag::TagKey;
 use crate::zone::Zone;
 
-struct LibraryMigration<'a> {
-    symbols: &'a mut SymbolTable,
-    tagged_results: HashMap<TagKey, SymbolReference>,
+struct LibraryMigration<'migration, 'symbols> {
+    context: &'migration mut SemanticMigrationContext<'symbols>,
 }
 
-impl<'a> LibraryMigration<'a> {
-    fn new(symbols: &'a mut SymbolTable) -> Self {
-        Self {
-            symbols,
-            tagged_results: HashMap::new(),
-        }
+impl<'migration, 'symbols> LibraryMigration<'migration, 'symbols> {
+    fn new(context: &'migration mut SemanticMigrationContext<'symbols>) -> Self {
+        Self { context }
     }
 
     fn migrate_effects(
@@ -309,7 +302,7 @@ impl<'a> LibraryMigration<'a> {
                 },
             ),
             SubjectVerbActionAst::RevealTagged { tag } => {
-                let Some(reference) = self.tagged_results.get(tag).copied() else {
+                let Some(reference) = self.context.object_reference(tag) else {
                     return Ok(None);
                 };
                 (
@@ -333,7 +326,7 @@ impl<'a> LibraryMigration<'a> {
                 )
             }
             SubjectVerbActionAst::ReorderTopOfLibrary { tag } => {
-                let Some(reference) = self.tagged_results.get(tag).copied() else {
+                let Some(reference) = self.context.object_reference(tag) else {
                     return Ok(None);
                 };
                 (
@@ -571,12 +564,12 @@ impl<'a> LibraryMigration<'a> {
                 player,
                 ..
             } => {
-                let Some(collection) = self.tagged_results.get(tag).copied() else {
+                let Some(collection) = self.context.object_reference(tag) else {
                     return Ok(None);
                 };
                 let excluding = keep_tagged
                     .as_ref()
-                    .and_then(|tag| self.tagged_results.get(tag).copied())
+                    .and_then(|tag| self.context.object_reference(tag))
                     .into_iter()
                     .collect();
                 (
@@ -616,10 +609,10 @@ impl<'a> LibraryMigration<'a> {
                 zone,
                 ..
             } => {
-                let Some(collection) = self.tagged_results.get(tag).copied() else {
+                let Some(collection) = self.context.object_reference(tag) else {
                     return Ok(None);
                 };
-                let Some(excluding) = self.tagged_results.get(keep_tagged).copied() else {
+                let Some(excluding) = self.context.object_reference(keep_tagged) else {
                     return Ok(None);
                 };
                 (
@@ -670,6 +663,7 @@ impl<'a> LibraryMigration<'a> {
             bindings: Vec::new(),
             complements: Vec::new(),
             library: Some(library),
+            object_action: None,
             provenance: None,
         }))
     }
@@ -681,27 +675,7 @@ impl<'a> LibraryMigration<'a> {
         cardinality: Cardinality,
         kind: LibraryResultKindAst,
     ) -> Result<LibraryResultBindingAst, SymbolResolutionError> {
-        let reference =
-            if let Some(reference) = tag.as_ref().and_then(|tag| self.tagged_results.get(tag)) {
-                *reference
-            } else {
-                let reference = SymbolReference {
-                    symbol: self.symbols.bind(
-                        self.symbols.root_scope(),
-                        role,
-                        cardinality,
-                        ObjectDomain::Card,
-                        None,
-                    )?,
-                    role,
-                    domain: ObjectDomain::Card,
-                    cardinality,
-                };
-                if let Some(tag) = tag {
-                    self.tagged_results.insert(tag, reference);
-                }
-                reference
-            };
+        let reference = self.context.bind_object(tag, role, cardinality)?;
         Ok(LibraryResultBindingAst { kind, reference })
     }
 }
@@ -743,9 +717,9 @@ fn push_unique_reference(references: &mut Vec<SymbolReference>, reference: Symbo
 
 pub(crate) fn migrate_library_clauses(
     items: &mut [ParsedCardItem],
-    symbols: &mut SymbolTable,
+    context: &mut SemanticMigrationContext<'_>,
 ) -> Result<(), SymbolResolutionError> {
-    let mut migration = LibraryMigration::new(symbols);
+    let mut migration = LibraryMigration::new(context);
     for item in items {
         migrate_item(item, &mut migration)?;
     }
@@ -754,7 +728,7 @@ pub(crate) fn migrate_library_clauses(
 
 fn migrate_item(
     item: &mut ParsedCardItem,
-    migration: &mut LibraryMigration<'_>,
+    migration: &mut LibraryMigration<'_, '_>,
 ) -> Result<(), SymbolResolutionError> {
     match item {
         ParsedCardItem::Line(line) => {
@@ -782,7 +756,7 @@ fn migrate_item(
 
 fn migrate_line_chunk(
     chunk: &mut LineAst,
-    migration: &mut LibraryMigration<'_>,
+    migration: &mut LibraryMigration<'_, '_>,
 ) -> Result<(), SymbolResolutionError> {
     match chunk {
         LineAst::Multiple(chunks) => {
@@ -818,7 +792,7 @@ fn migrate_line_chunk(
 
 fn migrate_modal(
     modal: &mut ParsedModalAst,
-    migration: &mut LibraryMigration<'_>,
+    migration: &mut LibraryMigration<'_, '_>,
 ) -> Result<(), SymbolResolutionError> {
     migration.migrate_effects(&mut modal.header.prefix_effects_ast)?;
     migration.migrate_effects(&mut modal.header.common_prefix_effects_ast)?;
@@ -829,7 +803,7 @@ fn migrate_modal(
     Ok(())
 }
 
-fn compiler_actor(player: PlayerAst) -> ClauseActorAst {
+pub(super) fn compiler_actor(player: PlayerAst) -> ClauseActorAst {
     match player {
         PlayerAst::You | PlayerAst::Implicit => ClauseActorAst::SourceController,
         PlayerAst::Active => ClauseActorAst::ActivePlayer,

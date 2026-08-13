@@ -14,6 +14,8 @@ pub(crate) use super::preprocess;
 pub(crate) use super::rule_engine;
 pub(crate) use super::semantic_document;
 pub(crate) mod library_clause_migration;
+pub(crate) mod object_action_clause_migration;
+pub(crate) mod semantic_migration_context;
 pub(crate) mod shared {
     pub(crate) use super::super::util;
 }
