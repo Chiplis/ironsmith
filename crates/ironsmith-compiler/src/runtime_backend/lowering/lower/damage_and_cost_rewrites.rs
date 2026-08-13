@@ -318,14 +318,17 @@ pub(crate) fn lower_normalized_card_ast_with_facts(
     let NormalizedCardAst {
         mut builder,
         mut annotations,
+        provenance,
         items,
         overload_branch,
         cleave_branch,
         allow_unsupported,
     } = ast;
+    let _provenance = provenance.view();
     let overload_ast = overload_branch.map(|branch| NormalizedCardAst {
         builder: builder.clone(),
         annotations: ParseAnnotations::default(),
+        provenance: provenance.clone(),
         items: branch.items,
         overload_branch: None,
         cleave_branch: None,
@@ -334,6 +337,7 @@ pub(crate) fn lower_normalized_card_ast_with_facts(
     let cleave_ast = cleave_branch.map(|branch| NormalizedCardAst {
         builder: builder.clone(),
         annotations: ParseAnnotations::default(),
+        provenance: provenance.clone(),
         items: branch.items,
         overload_branch: None,
         cleave_branch: None,

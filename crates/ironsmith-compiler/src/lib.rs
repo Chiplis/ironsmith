@@ -121,6 +121,11 @@ pub use model::{
     RewriteTriggeredLine, RewriteUnsupportedLine, SearchLibrarySlotAst, SharedTypeConstraintAst,
     TargetAst, ZoneReplacementDurationAst,
 };
+pub use model::provenance::{
+    DashStyle, ProvenanceId, ProvenanceRecord, ProvenanceStore, ProvenanceView, Provenanced,
+    PunctuationKind, QuoteStyle, ReminderTextDecision, RenderingHint, SemanticProvenance,
+    SourcePosition, SourceSliceKind, SourceSpan, SourceUnit,
+};
 pub use object::{AuraAttachmentFilter, CounterType};
 pub use oracle_grammar::{
     OracleGrammarDocument, OracleGrammarLevelItem, OracleGrammarLine, OracleGrammarLineInfo,

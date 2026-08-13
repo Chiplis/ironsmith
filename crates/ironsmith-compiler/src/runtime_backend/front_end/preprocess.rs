@@ -9,12 +9,14 @@ use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
     ParseAnnotations,
 };
+use crate::model::provenance::{ProvenanceStore, SourceUnitId};
 use crate::types::CardType;
 
 #[derive(Debug, Clone)]
 pub(crate) struct PreprocessedDocument {
     pub(crate) builder: CardDefinitionBuilder,
     pub(crate) annotations: ParseAnnotations,
+    pub(crate) provenance: ProvenanceStore,
     pub(crate) items: Vec<PreprocessedItem>,
 }
 
@@ -878,8 +880,21 @@ fn is_ignorable_unparsed_line(line: &str) -> bool {
 }
 
 pub(crate) fn preprocess_document(
+    builder: CardDefinitionBuilder,
+    text: &str,
+) -> Result<PreprocessedDocument, CardTextError> {
+    let provenance = ProvenanceStore::capture(
+        SourceUnitId(0),
+        text,
+        builder.card_builder.name_ref().trim(),
+    );
+    preprocess_document_with_provenance(builder, text, provenance)
+}
+
+pub(crate) fn preprocess_document_with_provenance(
     mut builder: CardDefinitionBuilder,
     text: &str,
+    mut provenance: ProvenanceStore,
 ) -> Result<PreprocessedDocument, CardTextError> {
     fn normalize_card_name_for_self_reference(name: &str) -> String {
         let lower = name.to_ascii_lowercase();
@@ -903,6 +918,7 @@ pub(crate) fn preprocess_document(
         short_name: &str,
         preserve_source_surfaces: bool,
         annotations: &mut ParseAnnotations,
+        provenance: &mut ProvenanceStore,
     ) -> Result<Option<PreprocessedLine>, CardTextError> {
         let stripped = strip_parenthetical_segments(raw_line);
         if stripped.trim().is_empty() {
@@ -943,6 +959,12 @@ pub(crate) fn preprocess_document(
         annotations.record_original_line(line_index, &normalized.original);
         annotations.record_normalized_line(line_index, &normalized.normalized);
         annotations.record_char_map(line_index, normalized.char_map.clone());
+        provenance.record_normalized_line(
+            display_line_index,
+            &normalized.original,
+            &normalized.normalized,
+            &normalized.char_map,
+        );
 
         let tokens = lex_line(normalized.normalized.as_str(), line_index)?;
         let source_tokens =
@@ -992,6 +1014,12 @@ pub(crate) fn preprocess_document(
             annotations.record_original_line(line_index, &normalized.original);
             annotations.record_normalized_line(line_index, &normalized.normalized);
             annotations.record_char_map(line_index, normalized.char_map.clone());
+            provenance.record_normalized_line(
+                line_index,
+                &normalized.original,
+                &normalized.normalized,
+                &normalized.char_map,
+            );
             items.push(PreprocessedItem::Metadata(PreprocessedMetadataLine {
                 info: make_line_info(line_index, line, normalized),
                 value: meta,
@@ -1057,6 +1085,12 @@ pub(crate) fn preprocess_document(
                 annotations
                     .record_normalized_line(previous.info.line_index, &normalized.normalized);
                 annotations.record_char_map(previous.info.line_index, normalized.char_map.clone());
+                provenance.record_normalized_line(
+                    previous.info.display_line_index,
+                    &normalized.original,
+                    &normalized.normalized,
+                    &normalized.char_map,
+                );
                 previous.info.raw_line = combined_raw_line;
                 previous.info.normalized = normalized.clone();
                 previous.tokens =
@@ -1071,6 +1105,7 @@ pub(crate) fn preprocess_document(
                 short_lower.as_str(),
                 preserve_source_surfaces,
                 &mut annotations,
+                &mut provenance,
             )? {
                 items.push(PreprocessedItem::Line(parsed_line));
             }
@@ -1093,6 +1128,7 @@ pub(crate) fn preprocess_document(
         return Ok(PreprocessedDocument {
             builder,
             annotations,
+            provenance,
             items,
         });
     }
@@ -1100,6 +1136,7 @@ pub(crate) fn preprocess_document(
     Ok(PreprocessedDocument {
         builder,
         annotations,
+        provenance,
         items,
     })
 }

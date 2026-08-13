@@ -2,10 +2,10 @@ use std::cell::{Cell, RefCell};
 
 use crate::cards::builders::CardDefinitionBuilder;
 use crate::diagnostics::TextSpan;
+use crate::model::provenance::{ProvenanceId, ProvenanceStore};
 use crate::types::{CardType, Subtype, Supertype};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SourceUnitId(pub u32);
+pub use crate::model::provenance::SourceUnitId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ParseScopeId(pub u32);
@@ -103,8 +103,9 @@ impl ParseArenas {
         ParseScopeId(id)
     }
 
-    pub fn allocate_provenance(&self) -> ParseArenaId {
-        Self::allocate(&self.next_provenance)
+    pub fn allocate_provenance(&self) -> ProvenanceId {
+        let ParseArenaId(id) = Self::allocate(&self.next_provenance);
+        ProvenanceId(id)
     }
 
     pub fn allocate_symbol(&self) -> ParseArenaId {
@@ -119,16 +120,19 @@ pub struct ParseContext {
     features: ParseFeatures,
     diagnostics: ParseDiagnosticSink,
     arenas: ParseArenas,
+    provenance: ProvenanceStore,
 }
 
 impl ParseContext {
     pub fn new(source: SourceIdentity, card: CardFaceMetadata, features: ParseFeatures) -> Self {
+        let provenance = ProvenanceStore::capture(source.unit, "", &source.card_name);
         Self {
             source,
             card,
             features,
             diagnostics: ParseDiagnosticSink::default(),
             arenas: ParseArenas::default(),
+            provenance,
         }
     }
 
@@ -137,7 +141,7 @@ impl ParseContext {
         text: &str,
         allow_unsupported: bool,
     ) -> Self {
-        Self::new(
+        let mut context = Self::new(
             SourceIdentity {
                 unit: SourceUnitId(0),
                 card_name: builder.card_builder.name_ref().trim().to_string(),
@@ -156,7 +160,10 @@ impl ParseContext {
                 preserve_reminder_text: false,
                 capture_trace: crate::parse_trace::is_enabled(),
             },
-        )
+        );
+        context.provenance =
+            ProvenanceStore::capture(context.source.unit, text, &context.source.card_name);
+        context
     }
 
     pub fn source(&self) -> &SourceIdentity {
@@ -179,6 +186,14 @@ impl ParseContext {
         &self.arenas
     }
 
+    pub fn provenance(&self) -> &ProvenanceStore {
+        &self.provenance
+    }
+
+    pub(crate) fn replace_provenance(&mut self, provenance: ProvenanceStore) {
+        self.provenance = provenance;
+    }
+
     pub fn view(&self) -> ParseContextView<'_> {
         ParseContextView {
             source: &self.source,
@@ -186,6 +201,7 @@ impl ParseContext {
             features: self.features,
             diagnostics: &self.diagnostics,
             arenas: &self.arenas,
+            provenance: &self.provenance,
             scope: ParseScopeId(0),
             scope_kind: ParseScopeKind::Root,
         }
@@ -199,6 +215,7 @@ pub struct ParseContextView<'a> {
     features: ParseFeatures,
     diagnostics: &'a ParseDiagnosticSink,
     arenas: &'a ParseArenas,
+    provenance: &'a ProvenanceStore,
     scope: ParseScopeId,
     scope_kind: ParseScopeKind,
 }
@@ -222,6 +239,10 @@ impl<'a> ParseContextView<'a> {
 
     pub fn arenas(self) -> &'a ParseArenas {
         self.arenas
+    }
+
+    pub fn provenance(self) -> &'a ProvenanceStore {
+        self.provenance
     }
 
     pub fn scope(self) -> ParseScopeId {

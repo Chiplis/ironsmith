@@ -56,6 +56,7 @@ use super::lexer::{
 };
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
+    preprocess_document_with_provenance,
     strip_parenthetical_segments,
 };
 use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
@@ -5494,7 +5495,12 @@ pub(crate) fn parse_text_to_semantic_document_with_context(
     if !allow_unsupported && let Some(err) = preflight_known_strict_unsupported(text.as_str()) {
         return Err(err);
     }
-    let mut preprocessed = preprocess_document(builder, text.as_str())?;
+    let mut preprocessed = preprocess_document_with_provenance(
+        builder,
+        text.as_str(),
+        context.provenance().clone(),
+    )?;
+    context.replace_provenance(preprocessed.provenance.clone());
     let semantic_facts = document_fact_grammar::parse_document_semantic_facts(
         preprocessed.items.iter().filter_map(|item| match item {
             PreprocessedItem::Metadata(_) => None,
@@ -5979,6 +5985,7 @@ fn lower_document_cst(
     Ok(RewriteSemanticDocument {
         builder,
         annotations: preprocessed.annotations,
+        provenance: preprocessed.provenance,
         items,
         overload_items,
         cleave_items,

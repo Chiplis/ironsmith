@@ -370,6 +370,7 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
     let ParsedCardAst {
         builder,
         annotations,
+        provenance,
         items,
         overload_branch,
         cleave_branch,
@@ -404,6 +405,7 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
     Ok(NormalizedCardAst {
         builder,
         annotations,
+        provenance,
         items: normalized_items,
         overload_branch,
         cleave_branch,

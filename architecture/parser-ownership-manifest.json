@@ -22,7 +22,8 @@
     {
       "id": "semantic_facts",
       "roots": [
-        "crates/ironsmith-compiler/src/model/facts"
+        "crates/ironsmith-compiler/src/model/facts",
+        "crates/ironsmith-compiler/src/model/provenance.rs"
       ]
     },
     {

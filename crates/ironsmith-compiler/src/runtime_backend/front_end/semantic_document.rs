@@ -80,6 +80,7 @@ pub(crate) fn parse_semantic_document(
     let RewriteSemanticDocument {
         builder,
         annotations,
+        provenance,
         items,
         overload_items,
         cleave_items,
@@ -97,6 +98,7 @@ pub(crate) fn parse_semantic_document(
     Ok(ParsedCardAst {
         builder,
         annotations,
+        provenance,
         items: parse_rewrite_items(items)?,
         overload_branch,
         cleave_branch,

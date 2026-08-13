@@ -1,5 +1,6 @@
 pub mod ir;
 pub mod parse_types;
+pub mod provenance;
 pub mod reference;
 pub mod restrictions;
 pub mod semantic;
@@ -17,6 +18,11 @@ pub use parse_types::{
     PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
     RedirectNextTimeDamageDestinationAst, RetargetModeAst, ReturnControllerAst,
     SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
+};
+pub use provenance::{
+    DashStyle, ProvenanceId, ProvenanceRecord, ProvenanceStore, ProvenanceView, Provenanced,
+    PunctuationKind, QuoteStyle, ReminderTextDecision, RenderingHint, SemanticProvenance,
+    SourcePosition, SourceSliceKind, SourceSpan, SourceUnit, SourceUnitId,
 };
 pub use reference::{
     AnnotatedEffect, AnnotatedEffectSequence, LoweredEffects, RefState, ReferenceEnv,

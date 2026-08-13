@@ -2,6 +2,7 @@ use crate::ability::{ActivationTiming, PresentationLabel};
 use crate::cards::builders::{CardDefinitionBuilder, EffectAst, ParseAnnotations, PredicateAst};
 use crate::color::Color;
 use crate::cost::TotalCost;
+use crate::model::provenance::ProvenanceStore;
 use crate::types::Subtype;
 
 use super::cst::{KeywordLineKindCst, KeywordLinePayloadCst};
@@ -13,6 +14,7 @@ use super::shared_types::LineInfo;
 pub(crate) struct RewriteSemanticDocument {
     pub(crate) builder: CardDefinitionBuilder,
     pub(crate) annotations: ParseAnnotations,
+    pub(crate) provenance: ProvenanceStore,
     pub(crate) items: Vec<RewriteSemanticItem>,
     pub(crate) overload_items: Option<Vec<RewriteSemanticItem>>,
     pub(crate) cleave_items: Option<Vec<RewriteSemanticItem>>,
