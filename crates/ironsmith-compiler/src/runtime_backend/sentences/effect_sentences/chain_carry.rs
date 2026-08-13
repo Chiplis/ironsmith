@@ -1875,94 +1875,92 @@ fn parse_effect_chain_inner_lexed_unstacked(
         Some(shape) => (shape.rest, Some(shape.duration.clone())),
         None => (tokens, None),
     };
+    let coordination_reference_facts =
+        super::super::grammar::effects::coordination::recognize_coordination_reference_facts(
+            effect_chain_tokens,
+        );
     let mut effects = Vec::new();
-    let raw_segments = split_effect_chain_on_and_lexed(effect_chain_tokens);
-    let mut lexed_segments = Vec::new();
-    for segment in raw_segments {
-        if segment.is_empty() {
-            continue;
-        }
-        lexed_segments.push(segment);
+    let mut coordination_plan =
+        match super::super::grammar::effects::coordination::recognize_coordination(
+            effect_chain_tokens,
+        ) {
+            crate::recognition::ParseOutcome::Match(matched) => Some(matched.value),
+            crate::recognition::ParseOutcome::NoMatch => None,
+            crate::recognition::ParseOutcome::Error(diagnostic) => {
+                return Err(diagnostic.into_legacy_error());
+            }
+        };
+    let planned_segments = coordination_plan
+        .as_ref()
+        .and_then(|plan| plan.materialized_segments());
+    if coordination_plan.is_some() && planned_segments.is_none() {
+        coordination_plan = None;
     }
+    let mut segments: Vec<Vec<OwnedLexToken>> = if let Some(planned_segments) = planned_segments {
+        planned_segments
+    } else {
+        let raw_segments = split_effect_chain_on_and_lexed(effect_chain_tokens);
+        let mut lexed_segments = Vec::new();
+        for segment in raw_segments {
+            if segment.is_empty() {
+                continue;
+            }
+            lexed_segments.push(segment);
+        }
 
-    let mut merged_lexed_segments: Vec<Vec<OwnedLexToken>> = Vec::new();
-    for lexed_segment in lexed_segments {
-        let segment = lexed_segment.to_vec();
-        if merged_lexed_segments.is_empty() {
-            merged_lexed_segments.push(segment);
-            continue;
-        }
-        // The generic conjunction splitter must isolate independent leading
-        // actions, but `objects get ... and gain/lose/have ...` is one
-        // shared-subject continuous-effect clause. Rejoin that exact typed
-        // grammar after a preceding action has already been separated so the
-        // ability arm keeps the original object filter instead of binding to
-        // the pump's generated result tag.
-        if let Some(previous) = merged_lexed_segments.last() {
-            let mut shared_subject_clause = previous.clone();
-            shared_subject_clause.push(synthetic_lexed_word("and"));
-            shared_subject_clause.extend(segment.iter().cloned());
-            if super::super::grammar::effects::gain_ability_shapes::parse_get_then_ability_shape(
-                &shared_subject_clause,
-            )
-            .is_some()
-            {
-                *merged_lexed_segments
+        let mut merged_lexed_segments: Vec<Vec<OwnedLexToken>> = Vec::new();
+        for lexed_segment in lexed_segments {
+            let segment = lexed_segment.to_vec();
+            if merged_lexed_segments.is_empty() {
+                merged_lexed_segments.push(segment);
+                continue;
+            }
+            if !super::lex_chain_helpers::segment_has_effect_head_lexed(&segment) {
+                if let Some(previous) = merged_lexed_segments.last()
+                    && let Some(previous_tail) =
+                        split_segments_on_comma_then_lexed(vec![previous.as_slice()]).last()
+                    && previous_tail.len() < previous.len()
+                    && let Some(expanded) =
+                        expand_missing_verb_segment_lexed(previous_tail, &segment)
+                {
+                    merged_lexed_segments.push(expanded);
+                    continue;
+                }
+                if let Some(previous) = merged_lexed_segments.last()
+                    && let Some(expanded) = expand_missing_verb_segment_lexed(previous, &segment)
+                {
+                    merged_lexed_segments.push(expanded);
+                    continue;
+                }
+                let last = merged_lexed_segments
                     .last_mut()
-                    .expect("checked the preceding segment above") = shared_subject_clause;
+                    .expect("non-empty segments");
+                last.push(synthetic_lexed_word("and"));
+                last.extend(segment);
                 continue;
             }
+            merged_lexed_segments.push(segment);
         }
-        if !super::lex_chain_helpers::segment_has_effect_head_lexed(&segment) {
-            // The conjunction splitter runs before comma-then segmentation.
-            // When the shared verb belongs to the final sequential arm, use
-            // that arm as the carry source rather than the earlier verb in
-            // the same raw segment. For example, in
-            // "deal damage, then exile this artifact and those cards", the
-            // orphaned second operand repeats `exile`, not `deal`.
-            if let Some(previous) = merged_lexed_segments.last()
-                && let Some(previous_tail) =
-                    split_segments_on_comma_then_lexed(vec![previous.as_slice()]).last()
-                && previous_tail.len() < previous.len()
-                && let Some(expanded) = expand_missing_verb_segment_lexed(previous_tail, &segment)
-            {
-                merged_lexed_segments.push(expanded);
-                continue;
-            }
-            if let Some(previous) = merged_lexed_segments.last()
-                && let Some(expanded) = expand_missing_verb_segment_lexed(previous, &segment)
-            {
-                merged_lexed_segments.push(expanded);
-                continue;
-            }
-            let last = merged_lexed_segments
-                .last_mut()
-                .expect("non-empty segments");
-            last.push(synthetic_lexed_word("and"));
-            last.extend(segment);
-            continue;
+        while merged_lexed_segments.len() > 1
+            && !super::lex_chain_helpers::segment_has_effect_head_lexed(&merged_lexed_segments[0])
+        {
+            let mut first = merged_lexed_segments.remove(0);
+            first.push(synthetic_lexed_word("and"));
+            let mut next = merged_lexed_segments.remove(0);
+            first.append(&mut next);
+            merged_lexed_segments.insert(0, first);
         }
-        merged_lexed_segments.push(segment);
-    }
-    while merged_lexed_segments.len() > 1
-        && !super::lex_chain_helpers::segment_has_effect_head_lexed(&merged_lexed_segments[0])
-    {
-        let mut first = merged_lexed_segments.remove(0);
-        first.push(synthetic_lexed_word("and"));
-        let mut next = merged_lexed_segments.remove(0);
-        first.append(&mut next);
-        merged_lexed_segments.insert(0, first);
-    }
-    let merged_segment_slices = merged_lexed_segments
-        .iter()
-        .map(Vec::as_slice)
-        .collect::<Vec<_>>();
-    let mut segments: Vec<Vec<OwnedLexToken>> = split_segments_on_comma_effect_head_lexed(
-        split_segments_on_comma_then_lexed(merged_segment_slices),
-    )
-    .into_iter()
-    .map(|segment| segment.to_vec())
-    .collect();
+        let merged_segment_slices = merged_lexed_segments
+            .iter()
+            .map(Vec::as_slice)
+            .collect::<Vec<_>>();
+        split_segments_on_comma_effect_head_lexed(split_segments_on_comma_then_lexed(
+            merged_segment_slices,
+        ))
+        .into_iter()
+        .map(|segment| segment.to_vec())
+        .collect()
+    };
     segments = expand_segments_with_comma_action_clauses_lexed(segments);
     segments = expand_segments_with_multi_create_clauses_lexed(segments);
     segments = merge_for_each_counter_group_segments_lexed(segments);
@@ -1972,14 +1970,22 @@ fn parse_effect_chain_inner_lexed_unstacked(
     let mut previous_segment: Option<Vec<OwnedLexToken>> = None;
     for segment in segments {
         let mut segment = segment;
+        let segment_carry_facts =
+            super::super::grammar::effects::coordination::recognize_coordination_clause_facts(
+                &segment,
+            );
         let bind_source_exiled =
             choose_then_exile_reference && parse_exile_reference_action_shape(&segment).is_some();
         if is_orphan_rounded_up_where_x_tail(&segment, previous_segment.as_deref(), effects.last())
         {
             continue;
         }
-        if let Some(previous) = &previous_segment
-            && let Some(expanded) = expand_shared_subject_followup_segment_lexed(previous, &segment)
+        if coordination_plan.is_none()
+            && let Some(previous) = &previous_segment
+            && let Some(expanded) =
+                super::super::grammar::effects::coordination::materialize_shared_subject_followup(
+                    previous, &segment,
+                )
         {
             segment = expanded;
         }
@@ -2034,7 +2040,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
         if let Some(segment_effects) = segment_effects {
             for mut effect in segment_effects {
                 if let Some(context) = carried_context {
-                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                    maybe_apply_carried_player_with_clause_facts(
+                        &mut effect,
+                        context,
+                        segment_carry_facts,
+                    );
                 }
                 if (carry_gain_duration || carry_leading_duration)
                     && let Some(duration) = &carried_duration
@@ -2054,7 +2064,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
         if let Some(segment_effects) = parse_search_library_sentence_lexed(&segment)? {
             for mut effect in segment_effects {
                 if let Some(context) = carried_context {
-                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                    maybe_apply_carried_player_with_clause_facts(
+                        &mut effect,
+                        context,
+                        segment_carry_facts,
+                    );
                 }
                 if (carry_gain_duration || carry_leading_duration)
                     && let Some(duration) = &carried_duration
@@ -2074,7 +2088,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
         if let Some(segment_effects) = parse_cant_effect_sentence_lexed(&segment)? {
             for mut effect in segment_effects {
                 if let Some(context) = carried_context {
-                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                    maybe_apply_carried_player_with_clause_facts(
+                        &mut effect,
+                        context,
+                        segment_carry_facts,
+                    );
                 }
                 if (carry_gain_duration || carry_leading_duration)
                     && let Some(duration) = &carried_duration
@@ -2125,7 +2143,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
         {
             for mut effect in segment_effects {
                 if let Some(context) = carried_context {
-                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                    maybe_apply_carried_player_with_clause_facts(
+                        &mut effect,
+                        context,
+                        segment_carry_facts,
+                    );
                 }
                 if (carry_gain_duration || carry_leading_duration)
                     && let Some(duration) = &carried_duration
@@ -2146,7 +2168,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
         if let Some(segment_effects) = parse_subject_verb_extension_sentence(&segment)? {
             for mut effect in segment_effects {
                 if let Some(context) = carried_context {
-                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                    maybe_apply_carried_player_with_clause_facts(
+                        &mut effect,
+                        context,
+                        segment_carry_facts,
+                    );
                 }
                 if (carry_gain_duration || carry_leading_duration)
                     && let Some(duration) = &carried_duration
@@ -2189,7 +2215,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
             let segment_effects = parse_effect_chain_lexed(&segment)?;
             for mut effect in segment_effects {
                 if let Some(context) = carried_context {
-                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                    maybe_apply_carried_player_with_clause_facts(
+                        &mut effect,
+                        context,
+                        segment_carry_facts,
+                    );
                 }
                 if (carry_gain_duration || carry_leading_duration)
                     && let Some(duration) = &carried_duration
@@ -2221,7 +2251,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
         if let Some(segment_effects) = primitive_segment_effects {
             for mut effect in segment_effects {
                 if let Some(context) = carried_context {
-                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                    maybe_apply_carried_player_with_clause_facts(
+                        &mut effect,
+                        context,
+                        segment_carry_facts,
+                    );
                 }
                 if (carry_gain_duration || carry_leading_duration)
                     && let Some(duration) = &carried_duration
@@ -2287,7 +2321,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
         }
         let mut effect = parse_effect_clause_with_trailing_if_lexed(&segment)?;
         if let Some(context) = carried_context {
-            maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+            maybe_apply_carried_player_with_clause_facts(&mut effect, context, segment_carry_facts);
         }
         if (carry_gain_duration || carry_leading_duration)
             && let Some(duration) = &carried_duration
@@ -2310,9 +2344,18 @@ fn parse_effect_chain_inner_lexed_unstacked(
     collapse_token_copy_end_of_combat_exile_followup_lexed(&mut effects, tokens);
     append_missing_coordinated_return_discard_tail(tokens, &mut effects)?;
     bind_adjacent_discard_count_draws(&mut effects);
-    bind_adjacent_implicit_draw_discard_subjects(&mut effects);
-    bind_adjacent_life_stat_pronouns(&mut effects, tokens);
-    bind_each_prior_affected_object_controller_life_gain(&mut effects, tokens);
+    bind_adjacent_implicit_draw_discard_subjects(
+        &mut effects,
+        coordination_reference_facts.implicit_draw_discard_actor,
+    );
+    bind_adjacent_life_stat_pronouns(
+        &mut effects,
+        coordination_reference_facts.life_stat_pronoun,
+    );
+    bind_each_prior_affected_object_controller_life_gain(
+        &mut effects,
+        coordination_reference_facts.affected_object_controller_reward,
+    );
     if let Some(kind) = chain_grammar::coordinated_target_action_kind(tokens) {
         wrap_leading_coordinated_target_actions(&mut effects, kind);
     }
@@ -2353,6 +2396,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
             result_conjunction: false,
         }]);
     }
+    if let Some(plan) = coordination_plan
+        && let Some(coordination) = plan.into_ast(effects.clone())
+    {
+        return Ok(vec![EffectAst::Coordination(coordination)]);
+    }
     Ok(effects)
 }
 
@@ -2362,26 +2410,9 @@ fn parse_effect_chain_inner_lexed_unstacked(
 /// set can have several different controllers.
 fn bind_each_prior_affected_object_controller_life_gain(
     effects: &mut Vec<EffectAst>,
-    tokens: &[OwnedLexToken],
+    recognized_reference: bool,
 ) {
-    let words = token_word_refs(tokens);
-    const TAIL: &[&str] = &[
-        "the",
-        "controller",
-        "of",
-        "each",
-        "of",
-        "those",
-        "artifacts",
-        "gains",
-        "life",
-        "equal",
-        "to",
-        "its",
-        "mana",
-        "value",
-    ];
-    if !words.ends_with(TAIL) || effects.len() < 2 {
+    if !recognized_reference || effects.len() < 2 {
         return;
     }
     let preceding_index = effects.len() - 2;
@@ -2590,7 +2621,13 @@ fn bind_adjacent_discard_count_draws(effects: &mut [EffectAst]) {
     }
 }
 
-fn bind_adjacent_implicit_draw_discard_subjects(effects: &mut [EffectAst]) {
+fn bind_adjacent_implicit_draw_discard_subjects(
+    effects: &mut [EffectAst],
+    recognized_shared_actor: bool,
+) {
+    if !recognized_shared_actor {
+        return;
+    }
     for index in 0..effects.len().saturating_sub(1) {
         let draw_is_implicit = matches!(
             &effects[index],
@@ -2613,12 +2650,11 @@ fn bind_adjacent_implicit_draw_discard_subjects(effects: &mut [EffectAst]) {
     }
 }
 
-fn bind_adjacent_life_stat_pronouns(effects: &mut [EffectAst], tokens: &[OwnedLexToken]) {
-    let words = token_word_refs(tokens);
-    if !words.windows(2).any(|pair| {
-        pair[0].eq_ignore_ascii_case("its")
-            && matches!(pair[1].to_ascii_lowercase().as_str(), "power" | "toughness")
-    }) {
+fn bind_adjacent_life_stat_pronouns(
+    effects: &mut [EffectAst],
+    recognized_reference: bool,
+) {
+    if !recognized_reference {
         return;
     }
 
@@ -4102,61 +4138,6 @@ pub(crate) fn expand_missing_verb_segment_lexed(
     }
 }
 
-fn strip_leading_gain_duration_prefix(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    chain_grammar::parse_carry_duration_prefix_tokens(tokens)
-        .map_or_else(|| trim_lexed_commas(tokens), |shape| shape.rest)
-}
-
-fn previous_segment_has_carryable_subject(previous: &[OwnedLexToken]) -> bool {
-    let Some((_, verb_idx)) = find_verb_lexed(previous) else {
-        return false;
-    };
-    if verb_idx == 0 {
-        return false;
-    }
-
-    let prefix = trim_lexed_commas(&previous[..verb_idx]);
-    let subject_tokens = strip_leading_gain_duration_prefix(prefix);
-    if subject_tokens.is_empty() {
-        return false;
-    }
-
-    chain_grammar::parse_carryable_subject_tokens(subject_tokens).is_some()
-}
-
-fn expand_shared_subject_followup_segment_lexed(
-    previous: &[OwnedLexToken],
-    segment: &[OwnedLexToken],
-) -> Option<Vec<OwnedLexToken>> {
-    let (verb, verb_idx) = find_verb_lexed(segment)?;
-    if verb_idx != 0 || !matches!(verb, Verb::Gain | Verb::Lose | Verb::Become) {
-        return None;
-    }
-    if !previous_segment_has_carryable_subject(previous) {
-        return None;
-    }
-
-    let previous_verb_idx = find_verb_lexed(previous)?.1;
-    let mut expanded = Vec::new();
-    let previous_subject =
-        strip_leading_gain_duration_prefix(trim_lexed_commas(&previous[..previous_verb_idx]));
-    let previous_subject_words = TokenWordView::new(previous_subject).word_refs();
-    if matches!(
-        previous_subject_words.as_slice(),
-        ["target", "player"] | ["target", "opponent"]
-    ) {
-        // The subject of a bare continuous-effect follow-up is the already
-        // chosen target, not a second target. Preserve that provenance
-        // explicitly while retaining the synthetic subject this early parser
-        // path needs.
-        expanded.push(synthetic_lexed_word("that"));
-        expanded.push(synthetic_lexed_word("player"));
-    } else {
-        expanded.extend(previous.iter().take(previous_verb_idx).cloned());
-    }
-    expanded.extend(segment.iter().cloned());
-    Some(expanded)
-}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CarryContext {
     Player(PlayerAst),
@@ -4603,14 +4584,18 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
     carried_context: CarryContext,
     clause_tokens: &[OwnedLexToken],
 ) {
-    let clause_head = chain_grammar::parse_carry_clause_head_tokens(clause_tokens);
-    let clause_words = TokenWordView::new(clause_tokens).word_refs();
-    let imperative_collection_move = clause_words
-        .iter()
-        .copied()
-        .skip_while(|word| matches!(*word, "then" | "and"))
-        .next()
-        == Some("put")
+    let facts = super::super::grammar::effects::coordination::recognize_coordination_clause_facts(
+        clause_tokens,
+    );
+    maybe_apply_carried_player_with_clause_facts(effect, carried_context, facts);
+}
+
+fn maybe_apply_carried_player_with_clause_facts(
+    effect: &mut EffectAst,
+    carried_context: CarryContext,
+    facts: super::super::grammar::effects::coordination::CoordinationClauseFacts,
+) {
+    let imperative_collection_move = facts.imperative_collection_move
         && matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -4618,12 +4603,7 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                 ..
             })
         );
-    let imperative_return = clause_words
-        .iter()
-        .copied()
-        .skip_while(|word| matches!(*word, "then" | "and"))
-        .next()
-        == Some("return")
+    let imperative_return = facts.imperative_return
         && matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -4637,22 +4617,12 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                     | SubjectVerbActionAst::ReturnAllToHand { .. },
             })
         );
-    let explicitly_conjugated_player_action = clause_tokens
-        .iter()
-        .filter(|token| !token.parser_word_pieces().is_empty())
-        .skip_while(|token| token.is_word("then") || token.is_word("and"))
-        .next()
-        .is_some_and(|token| {
-            token.slice.eq_ignore_ascii_case("draws")
-                || token.slice.eq_ignore_ascii_case("scries")
-                || token.slice.eq_ignore_ascii_case("surveils")
-        });
-    if clause_head == chain_grammar::CarryClauseHead::Choose
+    if facts.head == chain_grammar::CarryClauseHead::Choose
         && normalize_imperative_choose_player(effect)
     {
         return;
     }
-    if clause_head == chain_grammar::CarryClauseHead::Create
+    if facts.head == chain_grammar::CarryClauseHead::Create
         && normalize_imperative_create_player(effect)
     {
         return;
@@ -4669,8 +4639,8 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                         },
                         action: SubjectVerbActionAst::Draw { .. },
                     })
-                ) && clause_head == chain_grammar::CarryClauseHead::Draw)
-                    && !explicitly_conjugated_player_action
+                ) && facts.head == chain_grammar::CarryClauseHead::Draw)
+                    && !facts.explicitly_conjugated_player_action
                 || (matches!(
                     effect,
                     EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -4682,9 +4652,9 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                             | SubjectVerbActionAst::Surveil { .. },
                     })
                 ) && matches!(
-                    clause_head,
+                    facts.head,
                     chain_grammar::CarryClauseHead::Scry | chain_grammar::CarryClauseHead::Surveil
-                ) && !explicitly_conjugated_player_action)
+                ) && !facts.explicitly_conjugated_player_action)
         }
         CarryContext::ForEachPlayer
         | CarryContext::ForEachTargetPlayers(_)
@@ -4704,12 +4674,12 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
             imperative_collection_move
                 || (is_implicit_vision_effect
                     && matches!(
-                        clause_head,
+                        facts.head,
                         chain_grammar::CarryClauseHead::Draw
                             | chain_grammar::CarryClauseHead::Scry
                             | chain_grammar::CarryClauseHead::Surveil
                     )
-                    && !explicitly_conjugated_player_action)
+                    && !facts.explicitly_conjugated_player_action)
         }
     };
     if should_skip {

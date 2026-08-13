@@ -54,6 +54,8 @@ pub(crate) mod combat_damage_family_shapes;
 pub(crate) mod combat_shapes;
 #[path = "effects/control_copy_attach_shapes.rs"]
 pub(crate) mod control_copy_attach_shapes;
+#[path = "effects/coordination.rs"]
+pub(crate) mod coordination;
 #[path = "effects/damage.rs"]
 mod damage;
 pub(crate) use damage::*;

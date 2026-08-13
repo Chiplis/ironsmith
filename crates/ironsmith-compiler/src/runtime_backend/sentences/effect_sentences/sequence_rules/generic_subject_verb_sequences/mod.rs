@@ -1,12 +1,16 @@
 use super::SentenceInput;
 
+#[path = "quads.rs"]
+pub(crate) mod branching_selection_programs;
 pub(crate) mod exile_permission_followups;
 pub(crate) mod exiled_collections;
 pub(crate) mod graveyard_copy_cast;
 pub(crate) mod optional_sacrifice_discard;
-pub(crate) mod pairs;
-pub(crate) mod quads;
-pub(crate) mod triples;
+#[path = "triples.rs"]
+pub(crate) mod ordered_control_flow_programs;
+#[path = "pairs.rs"]
+pub(crate) mod reference_linked_programs;
+
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, ObjectFilter, PlayerAst, PredicateAst,
     ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey,
@@ -21,6 +25,12 @@ use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::util::helper_tag_for_tokens;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
+// The PR-29 recipe-table migration still names these implementations at many
+// call sites. Keep source-compatible aliases without retaining arity as the
+// module's semantic identity; PR-29 removes the aliases with the table.
+pub(crate) use branching_selection_programs as quads;
+pub(crate) use ordered_control_flow_programs as triples;
+pub(crate) use reference_linked_programs as pairs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GenericSequenceVerb {

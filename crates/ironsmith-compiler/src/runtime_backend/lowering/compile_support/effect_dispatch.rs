@@ -776,6 +776,37 @@ fn compile_effect_inner(
             choices,
         ));
     }
+    if let EffectAst::Coordination(coordination) = effect {
+        if coordination.kind == crate::model::CoordinationKindAst::Disjunction {
+            let mut lowered_modes = Vec::with_capacity(coordination.members.len());
+            let mut choices = Vec::new();
+            for member in &coordination.members {
+                let (effects, member_choices) = compile_effects(&member.effects, ctx)?;
+                choices.extend(member_choices);
+                lowered_modes.push(crate::effect::EffectMode {
+                    source_text: String::new(),
+                    effects,
+                });
+            }
+            let choose = crate::effects::ChooseModeEffect::choose_one(lowered_modes)
+                .with_chooser(crate::target::PlayerFilter::You);
+            return Ok((vec![Effect::new(choose)], choices));
+        }
+
+        let flattened = coordination.effects().cloned().collect::<Vec<_>>();
+        let (mut effects, choices) = compile_effects(&flattened, ctx)?;
+        preserve_nested_result_value_links(&mut effects);
+        if coordination.kind == crate::model::CoordinationKindAst::Sequence {
+            return Ok((effects, choices));
+        }
+        let (effects, choices) = preserve_independent_coordinated_targets(effects, choices);
+        return Ok((
+            vec![Effect::new(crate::effects::SequenceEffect::coordinated(
+                effects,
+            ))],
+            choices,
+        ));
+    }
     if let EffectAst::Sequence { effects } = effect {
         let (mut effects, choices) = compile_effects(effects, ctx)?;
         preserve_nested_result_value_links(&mut effects);

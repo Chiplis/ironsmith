@@ -281,7 +281,7 @@ pub(crate) fn has_extended_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool 
         || is_choose_target_prelude(tokens)
 }
 
-pub(super) fn preserve_and_reason(
+pub(crate) fn preserve_and_reason(
     current: &[OwnedLexToken],
     remaining: &[OwnedLexToken],
     extended: bool,

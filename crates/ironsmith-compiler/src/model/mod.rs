@@ -3,6 +3,7 @@ pub(crate) mod ast;
 pub(crate) mod card_document;
 pub(crate) mod clauses;
 pub(crate) mod compiler_semantic;
+pub(crate) mod coordination;
 pub mod costs;
 pub(crate) mod facts;
 pub mod ir;
@@ -33,6 +34,11 @@ pub(crate) use clauses::{
     ClauseDistributionAst, ClauseDurationAst, ClauseObjectAst, ClausePolarityAst,
     ClausePredicateAst, ClauseQuantityAst, ClauseQuantityUnitAst, ClauseReferenceBindingAst,
     ClauseSubjectAst, ClauseVerbAst, ClauseZonePlacementAst, CompilerClauseAst,
+};
+pub(crate) use coordination::{
+    CarriedFactAst, CoordinationAst, CoordinationBoundaryAst, CoordinationCarryAst,
+    CoordinationKindAst, CoordinationMemberAst, CoordinationOperatorAst, EffectDependencyAst,
+    EffectOrderingAst,
 };
 pub(crate) use legality::{
     CompilerActivationLegalityAst, CompilerCastingLegalityAst, CompilerPermissionAst,

@@ -629,6 +629,20 @@ fn advance_reference_frame_for_effect(
         EffectAst::PlaySubgame { nonwinner_effects } => {
             advance_effects_in_iterated_player_context(nonwinner_effects, id_gen, frame, None)?;
         }
+        EffectAst::Coordination(coordination) => {
+            if coordination.kind == crate::model::CoordinationKindAst::Disjunction {
+                let saved = frame.clone();
+                for member in &coordination.members {
+                    let mut member_frame = saved.clone();
+                    advance_reference_frames(&member.effects, id_gen, &mut member_frame)?;
+                }
+                *frame = saved;
+            } else {
+                for member in &coordination.members {
+                    advance_reference_frames(&member.effects, id_gen, frame)?;
+                }
+            }
+        }
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }

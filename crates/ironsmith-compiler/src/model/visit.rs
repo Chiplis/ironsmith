@@ -7,6 +7,7 @@ use crate::model::clauses::{
     ClauseActorAst, ClauseComplementAst, ClauseConditionAst, ClauseDestinationAst,
     ClauseDurationAst, ClauseObjectAst, ClausePredicateAst, ClauseSubjectAst, CompilerClauseAst,
 };
+use crate::model::coordination::CarriedFactAst;
 use crate::model::costs::CompilerTotalCost;
 use crate::model::selections::{
     CompilerFilterAst, CompilerSelectionAst, CompilerValueAst, SelectionDomainAst,
@@ -36,6 +37,11 @@ pub(crate) fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalRes
             }
             _ => None,
         },
+        EffectAst::Coordination(coordination) => coordination
+            .members
+            .last()
+            .and_then(|member| member.effects.last())
+            .and_then(terminal_result_producer),
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
@@ -222,6 +228,7 @@ macro_rules! nested_effects_variants {
 pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
     match effect {
         EffectAst::Clause(_) => {}
+        EffectAst::Coordination(_) => {}
         EffectAst::SubjectVerb(_) => {}
         EffectAst::SolveCase => {}
         EffectAst::RestartGame { .. } => {}
@@ -335,6 +342,11 @@ pub(crate) fn for_each_nested_effects(
         EffectAst::TagAffected { effect, .. } => {
             visit(std::slice::from_ref(effect.as_ref()));
         }
+        EffectAst::Coordination(coordination) => {
+            for member in &coordination.members {
+                visit(&member.effects);
+            }
+        }
         nested_effects_variants!(effects) => {
             visit(effects);
         }
@@ -385,6 +397,11 @@ pub(crate) fn for_each_nested_effects_mut(
         }
         EffectAst::TagAffected { effect, .. } => {
             visit(std::slice::from_mut(effect.as_mut()));
+        }
+        EffectAst::Coordination(coordination) => {
+            for member in &mut coordination.members {
+                visit(&mut member.effects);
+            }
         }
         nested_effects_variants!(effects) => {
             visit(effects);
@@ -448,6 +465,11 @@ pub(crate) fn for_each_nested_effect_vec_mut(
             EffectAst::TagAffected { effect, .. } => {
                 walk(effect.as_mut(), include_unless_action_alternative, visit);
             }
+            EffectAst::Coordination(coordination) => {
+                for member in &mut coordination.members {
+                    visit(&mut member.effects);
+                }
+            }
             nested_effects_variants!(effects) => {
                 visit(effects);
             }
@@ -501,6 +523,11 @@ pub(crate) fn try_for_each_nested_effects_mut<E>(
         }
         EffectAst::TagAffected { effect, .. } => {
             visit(std::slice::from_mut(effect.as_mut()))?;
+        }
+        EffectAst::Coordination(coordination) => {
+            for member in &mut coordination.members {
+                visit(&mut member.effects)?;
+            }
         }
         nested_effects_variants!(effects) => {
             visit(effects)?;
@@ -779,6 +806,32 @@ pub(crate) fn visit_effect_tree<V: SemanticVisitor + ?Sized>(
     }
     if let EffectAst::Clause(clause) = effect {
         visit_clause_tree(visitor, clause)?;
+    }
+    if let EffectAst::Coordination(coordination) = effect {
+        for member in &coordination.members {
+            for reference in member.imports.iter().chain(&member.exports) {
+                visitor.visit_reference(reference)?;
+            }
+        }
+        for carry in coordination
+            .boundaries
+            .iter()
+            .flat_map(|boundary| &boundary.carries)
+        {
+            match &carry.fact {
+                CarriedFactAst::Subject(Some(subject)) => visit_clause_subject(visitor, subject)?,
+                CarriedFactAst::Object(Some(object)) => visit_clause_object(visitor, object)?,
+                CarriedFactAst::Reference(Some(reference)) => {
+                    visitor.visit_reference(reference)?;
+                }
+                CarriedFactAst::Actor
+                | CarriedFactAst::Subject(None)
+                | CarriedFactAst::Action(_)
+                | CarriedFactAst::Object(None)
+                | CarriedFactAst::Duration
+                | CarriedFactAst::Reference(None) => {}
+            }
+        }
     }
     let mut flow = ControlFlow::Continue(());
     for_each_nested_effects(effect, true, |nested| {
@@ -1119,6 +1172,32 @@ pub(crate) fn fold_effect_tree<F: SemanticFolder + ?Sized>(
     });
     effect = match effect {
         EffectAst::Clause(clause) => EffectAst::Clause(fold_clause_tree(folder, clause)),
+        EffectAst::Coordination(mut coordination) => {
+            for member in &mut coordination.members {
+                for reference in member.imports.iter_mut().chain(&mut member.exports) {
+                    *reference = folder.fold_reference(*reference);
+                }
+            }
+            for carry in coordination
+                .boundaries
+                .iter_mut()
+                .flat_map(|boundary| &mut boundary.carries)
+            {
+                carry.fact = match std::mem::replace(&mut carry.fact, CarriedFactAst::Actor) {
+                    CarriedFactAst::Subject(Some(subject)) => {
+                        CarriedFactAst::Subject(Some(fold_clause_subject(folder, subject)))
+                    }
+                    CarriedFactAst::Object(Some(object)) => {
+                        CarriedFactAst::Object(Some(fold_clause_object(folder, object)))
+                    }
+                    CarriedFactAst::Reference(Some(reference)) => {
+                        CarriedFactAst::Reference(Some(folder.fold_reference(reference)))
+                    }
+                    fact => fact,
+                };
+            }
+            EffectAst::Coordination(coordination)
+        }
         effect => effect,
     };
     folder.fold_effect(effect)

@@ -13,6 +13,9 @@ pub(crate) enum EffectAst {
     /// A new-style effect assembled from the common semantic clause
     /// vocabulary. Lowering owns the only conversion into runtime actions.
     Clause(CompilerClauseAst),
+    /// A grammar-resolved effect program with explicit conjunction,
+    /// disjunction, ordering, dependency, and carry semantics.
+    Coordination(CoordinationAst),
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
     RestartGame {
