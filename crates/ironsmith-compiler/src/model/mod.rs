@@ -59,8 +59,8 @@ pub(crate) use structured_abilities::{
 };
 pub(crate) use triggered_abilities::{
     CompilerTriggerEventAst, CompilerTriggeredAbilityAst, LinkedTriggerEffectAst,
-    TriggerBindingsAst, TriggerFrequencyAst, TriggerKindAst, TriggerSubjectAst,
-    TriggerZoneTransitionAst,
+    TriggerBindingsAst, TriggerFrequencyAst, TriggerKindAst, TriggerReferenceAst,
+    TriggerReferenceSurfaceAst, TriggerSubjectAst, TriggerZoneTransitionAst,
 };
 
 pub use ir::{

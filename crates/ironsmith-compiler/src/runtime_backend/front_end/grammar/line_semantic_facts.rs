@@ -185,6 +185,7 @@ pub(crate) fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> Line
         },
         statement: parse_statement_semantic_facts(tokens),
         triggered_ability: TriggeredLineSemanticFacts {
+            compiler_ability: None,
             intro_surface: trigger_surface::parse_trigger_intro_surface_tokens(tokens),
             presentation_label: None,
             functional_zones: TriggerFunctionalZoneFacts {

@@ -257,6 +257,84 @@ fn dispatch_kind_summary(dispatch: &LineDispatchResult) -> String {
         .join(" + ")
 }
 
+fn triggered_program_from_line_ast(
+    line: LineAst,
+) -> Option<(
+    crate::model::ast::TriggerSpec,
+    Vec<crate::model::ast::EffectAst>,
+)> {
+    match line {
+        LineAst::Triggered {
+            trigger, effects, ..
+        } => Some((trigger, effects)),
+        LineAst::Multiple(lines) => lines
+            .into_iter()
+            .find_map(triggered_program_from_line_ast),
+        _ => None,
+    }
+}
+
+fn attach_compiler_trigger_facts(
+    context: ParseContextView<'_>,
+    dispatch: &mut LineDispatchResult,
+) -> Result<(), CardTextError> {
+    for line in &mut dispatch.lines {
+        let RewriteLineCst::Triggered(triggered) = line else {
+            continue;
+        };
+
+        let direct = if triggered.trigger_parse_tokens.is_empty()
+            || triggered.effect_parse_tokens.is_empty()
+        {
+            None
+        } else {
+            parse_trigger_clause_lexed(&triggered.trigger_parse_tokens)
+                .and_then(|trigger| {
+                    parse_effect_sentences_lexed(&triggered.effect_parse_tokens)
+                        .map(|effects| (trigger, effects))
+                })
+                .ok()
+        };
+        let (trigger, effects) = match direct {
+            Some(program) => program,
+            None => triggered_program_from_line_ast(parse_triggered_line_lexed(
+                &triggered.full_parse_tokens,
+            )?)
+            .ok_or_else(|| {
+                CardTextError::InvariantViolation(
+                    "trigger line produced no compiler trigger program".to_string(),
+                )
+            })?,
+        };
+        let functional_zones =
+            super::super::semantic_line_parsing::infer_triggered_ability_functional_zones_from_facts(
+                &trigger,
+                &triggered.info.semantic_facts.triggered_ability.functional_zones,
+            );
+        let compiler_ability =
+            super::super::grammar::trigger_event_facts::build_compiler_triggered_ability(
+                context,
+                &triggered.full_parse_tokens,
+                if triggered.effect_parse_tokens.is_empty() {
+                    &triggered.full_parse_tokens
+                } else {
+                    &triggered.effect_parse_tokens
+                },
+                trigger,
+                effects,
+                triggered.intervening_if.clone(),
+                triggered.max_triggers_per_turn,
+                functional_zones,
+            )?;
+        triggered
+            .info
+            .semantic_facts
+            .triggered_ability
+            .compiler_ability = Some(compiler_ability);
+    }
+    Ok(())
+}
+
 fn dispatch_line_family_registry(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
@@ -332,12 +410,20 @@ fn dispatch_line_family_registry(
     ) {
         ParseOutcome::Match(matched) => {
             let rule_match = matched.value;
+            let mut dispatch = rule_match.value;
+            if let Err(error) = attach_compiler_trigger_facts(ctx.parse, &mut dispatch) {
+                return ParseOutcome::Error(ParseDiagnostic::from_legacy_error(
+                    RuleId::new("compiler-trigger-facts"),
+                    span_from_tokens(&ctx.line.tokens),
+                    error,
+                ));
+            }
             parse_trace::event(format!(
                 "line-family: {} -> {}",
                 rule_match.rule,
-                dispatch_kind_summary(&rule_match.value)
+                dispatch_kind_summary(&dispatch)
             ));
-            return ParseOutcome::matched(rule_match.value, rule_match.span);
+            return ParseOutcome::matched(dispatch, rule_match.span);
         }
         ParseOutcome::NoMatch => {}
         ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),

@@ -142,20 +142,36 @@ fn lower_activated_line(
 
 fn lower_triggered_line(triggered: TriggeredLineCst) -> Result<RewriteSemanticItem, CardTextError> {
     let info = triggered.info;
-    let parsed = super::semantic_line_parsing::parse_triggered_line(
-        info.clone(),
+    let compiler_ability = info
+        .semantic_facts
+        .triggered_ability
+        .compiler_ability
+        .clone()
+        .ok_or_else(|| {
+            CardTextError::InvariantViolation(
+                "triggered CST reached lowering without compiler trigger facts".to_string(),
+            )
+        })?;
+    let chunk = crate::cards::builders::LineAst::Triggered {
+        trigger: compiler_ability.event.semantics,
+        effects: compiler_ability.effects,
+        max_triggers_per_turn: triggered.max_triggers_per_turn,
+    };
+    let chunk = super::semantic_line_parsing::apply_explicit_intervening_if_to_triggered_chunk(
+        chunk,
+        compiler_ability.intervening_if,
+    )?;
+    let chunk = super::semantic_line_parsing::apply_chosen_option_to_triggered_chunk(
+        chunk,
         &triggered.full_text,
-        &triggered.full_parse_tokens,
-        &triggered.trigger_parse_tokens,
-        &triggered.effect_parse_tokens,
-        triggered.intervening_if,
-        triggered.presentation.as_ref(),
+        &info.semantic_facts.triggered_ability,
         triggered.max_triggers_per_turn,
         triggered.chosen_option.as_ref(),
+        triggered.presentation.as_ref(),
     )?;
     Ok(parsed_line_item(
         info,
-        vec![parsed],
+        vec![chunk],
         ParsedRestrictions::default(),
     ))
 }

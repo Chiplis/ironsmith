@@ -4058,6 +4058,25 @@ fn lower_parsed_ability_chunk(
         unreachable!("ability lowerer received mismatched chunk");
     };
 
+    // Canonical trigger recognition has already constructed this parsed
+    // ability from typed event and result nodes. Materialize its prepared AST
+    // directly and skip every legacy source-repair path below.
+    if semantic_facts
+        .triggered_ability
+        .compiler_ability
+        .is_some()
+    {
+        let parsed_ability = super::rewrite_lower_prepared_ability(parsed_ability)?;
+        if let Some(effects_ast) = parsed_ability.effects_ast.as_ref().map(Vec::as_slice) {
+            super::collect_tag_spans_from_effects_with_context(
+                effects_ast,
+                annotations,
+                &info.normalized,
+            );
+        }
+        return Ok(builder.with_ability(parsed_ability.into_runtime()));
+    }
+
     // A runtime-backed prepared ability can predate a later semantic
     // reconciliation of its typed AST. Rebuild only these two exact authored
     // correlated programs from the intact physical line so the stale prepared

@@ -1,4 +1,4 @@
-use crate::model::ast::{EffectAst, PredicateAst, TriggerSpec};
+use crate::model::ast::{EffectAst, PredicateAst, TriggerIntroSurfaceAst, TriggerSpec};
 use crate::model::provenance::{ProvenanceId, SemanticProvenance};
 use crate::model::symbols::{
     Cardinality, ObjectDomain, ReferenceRole, SymbolReference, SymbolResolutionError,
@@ -40,6 +40,21 @@ pub(crate) enum TriggerFrequencyAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TriggerReferenceSurfaceAst {
+    It,
+    That,
+    Those,
+    SacrificedObject,
+    TriggeringObject,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TriggerReferenceAst {
+    pub surface: TriggerReferenceSurfaceAst,
+    pub reference: SymbolReference,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TriggerBindingsAst {
     pub triggering_object: Option<SymbolReference>,
     pub triggering_event: SymbolReference,
@@ -48,7 +63,7 @@ pub(crate) struct TriggerBindingsAst {
 impl TriggerBindingsAst {
     pub(crate) fn allocate(
         context: ParseContextView<'_>,
-        has_triggering_object: bool,
+        triggering_object_cardinality: Option<Cardinality>,
         provenance: Option<ProvenanceId>,
     ) -> Result<Self, SymbolResolutionError> {
         let triggering_event = SymbolReference {
@@ -62,12 +77,12 @@ impl TriggerBindingsAst {
             domain: ObjectDomain::Event,
             cardinality: Cardinality::ExactlyOne,
         };
-        let triggering_object = has_triggering_object
-            .then(|| {
+        let triggering_object = triggering_object_cardinality
+            .map(|cardinality| {
                 context
                     .bind_symbol(
                         ReferenceRole::Triggering,
-                        Cardinality::ExactlyOne,
+                        cardinality,
                         ObjectDomain::Object,
                         provenance,
                     )
@@ -75,7 +90,7 @@ impl TriggerBindingsAst {
                         symbol,
                         role: ReferenceRole::Triggering,
                         domain: ObjectDomain::Object,
-                        cardinality: Cardinality::ExactlyOne,
+                        cardinality,
                     })
             })
             .transpose()?;
@@ -88,6 +103,7 @@ impl TriggerBindingsAst {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CompilerTriggerEventAst {
+    pub intro: TriggerIntroSurfaceAst,
     pub kind: TriggerKindAst,
     pub subject: TriggerSubjectAst,
     pub zones: Option<TriggerZoneTransitionAst>,
@@ -114,6 +130,7 @@ pub(crate) struct CompilerTriggeredAbilityAst {
     pub effects: Vec<EffectAst>,
     pub intervening_if: Option<PredicateAst>,
     pub linked_effects: Vec<LinkedTriggerEffectAst>,
+    pub references: Vec<TriggerReferenceAst>,
     pub functional_zones: Vec<Zone>,
     pub provenance: Option<SemanticProvenance>,
 }

@@ -132,8 +132,9 @@ pub(crate) struct ThisSpellCostFacts {
     pub(crate) reduction_cap: Option<i32>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct TriggeredLineSemanticFacts {
+    pub(crate) compiler_ability: Option<super::CompilerTriggeredAbilityAst>,
     pub(crate) intro_surface: Option<super::ast::TriggerIntroSurfaceAst>,
     pub(crate) presentation_label: Option<crate::ability::PresentationLabel>,
     pub(crate) functional_zones: TriggerFunctionalZoneFacts,

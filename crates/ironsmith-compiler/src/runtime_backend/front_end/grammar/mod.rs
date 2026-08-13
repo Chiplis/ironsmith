@@ -50,6 +50,7 @@ pub(crate) mod structure;
 pub(crate) mod targets;
 pub(crate) mod token_definitions;
 pub(crate) mod trigger_clauses;
+pub(crate) mod trigger_event_facts;
 pub(crate) mod trigger_subjects;
 pub(crate) mod trigger_surface;
 pub(crate) mod values;
