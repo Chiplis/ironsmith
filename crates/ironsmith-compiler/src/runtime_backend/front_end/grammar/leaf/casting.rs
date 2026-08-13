@@ -16,9 +16,9 @@ pub(crate) fn parse_leaf_alternative_cast_prefix_words(
     words: &[&str],
 ) -> Option<LeafAlternativeCastPrefix> {
     let mut input: WordSliceInput<'_> = words;
-    let kind = parse_leaf_alternative_cast_kind
-        .parse_next(&mut input)
-        .ok()?;
+    let Ok(kind) = parse_leaf_alternative_cast_kind.parse_next(&mut input) else {
+        return None;
+    };
     Some(LeafAlternativeCastPrefix {
         kind,
         consumed: words.len().checked_sub(input.len())?,

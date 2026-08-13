@@ -462,7 +462,9 @@ fn parse_target_article_lexed<'a>(input: &mut LexStream<'a>) -> WResult<LeafTarg
 
 fn parse_optional_word_span(input: &mut LexStream<'_>, word: &'static str) -> Option<TextSpan> {
     let mut probe = input.clone();
-    let token = primitives::kw(word).parse_next(&mut probe).ok()?;
+    let Ok(token) = primitives::kw(word).parse_next(&mut probe) else {
+        return None;
+    };
     *input = probe;
     Some(token.span())
 }
@@ -555,7 +557,9 @@ fn random_suffix_start(words: &[&str], kind: LeafRandomTargetKind) -> Option<usi
     };
     let start = words.len().checked_sub(phrase.len())?;
     let mut input: primitives::WordSliceInput<'_> = &words[start..];
-    parse_word_phrase(&mut input, phrase).ok()?;
+    if parse_word_phrase(&mut input, phrase).is_err() {
+        return None;
+    }
     input.is_empty().then_some(start)
 }
 
@@ -567,7 +571,9 @@ fn parse_at_random_word_range(words: &[&str]) -> Option<Range<usize>> {
         if parse_word_phrase(&mut probe, &["at", "random"]).is_ok() {
             return Some(offset..offset + 2);
         }
-        parse_any_word_slice.parse_next(&mut input).ok()?;
+        if parse_any_word_slice.parse_next(&mut input).is_err() {
+            return None;
+        }
         offset += 1;
     }
     None

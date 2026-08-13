@@ -216,7 +216,9 @@ pub(crate) fn parse_leaf_player_reference_tokens(
     mode: LeafPlayerReferenceMode,
 ) -> Option<LeafPlayerReference> {
     let mut input = LexStream::new(tokens);
-    let reference = parse_leaf_player_reference_lexed(&mut input, mode).ok()?;
+    let Ok(reference) = parse_leaf_player_reference_lexed(&mut input, mode) else {
+        return None;
+    };
     input.is_empty().then_some(reference)
 }
 
@@ -225,7 +227,9 @@ pub(crate) fn parse_leaf_player_reference_words<'a>(
     mode: LeafPlayerReferenceMode,
 ) -> Option<LeafPlayerReference> {
     let mut input: primitives::WordSliceInput<'a> = words;
-    let reference = parse_leaf_player_reference_word_slice(&mut input, mode).ok()?;
+    let Ok(reference) = parse_leaf_player_reference_word_slice(&mut input, mode) else {
+        return None;
+    };
     input.is_empty().then_some(reference)
 }
 

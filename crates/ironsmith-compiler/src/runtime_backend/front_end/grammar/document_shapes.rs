@@ -3,6 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use super::{leaf, permission_shapes, primitives};
+use crate::recognition::ParseOutcome;
 use crate::runtime_backend::lexer::{
     LexStream, OwnedLexToken, TokenKind, TokenWordView, lex_line, render_token_slice,
 };
@@ -257,10 +258,29 @@ pub(crate) fn parse_next_cast_trigger_surface(
 pub(crate) fn parse_activation_cost_head(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationCostHeadSurface> {
-    if let Some(head) = leaf::parse_leaf_activation_cost_head_tokens(tokens) {
-        return Some(ActivationCostHeadSurface::Leaf(head));
+    match recognize_activation_cost_head(tokens) {
+        ParseOutcome::Match(matched) => Some(matched.value),
+        ParseOutcome::NoMatch | ParseOutcome::Error(_) => None,
     }
-    primitives::parse_prefix(tokens, additional_activation_cost_head).map(|(head, _)| head)
+}
+
+pub(crate) fn recognize_activation_cost_head(
+    tokens: &[OwnedLexToken],
+) -> ParseOutcome<ActivationCostHeadSurface> {
+    match leaf::recognize_activation_cost_head(tokens) {
+        ParseOutcome::Match(matched) => {
+            ParseOutcome::matched(ActivationCostHeadSurface::Leaf(matched.value), matched.span)
+        }
+        ParseOutcome::Error(diagnostic) => ParseOutcome::Error(diagnostic),
+        ParseOutcome::NoMatch => {
+            match primitives::parse_prefix(tokens, additional_activation_cost_head) {
+                Some((head, _)) => {
+                    ParseOutcome::matched(head, primitives::token_slice_span(tokens))
+                }
+                None => ParseOutcome::NoMatch,
+            }
+        }
+    }
 }
 
 pub(crate) fn parse_source_alias_effect_verb_surface(

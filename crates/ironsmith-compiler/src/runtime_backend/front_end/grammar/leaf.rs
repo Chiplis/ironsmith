@@ -8,6 +8,7 @@ mod durations;
 mod filter_atoms;
 mod mana;
 mod numbers;
+mod outcomes;
 mod player_subjects;
 mod power_toughness;
 mod references;
@@ -76,6 +77,11 @@ pub(crate) use numbers::{
     parse_leaf_number_prefix_lexed, parse_leaf_number_prefix_tokens,
     parse_leaf_number_prefix_words, parse_leaf_number_token_lexed, parse_number_complete,
     parse_number_i32_complete,
+};
+pub(crate) use outcomes::{
+    recognize_activation_cost_head, recognize_condition_intro, recognize_duration_prefix,
+    recognize_mana_cost_prefix, recognize_number_prefix, recognize_player_reference,
+    recognize_target_head,
 };
 pub(crate) use player_subjects::{
     LeafPlayerReferenceMode, parse_leaf_player_reference_tokens, parse_leaf_player_reference_words,

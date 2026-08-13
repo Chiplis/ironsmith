@@ -743,7 +743,11 @@ fn should_parse_delayed_trigger_line_as_spell_effect(
 }
 
 fn looks_like_activation_cost_prefix(tokens: &[OwnedLexToken]) -> bool {
-    document_grammar::parse_activation_cost_head(tokens).is_some()
+    matches!(
+        document_grammar::recognize_activation_cost_head(tokens),
+        crate::recognition::ParseOutcome::Match(_)
+            | crate::recognition::ParseOutcome::Error(_)
+    )
 }
 
 #[cfg(test)]

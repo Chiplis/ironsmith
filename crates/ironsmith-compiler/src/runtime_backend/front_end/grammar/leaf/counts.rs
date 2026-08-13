@@ -208,9 +208,9 @@ pub(crate) fn parse_leaf_choice_count_prefix_words(
     words: &[&str],
 ) -> Option<LeafChoiceCountPrefix> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let count = parse_leaf_choice_count_prefix_word_slice
-        .parse_next(&mut input)
-        .ok()?;
+    let Ok(count) = parse_leaf_choice_count_prefix_word_slice.parse_next(&mut input) else {
+        return None;
+    };
     Some(LeafChoiceCountPrefix {
         count,
         consumed: words.len().checked_sub(input.len())?,

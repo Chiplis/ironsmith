@@ -20,7 +20,10 @@ pub(crate) enum LeafNumber {
 impl LeafNumber {
     pub(crate) fn into_value(self) -> Option<Value> {
         match self {
-            Self::Fixed(value) => i32::try_from(value).ok().map(Value::Fixed),
+            Self::Fixed(value) => match i32::try_from(value) {
+                Ok(value) => Some(Value::Fixed(value)),
+                Err(_) => None,
+            },
             Self::X => Some(Value::X),
         }
     }
@@ -187,10 +190,12 @@ pub(crate) fn parse_leaf_number_or_x_prefix_tokens(
 
 pub(crate) fn parse_leaf_number_prefix_words(words: &[&str]) -> Option<LeafNumberPrefix> {
     let mut input = words;
-    let number = parse_leaf_number_prefix_word_slice
+    let Ok(number) = parse_leaf_number_prefix_word_slice
         .map(LeafNumber::Fixed)
         .parse_next(&mut input)
-        .ok()?;
+    else {
+        return None;
+    };
     Some(LeafNumberPrefix {
         number,
         consumed: words.len().checked_sub(input.len())?,
