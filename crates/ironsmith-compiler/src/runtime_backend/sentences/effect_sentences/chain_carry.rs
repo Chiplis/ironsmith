@@ -44,7 +44,7 @@ use super::lex_chain_helpers::{
     find_verb_lexed, has_authored_comma_then_surface_lexed, has_effect_head_without_verb_lexed,
     has_explicit_comma_then_boundary_lexed, segment_has_effect_head_lexed,
     split_effect_chain_on_and_lexed, split_segments_on_comma_effect_head_lexed,
-    split_segments_on_comma_then_lexed, strip_leading_instead_prefix_lexed,
+    split_segments_on_comma_then_lexed,
 };
 use super::search_library::parse_for_each_exiled_this_way_sentence;
 use super::sentence_helpers::*;
@@ -1137,9 +1137,6 @@ fn parse_effect_chain_uncoordinated_lexed(
         )]);
     }
 
-    if let Some(stripped) = strip_leading_instead_prefix_lexed(tokens) {
-        return parse_effect_chain_lexed(stripped);
-    }
     let leading_scope = chain_grammar::parse_leading_chain_scope_tokens(tokens);
     let starts_with_each_opponent =
         leading_scope == Some(chain_grammar::ChainPlayerScope::EachOpponent);
@@ -1713,13 +1710,34 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
-        parse_effect_chain_inner_lexed_unstacked(tokens)
+        parse_effect_chain_inner_lexed_unstacked(tokens, true)
     })
 }
 
 fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
+    recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if recognize_control_flow {
+        match super::super::grammar::effects::control_flow::recognize_control_flow(tokens) {
+            crate::recognition::ParseOutcome::Match(matched) => {
+                let plan = matched.value;
+                let effects = if plan.parse_original_with_legacy {
+                    parse_effect_chain_inner_lexed_unstacked(tokens, false)?
+                } else {
+                    parse_effect_chain_inner_lexed(plan.body_tokens)?
+                };
+                if let Some(control) = plan.into_ast(effects.clone()) {
+                    return Ok(vec![EffectAst::ControlFlow(Box::new(control))]);
+                }
+                return Ok(effects);
+            }
+            crate::recognition::ParseOutcome::NoMatch => {}
+            crate::recognition::ParseOutcome::Error(diagnostic) => {
+                return Err(diagnostic.into_legacy_error());
+            }
+        }
+    }
     // `Venture into the dungeon` is a complete subjectless mechanic action.
     // When it leads a coordinated clause, the general subject/verb splitter
     // can treat it as context for the later explicit-player arm and retain
@@ -1753,10 +1771,6 @@ fn parse_effect_chain_inner_lexed_unstacked(
     {
         return Ok(vec![effect]);
     }
-    if let Some(stripped) = strip_leading_instead_prefix_lexed(tokens) {
-        return parse_effect_chain_inner_lexed(stripped);
-    }
-
     // Preserve coordinated conditional animations before the generic `and`
     // splitter turns the second branch into an orphaned follow-up clause.
     let leading_duration_shape = chain_grammar::parse_carry_duration_prefix_tokens(tokens);

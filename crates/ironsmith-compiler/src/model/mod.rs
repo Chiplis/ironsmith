@@ -3,6 +3,7 @@ pub(crate) mod ast;
 pub(crate) mod card_document;
 pub(crate) mod clauses;
 pub(crate) mod compiler_semantic;
+pub(crate) mod control_flow;
 pub(crate) mod coordination;
 pub mod costs;
 pub(crate) mod facts;
@@ -34,6 +35,12 @@ pub(crate) use clauses::{
     ClauseDistributionAst, ClauseDurationAst, ClauseObjectAst, ClausePolarityAst,
     ClausePredicateAst, ClauseQuantityAst, ClauseQuantityUnitAst, ClauseReferenceBindingAst,
     ClauseSubjectAst, ClauseVerbAst, ClauseZonePlacementAst, CompilerClauseAst,
+};
+pub(crate) use control_flow::{
+    CompilerControlFlowAst, CompilerDurationAst, ConditionPositionAst, ControlConditionAst,
+    ControlFlowNodeAst, ControlFlowSemanticAst, ControlPredicateAst, DelayedScheduleAst,
+    NestedProgramAst, NestedProgramKindAst, ReplacedEventAst, ReplacementKindAst,
+    ReplacementRelationshipAst,
 };
 pub(crate) use coordination::{
     CarriedFactAst, CoordinationAst, CoordinationBoundaryAst, CoordinationCarryAst,

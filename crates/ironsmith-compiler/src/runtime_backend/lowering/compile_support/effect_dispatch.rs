@@ -776,6 +776,9 @@ fn compile_effect_inner(
             choices,
         ));
     }
+    if let EffectAst::ControlFlow(control) = effect {
+        return compile_compiler_control_flow(control, ctx);
+    }
     if let EffectAst::Coordination(coordination) = effect {
         if coordination.kind == crate::model::CoordinationKindAst::Disjunction {
             let mut lowered_modes = Vec::with_capacity(coordination.members.len());
@@ -1159,6 +1162,99 @@ fn compile_effect_inner(
     Err(CardTextError::InvariantViolation(format!(
         "missing compile-effect dispatch route for effect variant: {effect:?}"
     )))
+}
+
+fn compile_compiler_control_flow(
+    control: &crate::model::CompilerControlFlowAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    use crate::model::{ControlFlowNodeAst, ControlPredicateAst};
+
+    let program_effects = |index: usize| -> Result<&[EffectAst], CardTextError> {
+        control
+            .program(index)
+            .map(|program| program.effects.as_slice())
+            .ok_or_else(|| {
+                CardTextError::InvariantViolation(format!(
+                    "control-flow program {index} is out of range"
+                ))
+            })
+    };
+    match &control.node {
+        ControlFlowNodeAst::Condition {
+            condition,
+            consequence_program,
+            alternative_program,
+            reflexive,
+        } => {
+            let consequence = program_effects(*consequence_program)?.to_vec();
+            let alternative = alternative_program
+                .map(|index| program_effects(index).map(<[EffectAst]>::to_vec))
+                .transpose()?
+                .unwrap_or_default();
+            let legacy = match &condition.predicate {
+                ControlPredicateAst::State(predicate) => {
+                    let predicate = if condition.negated_surface {
+                        PredicateAst::Not(Box::new(predicate.clone()))
+                    } else {
+                        predicate.clone()
+                    };
+                    EffectAst::Conditional {
+                        predicate,
+                        if_true: consequence,
+                        if_false: alternative,
+                    }
+                }
+                ControlPredicateAst::Result(predicate) if *reflexive => EffectAst::WhenResult {
+                    predicate: predicate.clone(),
+                    effects: consequence,
+                },
+                ControlPredicateAst::Result(predicate) => EffectAst::IfResult {
+                    predicate: predicate.clone(),
+                    effects: consequence,
+                },
+                ControlPredicateAst::Constant(true) => {
+                    return compile_effects(&consequence, ctx);
+                }
+                ControlPredicateAst::Constant(false) => {
+                    return compile_effects(&alternative, ctx);
+                }
+            };
+            compile_effect(&legacy, ctx)
+        }
+        ControlFlowNodeAst::Replacement(replacement) => {
+            let replacement_effects = program_effects(replacement.replacement_program)?.to_vec();
+            if let (Some(condition), Some(original_program)) =
+                (&replacement.condition, replacement.original_program)
+                && let ControlPredicateAst::State(predicate) = &condition.predicate
+            {
+                let predicate = if condition.negated_surface {
+                    PredicateAst::Not(Box::new(predicate.clone()))
+                } else {
+                    predicate.clone()
+                };
+                let legacy = EffectAst::SelfReplacement {
+                    predicate,
+                    if_true: replacement_effects,
+                    if_false: program_effects(original_program)?.to_vec(),
+                    attach_to_previous_ability: false,
+                };
+                return compile_effect(&legacy, ctx);
+            }
+            compile_effects(&replacement_effects, ctx)
+        }
+        ControlFlowNodeAst::Prevention(prevention) => {
+            compile_effects(program_effects(prevention.prevention_program)?, ctx)
+        }
+        ControlFlowNodeAst::Permission(permission) => {
+            compile_effects(program_effects(permission.program)?, ctx)
+        }
+        ControlFlowNodeAst::Duration { program, .. }
+        | ControlFlowNodeAst::Delayed { program, .. }
+        | ControlFlowNodeAst::NestedAbility { program } => {
+            compile_effects(program_effects(*program)?, ctx)
+        }
+    }
 }
 
 fn try_compile_effect_via_handlers(

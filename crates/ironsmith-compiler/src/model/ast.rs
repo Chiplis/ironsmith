@@ -6,6 +6,7 @@ use crate::filter::Comparison;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::model::RedirectNextTimeDamageDestinationAst;
 use crate::model::clauses::CompilerClauseAst;
+use crate::model::control_flow::CompilerControlFlowAst;
 use crate::model::coordination::CoordinationAst;
 use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::static_abilities::StaticAbility;

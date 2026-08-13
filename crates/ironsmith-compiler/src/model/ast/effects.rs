@@ -16,6 +16,9 @@ pub(crate) enum EffectAst {
     /// A grammar-resolved effect program with explicit conjunction,
     /// disjunction, ordering, dependency, and carry semantics.
     Coordination(CoordinationAst),
+    /// Compiler-owned conditions, replacements, prevention, permissions,
+    /// durations, delayed execution, and nested programs.
+    ControlFlow(Box<CompilerControlFlowAst>),
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
     RestartGame {

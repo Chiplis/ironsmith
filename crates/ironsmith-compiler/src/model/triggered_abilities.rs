@@ -127,6 +127,9 @@ pub(crate) struct LinkedTriggerEffectAst {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CompilerTriggeredAbilityAst {
     pub event: CompilerTriggerEventAst,
+    /// Branch-scoped executable program. `effects` remains as the finite
+    /// compatibility payload until the PR-31 lowering migration.
+    pub program: crate::model::CompilerControlFlowAst,
     pub effects: Vec<EffectAst>,
     pub intervening_if: Option<PredicateAst>,
     pub linked_effects: Vec<LinkedTriggerEffectAst>,

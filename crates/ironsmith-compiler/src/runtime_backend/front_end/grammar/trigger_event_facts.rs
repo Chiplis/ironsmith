@@ -2,9 +2,11 @@ use crate::cards::builders::CardTextError;
 use crate::model::ast::{EffectAst, PredicateAst, TriggerSpec};
 use crate::model::symbols::Cardinality;
 use crate::model::{
-    CompilerTriggerEventAst, CompilerTriggeredAbilityAst, LinkedTriggerEffectAst,
-    TriggerBindingsAst, TriggerFrequencyAst, TriggerKindAst, TriggerReferenceAst,
-    TriggerReferenceSurfaceAst, TriggerSubjectAst, TriggerZoneTransitionAst,
+    CompilerControlFlowAst, CompilerTriggerEventAst, CompilerTriggeredAbilityAst,
+    ConditionPositionAst, ControlConditionAst, ControlFlowNodeAst, ControlFlowSemanticAst,
+    ControlPredicateAst, DelayedScheduleAst, LinkedTriggerEffectAst, NestedProgramAst,
+    NestedProgramKindAst, TriggerBindingsAst, TriggerFrequencyAst, TriggerKindAst,
+    TriggerReferenceAst, TriggerReferenceSurfaceAst, TriggerSubjectAst, TriggerZoneTransitionAst,
 };
 use crate::parse_context::ParseContextView;
 use crate::target::PlayerFilter;
@@ -79,6 +81,53 @@ pub(crate) fn build_compiler_triggered_ability(
             })
             .collect()
     };
+    let program = if let Some(predicate) = intervening_if.clone() {
+        CompilerControlFlowAst::new(
+            ControlFlowSemanticAst::ControlFlow,
+            ControlFlowNodeAst::Condition {
+                condition: ControlConditionAst {
+                    position: ConditionPositionAst::InterveningCondition,
+                    predicate: ControlPredicateAst::State(predicate),
+                    negated_surface: false,
+                    provenance: None,
+                },
+                consequence_program: 0,
+                alternative_program: None,
+                reflexive: false,
+            },
+            vec![NestedProgramAst::new(
+                NestedProgramKindAst::Consequence,
+                effects.clone(),
+            )],
+            None,
+        )
+    } else {
+        CompilerControlFlowAst::new(
+            ControlFlowSemanticAst::ControlFlow,
+            ControlFlowNodeAst::Delayed {
+                schedule: DelayedScheduleAst::Event,
+                duration: None,
+                program: 0,
+                one_shot: false,
+                reflexive: kind == TriggerKindAst::Reflexive,
+                watched_references: bindings.triggering_object.into_iter().collect(),
+            },
+            vec![NestedProgramAst::new(
+                if kind == TriggerKindAst::Reflexive {
+                    NestedProgramKindAst::Reflexive
+                } else {
+                    NestedProgramKindAst::Delayed
+                },
+                effects.clone(),
+            )],
+            None,
+        )
+    }
+    .map_err(|error| {
+        CardTextError::InvariantViolation(format!(
+            "failed to build branch-scoped trigger program: {error:?}"
+        ))
+    })?;
 
     Ok(CompilerTriggeredAbilityAst {
         event: CompilerTriggerEventAst {
@@ -92,6 +141,7 @@ pub(crate) fn build_compiler_triggered_ability(
             bindings,
             provenance: None,
         },
+        program,
         effects,
         intervening_if,
         linked_effects,

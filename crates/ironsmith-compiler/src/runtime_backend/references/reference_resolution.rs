@@ -629,6 +629,29 @@ fn advance_reference_frame_for_effect(
         EffectAst::PlaySubgame { nonwinner_effects } => {
             advance_effects_in_iterated_player_context(nonwinner_effects, id_gen, frame, None)?;
         }
+        EffectAst::ControlFlow(control) => {
+            let saved = frame.clone();
+            match &control.node {
+                crate::model::ControlFlowNodeAst::Duration { program, .. }
+                | crate::model::ControlFlowNodeAst::Permission(
+                    crate::model::control_flow::PermissionRelationshipAst { program, .. },
+                ) => {
+                    let program = control.program(*program).ok_or_else(|| {
+                        CardTextError::InvariantViolation(format!(
+                            "control-flow program {program} is out of range"
+                        ))
+                    })?;
+                    advance_reference_frames(&program.effects, id_gen, frame)?;
+                }
+                _ => {
+                    for program in &control.programs {
+                        let mut branch_frame = saved.clone();
+                        advance_reference_frames(&program.effects, id_gen, &mut branch_frame)?;
+                    }
+                    *frame = saved;
+                }
+            }
+        }
         EffectAst::Coordination(coordination) => {
             if coordination.kind == crate::model::CoordinationKindAst::Disjunction {
                 let saved = frame.clone();

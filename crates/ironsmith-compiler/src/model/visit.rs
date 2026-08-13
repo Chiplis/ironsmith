@@ -7,6 +7,9 @@ use crate::model::clauses::{
     ClauseActorAst, ClauseComplementAst, ClauseConditionAst, ClauseDestinationAst,
     ClauseDurationAst, ClauseObjectAst, ClausePredicateAst, ClauseSubjectAst, CompilerClauseAst,
 };
+use crate::model::control_flow::{
+    CompilerControlFlowAst, CompilerDurationAst, ControlFlowNodeAst, ControlPredicateAst,
+};
 use crate::model::coordination::CarriedFactAst;
 use crate::model::costs::CompilerTotalCost;
 use crate::model::selections::{
@@ -41,6 +44,11 @@ pub(crate) fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalRes
             .members
             .last()
             .and_then(|member| member.effects.last())
+            .and_then(terminal_result_producer),
+        EffectAst::ControlFlow(control) => control
+            .programs
+            .last()
+            .and_then(|program| program.effects.last())
             .and_then(terminal_result_producer),
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
@@ -229,6 +237,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
     match effect {
         EffectAst::Clause(_) => {}
         EffectAst::Coordination(_) => {}
+        EffectAst::ControlFlow(_) => {}
         EffectAst::SubjectVerb(_) => {}
         EffectAst::SolveCase => {}
         EffectAst::RestartGame { .. } => {}
@@ -347,6 +356,11 @@ pub(crate) fn for_each_nested_effects(
                 visit(&member.effects);
             }
         }
+        EffectAst::ControlFlow(control) => {
+            for program in &control.programs {
+                visit(&program.effects);
+            }
+        }
         nested_effects_variants!(effects) => {
             visit(effects);
         }
@@ -401,6 +415,11 @@ pub(crate) fn for_each_nested_effects_mut(
         EffectAst::Coordination(coordination) => {
             for member in &mut coordination.members {
                 visit(&mut member.effects);
+            }
+        }
+        EffectAst::ControlFlow(control) => {
+            for program in &mut control.programs {
+                visit(&mut program.effects);
             }
         }
         nested_effects_variants!(effects) => {
@@ -470,6 +489,11 @@ pub(crate) fn for_each_nested_effect_vec_mut(
                     visit(&mut member.effects);
                 }
             }
+            EffectAst::ControlFlow(control) => {
+                for program in &mut control.programs {
+                    visit(&mut program.effects);
+                }
+            }
             nested_effects_variants!(effects) => {
                 visit(effects);
             }
@@ -527,6 +551,11 @@ pub(crate) fn try_for_each_nested_effects_mut<E>(
         EffectAst::Coordination(coordination) => {
             for member in &mut coordination.members {
                 visit(&mut member.effects)?;
+            }
+        }
+        EffectAst::ControlFlow(control) => {
+            for program in &mut control.programs {
+                visit(&mut program.effects)?;
             }
         }
         nested_effects_variants!(effects) => {
@@ -833,6 +862,9 @@ pub(crate) fn visit_effect_tree<V: SemanticVisitor + ?Sized>(
             }
         }
     }
+    if let EffectAst::ControlFlow(control) = effect {
+        visit_control_flow_semantics(visitor, control)?;
+    }
     let mut flow = ControlFlow::Continue(());
     for_each_nested_effects(effect, true, |nested| {
         if matches!(&flow, ControlFlow::Break(_)) {
@@ -846,6 +878,96 @@ pub(crate) fn visit_effect_tree<V: SemanticVisitor + ?Sized>(
         }
     });
     flow
+}
+
+fn visit_control_flow_semantics<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    control: &CompilerControlFlowAst,
+) -> ControlFlow<V::Break> {
+    for program in &control.programs {
+        for reference in program.imports.iter().chain(&program.exports) {
+            visitor.visit_reference(reference)?;
+        }
+    }
+    match &control.node {
+        ControlFlowNodeAst::Condition { condition, .. } => {
+            visit_control_predicate(visitor, &condition.predicate)
+        }
+        ControlFlowNodeAst::Replacement(replacement) => {
+            if let Some(condition) = &replacement.condition {
+                visit_control_predicate(visitor, &condition.predicate)?;
+            }
+            if let Some(reference) = &replacement.affected_reference {
+                visitor.visit_reference(reference)?;
+            }
+            ControlFlow::Continue(())
+        }
+        ControlFlowNodeAst::Prevention(prevention) => {
+            if let Some(condition) = &prevention.condition {
+                visit_control_predicate(visitor, &condition.predicate)?;
+            }
+            if let Some(reference) = &prevention.protected_reference {
+                visitor.visit_reference(reference)?;
+            }
+            ControlFlow::Continue(())
+        }
+        ControlFlowNodeAst::Permission(permission) => {
+            visit_clause_actor(visitor, &permission.actor)?;
+            if let Some(duration) = &permission.duration {
+                visit_compiler_duration(visitor, duration)?;
+            }
+            ControlFlow::Continue(())
+        }
+        ControlFlowNodeAst::Duration { duration, .. } => visit_compiler_duration(visitor, duration),
+        ControlFlowNodeAst::Delayed {
+            duration,
+            watched_references,
+            ..
+        } => {
+            if let Some(duration) = duration {
+                visit_compiler_duration(visitor, duration)?;
+            }
+            for reference in watched_references {
+                visitor.visit_reference(reference)?;
+            }
+            ControlFlow::Continue(())
+        }
+        ControlFlowNodeAst::NestedAbility { .. } => ControlFlow::Continue(()),
+    }
+}
+
+fn visit_control_predicate<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    predicate: &ControlPredicateAst,
+) -> ControlFlow<V::Break> {
+    match predicate {
+        ControlPredicateAst::State(predicate) => visit_predicate_tree(visitor, predicate),
+        ControlPredicateAst::Result(_) | ControlPredicateAst::Constant(_) => {
+            ControlFlow::Continue(())
+        }
+    }
+}
+
+fn visit_compiler_duration<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    duration: &CompilerDurationAst,
+) -> ControlFlow<V::Break> {
+    match duration {
+        CompilerDurationAst::Clause(duration) => match duration {
+            ClauseDurationAst::ForTurns(value) => visit_compiler_value_tree(visitor, value),
+            ClauseDurationAst::While(condition) => {
+                visit_clause_predicate(visitor, &condition.predicate)
+            }
+            _ => ControlFlow::Continue(()),
+        },
+        CompilerDurationAst::UntilCondition(predicate)
+        | CompilerDurationAst::ForAsLongAs(predicate) => visit_predicate_tree(visitor, predicate),
+        CompilerDurationAst::ThisTurn
+        | CompilerDurationAst::UntilEndOfTurn
+        | CompilerDurationAst::UntilEndOfCombat
+        | CompilerDurationAst::UntilNextTurn
+        | CompilerDurationAst::Permanent => ControlFlow::Continue(()),
+    }
 }
 
 pub(crate) fn visit_predicate_tree<V: SemanticVisitor + ?Sized>(
@@ -1198,9 +1320,94 @@ pub(crate) fn fold_effect_tree<F: SemanticFolder + ?Sized>(
             }
             EffectAst::Coordination(coordination)
         }
+        EffectAst::ControlFlow(control) => {
+            EffectAst::ControlFlow(Box::new(fold_control_flow_tree(folder, *control)))
+        }
         effect => effect,
     };
     folder.fold_effect(effect)
+}
+
+fn fold_control_flow_tree<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    mut control: CompilerControlFlowAst,
+) -> CompilerControlFlowAst {
+    for program in &mut control.programs {
+        for reference in program.imports.iter_mut().chain(&mut program.exports) {
+            *reference = folder.fold_reference(*reference);
+        }
+    }
+    match &mut control.node {
+        ControlFlowNodeAst::Condition { condition, .. } => {
+            fold_control_predicate(folder, &mut condition.predicate)
+        }
+        ControlFlowNodeAst::Replacement(replacement) => {
+            if let Some(condition) = &mut replacement.condition {
+                fold_control_predicate(folder, &mut condition.predicate);
+            }
+            if let Some(reference) = &mut replacement.affected_reference {
+                *reference = folder.fold_reference(*reference);
+            }
+        }
+        ControlFlowNodeAst::Prevention(prevention) => {
+            if let Some(condition) = &mut prevention.condition {
+                fold_control_predicate(folder, &mut condition.predicate);
+            }
+            if let Some(reference) = &mut prevention.protected_reference {
+                *reference = folder.fold_reference(*reference);
+            }
+        }
+        ControlFlowNodeAst::Permission(permission) => {
+            permission.actor = fold_clause_actor(folder, permission.actor.clone());
+            if let Some(duration) = &mut permission.duration {
+                fold_compiler_duration(folder, duration);
+            }
+        }
+        ControlFlowNodeAst::Duration { duration, .. } => {
+            fold_compiler_duration(folder, duration);
+        }
+        ControlFlowNodeAst::Delayed {
+            duration,
+            watched_references,
+            ..
+        } => {
+            if let Some(duration) = duration {
+                fold_compiler_duration(folder, duration);
+            }
+            for reference in watched_references {
+                *reference = folder.fold_reference(*reference);
+            }
+        }
+        ControlFlowNodeAst::NestedAbility { .. } => {}
+    }
+    control
+}
+
+fn fold_control_predicate<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    predicate: &mut ControlPredicateAst,
+) {
+    if let ControlPredicateAst::State(state) = predicate {
+        *state = fold_predicate_tree(folder, state.clone());
+    }
+}
+
+fn fold_compiler_duration<F: SemanticFolder + ?Sized>(
+    folder: &mut F,
+    duration: &mut CompilerDurationAst,
+) {
+    *duration = match duration.clone() {
+        CompilerDurationAst::Clause(duration) => {
+            CompilerDurationAst::Clause(fold_clause_duration(folder, duration))
+        }
+        CompilerDurationAst::UntilCondition(predicate) => {
+            CompilerDurationAst::UntilCondition(fold_predicate_tree(folder, predicate))
+        }
+        CompilerDurationAst::ForAsLongAs(predicate) => {
+            CompilerDurationAst::ForAsLongAs(fold_predicate_tree(folder, predicate))
+        }
+        duration => duration,
+    };
 }
 
 pub(crate) fn fold_predicate_tree<F: SemanticFolder + ?Sized>(
