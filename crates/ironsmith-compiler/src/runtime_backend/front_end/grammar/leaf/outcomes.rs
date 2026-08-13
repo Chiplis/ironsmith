@@ -177,8 +177,25 @@ pub(crate) fn recognize_player_reference(
 
 pub(crate) fn recognize_target_head(tokens: &[OwnedLexToken]) -> ParseOutcome<LeafTargetHead<'_>> {
     const RULE: RuleId = RuleId::new("leaf.target-head");
-    let commits =
-        tokens.iter().any(|token| token.parser_text() == "target") || head(tokens) == "up";
+    let commits = tokens.iter().any(|token| token.parser_text() == "target")
+        || matches!(
+            head(tokens),
+            "up" | "a"
+                | "an"
+                | "the"
+                | "any"
+                | "each"
+                | "another"
+                | "one"
+                | "two"
+                | "three"
+                | "x"
+                | "this"
+                | "that"
+                | "those"
+                | "other"
+                | "top"
+        );
     if !commits {
         return ParseOutcome::NoMatch;
     }

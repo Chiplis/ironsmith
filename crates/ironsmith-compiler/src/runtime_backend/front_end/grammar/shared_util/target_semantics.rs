@@ -240,7 +240,12 @@ pub(crate) fn parse_target_phrase_inner(
         return Ok(TargetAst::Source(span));
     }
 
-    let target_head = leaf::parse_leaf_target_head_tokens(tokens)?;
+    let target_head = leaf::recognize_target_head(tokens).into_legacy_result(|| {
+        CardTextError::ParseError(format!(
+            "unrecognized target or selection phrase '{}'",
+            TokenWordView::new(tokens).join(" ")
+        ))
+    })?;
     tokens = target_head.tokens();
     let random_choice = target_head.prefix.random.is_some();
     let span = target_head.prefix.phrase_span;

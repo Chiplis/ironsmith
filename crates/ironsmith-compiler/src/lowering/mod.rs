@@ -1,5 +1,7 @@
 use crate::model::ParsedCardAst;
 
+pub(crate) mod selection_materialization;
+
 pub(crate) trait CardAstMaterializer {
     type RuntimeDocument;
     type Error;

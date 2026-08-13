@@ -10,6 +10,7 @@ pub mod provenance;
 pub mod reference;
 pub(crate) mod reference_state;
 pub mod restrictions;
+pub(crate) mod selections;
 pub mod semantic;
 pub mod symbols;
 pub(crate) mod static_abilities;
@@ -24,6 +25,10 @@ pub(crate) use activated_abilities::{
     ManaAbilityFacts,
 };
 pub(crate) use card_document::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
+pub(crate) use selections::{
+    ArithmeticOperatorAst, CompilerFilterAst, CompilerSelectionAst, CompilerValueAst,
+    SelectionCardinalityAst, SelectionDomainAst, SelectionKindAst, SelectionLegalityAst,
+};
 
 pub use ast::{
     CompilerAbility, CompilerAbilityKind, CompilerAbilityPayload, CompilerActivatedAbility,
