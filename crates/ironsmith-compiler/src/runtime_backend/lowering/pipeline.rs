@@ -2,6 +2,7 @@ use crate::cards::ParseAnnotations;
 #[cfg(test)]
 use crate::cards::builders::CardDefinition;
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
+use crate::parse_context::ParseContext;
 use crate::parse_trace;
 
 use super::document_parser;
@@ -9,12 +10,26 @@ use super::effect_pipeline::{LoweredCardDocument, NormalizedCardAst, ParsedCardA
 use super::ir::RewriteSemanticDocument;
 use super::lower;
 
+pub(crate) fn parse_text_to_semantic_document_with_context(
+    context: &mut ParseContext,
+    builder: CardDefinitionBuilder,
+    text: String,
+) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
+    document_parser::parse_text_to_semantic_document_with_context(context, builder, text)
+}
+
+/// PR-02 contextless compatibility facade. Canonical production callers use
+/// `parse_text_to_semantic_document_with_context`; PR-33 removes this adapter.
 pub(crate) fn parse_text_to_semantic_document(
     builder: CardDefinitionBuilder,
     text: String,
     allow_unsupported: bool,
 ) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
-    document_parser::parse_text_to_semantic_document(builder, text, allow_unsupported)
+    let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+    crate::runtime_backend::legacy_source_reference_bridge::with_parse_context(
+        &mut context,
+        |context| parse_text_to_semantic_document_with_context(context, builder, text),
+    )
 }
 
 pub(crate) fn parse_semantic_document(
@@ -45,12 +60,12 @@ pub(crate) fn parse_text_with_annotations_lowered(
     Ok((lowered.definition, lowered.annotations))
 }
 
-pub(crate) fn parse_text_with_annotations_lowered_with_facts(
+pub(crate) fn parse_text_with_annotations_lowered_with_facts_context(
+    context: &mut ParseContext,
     builder: CardDefinitionBuilder,
     text: String,
-    allow_unsupported: bool,
 ) -> Result<LoweredCardDocument, CardTextError> {
-    let (doc, _) = parse_text_to_semantic_document(builder, text, allow_unsupported)?;
+    let (doc, _) = parse_text_to_semantic_document_with_context(context, builder, text)?;
     let parsed = {
         let _scope = parse_trace::scope("semantic parse");
         parse_semantic_document(doc)?
@@ -64,6 +79,20 @@ pub(crate) fn parse_text_with_annotations_lowered_with_facts(
         lower_prepared_document_with_facts(prepared)?
     };
     Ok(lowered)
+}
+
+/// PR-02 contextless compatibility facade retained for existing internal
+/// parser consumers until the canonical pipeline is the only entry point.
+pub(crate) fn parse_text_with_annotations_lowered_with_facts(
+    builder: CardDefinitionBuilder,
+    text: String,
+    allow_unsupported: bool,
+) -> Result<LoweredCardDocument, CardTextError> {
+    let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+    crate::runtime_backend::legacy_source_reference_bridge::with_parse_context(
+        &mut context,
+        |context| parse_text_with_annotations_lowered_with_facts_context(context, builder, text),
+    )
 }
 
 #[cfg(test)]

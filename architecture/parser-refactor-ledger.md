@@ -11,6 +11,7 @@
 | PR | Commit | Production files | New bridge | Removed bridge | Static evidence | Deferred validation risk |
 | --- | --- | --- | --- | --- | --- | --- |
 | PR-01 — Ledger and architecture manifest | pending | `architecture/parser-refactor-ledger.md`; `architecture/parser-ownership-manifest.json`; `crates/ironsmith-tools/src/bin/audit_parser_architecture.rs`; `crates/ironsmith-tools/Cargo.toml` | Manifest registers `BRIDGE-PARSE-CONTEXT-TLS`, `BRIDGE-PARSE-OUTCOME-OPTION`, `BRIDGE-PARSE-OUTCOME-RESULT`, `BRIDGE-LEGACY-REGISTRY`, `BRIDGE-TAGKEY-SYMBOL`, `BRIDGE-CANONICAL-MODEL-REEXPORT`, and `BRIDGE-RUNTIME-PARSER-OUTPUT` | none | Baseline source counts and read-only corpus metrics recorded below; every manifest exception has an expiry PR | New audit source is intentionally uncompiled until PR-34; schema or Rust errors may surface then |
+| PR-02 — Explicit parse context | pending | `crates/ironsmith-compiler/src/parse_context.rs`; compiler facade/pipeline; document and line dispatch; legacy source-reference bridge; ownership manifest | `BRIDGE-CONTEXTLESS-PARSE-FACADE`; `BRIDGE-PARSE-CONTEXT-TLS` is confined to its named module | Direct thread-local access removed from `front_end/shared/util.rs`; canonical compile, pipeline, document, and line dispatch APIs carry `ParseContext`/`ParseContextView` | Contextless internal/test facades remain until PR-33; explicit context plumbing is intentionally uncompiled |
 
 ## Baseline smells
 

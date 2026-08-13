@@ -4,6 +4,7 @@ use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
     ParsedLevelActivatedAbilityAst, PredicateAst, TextSpan,
 };
+use crate::parse_context::{ParseContext, ParseContextView, ParseScopeKind};
 use crate::parse_trace;
 use winnow::Parser;
 use winnow::error::ModalResult as WResult;
@@ -5466,11 +5467,12 @@ fn rewrite_cleave_bracket_document(
     Ok(rewritten)
 }
 
-pub(crate) fn parse_text_to_semantic_document(
+pub(crate) fn parse_text_to_semantic_document_with_context(
+    context: &mut ParseContext,
     builder: CardDefinitionBuilder,
     text: String,
-    allow_unsupported: bool,
 ) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
+    let allow_unsupported = context.features().allow_unsupported;
     let card_name = builder.card_builder.name_ref().to_string();
     let _trace_scope = parse_trace::scope(format!(
         "card parse: \"{}\" allow_unsupported={} source_lines={}",
@@ -5545,10 +5547,16 @@ pub(crate) fn parse_text_to_semantic_document(
             preprocessed.items.len()
         );
     }
-    let cst = parse_document_cst(&preprocessed, allow_unsupported)?;
+    let document_context = context.view().child(ParseScopeKind::Document);
+    let cst = parse_document_cst_with_context(document_context, &preprocessed)?;
     let cleave_cst = cleave_preprocessed
         .as_ref()
-        .map(|document| parse_document_cst(document, allow_unsupported))
+        .map(|document| {
+            parse_document_cst_with_context(
+                document_context.child(ParseScopeKind::CleaveBranch),
+                document,
+            )
+        })
         .transpose()?;
     parse_trace::event(format!("cst lines: {}", cst.lines.len()));
     if parser_trace_enabled() {
@@ -5575,10 +5583,25 @@ pub(crate) fn parse_text_to_semantic_document(
     Ok((semantic, annotations))
 }
 
-pub(crate) fn parse_document_cst(
-    preprocessed: &PreprocessedDocument,
+/// PR-02 contextless compatibility facade for legacy direct document-parser
+/// callers. The explicit-context entry above is the canonical route.
+pub(crate) fn parse_text_to_semantic_document(
+    builder: CardDefinitionBuilder,
+    text: String,
     allow_unsupported: bool,
+) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
+    let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+    crate::runtime_backend::legacy_source_reference_bridge::with_parse_context(
+        &mut context,
+        |context| parse_text_to_semantic_document_with_context(context, builder, text),
+    )
+}
+
+pub(crate) fn parse_document_cst_with_context(
+    context: ParseContextView<'_>,
+    preprocessed: &PreprocessedDocument,
 ) -> Result<RewriteDocumentCst, CardTextError> {
+    let allow_unsupported = context.features().allow_unsupported;
     let mut lines = Vec::with_capacity(preprocessed.items.len());
     let mut idx = 0usize;
     while idx < preprocessed.items.len() {
@@ -5594,6 +5617,9 @@ pub(crate) fn parse_document_cst(
                 idx += 1;
             }
             PreprocessedItem::Line(line) => {
+                let line_context = context.child(ParseScopeKind::Line {
+                    source_line: line.info.display_line_index,
+                });
                 let _line_scope = parse_trace::scope(format!(
                     "line {} parse: \"{}\"",
                     line.info.display_line_index + 1,
@@ -5808,6 +5834,7 @@ pub(crate) fn parse_document_cst(
                 {
                     let rewritten_line = rewrite_line_normalized(line, rewritten.as_str())?;
                     if let Ok(dispatch) = dispatch_standard_line_cst(
+                        line_context,
                         preprocessed,
                         idx,
                         &rewritten_line,
@@ -5833,13 +5860,20 @@ pub(crate) fn parse_document_cst(
                     let stripped_line =
                         rewrite_line_tokens(line, strip_choice_bullet_prefix_tokens(&line.tokens));
                     dispatch_standard_line_cst(
+                        line_context,
                         preprocessed,
                         idx,
                         &stripped_line,
                         allow_unsupported,
                     )?
                 } else {
-                    dispatch_standard_line_cst(preprocessed, idx, line, allow_unsupported)?
+                    dispatch_standard_line_cst(
+                        line_context,
+                        preprocessed,
+                        idx,
+                        line,
+                        allow_unsupported,
+                    )?
                 };
                 for cst in &dispatch.lines {
                     trace_cst_line(cst);
@@ -5852,6 +5886,33 @@ pub(crate) fn parse_document_cst(
     }
 
     Ok(RewriteDocumentCst { lines })
+}
+
+/// PR-02 contextless compatibility facade for direct CST consumers.
+pub(crate) fn parse_document_cst(
+    preprocessed: &PreprocessedDocument,
+    allow_unsupported: bool,
+) -> Result<RewriteDocumentCst, CardTextError> {
+    let source_text = preprocessed
+        .items
+        .iter()
+        .map(|item| match item {
+            PreprocessedItem::Metadata(line) => line.info.raw_line.as_str(),
+            PreprocessedItem::Line(line) => line.info.raw_line.as_str(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut context =
+        ParseContext::for_builder(&preprocessed.builder, &source_text, allow_unsupported);
+    crate::runtime_backend::legacy_source_reference_bridge::with_parse_context(
+        &mut context,
+        |context| {
+            parse_document_cst_with_context(
+                context.view().child(ParseScopeKind::Document),
+                preprocessed,
+            )
+        },
+    )
 }
 
 fn lower_document_cst(

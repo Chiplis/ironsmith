@@ -59,9 +59,6 @@ use super::grammar::targets::parse_target_envelope;
 use super::lexer::lex_line;
 use super::lexer::{OwnedLexToken, TokenKind, render_token_slice};
 use super::token_primitives as shared_tokens;
-use std::cell::RefCell;
-use std::collections::HashMap;
-
 const SACRIFICE_COST_TAG_PREFIX: &str = "sacrifice_cost_";
 const EXILE_COST_TAG_PREFIX: &str = "exile_cost_";
 const UNATTACH_COST_TAG_PREFIX: &str = "unattach_cost_";
@@ -69,22 +66,8 @@ const TAP_COST_TAG_PREFIX: &str = "tap_cost_";
 const RETURN_COST_TAG_PREFIX: &str = "return_cost_";
 const DISCARD_COST_TAG_PREFIX: &str = "discard_cost_";
 const DISCARDED_COST_TAG: &str = "discarded_cost";
+#[cfg(test)]
 type SourceReferenceAlias = leaf::LeafSourceReferenceAlias;
-
-#[derive(Clone, Default)]
-struct SourceReferenceContext {
-    source_name: String,
-    aliases: Vec<SourceReferenceAlias>,
-    preferred_self_surface: Option<SourceReferenceSurface>,
-    surfaces_by_span: HashMap<TextSpan, SourceReferenceSurface>,
-    sacrificed_kinds_by_span: HashMap<TextSpan, SacrificedObjectKind>,
-}
-
-thread_local! {
-    static SOURCE_REFERENCE_CONTEXT: RefCell<SourceReferenceContext> =
-        RefCell::new(SourceReferenceContext::default());
-}
-
 /// Run a nested parse with only the card's proper-name aliases installed.
 ///
 /// Most full-card parsing should use `with_card_source_reference_context`,
@@ -95,7 +78,7 @@ thread_local! {
 /// receives the ability. The attached-grant parser uses this name-only context
 /// to preserve that authored distinction.
 pub(crate) fn with_source_reference_context<T>(card_name: &str, f: impl FnOnce() -> T) -> T {
-    with_source_reference_context_aliases(card_name, Vec::new(), f)
+    crate::runtime_backend::legacy_source_reference_bridge::with_name(card_name, f)
 }
 
 pub(crate) fn with_card_source_reference_context<T>(
@@ -104,10 +87,8 @@ pub(crate) fn with_card_source_reference_context<T>(
     subtypes: &[Subtype],
     f: impl FnOnce() -> T,
 ) -> T {
-    with_source_reference_context_aliases(
-        card_name,
-        source_reference_aliases_for_card_identity(card_types, subtypes),
-        f,
+    crate::runtime_backend::legacy_source_reference_bridge::with_card_identity(
+        card_name, card_types, subtypes, f,
     )
 }
 
@@ -117,203 +98,63 @@ pub(crate) fn with_token_source_reference_context<T>(
     subtypes: &[Subtype],
     f: impl FnOnce() -> T,
 ) -> T {
-    let mut aliases = Vec::new();
-    push_source_reference_alias_words(
-        &mut aliases,
-        vec!["this".to_string(), "token".to_string()],
-        SourceReferenceSurface::ThisPermanentType("this token".to_string()),
-    );
-    for alias in source_reference_aliases_for_card_identity(card_types, subtypes) {
-        push_source_reference_alias_words(&mut aliases, alias.words, alias.surface);
-    }
-    with_source_reference_context_aliases(token_name, aliases, f)
-}
-
-fn with_source_reference_context_aliases<T>(
-    card_name: &str,
-    extra_aliases: Vec<SourceReferenceAlias>,
-    f: impl FnOnce() -> T,
-) -> T {
-    let preferred_self_surface = extra_aliases.first().map(|alias| alias.surface.clone());
-    let mut aliases = source_reference_aliases_for_name(card_name);
-    for alias in extra_aliases {
-        push_source_reference_alias_words(&mut aliases, alias.words, alias.surface);
-    }
-    aliases.sort_by_key(|alias| std::cmp::Reverse(alias.words.len()));
-    SOURCE_REFERENCE_CONTEXT.with(|context| {
-        let previous = context.replace(SourceReferenceContext {
-            source_name: card_name.trim().to_string(),
-            aliases,
-            preferred_self_surface,
-            surfaces_by_span: HashMap::new(),
-            sacrificed_kinds_by_span: HashMap::new(),
-        });
-        let result = f();
-        context.replace(previous);
-        result
-    })
+    crate::runtime_backend::legacy_source_reference_bridge::with_token_identity(
+        token_name, card_types, subtypes, f,
+    )
 }
 
 pub(crate) fn current_source_reference_name() -> Option<String> {
-    SOURCE_REFERENCE_CONTEXT.with(|context| {
-        let source_name = context.borrow().source_name.trim().to_string();
-        (!source_name.is_empty()).then_some(source_name)
-    })
+    crate::runtime_backend::legacy_source_reference_bridge::current_name()
 }
 
 pub(crate) fn preferred_source_reference_self_surface() -> Option<SourceReferenceSurface> {
-    SOURCE_REFERENCE_CONTEXT.with(|context| context.borrow().preferred_self_surface.clone())
+    crate::runtime_backend::legacy_source_reference_bridge::preferred_self_surface()
 }
 
 pub(crate) fn source_reference_surface_for_span(
     span: Option<TextSpan>,
 ) -> Option<SourceReferenceSurface> {
-    let span = span?;
-    SOURCE_REFERENCE_CONTEXT.with(|context| context.borrow().surfaces_by_span.get(&span).cloned())
+    crate::runtime_backend::legacy_source_reference_bridge::surface_for_span(span)
 }
 
 pub(crate) fn record_source_reference_surface(
     span: Option<TextSpan>,
     surface: SourceReferenceSurface,
 ) {
-    let Some(span) = span else {
-        return;
-    };
-    SOURCE_REFERENCE_CONTEXT.with(|context| {
-        let mut context = context.borrow_mut();
-        let surface = canonical_source_reference_surface(&context.aliases, surface);
-        context.surfaces_by_span.insert(span, surface);
-    });
-}
-
-fn canonical_source_reference_surface(
-    aliases: &[SourceReferenceAlias],
-    surface: SourceReferenceSurface,
-) -> SourceReferenceSurface {
-    let surface_text = match &surface {
-        SourceReferenceSurface::FullName(text) | SourceReferenceSurface::ShortName(text) => {
-            text.as_str()
-        }
-        SourceReferenceSurface::ThisPermanentType(_) => return surface,
-    };
-    aliases
-        .iter()
-        .find_map(|alias| match &alias.surface {
-            SourceReferenceSurface::FullName(alias_text)
-            | SourceReferenceSurface::ShortName(alias_text)
-                if alias_text.eq_ignore_ascii_case(surface_text) =>
-            {
-                Some(alias.surface.clone())
-            }
-            _ => None,
-        })
-        .unwrap_or(surface)
+    crate::runtime_backend::legacy_source_reference_bridge::record_surface(span, surface);
 }
 
 pub(crate) fn sacrificed_object_kind_for_span(
     span: Option<TextSpan>,
 ) -> Option<SacrificedObjectKind> {
-    let span = span?;
-    SOURCE_REFERENCE_CONTEXT.with(|context| {
-        context
-            .borrow()
-            .sacrificed_kinds_by_span
-            .get(&span)
-            .copied()
-    })
+    crate::runtime_backend::legacy_source_reference_bridge::sacrificed_kind_for_span(span)
 }
 
 pub(crate) fn record_sacrificed_object_kind(span: Option<TextSpan>, kind: SacrificedObjectKind) {
-    let Some(span) = span else {
-        return;
-    };
-    SOURCE_REFERENCE_CONTEXT.with(|context| {
-        context
-            .borrow_mut()
-            .sacrificed_kinds_by_span
-            .insert(span, kind);
-    });
+    crate::runtime_backend::legacy_source_reference_bridge::record_sacrificed_kind(span, kind);
 }
 
+#[cfg(test)]
 fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
-    leaf::parse_leaf_source_reference_aliases_for_name(name)
+    crate::runtime_backend::legacy_source_reference_bridge::aliases_for_name(name)
 }
 
-fn source_reference_aliases_for_card_identity(
-    card_types: &[CardType],
-    subtypes: &[Subtype],
-) -> Vec<SourceReferenceAlias> {
-    let mut aliases = Vec::new();
-    for card_type in card_types {
-        if let Some(type_name) = source_reference_self_card_type_name(*card_type) {
-            push_this_source_reference_alias(&mut aliases, type_name);
-        }
-    }
-    for subtype in subtypes {
-        if is_permanent_source_reference_subtype(*subtype) {
-            push_this_source_reference_alias(&mut aliases, &subtype.display_name());
-        }
-    }
-    aliases
-}
-
-fn source_reference_self_card_type_name(card_type: CardType) -> Option<&'static str> {
-    match card_type {
-        CardType::Artifact
-        | CardType::Battle
-        | CardType::Creature
-        | CardType::Enchantment
-        | CardType::Land
-        | CardType::Plane
-        | CardType::Phenomenon
-        | CardType::Vanguard
-        | CardType::Scheme
-        | CardType::Conspiracy
-        | CardType::Planeswalker => Some(card_type.name()),
-        CardType::Instant | CardType::Kindred | CardType::Sorcery => None,
-    }
-}
-
-fn is_permanent_source_reference_subtype(subtype: Subtype) -> bool {
-    subtype.is_land_subtype()
-        || subtype.is_creature_type()
-        || subtype.is_artifact_subtype()
-        || subtype.is_enchantment_subtype()
-        || subtype.is_planeswalker_subtype()
-        || subtype.is_battle_subtype()
-}
-
-fn push_this_source_reference_alias(aliases: &mut Vec<SourceReferenceAlias>, permanent_type: &str) {
-    let Some(surface) = leaf::parse_leaf_this_source_reference_surface(permanent_type) else {
-        return;
-    };
-    let SourceReferenceSurface::ThisPermanentType(surface_text) = &surface else {
-        return;
-    };
-    let surface_text = surface_text.clone();
-    leaf::push_leaf_source_reference_alias(aliases, &surface_text, surface);
-}
-
-fn push_source_reference_alias_words(
-    aliases: &mut Vec<SourceReferenceAlias>,
-    words: Vec<String>,
+#[cfg(test)]
+fn canonical_source_reference_surface(
+    aliases: &[SourceReferenceAlias],
     surface: SourceReferenceSurface,
-) {
-    leaf::push_leaf_source_reference_alias_words(aliases, words, surface);
+) -> SourceReferenceSurface {
+    crate::runtime_backend::legacy_source_reference_bridge::canonical_surface(aliases, surface)
 }
 
 pub(crate) fn source_reference_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
-    SOURCE_REFERENCE_CONTEXT.with(|context| {
-        leaf::parse_leaf_source_reference_alias_words(&context.borrow().aliases, words)
-    })
+    crate::runtime_backend::legacy_source_reference_bridge::surface_for_words(words)
 }
 
 pub(crate) fn source_reference_surface_for_possessive_words(
     words: &[&str],
 ) -> Option<SourceReferenceSurface> {
-    SOURCE_REFERENCE_CONTEXT.with(|context| {
-        leaf::parse_leaf_source_reference_possessive_alias_words(&context.borrow().aliases, words)
-    })
+    crate::runtime_backend::legacy_source_reference_bridge::surface_for_possessive_words(words)
 }
 
 pub(crate) fn source_choose_spec_for_surface(surface: SourceReferenceSurface) -> ChooseSpec {

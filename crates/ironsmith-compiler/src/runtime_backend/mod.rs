@@ -51,6 +51,8 @@ pub(crate) mod keyword_registry;
 pub(crate) mod keyword_static;
 #[path = "families/keyword_static_helpers.rs"]
 pub(crate) mod keyword_static_helpers;
+#[path = "front_end/legacy_source_reference_bridge.rs"]
+pub(crate) mod legacy_source_reference_bridge;
 #[path = "front_end/lexer.rs"]
 pub(crate) mod lexer;
 #[path = "lowering/lower/mod.rs"]
@@ -194,7 +196,6 @@ pub(crate) fn compile_card_text(
     stacker::grow(16 * 1024 * 1024, || {
         let text = text.into();
         let mut builder = builder;
-        let card_name = builder.card_builder.name_ref().to_string();
         // Payload-backed callers put card identity in `Type:` metadata instead
         // of pre-seeding the builder. Install that identity before source-aware
         // grammar resolves phrases such as "this enchantment's".
@@ -207,10 +208,10 @@ pub(crate) fn compile_card_text(
             builder =
                 builder.apply_metadata(crate::front_end::MetadataLine::TypeLine(raw_type_line))?;
         }
-        let card_types = builder.card_builder.card_types_ref().to_vec();
-        let subtypes = builder.card_builder.subtypes_ref().to_vec();
-        util::with_card_source_reference_context(card_name.as_str(), &card_types, &subtypes, || {
-            CardTextCompiler::compile(builder, text, CompilePolicy { allow_unsupported })
+        let mut context =
+            crate::parse_context::ParseContext::for_builder(&builder, &text, allow_unsupported);
+        legacy_source_reference_bridge::with_parse_context(&mut context, |context| {
+            CardTextCompiler::compile(context, builder, text, CompilePolicy { allow_unsupported })
         })
     })
 }

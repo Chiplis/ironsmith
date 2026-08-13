@@ -33,6 +33,7 @@ impl LineDispatchResult {
 }
 
 pub(super) struct LineDispatchContext<'a> {
+    pub(super) parse: ParseContextView<'a>,
     pub(super) preprocessed: &'a PreprocessedDocument,
     pub(super) idx: usize,
     pub(super) line: &'a PreprocessedLine,
@@ -295,6 +296,11 @@ fn dispatch_line_family_registry(
     }
 
     let (head, second) = lexed_head_words(&ctx.line.tokens).unwrap_or(("", None));
+    parse_trace::event(format!(
+        "line-family scope: {:?} ({:?})",
+        ctx.parse.scope(),
+        ctx.parse.scope_kind()
+    ));
     let mut candidate_indices = LINE_FAMILY_RULE_INDEX.candidate_indices(head, second);
     let mut hinted = vec![false; LINE_FAMILY_RULES.len()];
     for idx in &candidate_indices {
@@ -352,12 +358,14 @@ fn dispatch_line_family_registry(
 }
 
 pub(super) fn dispatch_standard_line_cst(
+    parse: ParseContextView<'_>,
     preprocessed: &PreprocessedDocument,
     idx: usize,
     line: &PreprocessedLine,
     allow_unsupported: bool,
 ) -> Result<LineDispatchResult, CardTextError> {
     let ctx = LineDispatchContext {
+        parse,
         preprocessed,
         idx,
         line,

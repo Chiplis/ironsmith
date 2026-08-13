@@ -1,0 +1,258 @@
+use std::cell::{Cell, RefCell};
+
+use crate::cards::builders::CardDefinitionBuilder;
+use crate::diagnostics::TextSpan;
+use crate::types::{CardType, Subtype, Supertype};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SourceUnitId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ParseScopeId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ParseArenaId(pub u32);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceIdentity {
+    pub unit: SourceUnitId,
+    pub card_name: String,
+    pub face_index: usize,
+    pub source_len: usize,
+    pub source_line_count: usize,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CardFaceMetadata {
+    pub supertypes: Vec<Supertype>,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub other_face_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ParseFeatures {
+    pub allow_unsupported: bool,
+    pub preserve_reminder_text: bool,
+    pub capture_trace: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParseScopeKind {
+    Root,
+    Document,
+    Line { source_line: usize },
+    NestedAbility,
+    ModalMode { mode_index: usize },
+    TokenDefinition,
+    CleaveBranch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextDiagnostic {
+    pub rule_path: Vec<String>,
+    pub span: Option<TextSpan>,
+    pub message: String,
+}
+
+#[derive(Debug, Default)]
+pub struct ParseDiagnosticSink {
+    diagnostics: RefCell<Vec<ContextDiagnostic>>,
+}
+
+impl ParseDiagnosticSink {
+    pub fn push(&self, diagnostic: ContextDiagnostic) {
+        self.diagnostics.borrow_mut().push(diagnostic);
+    }
+
+    pub fn snapshot(&self) -> Vec<ContextDiagnostic> {
+        self.diagnostics.borrow().clone()
+    }
+
+    pub fn take(&self) -> Vec<ContextDiagnostic> {
+        std::mem::take(&mut *self.diagnostics.borrow_mut())
+    }
+}
+
+#[derive(Debug)]
+pub struct ParseArenas {
+    next_scope: Cell<u32>,
+    next_provenance: Cell<u32>,
+    next_symbol: Cell<u32>,
+}
+
+impl Default for ParseArenas {
+    fn default() -> Self {
+        Self {
+            next_scope: Cell::new(1),
+            next_provenance: Cell::new(0),
+            next_symbol: Cell::new(0),
+        }
+    }
+}
+
+impl ParseArenas {
+    fn allocate(cell: &Cell<u32>) -> ParseArenaId {
+        let id = cell.get();
+        cell.set(id.checked_add(1).expect("parse arena identifier overflow"));
+        ParseArenaId(id)
+    }
+
+    pub fn allocate_scope(&self) -> ParseScopeId {
+        let ParseArenaId(id) = Self::allocate(&self.next_scope);
+        ParseScopeId(id)
+    }
+
+    pub fn allocate_provenance(&self) -> ParseArenaId {
+        Self::allocate(&self.next_provenance)
+    }
+
+    pub fn allocate_symbol(&self) -> ParseArenaId {
+        Self::allocate(&self.next_symbol)
+    }
+}
+
+#[derive(Debug)]
+pub struct ParseContext {
+    source: SourceIdentity,
+    card: CardFaceMetadata,
+    features: ParseFeatures,
+    diagnostics: ParseDiagnosticSink,
+    arenas: ParseArenas,
+}
+
+impl ParseContext {
+    pub fn new(source: SourceIdentity, card: CardFaceMetadata, features: ParseFeatures) -> Self {
+        Self {
+            source,
+            card,
+            features,
+            diagnostics: ParseDiagnosticSink::default(),
+            arenas: ParseArenas::default(),
+        }
+    }
+
+    pub(crate) fn for_builder(
+        builder: &CardDefinitionBuilder,
+        text: &str,
+        allow_unsupported: bool,
+    ) -> Self {
+        Self::new(
+            SourceIdentity {
+                unit: SourceUnitId(0),
+                card_name: builder.card_builder.name_ref().trim().to_string(),
+                face_index: 0,
+                source_len: text.len(),
+                source_line_count: text.lines().count(),
+            },
+            CardFaceMetadata {
+                supertypes: builder.card_builder.supertypes_ref().to_vec(),
+                card_types: builder.card_builder.card_types_ref().to_vec(),
+                subtypes: builder.card_builder.subtypes_ref().to_vec(),
+                other_face_name: None,
+            },
+            ParseFeatures {
+                allow_unsupported,
+                preserve_reminder_text: false,
+                capture_trace: crate::parse_trace::is_enabled(),
+            },
+        )
+    }
+
+    pub fn source(&self) -> &SourceIdentity {
+        &self.source
+    }
+
+    pub fn card(&self) -> &CardFaceMetadata {
+        &self.card
+    }
+
+    pub fn features(&self) -> ParseFeatures {
+        self.features
+    }
+
+    pub fn diagnostics(&self) -> &ParseDiagnosticSink {
+        &self.diagnostics
+    }
+
+    pub fn arenas(&self) -> &ParseArenas {
+        &self.arenas
+    }
+
+    pub fn view(&self) -> ParseContextView<'_> {
+        ParseContextView {
+            source: &self.source,
+            card: &self.card,
+            features: self.features,
+            diagnostics: &self.diagnostics,
+            arenas: &self.arenas,
+            scope: ParseScopeId(0),
+            scope_kind: ParseScopeKind::Root,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ParseContextView<'a> {
+    source: &'a SourceIdentity,
+    card: &'a CardFaceMetadata,
+    features: ParseFeatures,
+    diagnostics: &'a ParseDiagnosticSink,
+    arenas: &'a ParseArenas,
+    scope: ParseScopeId,
+    scope_kind: ParseScopeKind,
+}
+
+impl<'a> ParseContextView<'a> {
+    pub fn source(self) -> &'a SourceIdentity {
+        self.source
+    }
+
+    pub fn card(self) -> &'a CardFaceMetadata {
+        self.card
+    }
+
+    pub fn features(self) -> ParseFeatures {
+        self.features
+    }
+
+    pub fn diagnostics(self) -> &'a ParseDiagnosticSink {
+        self.diagnostics
+    }
+
+    pub fn arenas(self) -> &'a ParseArenas {
+        self.arenas
+    }
+
+    pub fn scope(self) -> ParseScopeId {
+        self.scope
+    }
+
+    pub fn scope_kind(self) -> ParseScopeKind {
+        self.scope_kind
+    }
+
+    pub fn child(self, scope_kind: ParseScopeKind) -> Self {
+        Self {
+            scope: self.arenas.allocate_scope(),
+            scope_kind,
+            ..self
+        }
+    }
+
+    pub fn record_diagnostic<I, S>(
+        self,
+        rule_path: I,
+        span: Option<TextSpan>,
+        message: impl Into<String>,
+    ) where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.diagnostics.push(ContextDiagnostic {
+            rule_path: rule_path.into_iter().map(Into::into).collect(),
+            span,
+            message: message.into(),
+        });
+    }
+}

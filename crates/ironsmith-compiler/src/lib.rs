@@ -27,6 +27,7 @@ pub mod mana;
 pub mod model;
 pub mod object;
 pub mod oracle_grammar;
+pub mod parse_context;
 pub mod parse_loss;
 pub mod parse_trace;
 pub mod payload;
@@ -122,6 +123,10 @@ pub use object::{AuraAttachmentFilter, CounterType};
 pub use oracle_grammar::{
     OracleGrammarDocument, OracleGrammarLevelItem, OracleGrammarLine, OracleGrammarLineInfo,
     OracleGrammarMode, parse_oracle_grammar_document,
+};
+pub use parse_context::{
+    CardFaceMetadata, ContextDiagnostic, ParseArenaId, ParseArenas, ParseContext, ParseContextView,
+    ParseDiagnosticSink, ParseFeatures, ParseScopeId, ParseScopeKind, SourceIdentity, SourceUnitId,
 };
 pub use payload::{IfResultPredicate, KeywordAction};
 pub use pipeline::{LoweringPipeline, PostpassProcessor};

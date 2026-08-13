@@ -3,6 +3,7 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::cards::CardDefinition;
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ParseAnnotations};
+use crate::parse_context::ParseContext;
 use crate::{parse_loss, parse_trace};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -65,10 +66,16 @@ pub(crate) struct CardTextCompiler;
 
 impl CardTextCompiler {
     pub(crate) fn compile(
+        context: &mut ParseContext,
         builder: CardDefinitionBuilder,
         text: String,
         policy: CompilePolicy,
     ) -> CachedParseResult {
+        debug_assert_eq!(
+            context.features().allow_unsupported,
+            policy.allow_unsupported,
+            "parse policy and explicit parse context diverged"
+        );
         let cache_key = ParseCacheKey::new(&builder, &text, policy.allow_unsupported);
         let tracing = parse_trace::is_enabled();
         let capturing_loss = parse_loss::is_enabled();
@@ -83,10 +90,8 @@ impl CardTextCompiler {
             return cached;
         }
 
-        let result = super::pipeline::parse_text_with_annotations_lowered_with_facts(
-            builder,
-            text,
-            policy.allow_unsupported,
+        let result = super::pipeline::parse_text_with_annotations_lowered_with_facts_context(
+            context, builder, text,
         )
         .map(|lowered| CompiledCardText {
             definition: lowered.definition,

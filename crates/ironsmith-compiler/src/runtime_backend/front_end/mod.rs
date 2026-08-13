@@ -6,6 +6,7 @@ pub(crate) mod document {
     pub(crate) use super::super::document_parser::parse_text_to_semantic_document;
 }
 pub(crate) use super::grammar;
+pub(crate) use super::legacy_source_reference_bridge;
 pub(crate) use super::lexer;
 pub(crate) use super::parser_support;
 pub(crate) use super::preprocess;

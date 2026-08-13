@@ -63,10 +63,19 @@
     {
       "id": "BRIDGE-PARSE-CONTEXT-TLS",
       "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs"
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/legacy_source_reference_bridge.rs"
       ],
       "removal_pr": 33,
       "reason": "The legacy source-reference context is thread-local until explicit ParseContext reaches all entry points."
+    },
+    {
+      "id": "BRIDGE-CONTEXTLESS-PARSE-FACADE",
+      "paths": [
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/document/mod.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/pipeline.rs"
+      ],
+      "removal_pr": 33,
+      "reason": "Existing internal and test consumers retain contextless facade wrappers while production compilation uses explicit ParseContext."
     },
     {
       "id": "BRIDGE-PARSE-OUTCOME-OPTION",
@@ -249,7 +258,7 @@
     {
       "id": "EX-THREAD-LOCAL-SOURCE-CONTEXT",
       "finding_kinds": ["legacy_path"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs"],
+      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/front_end/legacy_source_reference_bridge.rs"],
       "removal_pr": 33,
       "reason": "Source-reference identity is hidden in a thread-local context."
     },
