@@ -13,11 +13,6 @@ pub(crate) use super::parser_support;
 pub(crate) use super::preprocess;
 pub(crate) use super::rule_engine;
 pub(crate) use super::semantic_document;
-pub(crate) mod interaction_clause_migration;
-pub(crate) mod library_clause_migration;
-pub(crate) mod object_action_clause_migration;
-pub(crate) mod permission_program_migration;
-pub(crate) mod resource_choice_clause_migration;
 pub(crate) mod semantic_migration_context;
 pub(crate) mod shared {
     pub(crate) use super::super::util;

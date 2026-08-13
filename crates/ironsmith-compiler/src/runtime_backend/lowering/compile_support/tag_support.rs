@@ -17,7 +17,7 @@ const SENTENCE_HELPER_EXILED_TAG_PREFIX: &str = "__sentence_helper_exiled";
 const SENTENCE_HELPER_CONSULT_MATCH_TAG_PREFIX: &str = "__sentence_helper_consult_match";
 
 fn tag_str_has_prefix(tag: &str, prefix: &str) -> bool {
-    tag.strip_prefix(prefix).is_some()
+    tag.starts_with(prefix)
 }
 
 pub(crate) fn is_revealed_collection_tag(tag: &str) -> bool {

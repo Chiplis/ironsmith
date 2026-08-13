@@ -541,8 +541,8 @@ fn lower_materialization_costs(
                 if let Some(surface) = surface {
                     costs.push(Cost::validated_effect(Effect::new(
                         crate::effects::SacrificeTargetEffect::new(
-                            crate::runtime_backend::front_end::shared::util::source_choose_spec_for_surface(
-                                surface.clone(),
+                            crate::target::ChooseSpec::Source.with_surface_hint(
+                                crate::target::ChooseSpecSurfaceHint::SourceReference(surface.clone()),
                             ),
                         ),
                     )));
@@ -798,8 +798,8 @@ fn lower_materialization_costs(
             MaterializationCost::MoveSelfToLibraryBottom { surface } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::validated_effect(Effect::move_to_zone(
-                    crate::runtime_backend::front_end::shared::util::source_choose_spec_for_surface(
-                        surface.clone(),
+                    crate::target::ChooseSpec::Source.with_surface_hint(
+                        crate::target::ChooseSpecSurfaceHint::SourceReference(surface.clone()),
                     ),
                     crate::zone::Zone::Library,
                     false,

@@ -74,12 +74,30 @@
     }
   ],
   "allowed_edges": [
-    { "from": "document", "to": "grammar" },
-    { "from": "grammar", "to": "semantic_facts" },
-    { "from": "semantic_facts", "to": "reference_resolution" },
-    { "from": "reference_resolution", "to": "compiler_ast" },
-    { "from": "compiler_ast", "to": "lowering" },
-    { "from": "lowering", "to": "runtime" }
+    {
+      "from": "document",
+      "to": "grammar"
+    },
+    {
+      "from": "grammar",
+      "to": "semantic_facts"
+    },
+    {
+      "from": "semantic_facts",
+      "to": "reference_resolution"
+    },
+    {
+      "from": "reference_resolution",
+      "to": "compiler_ast"
+    },
+    {
+      "from": "compiler_ast",
+      "to": "lowering"
+    },
+    {
+      "from": "lowering",
+      "to": "runtime"
+    }
   ],
   "bridges": [
     {
@@ -141,50 +159,6 @@
       "reason": "Temporary re-exports preserve source compatibility while authoritative types move to the compiler-owned model."
     },
     {
-      "id": "BRIDGE-LIBRARY-CLAUSE-MIGRATION",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/library_clause_migration.rs"
-      ],
-      "removal_pr": 31,
-      "reason": "Legacy library recognizers are converted to typed common clauses at the semantic-document boundary until direct clause recognition and mechanical lowering replace the runtime-shaped leaves."
-    },
-    {
-      "id": "BRIDGE-OBJECT-ACTION-CLAUSE-MIGRATION",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/object_action_clause_migration.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_migration_context.rs"
-      ],
-      "removal_pr": 31,
-      "reason": "Legacy movement, creation, copy, control, and attachment leaves are converted to typed common clauses until those clauses lower mechanically."
-    },
-    {
-      "id": "BRIDGE-INTERACTION-CLAUSE-MIGRATION",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/interaction_clause_migration.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_migration_context.rs"
-      ],
-      "removal_pr": 31,
-      "reason": "Legacy damage, prevention, counter, combat, and characteristic-change leaves are converted to typed common clauses until those clauses lower mechanically."
-    },
-    {
-      "id": "BRIDGE-RESOURCE-CHOICE-CLAUSE-MIGRATION",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/resource_choice_clause_migration.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_migration_context.rs"
-      ],
-      "removal_pr": 31,
-      "reason": "Legacy resource, choice, vote, and repetition leaves are converted to typed common clauses and scoped programs until direct clause lowering replaces them."
-    },
-    {
-      "id": "BRIDGE-PERMISSION-PROGRAM-MIGRATION",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/permission_program_migration.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_migration_context.rs"
-      ],
-      "removal_pr": 31,
-      "reason": "Legacy permission leaves and source-sentence wrappers are converted to typed casting clauses and reference-linked document programs until direct clause lowering replaces them."
-    },
-    {
       "id": "BRIDGE-RUNTIME-PARSER-OUTPUT",
       "paths": [
         "crates/ironsmith-compiler/src/model/ast/nodes.rs",
@@ -197,49 +171,53 @@
   "exceptions": [
     {
       "id": "EX-FRONT-END-RUNTIME-CONSTRUCTION",
-      "finding_kinds": ["forbidden_import"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/front_end"],
+      "finding_kinds": [
+        "forbidden_import"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend/front_end"
+      ],
       "removal_pr": 13,
       "reason": "The legacy front end still imports lowering and runtime constructors."
     },
     {
       "id": "EX-GRAMMAR-RUNTIME-FACTS",
-      "finding_kinds": ["forbidden_import"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/front_end/grammar"],
+      "finding_kinds": [
+        "forbidden_import"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar"
+      ],
       "removal_pr": 16,
       "reason": "Legacy grammar returns runtime filters, values, costs, restrictions, and permissions."
     },
     {
       "id": "EX-FAMILY-RUNTIME-OUTPUT",
-      "finding_kinds": ["forbidden_import"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/families"],
+      "finding_kinds": [
+        "forbidden_import"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend/families"
+      ],
       "removal_pr": 12,
       "reason": "Family parsers construct runtime ability categories."
     },
     {
       "id": "EX-SENTENCE-RUNTIME-OUTPUT",
-      "finding_kinds": ["forbidden_import"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/sentences"],
+      "finding_kinds": [
+        "forbidden_import"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend/sentences"
+      ],
       "removal_pr": 32,
       "reason": "Residual sentence leaf parsers construct runtime-shaped ability payloads until the legacy sentence tree is removed."
     },
     {
-      "id": "EX-LOWERING-GRAMMAR-IMPORTS",
-      "finding_kinds": ["forbidden_import"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/lowering"],
-      "removal_pr": 31,
-      "reason": "Lowering still imports lexer, grammar, sentence, and source-pattern helpers."
-    },
-    {
-      "id": "EX-LOWERING-RAW-TEXT",
-      "finding_kinds": ["raw_text_lowering"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/lowering"],
-      "removal_pr": 31,
-      "reason": "Legacy lowering performs source and token inspection and semantic repair."
-    },
-    {
       "id": "EX-OPTION-REGISTRY-OUTCOMES",
-      "finding_kinds": ["discarded_error"],
+      "finding_kinds": [
+        "discarded_error"
+      ],
       "path_prefixes": [
         "crates/ironsmith-compiler/src/runtime_backend/front_end",
         "crates/ironsmith-compiler/src/runtime_backend/families",
@@ -250,7 +228,9 @@
     },
     {
       "id": "EX-FIRST-MATCH-REGISTRIES",
-      "finding_kinds": ["first_match_registry"],
+      "finding_kinds": [
+        "first_match_registry"
+      ],
       "path_prefixes": [
         "crates/ironsmith-compiler/src/runtime_backend/front_end",
         "crates/ironsmith-compiler/src/runtime_backend/families",
@@ -261,63 +241,86 @@
     },
     {
       "id": "EX-STRING-REFERENCE-TAGS",
-      "finding_kinds": ["string_reference_tag"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend"],
+      "finding_kinds": [
+        "string_reference_tag"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend"
+      ],
       "removal_pr": 33,
       "reason": "Reference identity is still represented by literal TagKey values."
     },
     {
-      "id": "EX-POST-LOWERING-REPAIR-CHAIN",
-      "finding_kinds": ["legacy_path", "raw_text_lowering"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs"],
-      "removal_pr": 31,
-      "reason": "The line lowerer contains the post-lowering semantic repair chain."
-    },
-    {
       "id": "EX-LEGACY-SENTENCE-TREE",
-      "finding_kinds": ["legacy_path"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/sentences"],
+      "finding_kinds": [
+        "legacy_path"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend/sentences"
+      ],
       "removal_pr": 32,
       "reason": "The legacy sentence tree remains until all domains use the common clause vocabulary."
     },
     {
       "id": "EX-LEGACY-FAMILY-TREE",
-      "finding_kinds": ["legacy_path"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/families"],
+      "finding_kinds": [
+        "legacy_path"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend/families"
+      ],
       "removal_pr": 32,
       "reason": "The legacy family tree remains while top-level categories migrate."
     },
     {
       "id": "EX-SHADOW-MODEL",
-      "finding_kinds": ["legacy_path"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/model"],
+      "finding_kinds": [
+        "legacy_path"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend/model"
+      ],
       "removal_pr": 33,
       "reason": "Compiler semantic ownership is still shadowed under runtime_backend/model."
     },
     {
       "id": "EX-SHADOW-BACKEND",
-      "finding_kinds": ["legacy_path"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend"],
+      "finding_kinds": [
+        "legacy_path"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend"
+      ],
       "removal_pr": 33,
       "reason": "The runtime_backend namespace remains the shadow ownership boundary."
     },
     {
       "id": "EX-THREAD-LOCAL-SOURCE-CONTEXT",
-      "finding_kinds": ["legacy_path"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/front_end/legacy_source_reference_bridge.rs"],
+      "finding_kinds": [
+        "legacy_path"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/legacy_source_reference_bridge.rs"
+      ],
       "removal_pr": 33,
       "reason": "Source-reference identity is hidden in a thread-local context."
     },
     {
       "id": "EX-DEBUG-STRING-PARSE-CACHE",
-      "finding_kinds": ["legacy_path"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend/facade/mod.rs"],
+      "finding_kinds": [
+        "legacy_path"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend/facade/mod.rs"
+      ],
       "removal_pr": 33,
       "reason": "The unbounded cache is keyed by Debug-formatted builder state."
     },
     {
       "id": "EX-PARSER-STACK-GROWTH",
-      "finding_kinds": ["legacy_path"],
+      "finding_kinds": [
+        "legacy_path"
+      ],
       "path_prefixes": [
         "crates/ironsmith-compiler/src/runtime_backend/front_end",
         "crates/ironsmith-compiler/src/runtime_backend/families",
@@ -329,8 +332,12 @@
     },
     {
       "id": "EX-MODULE-SIZE-BUDGETS",
-      "finding_kinds": ["legacy_path"],
-      "path_prefixes": ["crates/ironsmith-compiler/src/runtime_backend"],
+      "finding_kinds": [
+        "legacy_path"
+      ],
+      "path_prefixes": [
+        "crates/ironsmith-compiler/src/runtime_backend"
+      ],
       "removal_pr": 32,
       "reason": "Oversized legacy modules remain pending semantic model and parser-tree decomposition."
     }
@@ -444,11 +451,6 @@
       }
     ],
     "legacy_paths": [
-      {
-        "id": "legacy-line-lowering-monolith",
-        "path": "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs",
-        "removal_pr": 31
-      },
       {
         "id": "legacy-sentence-tree",
         "path": "crates/ironsmith-compiler/src/runtime_backend/sentences",

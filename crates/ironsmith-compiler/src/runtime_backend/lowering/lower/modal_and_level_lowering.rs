@@ -1,6 +1,6 @@
 use super::*;
-use crate::runtime_backend::compile_support::compile_condition_from_predicate_ast;
 use crate::runtime_backend::EffectLoweringContext;
+use crate::runtime_backend::compile_support::compile_condition_from_predicate_ast;
 
 pub(crate) fn try_merge_modal_into_remove_mode(
     effects: &mut crate::resolution::ResolutionProgram,
@@ -84,7 +84,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
 pub(crate) fn rewrite_lower_parsed_modal(
     mut builder: CardDefinitionBuilder,
     pending_modal: NormalizedModalAst,
-    allow_unsupported: bool,
+    _allow_unsupported: bool,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
     let NormalizedModalAst {
         header,
@@ -116,7 +116,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         common_prefix_effects_ast: _,
         common_suffix_effects_ast,
         modal_gate,
-        line_text,
+        ..
     } = header;
     let common_suffix_effect_count = common_suffix_effects_ast.len();
     let modal_spell_presentation = trigger
@@ -133,10 +133,6 @@ pub(crate) fn rewrite_lower_parsed_modal(
                 .expect("prepared prefix exists when checked above"),
         ) {
             Ok(lowered) => (lowered.effects, lowered.choices),
-            Err(err) if allow_unsupported => {
-                builder = push_unsupported_marker(builder, line_text.as_str(), format!("{err:?}"));
-                return Ok(builder);
-            }
             Err(err) => return Err(err),
         }
     } else {
@@ -146,10 +142,6 @@ pub(crate) fn rewrite_lower_parsed_modal(
                 .expect("prepared prefix exists when checked above"),
         ) {
             Ok(lowered) => (lowered.effects, lowered.choices),
-            Err(err) if allow_unsupported => {
-                builder = push_unsupported_marker(builder, line_text.as_str(), format!("{err:?}"));
-                return Ok(builder);
-            }
             Err(err) => return Err(err),
         }
     };
@@ -163,10 +155,6 @@ pub(crate) fn rewrite_lower_parsed_modal(
                 .expect("prepared common prefix exists when checked above"),
         ) {
             Ok(lowered) => (lowered.effects, lowered.choices),
-            Err(err) if allow_unsupported => {
-                builder = push_unsupported_marker(builder, line_text.as_str(), format!("{err:?}"));
-                return Ok(builder);
-            }
             Err(err) => return Err(err),
         }
     } else {
@@ -176,10 +164,6 @@ pub(crate) fn rewrite_lower_parsed_modal(
                 .expect("prepared common prefix exists when checked above"),
         ) {
             Ok(lowered) => (lowered.effects, lowered.choices),
-            Err(err) if allow_unsupported => {
-                builder = push_unsupported_marker(builder, line_text.as_str(), format!("{err:?}"));
-                return Ok(builder);
-            }
             Err(err) => return Err(err),
         }
     };
@@ -193,14 +177,6 @@ pub(crate) fn rewrite_lower_parsed_modal(
         let additional_mana_cost = mode.additional_mana_cost;
         let effects = match rewrite_lower_prepared_statement_effects(&mode.prepared) {
             Ok(lowered) => lowered.effects,
-            Err(err) if allow_unsupported => {
-                builder = push_unsupported_marker(
-                    builder,
-                    mode.info.raw_line.as_str(),
-                    format!("{err:?}"),
-                );
-                continue;
-            }
             Err(err) => return Err(err),
         };
         compiled_modes.push(crate::effect::EffectMode {
@@ -210,10 +186,9 @@ pub(crate) fn rewrite_lower_parsed_modal(
         mode_point_costs.push(point_cost);
         if spree || tiered {
             mode_additional_mana_costs.push(additional_mana_cost.ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "Costed modal mode '{}' is missing its typed additional mana cost",
-                    mode.info.raw_line
-                ))
+                CardTextError::InvariantViolation(
+                    "costed modal mode is missing its typed additional mana cost".to_string(),
+                )
             })?);
         }
     }
@@ -250,32 +225,33 @@ pub(crate) fn rewrite_lower_parsed_modal(
                 .map(|condition| (condition, change.selection))
         })
         .transpose()?;
-    let conditional_optional_range = compiled_conditional_mode_change
-        .as_ref()
-        .and_then(|(condition, selection)| {
-            let required_cost = match condition {
-                crate::effect::Condition::ThisSpellWasKicked => {
-                    crate::cost::OptionalCostRef::from("Kicker")
-                }
-                crate::effect::Condition::ThisSpellPaidLabel(label)
-                    if label.kind == crate::cost::OptionalCostKind::Additional =>
-                {
-                    crate::cost::OptionalCostRef::new(crate::cost::OptionalCostKind::Additional)
-                }
-                _ => return None,
-            };
-            let (min_modes, max_modes) = match selection {
-                crate::cards::builders::ConditionalModeSelection::BothOrTwo => (1, 2),
-                crate::cards::builders::ConditionalModeSelection::AnyNumber => (0, mode_count),
-                crate::cards::builders::ConditionalModeSelection::OneOrMore => (1, mode_count),
-                crate::cards::builders::ConditionalModeSelection::One => (1, 1),
-            };
-            Some(crate::effect::ConditionalModeRange::new(
-                required_cost,
-                crate::effect::Value::Fixed(min_modes),
-                crate::effect::Value::Fixed(max_modes.min(mode_count).max(min_modes)),
-            ))
-        });
+    let conditional_optional_range =
+        compiled_conditional_mode_change
+            .as_ref()
+            .and_then(|(condition, selection)| {
+                let required_cost = match condition {
+                    crate::effect::Condition::ThisSpellWasKicked => {
+                        crate::cost::OptionalCostRef::from("Kicker")
+                    }
+                    crate::effect::Condition::ThisSpellPaidLabel(label)
+                        if label.kind == crate::cost::OptionalCostKind::Additional =>
+                    {
+                        crate::cost::OptionalCostRef::new(crate::cost::OptionalCostKind::Additional)
+                    }
+                    _ => return None,
+                };
+                let (min_modes, max_modes) = match selection {
+                    crate::cards::builders::ConditionalModeSelection::BothOrTwo => (1, 2),
+                    crate::cards::builders::ConditionalModeSelection::AnyNumber => (0, mode_count),
+                    crate::cards::builders::ConditionalModeSelection::OneOrMore => (1, mode_count),
+                    crate::cards::builders::ConditionalModeSelection::One => (1, 1),
+                };
+                Some(crate::effect::ConditionalModeRange::new(
+                    required_cost,
+                    crate::effect::Value::Fixed(min_modes),
+                    crate::effect::Value::Fixed(max_modes.min(mode_count).max(min_modes)),
+                ))
+            });
     let apply_modal_metadata = |effect: crate::effect::Effect| {
         let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() else {
             return effect;
@@ -376,9 +352,8 @@ pub(crate) fn rewrite_lower_parsed_modal(
             })
             .unwrap_or((1, (mode_count.min(2)).max(1)));
         let choose_both = if max_both == 1 {
-            let mut effect = apply_modal_metadata(crate::effect::Effect::choose_one(
-                compiled_modes.clone(),
-            ));
+            let mut effect =
+                apply_modal_metadata(crate::effect::Effect::choose_one(compiled_modes.clone()));
             if compiled_conditional_mode_change.is_some()
                 && random_mode_choice
                 && let Some(choice) = effect.downcast_ref::<crate::effects::ChooseModeEffect>()
@@ -502,7 +477,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
             trigger,
             Vec::new(),
             vec![Zone::Battlefield],
-            Some(line_text),
+            None,
             None,
             None,
             ReferenceImports::default(),
