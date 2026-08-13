@@ -118,8 +118,8 @@
         "crates/ironsmith-compiler/src/runtime_backend/front_end/document/line_dispatch.rs",
         "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences"
       ],
-      "removal_pr": 33,
-      "reason": "Three finite sentence compatibility registries remain registration-ordered while sentence-domain migration proceeds."
+      "removal_pr": 29,
+      "reason": "Two finite sequence/follow-up recipe registries remain registration-ordered until their dedicated PR-29 migration."
     },
     {
       "id": "BRIDGE-TAGKEY-SYMBOL",

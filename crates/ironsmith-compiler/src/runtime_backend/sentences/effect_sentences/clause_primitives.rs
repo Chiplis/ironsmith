@@ -16,6 +16,11 @@ use super::super::util::{
     parse_subject, parse_target_phrase, record_source_reference_surface,
     source_reference_surface_for_words, span_from_tokens,
 };
+use crate::recognition::{ParseOutcome, RuleId, RuleMatch};
+use crate::registry::{
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
+};
+use crate::runtime_backend::front_end::grammar::effects::typed_clause_heads::classify_typed_clause_head;
 use super::parse_restriction_duration;
 use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
@@ -32,7 +37,43 @@ pub(crate) type ClausePrimitiveParser =
     fn(&[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError>;
 
 pub(crate) struct ClausePrimitive {
+    pub(crate) metadata: RegistryRuleMetadata,
+    pub(crate) phase: ClausePrimitivePhase,
     pub(crate) parser: ClausePrimitiveParser,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClausePrimitivePhase {
+    Specific,
+    GenericFallback,
+}
+
+impl ClausePrimitive {
+    const fn specific(
+        id: &'static str,
+        heads: &'static [&'static str],
+        parser: ClausePrimitiveParser,
+    ) -> Self {
+        Self {
+            metadata: RegistryRuleMetadata::distinct(
+                RuleId::new(id),
+                HeadDiscriminator::words(heads),
+            ),
+            phase: ClausePrimitivePhase::Specific,
+            parser,
+        }
+    }
+
+    const fn fallback(id: &'static str, parser: ClausePrimitiveParser) -> Self {
+        Self {
+            metadata: RegistryRuleMetadata::distinct(
+                RuleId::new(id),
+                HeadDiscriminator::grammar("typed-effect-clause-head"),
+            ),
+            phase: ClausePrimitivePhase::GenericFallback,
+            parser,
+        }
+    }
 }
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
@@ -278,125 +319,226 @@ pub(crate) fn run_clause_primitives(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     const PRIMITIVES: &[ClausePrimitive] = &[
-        ClausePrimitive {
-            parser: parse_choose_card_name_clause,
-        },
-        ClausePrimitive {
-            parser: parse_repeat_this_process_clause,
-        },
-        ClausePrimitive {
-            parser: parse_dont_lose_this_mana_as_steps_and_phases_end_clause,
-        },
-        ClausePrimitive {
-            parser: parse_retarget_clause,
-        },
-        ClausePrimitive {
-            parser: parse_copy_targets_clause,
-        },
-        ClausePrimitive {
-            parser: parse_copy_spell_clause,
-        },
-        ClausePrimitive {
-            parser: parse_win_the_game_clause,
-        },
-        ClausePrimitive {
-            parser: parse_deal_damage_equal_to_power_clause,
-        },
-        ClausePrimitive {
-            parser: parse_anaphoric_object_deals_damage_clause,
-        },
-        ClausePrimitive {
-            parser: parse_fight_clause,
-        },
-        ClausePrimitive {
-            parser: parse_clash_clause,
-        },
-        ClausePrimitive {
-            parser: parse_for_each_target_players_clause,
-        },
-        ClausePrimitive {
-            parser: parse_each_player_exiles_hand_face_down_and_draws_clause,
-        },
-        ClausePrimitive {
-            parser: parse_each_player_return_with_additional_counter_clause,
-        },
-        ClausePrimitive {
-            parser: parse_for_each_opponent_clause,
-        },
-        ClausePrimitive {
-            parser: parse_for_each_player_clause,
-        },
-        ClausePrimitive {
-            parser: parse_double_counters_clause,
-        },
-        ClausePrimitive {
-            parser: parse_distribute_counters_clause,
-        },
-        ClausePrimitive {
-            parser: parse_until_end_of_turn_may_play_tagged_clause,
-        },
-        ClausePrimitive {
-            parser: parse_until_your_next_turn_may_play_tagged_clause,
-        },
-        ClausePrimitive {
-            parser: parse_additional_land_plays_clause,
-        },
-        ClausePrimitive {
-            parser: parse_cast_spells_as_though_they_had_flash_clause,
-        },
-        ClausePrimitive {
-            parser: parse_unsupported_play_cast_permission_clause,
-        },
-        ClausePrimitive {
-            parser: parse_cast_or_play_tagged_clause,
-        },
-        ClausePrimitive {
-            parser: parse_prevent_next_damage_clause,
-        },
-        ClausePrimitive {
-            parser: parse_prevent_all_damage_clause,
-        },
-        ClausePrimitive {
-            parser: parse_can_attack_as_though_no_defender_clause,
-        },
-        ClausePrimitive {
-            parser: parse_can_block_additional_creature_this_turn_clause,
-        },
-        ClausePrimitive {
-            parser: parse_attack_or_block_this_turn_if_able_clause,
-        },
-        ClausePrimitive {
-            parser: parse_attack_this_turn_if_able_clause,
-        },
-        ClausePrimitive {
-            parser: parse_must_be_blocked_if_able_clause,
-        },
-        ClausePrimitive {
-            parser: parse_must_block_if_able_clause,
-        },
-        ClausePrimitive {
-            parser: parse_until_duration_triggered_clause,
-        },
-        ClausePrimitive {
-            parser: parse_keyword_mechanic_clause,
-        },
-        ClausePrimitive {
-            parser: parse_connive_clause,
-        },
-        ClausePrimitive {
-            parser: parse_choose_target_and_verb_clause,
-        },
-        ClausePrimitive {
-            parser: parse_verb_first_clause,
-        },
+        ClausePrimitive::specific(
+            "choose-card-name-clause",
+            &["choose"],
+            parse_choose_card_name_clause,
+        ),
+        ClausePrimitive::specific(
+            "repeat-this-process-clause",
+            &["repeat"],
+            parse_repeat_this_process_clause,
+        ),
+        ClausePrimitive::specific(
+            "retain-mana-through-steps-clause",
+            &["you", "mana"],
+            parse_dont_lose_this_mana_as_steps_and_phases_end_clause,
+        ),
+        ClausePrimitive::specific(
+            "retarget-clause",
+            &["choose", "change"],
+            parse_retarget_clause,
+        ),
+        ClausePrimitive::specific("copy-targets-clause", &["copy"], parse_copy_targets_clause),
+        ClausePrimitive::specific("copy-spell-clause", &["copy"], parse_copy_spell_clause),
+        ClausePrimitive::specific(
+            "win-game-clause",
+            &["you", "target", "that", "its"],
+            parse_win_the_game_clause,
+        ),
+        ClausePrimitive::specific(
+            "damage-equal-power-clause",
+            &["it", "that", "target", "this"],
+            parse_deal_damage_equal_to_power_clause,
+        ),
+        ClausePrimitive::specific(
+            "anaphoric-object-damage-clause",
+            &["it", "that", "those"],
+            parse_anaphoric_object_deals_damage_clause,
+        ),
+        ClausePrimitive::specific(
+            "fight-clause",
+            &["fight", "target", "it", "that", "they", "each", "you"],
+            parse_fight_clause,
+        ),
+        ClausePrimitive::specific(
+            "clash-clause",
+            &["clash", "you", "target"],
+            parse_clash_clause,
+        ),
+        ClausePrimitive::specific(
+            "for-each-target-player-clause",
+            &["for"],
+            parse_for_each_target_players_clause,
+        ),
+        ClausePrimitive::specific(
+            "each-player-exiles-hand-clause",
+            &["each"],
+            parse_each_player_exiles_hand_face_down_and_draws_clause,
+        ),
+        ClausePrimitive::specific(
+            "each-player-return-counter-clause",
+            &["each"],
+            parse_each_player_return_with_additional_counter_clause,
+        ),
+        ClausePrimitive::specific(
+            "for-each-opponent-clause",
+            &["for", "each"],
+            parse_for_each_opponent_clause,
+        ),
+        ClausePrimitive::specific(
+            "for-each-player-clause",
+            &["for", "each"],
+            parse_for_each_player_clause,
+        ),
+        ClausePrimitive::specific(
+            "double-counters-clause",
+            &["double"],
+            parse_double_counters_clause,
+        ),
+        ClausePrimitive::specific(
+            "distribute-counters-clause",
+            &["distribute"],
+            parse_distribute_counters_clause,
+        ),
+        ClausePrimitive::specific(
+            "until-end-turn-play-tagged-clause",
+            &["until", "you"],
+            parse_until_end_of_turn_may_play_tagged_clause,
+        ),
+        ClausePrimitive::specific(
+            "until-next-turn-play-tagged-clause",
+            &["until", "you"],
+            parse_until_your_next_turn_may_play_tagged_clause,
+        ),
+        ClausePrimitive::specific(
+            "additional-land-play-clause",
+            &["you", "that"],
+            parse_additional_land_plays_clause,
+        ),
+        ClausePrimitive::specific(
+            "cast-as-flash-clause",
+            &["you", "spells"],
+            parse_cast_spells_as_though_they_had_flash_clause,
+        ),
+        ClausePrimitive::specific(
+            "unsupported-play-cast-permission-clause",
+            &["you", "that"],
+            parse_unsupported_play_cast_permission_clause,
+        ),
+        ClausePrimitive::specific(
+            "cast-or-play-tagged-clause",
+            &["you", "that", "its"],
+            parse_cast_or_play_tagged_clause,
+        ),
+        ClausePrimitive::specific(
+            "prevent-next-damage-clause",
+            &["prevent", "the"],
+            parse_prevent_next_damage_clause,
+        ),
+        ClausePrimitive::specific(
+            "prevent-all-damage-clause",
+            &["prevent", "all"],
+            parse_prevent_all_damage_clause,
+        ),
+        ClausePrimitive::specific(
+            "attack-as-though-no-defender-clause",
+            &["it", "they", "target"],
+            parse_can_attack_as_though_no_defender_clause,
+        ),
+        ClausePrimitive::specific(
+            "block-additional-creature-clause",
+            &["it", "they", "target"],
+            parse_can_block_additional_creature_this_turn_clause,
+        ),
+        ClausePrimitive::specific(
+            "attack-or-block-if-able-clause",
+            &["it", "they", "target"],
+            parse_attack_or_block_this_turn_if_able_clause,
+        ),
+        ClausePrimitive::specific(
+            "attack-if-able-clause",
+            &["it", "they", "target"],
+            parse_attack_this_turn_if_able_clause,
+        ),
+        ClausePrimitive::specific(
+            "must-be-blocked-clause",
+            &["it", "they", "target"],
+            parse_must_be_blocked_if_able_clause,
+        ),
+        ClausePrimitive::specific(
+            "must-block-clause",
+            &["it", "they", "target"],
+            parse_must_block_if_able_clause,
+        ),
+        ClausePrimitive::specific(
+            "until-duration-triggered-clause",
+            &["until"],
+            parse_until_duration_triggered_clause,
+        ),
+        ClausePrimitive::specific(
+            "keyword-mechanic-clause",
+            &[],
+            parse_keyword_mechanic_clause,
+        ),
+        ClausePrimitive::specific("connive-clause", &["connive", "target"], parse_connive_clause),
+        ClausePrimitive::fallback(
+            "choose-target-action-fallback",
+            parse_choose_target_and_verb_clause,
+        ),
+        ClausePrimitive::fallback("verb-first-clause-fallback", parse_verb_first_clause),
     ];
 
-    for primitive in PRIMITIVES {
-        if let Some(effect) = (primitive.parser)(tokens)? {
-            return Ok(Some(effect));
+    fn recognize_phase(
+        tokens: &[OwnedLexToken],
+        primitives: &'static [ClausePrimitive],
+        phase: ClausePrimitivePhase,
+    ) -> ParseOutcome<RuleMatch<EffectAst>> {
+        let typed_head = match classify_typed_clause_head(tokens)
+            .within(RuleId::new("effect-clause-primitive-registry"))
+        {
+            ParseOutcome::NoMatch => return ParseOutcome::NoMatch,
+            ParseOutcome::Match(matched) => matched.value,
+            ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
+        };
+        if phase == ClausePrimitivePhase::GenericFallback && !typed_head.permits_action_fallback() {
+            return ParseOutcome::NoMatch;
         }
+        let mut candidates = Vec::new();
+        let mut diagnostics = Vec::new();
+        for primitive in primitives.iter().filter(|primitive| {
+            primitive.phase == phase && primitive.metadata.head.accepts(typed_head.first_word)
+        }) {
+            match ParseOutcome::from_legacy_result_option(
+                primitive.metadata.id,
+                typed_head.span,
+                (primitive.parser)(tokens),
+            ) {
+                ParseOutcome::NoMatch => {}
+                ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
+                    primitive.metadata,
+                    matched.value,
+                    matched.span,
+                )),
+                ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
+            }
+        }
+        resolve_registry_candidates(
+            RuleId::new("effect-clause-primitive-registry"),
+            candidates,
+            diagnostics,
+        )
     }
-    Ok(None)
+
+    let recognized = match recognize_phase(tokens, PRIMITIVES, ClausePrimitivePhase::Specific) {
+        ParseOutcome::NoMatch => {
+            recognize_phase(tokens, PRIMITIVES, ClausePrimitivePhase::GenericFallback)
+        }
+        outcome => outcome,
+    };
+    recognized
+        .map(|matched| matched.value)
+        .into_legacy_result_option()
 }
 
 pub(crate) fn parse_choose_card_name_clause(

@@ -183,6 +183,15 @@ impl<T: 'static> LexRuleIndex<T> {
     }
 
     pub(crate) fn recognize<'a>(&self, view: &LexClauseView<'a>) -> ParseOutcome<RuleMatch<T>> {
+        recognize_lex_rule_indices(RuleId::new("lex-rule-registry"), &[self], view)
+    }
+
+    fn collect<'a>(
+        &self,
+        view: &LexClauseView<'a>,
+        candidates: &mut Vec<RegistryCandidate<T>>,
+        diagnostics: &mut Vec<ParseDiagnostic>,
+    ) {
         let candidate_indices = self
             .rules
             .iter()
@@ -191,8 +200,6 @@ impl<T: 'static> LexRuleIndex<T> {
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
 
-        let mut candidates = Vec::new();
-        let mut diagnostics = Vec::new();
         for idx in candidate_indices {
             let rule = &self.rules[idx];
             let outcome = match rule.run {
@@ -215,9 +222,23 @@ impl<T: 'static> LexRuleIndex<T> {
                 ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
             }
         }
-
-        resolve_registry_candidates(RuleId::new("lex-rule-registry"), candidates, diagnostics)
     }
+}
+
+/// Resolve several rule families as one ambiguity domain. Staging remains an
+/// explicit caller decision, but registration order within a stage cannot
+/// select between two successful families.
+pub(crate) fn recognize_lex_rule_indices<T: 'static>(
+    registry: RuleId,
+    indices: &[&LexRuleIndex<T>],
+    view: &LexClauseView<'_>,
+) -> ParseOutcome<RuleMatch<T>> {
+    let mut candidates = Vec::new();
+    let mut diagnostics = Vec::new();
+    for index in indices {
+        index.collect(view, &mut candidates, &mut diagnostics);
+    }
+    resolve_registry_candidates(registry, candidates, diagnostics)
 }
 
 fn lex_clause_span(view: &LexClauseView<'_>) -> Option<crate::cards::TextSpan> {

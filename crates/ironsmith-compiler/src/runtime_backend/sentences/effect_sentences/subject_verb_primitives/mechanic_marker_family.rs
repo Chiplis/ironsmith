@@ -1,11 +1,9 @@
 use super::*;
-use crate::registry::LegacyOrderRank;
 
 macro_rules! primitive {
-    ($id:literal, $legacy_order:expr, $stage:ident, $hints:expr, $parser:expr) => {
+    ($id:literal, $_former_order:expr, $stage:ident, $hints:expr, $parser:expr) => {
         SubjectVerbPrimitive::new(
             $id,
-            LegacyOrderRank($legacy_order),
             SubjectVerbPrimitiveStage::$stage,
             $hints,
             $parser,

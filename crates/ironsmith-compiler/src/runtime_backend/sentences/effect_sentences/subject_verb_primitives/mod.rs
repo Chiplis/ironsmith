@@ -10,7 +10,7 @@ use super::super::rule_engine::{
     LexClauseView, LexRuleDef, LexRuleHandler, LexRuleHeadHint, LexRuleHintIndex, LexRuleIndex,
     build_lex_rule_hint_index,
 };
-use super::super::token_primitives::{iter_contains, lexed_head_words};
+use super::super::token_primitives::iter_contains;
 use super::super::util::{
     parse_card_type, parse_choice_count_before_target_prefix, parse_color,
     parse_counter_type_from_tokens, parse_subject, parse_subtype_flexible,

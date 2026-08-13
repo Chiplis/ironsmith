@@ -1,4 +1,4 @@
-use super::super::rule_engine::LexClauseView;
+use super::super::rule_engine::{LexClauseView, recognize_lex_rule_indices};
 use super::sentence_unsupported::diagnose_sentence_unsupported_lexed;
 use super::{
     chain_carry::FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED,
@@ -16,10 +16,11 @@ use crate::runtime_backend::grammar::effects::{
 use crate::runtime_backend::lexer::OwnedLexToken;
 
 fn run_sentence_rule_family(
-    index: &'static super::super::rule_engine::LexRuleIndex<Vec<EffectAst>>,
+    registry: crate::recognition::RuleId,
+    indices: &[&super::super::rule_engine::LexRuleIndex<Vec<EffectAst>>],
     view: &LexClauseView<'_>,
 ) -> ParseOutcome<RuleMatch<Vec<EffectAst>>> {
-    index.recognize(view)
+    recognize_lex_rule_indices(registry, indices, view)
 }
 
 pub(super) fn run_sentence_parse_rules_lexed(
@@ -54,22 +55,24 @@ pub(super) fn run_sentence_parse_rules_lexed(
     }
 
     let view = LexClauseView::from_tokens(tokens);
-    for family in [
-        &SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED,
-        &SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED,
-    ] {
-        match run_sentence_rule_family(family, &view) {
-            ParseOutcome::Match(matched) => {
-                let matched = matched.value;
-                return Ok((matched.rule.as_str(), matched.value));
+    match run_sentence_rule_family(
+        crate::recognition::RuleId::new("effect-sentence-pre-diagnostic-registry"),
+        &[
+            &SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED,
+            &SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED,
+        ],
+        &view,
+    ) {
+        ParseOutcome::Match(matched) => {
+            let matched = matched.value;
+            return Ok((matched.rule.as_str(), matched.value));
+        }
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => {
+            if let Some(diag) = diagnose_sentence_unsupported_lexed(tokens) {
+                return Err(diag);
             }
-            ParseOutcome::NoMatch => {}
-            ParseOutcome::Error(diagnostic) => {
-                if let Some(diag) = diagnose_sentence_unsupported_lexed(tokens) {
-                    return Err(diag);
-                }
-                return Err(diagnostic.into_legacy_error());
-            }
+            return Err(diagnostic.into_legacy_error());
         }
     }
 
@@ -77,18 +80,20 @@ pub(super) fn run_sentence_parse_rules_lexed(
         return Err(diag);
     }
 
-    for family in [
-        &SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED,
-        &FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED,
-    ] {
-        match run_sentence_rule_family(family, &view) {
-            ParseOutcome::Match(matched) => {
-                let matched = matched.value;
-                return Ok((matched.rule.as_str(), matched.value));
-            }
-            ParseOutcome::NoMatch => {}
-            ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_legacy_error()),
+    match run_sentence_rule_family(
+        crate::recognition::RuleId::new("effect-sentence-post-diagnostic-registry"),
+        &[
+            &SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED,
+            &FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED,
+        ],
+        &view,
+    ) {
+        ParseOutcome::Match(matched) => {
+            let matched = matched.value;
+            return Ok((matched.rule.as_str(), matched.value));
         }
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_legacy_error()),
     }
 
     Err(CardTextError::InvariantViolation(format!(

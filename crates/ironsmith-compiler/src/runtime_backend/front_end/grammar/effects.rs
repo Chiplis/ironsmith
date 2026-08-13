@@ -175,6 +175,8 @@ mod sequence_pairs;
 pub(crate) mod special_sentence_shapes;
 #[path = "effects/subject_verb_registry_shapes.rs"]
 pub(crate) mod subject_verb_registry_shapes;
+#[path = "effects/typed_clause_heads.rs"]
+pub(crate) mod typed_clause_heads;
 #[path = "effects/triple_sequence_shapes.rs"]
 pub(crate) mod triple_sequence_shapes;
 pub(crate) use sequence_pairs::*;

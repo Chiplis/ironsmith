@@ -1,7 +1,11 @@
 use super::*;
 use crate::parse_trace;
-use crate::registry::{HeadDiscriminator, LegacyOrderRank, RegistryRuleMetadata};
+use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleMatch};
+use crate::registry::{
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
+};
 use crate::runtime_backend::front_end::grammar::effects::subject_verb_registry_shapes as registry_shapes;
+use crate::runtime_backend::front_end::grammar::effects::typed_clause_heads::classify_typed_clause_head;
 pub(super) const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
     &["you", "choose", "one", "of", "them"],
     &[
@@ -329,7 +333,7 @@ pub(crate) enum SubjectVerbPrimitiveStage {
 
 pub(crate) struct SubjectVerbPrimitive {
     pub(crate) id: &'static str,
-    pub(crate) legacy_order: LegacyOrderRank,
+    pub(crate) metadata: RegistryRuleMetadata,
     pub(crate) stage: SubjectVerbPrimitiveStage,
     pub(crate) head_hints: &'static [LexRuleHeadHint],
     pub(crate) shape_mask: u32,
@@ -339,14 +343,16 @@ pub(crate) struct SubjectVerbPrimitive {
 impl SubjectVerbPrimitive {
     pub(crate) const fn new(
         id: &'static str,
-        legacy_order: LegacyOrderRank,
         stage: SubjectVerbPrimitiveStage,
         head_hints: &'static [LexRuleHeadHint],
         parser: SubjectVerbPrimitiveParser,
     ) -> Self {
         Self {
             id,
-            legacy_order,
+            metadata: RegistryRuleMetadata::distinct(
+                RuleId::new(id),
+                HeadDiscriminator::grammar("typed-effect-clause-head"),
+            ),
             stage,
             head_hints,
             shape_mask: 0,
@@ -475,83 +481,108 @@ fn run_sentence_primitive_lexed(
     run_sentence_primitive(primitive, lowered_tokens)
 }
 
-// BRIDGE-LEGACY-REGISTRY: PR-21 retires this finite primitive ordering table.
-pub(crate) fn run_subject_verb_primitives_legacy_compatibility_registry_lexed(
+fn recognize_subject_verb_primitives_lexed(
+    tokens: &[OwnedLexToken],
+    primitives: &'static [SubjectVerbPrimitive],
+    index: &LexRuleHintIndex,
+) -> ParseOutcome<RuleMatch<Vec<EffectAst>>> {
+    let typed_head = match classify_typed_clause_head(tokens)
+        .within(RuleId::new("subject-verb-primitive-registry"))
+    {
+        ParseOutcome::NoMatch => return ParseOutcome::NoMatch,
+        ParseOutcome::Match(matched) => matched.value,
+        ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
+    };
+    let lowered = OnceCell::new();
+    let view = LexClauseView::from_tokens(tokens);
+    let candidate_indices =
+        index.candidate_indices(typed_head.first_word, typed_head.second_word);
+    let mut candidates = Vec::new();
+    let mut diagnostics = Vec::new();
+    for idx in candidate_indices {
+        let primitive = &primitives[idx];
+        if primitive.shape_mask != 0
+            && (view.shape & primitive.shape_mask) != primitive.shape_mask
+        {
+            continue;
+        }
+        match ParseOutcome::from_legacy_result_option(
+            primitive.metadata.id,
+            typed_head.span,
+            run_sentence_primitive_lexed(primitive, tokens, &lowered),
+        ) {
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
+                primitive.metadata,
+                matched.value,
+                matched.span,
+            )),
+            ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
+        }
+    }
+
+    resolve_registry_candidates(
+        RuleId::new("subject-verb-primitive-registry"),
+        candidates,
+        diagnostics,
+    )
+}
+
+pub(crate) fn run_subject_verb_primitives_lexed(
     tokens: &[OwnedLexToken],
     primitives: &'static [SubjectVerbPrimitive],
     index: &LexRuleHintIndex,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let (head, second) = lexed_head_words(tokens).unwrap_or(("", None));
-    let mut tried = vec![false; primitives.len()];
-    let lowered = OnceCell::new();
-    let mut candidate_indices = index.candidate_indices(head, second);
-    candidate_indices.sort_by_key(|idx| {
-        (primitives[*idx].legacy_order, primitives[*idx].shape_mask)
-    });
-    for idx in candidate_indices {
-        tried[idx] = true;
-        if let Some(effects) = run_sentence_primitive_lexed(&primitives[idx], tokens, &lowered)? {
-            return Ok(Some(effects));
-        }
-    }
-
-    let mut fallback_indices = primitives
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, _)| (!tried[idx]).then_some(idx))
-        .collect::<Vec<_>>();
-    fallback_indices.sort_by_key(|idx| {
-        (primitives[*idx].legacy_order, primitives[*idx].shape_mask)
-    });
-
-    for idx in fallback_indices {
-        let primitive = &primitives[idx];
-        if let Some(effects) = run_sentence_primitive_lexed(primitive, tokens, &lowered)? {
-            return Ok(Some(effects));
-        }
-    }
-
-    Ok(None)
+    recognize_subject_verb_primitives_lexed(tokens, primitives, index)
+        .map(|matched| matched.value)
+        .into_legacy_result_option()
 }
-
-pub(crate) use run_subject_verb_primitives_legacy_compatibility_registry_lexed as run_subject_verb_primitives_lexed;
 
 pub(super) fn parse_preconditional_subject_verb_primitives_rule_lexed(
     view: &LexClauseView<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+) -> ParseOutcome<Vec<EffectAst>> {
     debug_assert!(
         PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES
             .iter()
             .all(|primitive| primitive.stage == SubjectVerbPrimitiveStage::PreDiagnostic)
     );
-    run_subject_verb_primitives_legacy_compatibility_registry_lexed(
+    recognize_subject_verb_primitives_lexed(
         view.tokens,
         PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
         &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
     )
+    .map(|matched| matched.value)
 }
 
 pub(super) fn parse_postconditional_subject_verb_primitives_rule_lexed(
     view: &LexClauseView<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+) -> ParseOutcome<Vec<EffectAst>> {
     debug_assert!(
         POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES
             .iter()
             .all(|primitive| primitive.stage == SubjectVerbPrimitiveStage::PostDiagnostic)
     );
-    let Some(mut effects) = run_subject_verb_primitives_legacy_compatibility_registry_lexed(
+    let matched = match recognize_subject_verb_primitives_lexed(
         view.tokens,
         POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
         &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
-    )?
-    else {
-        return Ok(None);
+    ) {
+        ParseOutcome::NoMatch => return ParseOutcome::NoMatch,
+        ParseOutcome::Match(matched) => matched.value,
+        ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
     };
-    super::super::chain_carry::append_missing_coordinated_return_discard_tail(
+    let mut effects = matched.value;
+    if let Err(error) = super::super::chain_carry::append_missing_coordinated_return_discard_tail(
         view.tokens,
         &mut effects,
-    )?;
-    Ok(Some(effects))
+    ) {
+        return ParseOutcome::Error(ParseDiagnostic::from_legacy_error(
+            matched.rule,
+            matched.span,
+            error,
+        ));
+    }
+    ParseOutcome::matched(effects, matched.span)
 }
 
 pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
@@ -561,7 +592,7 @@ pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<
             HeadDiscriminator::words(&[]),
         ),
     shape_mask: 0,
-    run: LexRuleHandler::Legacy(parse_preconditional_subject_verb_primitives_rule_lexed),
+    run: LexRuleHandler::Structured(parse_preconditional_subject_verb_primitives_rule_lexed),
 }];
 
 pub(crate) const SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
@@ -571,7 +602,7 @@ pub(crate) const SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef
             HeadDiscriminator::words(&[]),
         ),
     shape_mask: 0,
-    run: LexRuleHandler::Legacy(parse_postconditional_subject_verb_primitives_rule_lexed),
+    run: LexRuleHandler::Structured(parse_postconditional_subject_verb_primitives_rule_lexed),
 }];
 
 pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
