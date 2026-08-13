@@ -667,10 +667,15 @@ pub(super) fn parse_level_item_cst(
             normalize_activation_cost_tokens_for_builder(builder, line, cost_tokens.clone())?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost_cst) => {
-                let cost = lower_activation_cost_cst(&cost_cst)?;
+                let compiler_cost =
+                    crate::runtime_backend::cst_lowering::recognize_activation_cost_cst(&cost_cst)?;
+                let cost = crate::runtime_backend::lowering::cost_materialization::materialize_compiler_total_cost(
+                    &compiler_cost,
+                )?;
                 let parsed = super::super::semantic_line_parsing::parse_activated_line(
                     line.info.clone(),
                     cost,
+                    compiler_cost,
                     normalized_cost_tokens,
                     effect_parse_tokens,
                     ActivationTiming::AnyTime,

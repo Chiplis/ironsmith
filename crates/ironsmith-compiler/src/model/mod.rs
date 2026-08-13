@@ -1,3 +1,4 @@
+pub(crate) mod activated_abilities;
 pub(crate) mod ast;
 pub(crate) mod compiler_semantic;
 pub mod costs;
@@ -13,6 +14,12 @@ pub mod symbols;
 pub(crate) mod static_abilities;
 pub(crate) mod token_definition;
 pub(crate) mod visit;
+
+pub(crate) use activated_abilities::{
+    ActivatedLineBoundaryAst, ActivationRestrictionAst, ActivationTimingAst,
+    ActivationUseLimitAst, ActivationUsePeriodAst, CompilerActivatedAbilityAst, LoyaltyCostAst,
+    ManaAbilityFacts,
+};
 
 pub use ast::{
     CompilerAbility, CompilerAbilityKind, CompilerAbilityPayload, CompilerActivatedAbility,

@@ -776,6 +776,7 @@ pub(crate) struct ParsedActivatedLine {
 pub(crate) fn parse_activated_line(
     info: LineInfo,
     cost: TotalCost,
+    compiler_cost: crate::model::CompilerTotalCost,
     cost_parse_tokens: Vec<OwnedLexToken>,
     effect_parse_tokens: Vec<OwnedLexToken>,
     timing_hint: ActivationTiming,
@@ -804,6 +805,7 @@ pub(crate) fn parse_activated_line(
             presentation,
             info,
             cost,
+            compiler_cost,
             cost_parse_tokens: cost_parse_tokens.clone(),
             effect_parse_tokens: effect_parse_tokens.clone(),
             timing_hint,

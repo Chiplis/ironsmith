@@ -15,7 +15,7 @@ use super::util::join_sentences_with_period;
 
 #[path = "cst_lowering/activation_costs.rs"]
 mod activation_costs;
-pub(crate) use activation_costs::lower_activation_cost_cst;
+pub(crate) use activation_costs::{lower_activation_cost_cst, recognize_activation_cost_cst};
 
 fn parsed_line_item(
     info: super::shared_types::LineInfo,
@@ -102,7 +102,7 @@ fn lower_activated_line(
             .waterbend_generic
             .map(|generic| PresentationLabel::AbilityWord(format!("Waterbend {{{generic}}}")))
     });
-    let cost = match lower_activation_cost_cst(&activated.cost) {
+    let compiler_cost = match activation_costs::recognize_activation_cost_cst(&activated.cost) {
         Ok(cost) => cost,
         Err(err) => {
             if allow_unsupported {
@@ -118,10 +118,14 @@ fn lower_activated_line(
             return Err(err);
         }
     };
+    let cost = crate::runtime_backend::lowering::cost_materialization::materialize_compiler_total_cost(
+        &compiler_cost,
+    )?;
     let info = activated.info;
     let parsed = super::semantic_line_parsing::parse_activated_line(
         info.clone(),
         cost,
+        compiler_cost,
         activated.cost_parse_tokens,
         activated.effect_parse_tokens,
         ActivationTiming::AnyTime,
