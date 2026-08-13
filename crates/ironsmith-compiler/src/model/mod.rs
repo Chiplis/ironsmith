@@ -1,5 +1,6 @@
 pub(crate) mod activated_abilities;
 pub(crate) mod ast;
+pub(crate) mod canonical_references;
 pub(crate) mod card_document;
 pub(crate) mod clauses;
 pub(crate) mod compiler_semantic;

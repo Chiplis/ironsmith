@@ -372,11 +372,17 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
         annotations,
         provenance,
         symbols,
+        reference_resolution,
         items,
         overload_branch,
         cleave_branch,
         allow_unsupported,
     } = ast;
+    if let Some(diagnostic) = reference_resolution.diagnostics.first() {
+        return Err(CardTextError::ParseError(format!(
+            "canonical reference resolution failed before lowering: {diagnostic:?}"
+        )));
+    }
     let overload_branch = if let Some(branch) = overload_branch {
         let mut state = RewriteNormalizationState::default();
         let mut items = Vec::new();

@@ -33,6 +33,7 @@
       "id": "reference_resolution",
       "roots": [
         "crates/ironsmith-compiler/src/references",
+        "crates/ironsmith-compiler/src/model/canonical_references.rs",
         "crates/ironsmith-compiler/src/model/symbols.rs"
       ]
     },

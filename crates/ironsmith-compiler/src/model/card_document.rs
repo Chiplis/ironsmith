@@ -1,6 +1,7 @@
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::CardDefinitionBuilder;
 
+use super::canonical_references::CanonicalReferenceResolutionAst;
 use super::compiler_semantic::ParsedCardItem;
 use super::provenance::ProvenanceStore;
 use super::symbols::SymbolTable;
@@ -24,6 +25,7 @@ pub(crate) struct ParsedCardAst {
     pub(crate) annotations: ParseAnnotations,
     pub(crate) provenance: ProvenanceStore,
     pub(crate) symbols: SymbolTable,
+    pub(crate) reference_resolution: CanonicalReferenceResolutionAst,
     pub(crate) items: Vec<ParsedCardItem>,
     pub(crate) overload_branch: Option<ParsedOverloadBranch>,
     pub(crate) cleave_branch: Option<ParsedCleaveBranch>,

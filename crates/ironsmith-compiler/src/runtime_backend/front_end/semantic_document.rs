@@ -96,12 +96,33 @@ pub(crate) fn parse_semantic_document(
         .transpose()?
         .map(|items| ParsedCleaveBranch { items });
 
+    let items = parse_rewrite_items(items)?;
+    let mut reference_resolution =
+        crate::model::canonical_references::resolve_parsed_items_references(&items, &symbols);
+    if let Some(branch) = &overload_branch {
+        reference_resolution.append(
+            crate::model::canonical_references::resolve_parsed_items_references(
+                &branch.items,
+                &symbols,
+            ),
+        );
+    }
+    if let Some(branch) = &cleave_branch {
+        reference_resolution.append(
+            crate::model::canonical_references::resolve_parsed_items_references(
+                &branch.items,
+                &symbols,
+            ),
+        );
+    }
+
     Ok(ParsedCardAst {
         builder,
         annotations,
         provenance,
         symbols,
-        items: parse_rewrite_items(items)?,
+        reference_resolution,
+        items,
         overload_branch,
         cleave_branch,
         allow_unsupported,

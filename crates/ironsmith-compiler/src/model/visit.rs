@@ -606,6 +606,10 @@ pub(crate) trait SemanticVisitor {
         ControlFlow::Continue(())
     }
 
+    fn visit_reference_binding(&mut self, reference: &SymbolReference) -> ControlFlow<Self::Break> {
+        self.visit_reference(reference)
+    }
+
     fn visit_clause(&mut self, _clause: &CompilerClauseAst) -> ControlFlow<Self::Break> {
         ControlFlow::Continue(())
     }
@@ -653,7 +657,7 @@ pub(crate) fn visit_clause_tree<V: SemanticVisitor + ?Sized>(
         visit_clause_condition(visitor, condition)?;
     }
     for binding in &clause.bindings {
-        visitor.visit_reference(&binding.reference)?;
+        visitor.visit_reference_binding(&binding.reference)?;
     }
     for complement in &clause.complements {
         match complement {
@@ -668,7 +672,9 @@ pub(crate) fn visit_clause_tree<V: SemanticVisitor + ?Sized>(
             ClauseComplementAst::Condition(condition) => {
                 visit_clause_condition(visitor, condition)?
             }
-            ClauseComplementAst::Binding(binding) => visitor.visit_reference(&binding.reference)?,
+            ClauseComplementAst::Binding(binding) => {
+                visitor.visit_reference_binding(&binding.reference)?
+            }
         }
     }
     ControlFlow::Continue(())
@@ -776,7 +782,7 @@ fn visit_compiler_selection<V: SemanticVisitor + ?Sized>(
     selection: &CompilerSelectionAst,
 ) -> ControlFlow<V::Break> {
     visitor.visit_compiler_selection(selection)?;
-    visitor.visit_reference(&selection.binding)?;
+    visitor.visit_reference_binding(&selection.binding)?;
     match &selection.domain {
         SelectionDomainAst::Filter(filter) => visit_compiler_filter(visitor, filter)?,
         SelectionDomainAst::ObjectOrPlayer { object, .. } | SelectionDomainAst::Spell(object) => {
@@ -830,18 +836,55 @@ pub(crate) fn visit_effect_tree<V: SemanticVisitor + ?Sized>(
     visitor: &mut V,
     effect: &EffectAst,
 ) -> ControlFlow<V::Break> {
-    if let ControlFlow::Break(value) = visitor.visit_effect(effect) {
-        return ControlFlow::Break(value);
+    visit_effect_node(visitor, effect)?;
+    if let EffectAst::Coordination(coordination) = effect {
+        for member in &coordination.members {
+            for reference in &member.imports {
+                visitor.visit_reference(reference)?;
+            }
+            for reference in &member.exports {
+                visitor.visit_reference_binding(reference)?;
+            }
+        }
     }
+    if let EffectAst::ControlFlow(control) = effect {
+        for program in &control.programs {
+            for reference in &program.imports {
+                visitor.visit_reference(reference)?;
+            }
+            for reference in &program.exports {
+                visitor.visit_reference_binding(reference)?;
+            }
+        }
+    }
+    let mut flow = ControlFlow::Continue(());
+    for_each_nested_effects(effect, true, |nested| {
+        if matches!(&flow, ControlFlow::Break(_)) {
+            return;
+        }
+        for child in nested {
+            if let ControlFlow::Break(value) = visit_effect_tree(visitor, child) {
+                flow = ControlFlow::Break(value);
+                break;
+            }
+        }
+    });
+    flow
+}
+
+/// Visit the semantic payload owned directly by one effect node without
+/// descending into child programs. Control-flow-sensitive passes use this to
+/// share the canonical semantic visitor while applying their own branch/join
+/// rules to child edges.
+pub(crate) fn visit_effect_node<V: SemanticVisitor + ?Sized>(
+    visitor: &mut V,
+    effect: &EffectAst,
+) -> ControlFlow<V::Break> {
+    visitor.visit_effect(effect)?;
     if let EffectAst::Clause(clause) = effect {
         visit_clause_tree(visitor, clause)?;
     }
     if let EffectAst::Coordination(coordination) = effect {
-        for member in &coordination.members {
-            for reference in member.imports.iter().chain(&member.exports) {
-                visitor.visit_reference(reference)?;
-            }
-        }
         for carry in coordination
             .boundaries
             .iter()
@@ -865,30 +908,13 @@ pub(crate) fn visit_effect_tree<V: SemanticVisitor + ?Sized>(
     if let EffectAst::ControlFlow(control) = effect {
         visit_control_flow_semantics(visitor, control)?;
     }
-    let mut flow = ControlFlow::Continue(());
-    for_each_nested_effects(effect, true, |nested| {
-        if matches!(&flow, ControlFlow::Break(_)) {
-            return;
-        }
-        for child in nested {
-            if let ControlFlow::Break(value) = visit_effect_tree(visitor, child) {
-                flow = ControlFlow::Break(value);
-                break;
-            }
-        }
-    });
-    flow
+    ControlFlow::Continue(())
 }
 
 fn visit_control_flow_semantics<V: SemanticVisitor + ?Sized>(
     visitor: &mut V,
     control: &CompilerControlFlowAst,
 ) -> ControlFlow<V::Break> {
-    for program in &control.programs {
-        for reference in program.imports.iter().chain(&program.exports) {
-            visitor.visit_reference(reference)?;
-        }
-    }
     match &control.node {
         ControlFlowNodeAst::Condition { condition, .. } => {
             visit_control_predicate(visitor, &condition.predicate)

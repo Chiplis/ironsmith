@@ -8,7 +8,7 @@ pub struct SymbolId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SymbolScopeId(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ReferenceRole {
     Source,
     Target,
@@ -47,9 +47,34 @@ impl Cardinality {
             Self::Range { min, max } => count >= min && max.is_none_or(|max| count <= max),
         }
     }
+
+    /// Whether a binding with this cardinality is safe to consume through a
+    /// reference that requires `required`. This compares semantic ranges, not
+    /// enum spellings, so `Fixed(1)` and `ExactlyOne` are interchangeable.
+    pub fn satisfies(self, required: Self) -> bool {
+        let (actual_min, actual_max) = self.bounds();
+        let (required_min, required_max) = required.bounds();
+        actual_min >= required_min
+            && match (actual_max, required_max) {
+                (_, None) => true,
+                (Some(actual), Some(required)) => actual <= required,
+                (None, Some(_)) => false,
+            }
+    }
+
+    const fn bounds(self) -> (u32, Option<u32>) {
+        match self {
+            Self::ExactlyOne => (1, Some(1)),
+            Self::ZeroOrOne => (0, Some(1)),
+            Self::OneOrMore => (1, None),
+            Self::Any => (0, None),
+            Self::Fixed(count) => (count, Some(count)),
+            Self::Range { min, max } => (min, max),
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ObjectDomain {
     Object,
     Card,
@@ -212,6 +237,47 @@ impl SymbolTable {
             .filter(|scope| scope.id == id)
     }
 
+    pub fn scope_depth(&self, id: SymbolScopeId) -> Option<usize> {
+        let mut depth = 0;
+        let mut current = Some(id);
+        while let Some(scope) = current {
+            let record = self.scope(scope)?;
+            current = record.parent;
+            depth += 1;
+        }
+        Some(depth)
+    }
+
+    pub fn binding_visible_from(&self, binding: SymbolId, use_scope: SymbolScopeId) -> bool {
+        let Some(binding) = self.binding(binding) else {
+            return false;
+        };
+        self.scope_is_ancestor_of(binding.scope, use_scope)
+    }
+
+    pub fn scope_is_ancestor_of(&self, ancestor: SymbolScopeId, descendant: SymbolScopeId) -> bool {
+        let mut current = Some(descendant);
+        while let Some(scope) = current {
+            if scope == ancestor {
+                return true;
+            }
+            current = self.scope(scope).and_then(|record| record.parent);
+        }
+        false
+    }
+
+    pub fn visible_bindings(&self, scope: SymbolScopeId) -> Vec<SymbolId> {
+        let mut visible = Vec::new();
+        let mut current = Some(scope);
+        while let Some(scope) = current {
+            if let Some(bindings) = self.by_scope.get(&scope) {
+                visible.extend(bindings.iter().copied());
+            }
+            current = self.scope(scope).and_then(|record| record.parent);
+        }
+        visible
+    }
+
     pub fn resolve(&self, query: ReferenceQuery) -> Result<SymbolId, SymbolResolutionError> {
         let mut scope = Some(query.scope);
         let mut wrong_domain = Vec::new();
@@ -234,7 +300,7 @@ impl SymbolTable {
                 }
                 if query
                     .required_cardinality
-                    .is_some_and(|required| required != binding.cardinality)
+                    .is_some_and(|required| !binding.cardinality.satisfies(required))
                 {
                     wrong_cardinality.push(binding.id);
                     continue;
