@@ -9,6 +9,7 @@ use super::{
     subject_verb_special_recognizers::SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED,
 };
 use crate::cards::builders::{CardTextError, EffectAst};
+use crate::recognition::{ParseOutcome, RuleMatch};
 use crate::runtime_backend::grammar::effects::{
     SentencePreludeShape, parse_sentence_prelude_shape_tokens,
 };
@@ -17,7 +18,7 @@ use crate::runtime_backend::lexer::OwnedLexToken;
 fn run_sentence_rule_family(
     index: &'static super::super::rule_engine::LexRuleIndex<Vec<EffectAst>>,
     view: &LexClauseView<'_>,
-) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
+) -> ParseOutcome<RuleMatch<Vec<EffectAst>>> {
     index.run_first(view)
 }
 
@@ -58,13 +59,16 @@ pub(super) fn run_sentence_parse_rules_lexed(
         &SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED,
     ] {
         match run_sentence_rule_family(family, &view) {
-            Ok(Some((rule_id, effects))) => return Ok((rule_id, effects)),
-            Ok(None) => {}
-            Err(parse_err) => {
+            ParseOutcome::Match(matched) => {
+                let matched = matched.value;
+                return Ok((matched.rule.as_str(), matched.value));
+            }
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => {
                 if let Some(diag) = diagnose_sentence_unsupported_lexed(tokens) {
                     return Err(diag);
                 }
-                return Err(parse_err);
+                return Err(diagnostic.into_legacy_error());
             }
         }
     }
@@ -77,8 +81,13 @@ pub(super) fn run_sentence_parse_rules_lexed(
         &SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED,
         &FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED,
     ] {
-        if let Some((rule_id, effects)) = run_sentence_rule_family(family, &view)? {
-            return Ok((rule_id, effects));
+        match run_sentence_rule_family(family, &view) {
+            ParseOutcome::Match(matched) => {
+                let matched = matched.value;
+                return Ok((matched.rule.as_str(), matched.value));
+            }
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_legacy_error()),
         }
     }
 

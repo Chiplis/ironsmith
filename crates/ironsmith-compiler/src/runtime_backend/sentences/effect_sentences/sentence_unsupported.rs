@@ -2,10 +2,11 @@ use super::super::lexer::OwnedLexToken;
 use super::super::rule_engine::{LexClauseView, LexUnsupportedDiagnoser, LexUnsupportedRuleDef};
 use super::dispatch_inner as inner;
 use crate::cards::builders::CardTextError;
+use crate::recognition::{ParseOutcome, RuleId};
 
 const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
     LexUnsupportedRuleDef {
-        id: "enters-as-copy",
+        id: RuleId::new("enters-as-copy"),
         priority: 20,
         heads: &[],
         shape_mask: 0,
@@ -13,7 +14,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_enters_as_copy_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "each-player-lose-discard-sacrifice-chain",
+        id: RuleId::new("each-player-lose-discard-sacrifice-chain"),
         priority: 100,
         heads: &["each"],
         shape_mask: 0,
@@ -21,7 +22,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_each_player_lose_discard_sacrifice_chain_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "each-player-exile-sacrifice-return-this-way",
+        id: RuleId::new("each-player-exile-sacrifice-return-this-way"),
         priority: 110,
         heads: &["each"],
         shape_mask: 0,
@@ -29,7 +30,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_each_player_exile_sacrifice_return_exiled_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "put-one-into-hand-rest-zone",
+        id: RuleId::new("put-one-into-hand-rest-zone"),
         priority: 115,
         heads: &["put", "then"],
         shape_mask: 0,
@@ -37,7 +38,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_put_one_of_them_into_hand_rest_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "lose-all-abilities-with-becomes",
+        id: RuleId::new("lose-all-abilities-with-becomes"),
         priority: 120,
         heads: &["target", "that", "it", "this", "creatures"],
         shape_mask: 0,
@@ -45,7 +46,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_loses_all_abilities_with_becomes_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "spent-to-cast-conditional",
+        id: RuleId::new("spent-to-cast-conditional"),
         priority: 130,
         heads: &["if", "unless", "when", "as"],
         shape_mask: 0,
@@ -53,7 +54,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_spent_to_cast_this_spell_without_condition_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "would-enter-instead",
+        id: RuleId::new("would-enter-instead"),
         priority: 140,
         heads: &["if", "that", "it", "this"],
         shape_mask: 0,
@@ -61,7 +62,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_would_enter_instead_replacement_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "different-mana-value-constraint",
+        id: RuleId::new("different-mana-value-constraint"),
         priority: 150,
         heads: &[],
         shape_mask: 0,
@@ -69,7 +70,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_different_mana_value_constraint_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "most-common-color-constraint",
+        id: RuleId::new("most-common-color-constraint"),
         priority: 160,
         heads: &["choose", "destroy", "exile", "return"],
         shape_mask: 0,
@@ -77,7 +78,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_most_common_color_constraint_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "power-vs-count-constraint",
+        id: RuleId::new("power-vs-count-constraint"),
         priority: 170,
         heads: &["if", "target", "destroy", "exile", "return"],
         shape_mask: 0,
@@ -85,7 +86,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_power_vs_count_constraint_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "put-into-graveyards-from-battlefield-this-turn",
+        id: RuleId::new("put-into-graveyards-from-battlefield-this-turn"),
         priority: 180,
         heads: &["for", "choose", "target", "destroy"],
         shape_mask: 0,
@@ -93,7 +94,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_put_into_graveyards_from_battlefield_this_turn_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "phase-out-until-leaves",
+        id: RuleId::new("phase-out-until-leaves"),
         priority: 190,
         heads: &["phase", "target", "it", "that"],
         shape_mask: 0,
@@ -101,7 +102,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_phase_out_until_leaves_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "same-name-as-another-in-hand",
+        id: RuleId::new("same-name-as-another-in-hand"),
         priority: 200,
         heads: &["target", "choose", "discard"],
         shape_mask: 0,
@@ -109,7 +110,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_same_name_as_another_in_hand_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "for-each-mana-from-spent",
+        id: RuleId::new("for-each-mana-from-spent"),
         priority: 210,
         heads: &["for"],
         shape_mask: 0,
@@ -117,7 +118,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_for_each_mana_from_spent_to_cast_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "when-you-sacrifice-this-way",
+        id: RuleId::new("when-you-sacrifice-this-way"),
         priority: 230,
         heads: &["when"],
         shape_mask: 0,
@@ -125,7 +126,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_when_you_sacrifice_this_way_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "greatest-mana-value",
+        id: RuleId::new("greatest-mana-value"),
         priority: 250,
         heads: &["choose", "destroy", "exile", "return"],
         shape_mask: 0,
@@ -133,7 +134,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_greatest_mana_value_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "least-power-among-creatures",
+        id: RuleId::new("least-power-among-creatures"),
         priority: 260,
         heads: &["choose", "destroy", "exile", "return"],
         shape_mask: 0,
@@ -141,7 +142,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_least_power_among_creatures_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "villainous-choice",
+        id: RuleId::new("villainous-choice"),
         priority: 270,
         heads: &["villainous"],
         shape_mask: 0,
@@ -149,7 +150,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_villainous_choice_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "divided-evenly",
+        id: RuleId::new("divided-evenly"),
         priority: 280,
         heads: &["divide", "deals", "deal", "distribute"],
         shape_mask: 0,
@@ -157,7 +158,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_divided_evenly_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "different-names",
+        id: RuleId::new("different-names"),
         priority: 290,
         heads: &["choose", "target", "destroy", "exile"],
         shape_mask: 0,
@@ -165,7 +166,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_different_names_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "chosen-at-random",
+        id: RuleId::new("chosen-at-random"),
         priority: 300,
         heads: &["choose", "target", "discard", "exile"],
         shape_mask: 0,
@@ -173,7 +174,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_chosen_at_random_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "defending-players-choice",
+        id: RuleId::new("defending-players-choice"),
         priority: 320,
         heads: &["defending", "target", "of"],
         shape_mask: 0,
@@ -181,7 +182,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_defending_players_choice_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "creature-token-player-planeswalker-target",
+        id: RuleId::new("creature-token-player-planeswalker-target"),
         priority: 330,
         heads: &["target"],
         shape_mask: 0,
@@ -189,7 +190,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_target_creature_token_player_planeswalker_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "if-you-sacrifice-an-island-this-way",
+        id: RuleId::new("if-you-sacrifice-an-island-this-way"),
         priority: 340,
         heads: &["if"],
         shape_mask: 0,
@@ -197,7 +198,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_if_you_sacrifice_an_island_this_way_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "spent-to-cast-condition",
+        id: RuleId::new("spent-to-cast-condition"),
         priority: 350,
         heads: &["if", "unless", "when", "as"],
         shape_mask: 0,
@@ -205,7 +206,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_spent_to_cast_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "face-down",
+        id: RuleId::new("face-down"),
         priority: 360,
         heads: &["face", "turn", "cast", "exile", "manifest"],
         shape_mask: 0,
@@ -213,7 +214,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_face_down_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "return-each-creature-that-isnt-list",
+        id: RuleId::new("return-each-creature-that-isnt-list"),
         priority: 370,
         heads: &["return"],
         shape_mask: 0,
@@ -221,7 +222,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         predicate: inner::sentence_has_return_each_creature_that_isnt_list_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "negated-untap",
+        id: RuleId::new("negated-untap"),
         priority: 380,
         heads: &["this", "that", "target", "it", "creatures", "players"],
         shape_mask: 0,
@@ -240,7 +241,11 @@ pub(super) fn diagnose_sentence_unsupported_lexed(
         return None;
     }
     let view = LexClauseView::from_tokens(tokens);
-    SENTENCE_UNSUPPORTED_DIAGNOSER_LEXED.diagnose(&view, "clause")
+    match SENTENCE_UNSUPPORTED_DIAGNOSER_LEXED.diagnose(&view, "clause") {
+        ParseOutcome::NoMatch => None,
+        ParseOutcome::Error(diagnostic) => Some(diagnostic.into_legacy_error()),
+        ParseOutcome::Match(_) => None,
+    }
 }
 
 pub(super) fn diagnose_known_partial_parse_lexed(

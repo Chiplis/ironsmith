@@ -137,6 +137,7 @@ use crate::cost::TotalCost;
 use crate::effect::{Condition, Effect, EventValueSpec, Value};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
+use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId};
 use crate::runtime_backend::grammar::shared_util::value_semantics::{
     parse_aggregate_scope_value_lexed, parse_commander_cast_count_player,
 };
@@ -366,22 +367,29 @@ enum StaticAbilityLineRuleAst {
 
 #[derive(Clone, Copy)]
 struct StaticAbilityLineRuleDef {
-    id: &'static str,
+    id: RuleId,
     rule: StaticAbilityLineRuleAst,
 }
 
 type StaticAbilityLineHeadHint = LexRuleHeadHint;
 
 fn run_static_ability_ast_line_rule(
+    rule_id: RuleId,
     rule: StaticAbilityLineRuleAst,
     tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+) -> ParseOutcome<Vec<StaticAbilityAst>> {
+    let span = crate::runtime_backend::span_from_tokens(tokens);
     match rule {
-        StaticAbilityLineRuleAst::Single(parse) => Ok(parse(tokens)?.map(|ability| vec![ability])),
-        StaticAbilityLineRuleAst::SingleInfallible(parse) => {
-            Ok(parse(tokens).map(|ability| vec![ability]))
+        StaticAbilityLineRuleAst::Single(parse) => {
+            ParseOutcome::from_legacy_result_option(rule_id, span, parse(tokens))
+                .map(|ability| vec![ability])
         }
-        StaticAbilityLineRuleAst::Multi(parse) => parse(tokens),
+        StaticAbilityLineRuleAst::SingleInfallible(parse) => {
+            ParseOutcome::from_legacy_option(parse(tokens), span).map(|ability| vec![ability])
+        }
+        StaticAbilityLineRuleAst::Multi(parse) => {
+            ParseOutcome::from_legacy_result_option(rule_id, span, parse(tokens))
+        }
     }
 }
 
@@ -395,25 +403,25 @@ fn try_static_ability_ast_line_rule_indices(
     rules: &'static [StaticAbilityLineRuleDef],
     tokens: &[OwnedLexToken],
     tried: &mut [bool],
-    deferred_error: &mut Option<CardTextError>,
+    deferred_error: &mut Option<ParseDiagnostic>,
     candidate_indices: &[usize],
 ) -> Option<Vec<StaticAbilityAst>> {
     for &idx in candidate_indices {
         tried[idx] = true;
         let (result, loss) = crate::parse_loss::capture(|| {
-            run_static_ability_ast_line_rule(rules[idx].rule, tokens)
+            run_static_ability_ast_line_rule(rules[idx].id, rules[idx].rule, tokens)
         });
         match result {
-            Ok(Some(abilities)) => {
+            ParseOutcome::Match(matched) => {
                 replay_static_rule_parse_loss(&loss);
                 if std::env::var("IRONSMITH_STATIC_RULE_TRACE").is_ok() {
                     eprintln!("static-rule claim: {}", rules[idx].id);
                 }
-                return Some(abilities);
+                return Some(matched.value);
             }
-            Ok(None) => {}
-            Err(err) => {
-                deferred_error.get_or_insert(err);
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => {
+                deferred_error.get_or_insert(diagnostic);
             }
         }
     }
@@ -421,8 +429,8 @@ fn try_static_ability_ast_line_rule_indices(
     None
 }
 
-fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLineHeadHint> {
-    match rule_id {
+fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadHint> {
+    match rule_id.as_str() {
         "parse_characteristic_defining_pt_line" => Vec::new(),
         "parse_soulbond_shared_line" => vec![
             StaticAbilityLineHeadHint::Single("as"),
@@ -681,7 +689,7 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
 macro_rules! single_static_ability_ast_rule {
     ($parse:ident) => {
         StaticAbilityLineRuleDef {
-            id: stringify!($parse),
+            id: RuleId::new(stringify!($parse)),
             rule: StaticAbilityLineRuleAst::Single(|tokens| {
                 Ok($parse(tokens)?.map(StaticAbilityAst::from))
             }),
@@ -692,7 +700,7 @@ macro_rules! single_static_ability_ast_rule {
 macro_rules! single_static_ability_ast_infallible_rule {
     ($parse:ident) => {
         StaticAbilityLineRuleDef {
-            id: stringify!($parse),
+            id: RuleId::new(stringify!($parse)),
             rule: StaticAbilityLineRuleAst::SingleInfallible(|tokens| {
                 $parse(tokens).map(StaticAbilityAst::from)
             }),
@@ -703,7 +711,7 @@ macro_rules! single_static_ability_ast_infallible_rule {
 macro_rules! multi_static_ability_ast_rule {
     ($parse:ident) => {
         StaticAbilityLineRuleDef {
-            id: stringify!($parse),
+            id: RuleId::new(stringify!($parse)),
             rule: StaticAbilityLineRuleAst::Multi(|tokens| {
                 Ok($parse(tokens)?.map(|abilities| {
                     abilities
@@ -719,7 +727,7 @@ macro_rules! multi_static_ability_ast_rule {
 macro_rules! single_static_ability_ast_passthrough_rule {
     ($parse:ident) => {
         StaticAbilityLineRuleDef {
-            id: stringify!($parse),
+            id: RuleId::new(stringify!($parse)),
             rule: StaticAbilityLineRuleAst::Single($parse),
         }
     };
@@ -728,7 +736,7 @@ macro_rules! single_static_ability_ast_passthrough_rule {
 macro_rules! multi_static_ability_ast_passthrough_rule {
     ($parse:ident) => {
         StaticAbilityLineRuleDef {
-            id: stringify!($parse),
+            id: RuleId::new(stringify!($parse)),
             rule: StaticAbilityLineRuleAst::Multi($parse),
         }
     };
@@ -737,7 +745,7 @@ macro_rules! multi_static_ability_ast_passthrough_rule {
 fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
     &[
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_soulbond_shared_line),
+            id: RuleId::new(stringify!(parse_soulbond_shared_line)),
             rule: StaticAbilityLineRuleAst::Multi(parse_soulbond_shared_line),
         },
         single_static_ability_ast_rule!(parse_ward_static_ability_line),
@@ -772,7 +780,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_double_token_creation_replacement_line),
         single_static_ability_ast_rule!(parse_double_counters_replacement_line),
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_lose_game_replacement_line),
+            id: RuleId::new(stringify!(parse_lose_game_replacement_line)),
             rule: StaticAbilityLineRuleAst::Single(parse_lose_game_replacement_line),
         },
         single_static_ability_ast_rule!(parse_keyword_action_replacement_line),
@@ -815,7 +823,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(parse_copy_activated_abilities_line),
         single_static_ability_ast_passthrough_rule!(parse_spend_mana_as_any_color_line),
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_enchanted_has_activated_ability_line),
+            id: RuleId::new(stringify!(parse_enchanted_has_activated_ability_line)),
             rule: StaticAbilityLineRuleAst::Single(parse_enchanted_has_activated_ability_line),
         },
         multi_static_ability_ast_passthrough_rule!(
@@ -844,15 +852,15 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_subject_is_subtype_with_base_pt_and_granted_abilities_line
         ),
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_anthem_and_keyword_line),
+            id: RuleId::new(stringify!(parse_anthem_and_keyword_line)),
             rule: StaticAbilityLineRuleAst::Multi(parse_anthem_and_keyword_line),
         },
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_filter_has_granted_ability_line),
+            id: RuleId::new(stringify!(parse_filter_has_granted_ability_line)),
             rule: StaticAbilityLineRuleAst::Multi(parse_filter_has_granted_ability_line),
         },
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_equipped_gets_and_has_activated_ability_line),
+            id: RuleId::new(stringify!(parse_equipped_gets_and_has_activated_ability_line)),
             rule: StaticAbilityLineRuleAst::Multi(
                 parse_equipped_gets_and_has_activated_ability_line,
             ),
@@ -913,7 +921,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_attached_is_legendary_gets_and_has_keywords_line),
         single_static_ability_ast_rule!(parse_landwalk_as_though_block_override_line),
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_granted_keyword_static_line),
+            id: RuleId::new(stringify!(parse_granted_keyword_static_line)),
             rule: StaticAbilityLineRuleAst::Multi(parse_granted_keyword_static_line),
         },
         multi_static_ability_ast_rule!(parse_equipment_you_control_have_equip_line),
@@ -997,17 +1005,17 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_attached_prevent_all_damage_dealt_to_attached_line
         ),
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_attached_has_keywords_and_triggered_ability_line),
+            id: RuleId::new(stringify!(parse_attached_has_keywords_and_triggered_ability_line)),
             rule: StaticAbilityLineRuleAst::Multi(
                 parse_attached_has_keywords_and_triggered_ability_line,
             ),
         },
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_attached_gets_and_has_ability_line),
+            id: RuleId::new(stringify!(parse_attached_gets_and_has_ability_line)),
             rule: StaticAbilityLineRuleAst::Multi(parse_attached_gets_and_has_ability_line),
         },
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_anthem_with_trailing_segments_line),
+            id: RuleId::new(stringify!(parse_anthem_with_trailing_segments_line)),
             rule: StaticAbilityLineRuleAst::Multi(parse_anthem_with_trailing_segments_line),
         },
         multi_static_ability_ast_passthrough_rule!(parse_gets_and_attacks_each_combat_if_able_line),
@@ -1023,7 +1031,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(parse_attacks_each_combat_if_able_line),
         single_static_ability_ast_rule!(parse_source_must_be_blocked_if_able_line),
         StaticAbilityLineRuleDef {
-            id: stringify!(parse_composed_anthem_effects_line),
+            id: RuleId::new(stringify!(parse_composed_anthem_effects_line)),
             rule: StaticAbilityLineRuleAst::Multi(parse_composed_anthem_effects_line),
         },
         single_static_ability_ast_rule!(parse_enter_as_copy_as_enters_line),
@@ -1115,10 +1123,17 @@ static STATIC_ABILITY_AST_LINE_RULE_INDEX: LazyLock<LexRuleHintIndex> = LazyLock
 fn parse_static_ability_ast_line_lowered(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    recognize_static_ability_ast_line_lowered(tokens).into_legacy_result_option()
+}
+
+fn recognize_static_ability_ast_line_lowered(
+    tokens: &[OwnedLexToken],
+) -> ParseOutcome<Vec<StaticAbilityAst>> {
     let rules = static_ability_ast_line_rules();
     let (head, second) = lexed_head_words(tokens).unwrap_or(("", None));
     let mut tried = vec![false; rules.len()];
-    let mut deferred_error: Option<CardTextError> = None;
+    let mut deferred_error: Option<ParseDiagnostic> = None;
+    let span = crate::runtime_backend::span_from_tokens(tokens);
 
     let candidate_indices = STATIC_ABILITY_AST_LINE_RULE_INDEX.candidate_indices(head, second);
     if !candidate_indices.is_empty() {
@@ -1129,7 +1144,7 @@ fn parse_static_ability_ast_line_lowered(
             &mut deferred_error,
             &candidate_indices,
         ) {
-            return Ok(Some(abilities));
+            return ParseOutcome::matched(abilities, span);
         }
     }
 
@@ -1137,28 +1152,29 @@ fn parse_static_ability_ast_line_lowered(
         if tried[idx] {
             continue;
         }
-        let (result, loss) =
-            crate::parse_loss::capture(|| run_static_ability_ast_line_rule(rule.rule, tokens));
+        let (result, loss) = crate::parse_loss::capture(|| {
+            run_static_ability_ast_line_rule(rule.id, rule.rule, tokens)
+        });
         match result {
-            Ok(Some(abilities)) => {
+            ParseOutcome::Match(matched) => {
                 replay_static_rule_parse_loss(&loss);
                 if std::env::var("IRONSMITH_STATIC_RULE_TRACE").is_ok() {
                     eprintln!("static-rule claim: {}", rule.id);
                 }
-                return Ok(Some(abilities));
+                return ParseOutcome::matched(matched.value, matched.span);
             }
-            Ok(None) => {}
-            Err(err) => {
-                deferred_error.get_or_insert(err);
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => {
+                deferred_error.get_or_insert(diagnostic);
             }
         }
     }
 
-    if let Some(err) = deferred_error {
-        return Err(err);
+    if let Some(diagnostic) = deferred_error {
+        return ParseOutcome::Error(diagnostic);
     }
 
-    Ok(None)
+    ParseOutcome::NoMatch
 }
 
 fn title_case_count_as_card_name(words: &[&str]) -> String {

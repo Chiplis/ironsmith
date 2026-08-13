@@ -3,6 +3,7 @@ use crate::ChoiceCount;
 use crate::cards::builders::SubjectVerbSubjectAst;
 use crate::runtime_backend::grammar::effects::followup_shapes;
 use crate::runtime_backend::grammar::structure::parse_trailing_if_predicate_lexed;
+use crate::recognition::{ParseOutcome, RuleId};
 
 pub(super) enum PreParseFollowupResult {
     Handled {
@@ -352,31 +353,50 @@ pub(super) fn run_pre_parse_followup_registry(
     sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    recognize_pre_parse_followup(state, sentences, sentence_idx, sentence_tokens)
+        .into_legacy_result_option()
+}
+
+fn recognize_pre_parse_followup(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> ParseOutcome<PreParseFollowupResult> {
     let mut matching_rules = PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES
         .iter()
         .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
         .collect::<Vec<_>>();
     matching_rules.sort_by_key(|rule| rule.priority);
+    let span = crate::runtime_backend::span_from_tokens(sentence_tokens);
 
     for rule in matching_rules {
-        if let Some(mut result) = (rule.run)(state, sentences, sentence_idx, sentence_tokens)? {
-            parser_trace(
-                format!(
-                    "parse_effect_sentences:subject-verb-followup-pre:{}",
-                    rule.id
-                )
-                .as_str(),
-                sentence_tokens,
-            );
-            if let PreParseFollowupResult::Handled { route, .. } = &mut result
-                && route.is_none()
-            {
-                *route = Some(pre_followup_subject_verb_route(rule.id));
+        match ParseOutcome::from_legacy_result_option(
+            RuleId::new(rule.id),
+            span,
+            (rule.run)(state, sentences, sentence_idx, sentence_tokens),
+        ) {
+            ParseOutcome::Match(mut matched) => {
+                parser_trace(
+                    format!(
+                        "parse_effect_sentences:subject-verb-followup-pre:{}",
+                        rule.id
+                    )
+                    .as_str(),
+                    sentence_tokens,
+                );
+                if let PreParseFollowupResult::Handled { route, .. } = &mut matched.value
+                    && route.is_none()
+                {
+                    *route = Some(pre_followup_subject_verb_route(rule.id));
+                }
+                return ParseOutcome::matched(matched.value, matched.span);
             }
-            return Ok(Some(result));
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
         }
     }
-    Ok(None)
+    ParseOutcome::NoMatch
 }
 
 pub(super) fn run_post_parse_followup_registry(
@@ -386,32 +406,58 @@ pub(super) fn run_post_parse_followup_registry(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    recognize_post_parse_followup(
+        state,
+        sentences,
+        sentence_idx,
+        sentence_tokens,
+        sentence_effects,
+    )
+    .into_legacy_result_option()
+}
+
+fn recognize_post_parse_followup(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> ParseOutcome<PostParseFollowupResult> {
     let mut matching_rules = POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES
         .iter()
         .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
         .collect::<Vec<_>>();
     matching_rules.sort_by_key(|rule| rule.priority);
+    let span = crate::runtime_backend::span_from_tokens(sentence_tokens);
 
     for rule in matching_rules {
-        if let Some(result) = (rule.run)(
-            state,
-            sentences,
-            sentence_idx,
-            sentence_tokens,
-            sentence_effects,
-        )? {
-            parser_trace(
-                format!(
-                    "parse_effect_sentences:subject-verb-followup-post:{}",
-                    rule.id
-                )
-                .as_str(),
+        match ParseOutcome::from_legacy_result_option(
+            RuleId::new(rule.id),
+            span,
+            (rule.run)(
+                state,
+                sentences,
+                sentence_idx,
                 sentence_tokens,
-            );
-            return Ok(Some(result));
+                sentence_effects,
+            ),
+        ) {
+            ParseOutcome::Match(matched) => {
+                parser_trace(
+                    format!(
+                        "parse_effect_sentences:subject-verb-followup-post:{}",
+                        rule.id
+                    )
+                    .as_str(),
+                    sentence_tokens,
+                );
+                return ParseOutcome::matched(matched.value, matched.span);
+            }
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
         }
     }
-    Ok(None)
+    ParseOutcome::NoMatch
 }
 
 fn pre_rule_library_shuffle_followups(

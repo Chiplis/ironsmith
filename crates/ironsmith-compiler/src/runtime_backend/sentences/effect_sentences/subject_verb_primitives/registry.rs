@@ -548,20 +548,20 @@ pub(super) fn parse_postconditional_subject_verb_primitives_rule_lexed(
 
 pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
     1] = [LexRuleDef {
-    id: "preconditional-subject-verb-primitives",
+    id: RuleId::new("preconditional-subject-verb-primitives"),
     priority: 135,
     heads: &[],
     shape_mask: 0,
-    run: parse_preconditional_subject_verb_primitives_rule_lexed,
+    run: LexRuleHandler::Legacy(parse_preconditional_subject_verb_primitives_rule_lexed),
 }];
 
 pub(crate) const SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
     1] = [LexRuleDef {
-    id: "postconditional-subject-verb-primitives",
+    id: RuleId::new("postconditional-subject-verb-primitives"),
     priority: 160,
     heads: &[],
     shape_mask: 0,
-    run: parse_postconditional_subject_verb_primitives_rule_lexed,
+    run: LexRuleHandler::Legacy(parse_postconditional_subject_verb_primitives_rule_lexed),
 }];
 
 pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =

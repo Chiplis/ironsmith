@@ -17,6 +17,7 @@ use super::line_family_handlers::{
 };
 use super::*;
 use crate::parse_trace;
+use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId};
 
 pub(super) struct LineDispatchResult {
     pub(super) lines: Vec<RewriteLineCst>,
@@ -40,215 +41,240 @@ pub(super) struct LineDispatchContext<'a> {
     pub(super) allow_unsupported: bool,
 }
 
-type LineFamilyRuleFn =
+type StructuredLineFamilyRuleFn =
+    for<'a> fn(&LineDispatchContext<'a>) -> ParseOutcome<LineDispatchResult>;
+type LegacyLineFamilyRuleFn =
     for<'a> fn(&LineDispatchContext<'a>) -> Result<Option<LineDispatchResult>, CardTextError>;
 
 #[derive(Clone, Copy)]
+enum LineFamilyRuleHandler {
+    Structured(StructuredLineFamilyRuleFn),
+    Legacy(LegacyLineFamilyRuleFn),
+}
+
+impl LineFamilyRuleHandler {
+    fn recognize(
+        self,
+        id: RuleId,
+        ctx: &LineDispatchContext<'_>,
+    ) -> ParseOutcome<LineDispatchResult> {
+        match self {
+            Self::Structured(run) => run(ctx).within(id),
+            Self::Legacy(run) => ParseOutcome::from_legacy_result_option(
+                id,
+                span_from_tokens(&ctx.line.tokens),
+                run(ctx),
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 struct LineFamilyRuleDef {
-    id: &'static str,
+    id: RuleId,
     priority: u16,
     heads: &'static [&'static str],
-    run: LineFamilyRuleFn,
+    run: LineFamilyRuleHandler,
 }
 
 const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
     LineFamilyRuleDef {
-        id: "trailing-keyword-activation",
+        id: RuleId::new("trailing-keyword-activation"),
         priority: 10,
         heads: &[],
-        run: run_trailing_keyword_activation_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_trailing_keyword_activation_line_family),
     },
     LineFamilyRuleDef {
-        id: "labeled-line",
+        id: RuleId::new("labeled-line"),
         priority: 20,
         heads: &[],
-        run: run_labeled_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_labeled_line_family),
     },
     LineFamilyRuleDef {
-        id: "max-speed-labeled-line",
+        id: RuleId::new("max-speed-labeled-line"),
         priority: 18,
         heads: &[],
-        run: run_max_speed_labeled_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_max_speed_labeled_line_family),
     },
     LineFamilyRuleDef {
-        id: "triggered-line",
+        id: RuleId::new("triggered-line"),
         priority: 30,
         heads: &["when", "whenever", "at"],
-        run: run_triggered_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_triggered_line_family),
     },
     LineFamilyRuleDef {
-        id: "championed-with-this-trigger-line",
+        id: RuleId::new("championed-with-this-trigger-line"),
         priority: 29,
         heads: &["when"],
-        run: run_championed_with_this_trigger_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_championed_with_this_trigger_line_family),
     },
     LineFamilyRuleDef {
-        id: "partner-with-keyword-line",
+        id: RuleId::new("partner-with-keyword-line"),
         priority: 35,
         heads: &["partner"],
-        run: run_partner_with_keyword_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_partner_with_keyword_line_family),
     },
     LineFamilyRuleDef {
-        id: "partner-variant-keyword-line",
+        id: RuleId::new("partner-variant-keyword-line"),
         priority: 36,
         heads: &[],
-        run: run_partner_variant_keyword_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_partner_variant_keyword_line_family),
     },
     LineFamilyRuleDef {
-        id: "start-your-engines-line",
+        id: RuleId::new("start-your-engines-line"),
         priority: 37,
         heads: &["start"],
-        run: run_start_your_engines_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_start_your_engines_line_family),
     },
     LineFamilyRuleDef {
-        id: "learn-line",
+        id: RuleId::new("learn-line"),
         priority: 37,
         heads: &["learn"],
-        run: run_learn_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_learn_line_family),
     },
     LineFamilyRuleDef {
-        id: "draft-rule-line",
+        id: RuleId::new("draft-rule-line"),
         priority: 37,
         heads: &["draft", "reveal", "as", "during", "immediately", "each"],
-        run: run_draft_rule_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_draft_rule_line_family),
     },
     LineFamilyRuleDef {
-        id: "split-top-and-face-down-look-line",
+        id: RuleId::new("split-top-and-face-down-look-line"),
         priority: 38,
         heads: &["you"],
-        run: run_split_top_and_face_down_look_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_split_top_and_face_down_look_line_family),
     },
     LineFamilyRuleDef {
-        id: "split-top-look-and-top-land-play-line",
+        id: RuleId::new("split-top-look-and-top-land-play-line"),
         priority: 39,
         heads: &["you"],
-        run: run_split_top_look_and_top_land_play_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_split_top_look_and_top_land_play_line_family),
     },
     LineFamilyRuleDef {
-        id: "assign-damage-as-unblocked-enchanted-creature-controller",
+        id: RuleId::new("assign-damage-as-unblocked-enchanted-creature-controller"),
         priority: 39,
         heads: &["enchanted"],
-        run: run_assign_damage_as_unblocked_enchanted_creature_controller_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_assign_damage_as_unblocked_enchanted_creature_controller_line_family),
     },
     LineFamilyRuleDef {
-        id: "champion-line",
+        id: RuleId::new("champion-line"),
         priority: 40,
         heads: &["champion"],
-        run: run_champion_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_champion_line_family),
     },
     LineFamilyRuleDef {
-        id: "station-line",
+        id: RuleId::new("station-line"),
         priority: 40,
         heads: &["station"],
-        run: run_station_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_station_line_family),
     },
     LineFamilyRuleDef {
-        id: "station-threshold-line",
+        id: RuleId::new("station-threshold-line"),
         // Threshold rows contain a colon in their activation body. They must
         // be recognized before the generic activation probe gets a chance to
         // treat the threshold header as part of the payment cost.
         priority: 38,
         heads: &[],
-        run: run_station_threshold_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_station_threshold_line_family),
     },
     LineFamilyRuleDef {
-        id: "escape-enters-with-counter-line",
+        id: RuleId::new("escape-enters-with-counter-line"),
         priority: 42,
         heads: &[],
-        run: run_escape_enters_with_counter_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_escape_enters_with_counter_line_family),
     },
     LineFamilyRuleDef {
-        id: "surge-line",
+        id: RuleId::new("surge-line"),
         priority: 43,
         heads: &["surge"],
-        run: run_surge_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_surge_line_family),
     },
     LineFamilyRuleDef {
-        id: "freerunning-line",
+        id: RuleId::new("freerunning-line"),
         priority: 43,
         heads: &["freerunning"],
-        run: run_freerunning_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_freerunning_line_family),
     },
     LineFamilyRuleDef {
-        id: "keyword-line",
+        id: RuleId::new("keyword-line"),
         priority: 40,
         heads: &[],
-        run: run_keyword_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_keyword_line_family),
     },
     LineFamilyRuleDef {
-        id: "ward-or-echo-static-prefix",
+        id: RuleId::new("ward-or-echo-static-prefix"),
         priority: 50,
         heads: &["ward", "echo"],
-        run: run_ward_or_echo_static_prefix_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_ward_or_echo_static_prefix_line_family),
     },
     LineFamilyRuleDef {
-        id: "activated-line",
+        id: RuleId::new("activated-line"),
         // A valid colon-separated activation must be classified before the
         // broad keyword probe, which can otherwise find a keyword in the
         // effect half and claim the complete line.
         priority: 39,
         heads: &[],
-        run: run_activation_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_activation_line_family),
     },
     LineFamilyRuleDef {
-        id: "combined-static-pair",
+        id: RuleId::new("combined-static-pair"),
         priority: 70,
         heads: &["as", "if"],
-        run: run_combined_static_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_combined_static_line_family),
     },
     LineFamilyRuleDef {
-        id: "non-turn-conditional-untap",
+        id: RuleId::new("non-turn-conditional-untap"),
         priority: 75,
         heads: &["creatures"],
-        run: run_non_turn_conditional_untap_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_non_turn_conditional_untap_line_family),
     },
     LineFamilyRuleDef {
-        id: "graveyard-cast-control-condition",
+        id: RuleId::new("graveyard-cast-control-condition"),
         priority: 76,
         heads: &["you"],
-        run: run_graveyard_cast_control_condition_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_graveyard_cast_control_condition_line_family),
     },
     LineFamilyRuleDef {
-        id: "graveyard-or-exile-cast",
+        id: RuleId::new("graveyard-or-exile-cast"),
         priority: 76,
         heads: &["you"],
-        run: run_graveyard_or_exile_cast_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_graveyard_or_exile_cast_line_family),
     },
     LineFamilyRuleDef {
-        id: "additional-combat-after-this-phase",
+        id: RuleId::new("additional-combat-after-this-phase"),
         priority: 77,
         heads: &[],
-        run: run_additional_combat_after_this_phase_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_additional_combat_after_this_phase_line_family),
     },
     LineFamilyRuleDef {
-        id: "statement-probe",
+        id: RuleId::new("statement-probe"),
         priority: 80,
         heads: &[],
-        run: run_statement_probe_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_statement_probe_line_family),
     },
     LineFamilyRuleDef {
-        id: "leading-unless-statement",
+        id: RuleId::new("leading-unless-statement"),
         priority: 5,
         heads: &["unless"],
-        run: run_leading_unless_statement_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_leading_unless_statement_line_family),
     },
     LineFamilyRuleDef {
-        id: "static-line",
+        id: RuleId::new("static-line"),
         priority: 90,
         heads: &[],
-        run: run_static_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_static_line_family),
     },
     LineFamilyRuleDef {
-        id: "statement-line",
+        id: RuleId::new("statement-line"),
         priority: 100,
         heads: &[],
-        run: run_statement_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_statement_line_family),
     },
     LineFamilyRuleDef {
-        id: "colon-nonactivation-statement",
+        id: RuleId::new("colon-nonactivation-statement"),
         priority: 110,
         heads: &[],
-        run: run_colon_nonactivation_statement_line_family,
+        run: LineFamilyRuleHandler::Legacy(run_colon_nonactivation_statement_line_family),
     },
 ];
 
@@ -274,25 +300,34 @@ fn dispatch_kind_summary(dispatch: &LineDispatchResult) -> String {
 
 fn dispatch_line_family_registry(
     ctx: &LineDispatchContext<'_>,
-) -> Result<LineDispatchResult, CardTextError> {
+) -> ParseOutcome<LineDispatchResult> {
     // Borrow preprocessing expands a removed-from-draft `The same is true`
     // ladder into independent leading-condition sentences. Preserve that
     // complete typed program before keyword discovery can claim consequence
     // words such as flying or haste as one unconditional keyword line.
-    if let Some(abilities) =
+    match ParseOutcome::from_legacy_result_option(
+        RuleId::new("removed-draft-leading-conditional-static-chain"),
+        span_from_tokens(&ctx.line.tokens),
         crate::runtime_backend::families::keyword_static::parse_removed_draft_leading_conditional_static_sentence_chain(
             &ctx.line.tokens,
-        )?
-    {
-        return Ok(LineDispatchResult::single(
-            RewriteLineCst::Static(StaticLineCst {
-                info: ctx.line.info.clone(),
-                parse_tokens: ctx.line.tokens.clone(),
-                chosen_option: None,
-                parsed: Some(LineAst::StaticAbilities(abilities)),
-            }),
-            ctx.idx + 1,
-        ));
+        ),
+    ) {
+        ParseOutcome::Match(matched) => {
+            return ParseOutcome::matched(
+                LineDispatchResult::single(
+                    RewriteLineCst::Static(StaticLineCst {
+                        info: ctx.line.info.clone(),
+                        parse_tokens: ctx.line.tokens.clone(),
+                        chosen_option: None,
+                        parsed: Some(LineAst::StaticAbilities(matched.value)),
+                    }),
+                    ctx.idx + 1,
+                ),
+                matched.span,
+            );
+        }
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
     }
 
     let (head, second) = lexed_head_words(&ctx.line.tokens).unwrap_or(("", None));
@@ -317,42 +352,57 @@ fn dispatch_line_family_registry(
 
     for idx in candidate_indices {
         let rule = &LINE_FAMILY_RULES[idx];
-        match (rule.run)(ctx) {
-            Ok(Some(dispatch)) => {
+        match rule.run.recognize(rule.id, ctx) {
+            ParseOutcome::Match(matched) => {
+                let dispatch = matched.value;
                 parse_trace::event(format!(
                     "line-family: {} -> {}",
                     rule.id,
                     dispatch_kind_summary(&dispatch)
                 ));
-                return Ok(dispatch);
+                return ParseOutcome::matched(dispatch, matched.span);
             }
-            Ok(None) => {}
-            Err(err) => {
-                parse_trace::event(format!("line-family: {} errored: {err:?}", rule.id));
-                return Err(err);
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => {
+                parse_trace::event(format!(
+                    "line-family: {} errored: {diagnostic:?}",
+                    rule.id
+                ));
+                return ParseOutcome::Error(diagnostic);
             }
         }
     }
 
-    match run_unsupported_line_family(ctx) {
-        Ok(Some(dispatch)) => {
+    match ParseOutcome::from_legacy_result_option(
+        RuleId::new("unsupported-line-family"),
+        span_from_tokens(&ctx.line.tokens),
+        run_unsupported_line_family(ctx),
+    ) {
+        ParseOutcome::Match(matched) => {
+            let dispatch = matched.value;
             parse_trace::event(format!(
                 "line-family: unsupported -> {}",
                 dispatch_kind_summary(&dispatch)
             ));
-            Ok(dispatch)
+            ParseOutcome::matched(dispatch, matched.span)
         }
-        Ok(None) => Err(CardTextError::InvariantViolation(format!(
-            "line-family registry exhausted without handling line: '{}' [last_rule={}]",
-            ctx.line.info.raw_line,
-            LINE_FAMILY_RULES
-                .last()
-                .map(|rule| rule.id)
-                .unwrap_or("none")
-        ))),
-        Err(err) => {
-            parse_trace::event(format!("line-family: unsupported errored: {err:?}"));
-            Err(err)
+        ParseOutcome::NoMatch => ParseOutcome::Error(ParseDiagnostic::invariant(
+            RuleId::new("line-family-registry"),
+            span_from_tokens(&ctx.line.tokens),
+            format!(
+                "line-family registry exhausted without handling line: '{}' [last_rule={}]",
+                ctx.line.info.raw_line,
+                LINE_FAMILY_RULES
+                    .last()
+                    .map(|rule| rule.id.as_str())
+                    .unwrap_or("none")
+            ),
+        )),
+        ParseOutcome::Error(diagnostic) => {
+            parse_trace::event(format!(
+                "line-family: unsupported errored: {diagnostic:?}"
+            ));
+            ParseOutcome::Error(diagnostic)
         }
     }
 }
@@ -371,5 +421,10 @@ pub(super) fn dispatch_standard_line_cst(
         line,
         allow_unsupported,
     };
-    dispatch_line_family_registry(&ctx)
+    dispatch_line_family_registry(&ctx).into_legacy_result(|| {
+        CardTextError::InvariantViolation(format!(
+            "line-family registry returned no match for '{}'",
+            line.info.raw_line
+        ))
+    })
 }

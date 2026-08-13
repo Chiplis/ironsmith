@@ -1,4 +1,5 @@
 use crate::cards::builders::CardTextError;
+use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch, UnsupportedReason};
 use std::collections::HashMap;
 
 use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, contains_token_kind};
@@ -99,8 +100,15 @@ fn compute_lex_clause_rule_shape(tokens: &[OwnedLexToken], words: &LexClauseWord
     shape
 }
 
-pub(crate) type LexClauseRuleFn<T> =
+pub(crate) type LexClauseRuleFn<T> = for<'a> fn(&LexClauseView<'a>) -> ParseOutcome<T>;
+pub(crate) type LegacyLexClauseRuleFn<T> =
     for<'a> fn(&LexClauseView<'a>) -> Result<Option<T>, CardTextError>;
+
+#[derive(Clone, Copy)]
+pub(crate) enum LexRuleHandler<T> {
+    Structured(LexClauseRuleFn<T>),
+    Legacy(LegacyLexClauseRuleFn<T>),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LexRuleHeadHint {
@@ -155,11 +163,11 @@ impl LexRuleHintIndex {
 
 #[derive(Clone, Copy)]
 pub(crate) struct LexRuleDef<T> {
-    pub(crate) id: &'static str,
+    pub(crate) id: RuleId,
     pub(crate) priority: u16,
     pub(crate) heads: &'static [&'static str],
     pub(crate) shape_mask: u32,
-    pub(crate) run: LexClauseRuleFn<T>,
+    pub(crate) run: LexRuleHandler<T>,
 }
 
 #[derive(Clone, Copy)]
@@ -172,10 +180,7 @@ impl<T: 'static> LexRuleIndex<T> {
         Self { rules }
     }
 
-    pub(crate) fn run_first<'a>(
-        &self,
-        view: &LexClauseView<'a>,
-    ) -> Result<Option<(&'static str, T)>, CardTextError> {
+    pub(crate) fn run_first<'a>(&self, view: &LexClauseView<'a>) -> ParseOutcome<RuleMatch<T>> {
         let mut candidate_indices = self
             .rules
             .iter()
@@ -187,13 +192,36 @@ impl<T: 'static> LexRuleIndex<T> {
         candidate_indices.sort_by_key(|idx| self.rules[*idx].priority);
         for idx in candidate_indices {
             let rule = &self.rules[idx];
-            if let Some(result) = (rule.run)(view)? {
-                return Ok(Some((rule.id, result)));
+            let outcome = match rule.run {
+                LexRuleHandler::Structured(run) => run(view).within(rule.id),
+                LexRuleHandler::Legacy(run) => ParseOutcome::from_legacy_result_option(
+                    rule.id,
+                    lex_clause_span(view),
+                    run(view),
+                ),
+            };
+            match outcome {
+                ParseOutcome::NoMatch => {}
+                ParseOutcome::Match(matched) => {
+                    let span = matched.span;
+                    return ParseOutcome::matched(RuleMatch::new(rule.id, matched), span);
+                }
+                ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
             }
         }
 
-        Ok(None)
+        ParseOutcome::NoMatch
     }
+}
+
+fn lex_clause_span(view: &LexClauseView<'_>) -> Option<crate::cards::TextSpan> {
+    let first = view.tokens.first()?;
+    let last = view.tokens.last()?;
+    (first.span.line == last.span.line).then_some(crate::cards::TextSpan {
+        line: first.span.line,
+        start: first.span.start,
+        end: last.span.end,
+    })
 }
 
 fn lex_rule_matches_view<T>(rule: &LexRuleDef<T>, view: &LexClauseView<'_>) -> bool {
@@ -212,7 +240,7 @@ pub(crate) type LexUnsupportedPredicate = for<'a> fn(&LexClauseView<'a>) -> bool
 
 #[derive(Clone, Copy)]
 pub(crate) struct LexUnsupportedRuleDef {
-    pub(crate) id: &'static str,
+    pub(crate) id: RuleId,
     pub(crate) priority: u16,
     pub(crate) heads: &'static [&'static str],
     pub(crate) shape_mask: u32,
@@ -234,7 +262,7 @@ impl LexUnsupportedDiagnoser {
         &self,
         view: &LexClauseView<'_>,
         subject_label: &'static str,
-    ) -> Option<CardTextError> {
+    ) -> ParseOutcome<()> {
         let mut candidate_indices = self
             .rules
             .iter()
@@ -247,15 +275,21 @@ impl LexUnsupportedDiagnoser {
         for idx in candidate_indices {
             let rule = &self.rules[idx];
             if (rule.predicate)(view) {
-                return Some(unsupported_rule_error(
-                    rule.id,
+                let detail = format!(
+                    "{} ({}: '{}')",
                     rule.message,
                     subject_label,
-                    &view.display_text(),
+                    view.display_text()
+                );
+                return ParseOutcome::Error(ParseDiagnostic::unsupported(
+                    rule.id,
+                    lex_clause_span(view),
+                    UnsupportedReason::new(rule.id.as_str(), detail.clone()),
+                    detail,
                 ));
             }
         }
-        None
+        ParseOutcome::NoMatch
     }
 }
 

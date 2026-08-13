@@ -1,4 +1,5 @@
 use crate::cards::builders::{CardTextError, LineAst};
+use crate::recognition::{ParseOutcome, RuleId};
 
 use super::cst::KeywordLineCst;
 use super::grammar::document_shapes::{LabelPrefixKind, parse_label_prefix_kind_tokens};
@@ -13,29 +14,47 @@ pub(super) use super::keyword_payloads::*;
 pub(crate) fn parse_keyword_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<KeywordLineCst>, CardTextError> {
+    recognize_keyword_line_cst(line).into_legacy_result_option()
+}
+
+pub(crate) fn recognize_keyword_line_cst(
+    line: &PreprocessedLine,
+) -> ParseOutcome<KeywordLineCst> {
     let tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
     let full_parse_tokens = line.info.source_tokens.clone();
     let Some(hint) = parse_keyword_dispatch_hint(&tokens) else {
-        return Ok(None);
+        return ParseOutcome::NoMatch;
     };
     let rules = keyword_line_rules();
+    let span = crate::runtime_backend::span_from_tokens(&tokens);
 
     for rule in &rules {
         if !rule.hints.iter().any(|candidate| candidate == &hint) {
             continue;
         }
-        if let Some(payload) = (rule.parse)(line, &tokens, &full_parse_tokens)? {
-            return Ok(Some(KeywordLineCst {
-                info: line.info.clone(),
-                parse_tokens: tokens,
-                full_parse_tokens,
-                kind: rule.cst_kind,
-                payload,
-            }));
+        match ParseOutcome::from_legacy_result_option(
+            rule.id,
+            span,
+            (rule.parse)(line, &tokens, &full_parse_tokens),
+        ) {
+            ParseOutcome::Match(matched) => {
+                return ParseOutcome::matched(
+                    KeywordLineCst {
+                        info: line.info.clone(),
+                        parse_tokens: tokens,
+                        full_parse_tokens,
+                        kind: rule.cst_kind,
+                        payload: matched.value,
+                    },
+                    matched.span,
+                );
+            }
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
         }
     }
 
-    Ok(None)
+    ParseOutcome::NoMatch
 }
 pub(crate) fn lower_keyword_line_ast(line: &RewriteKeywordLine) -> Result<LineAst, CardTextError> {
     Ok(line.payload.to_line_ast())

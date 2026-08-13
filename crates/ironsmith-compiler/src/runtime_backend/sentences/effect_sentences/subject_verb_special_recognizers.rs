@@ -1,10 +1,13 @@
 use super::super::front_end::grammar::effects::special_sentence_shapes as shapes;
-use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex, RULE_SHAPE_STARTS_IF};
+use super::super::rule_engine::{
+    LexClauseView, LexRuleDef, LexRuleHandler, LexRuleIndex, RULE_SHAPE_STARTS_IF,
+};
 use super::sentence_helpers::target_ast_to_object_filter;
 use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexed};
 use crate::cards::builders::{CardTextError, ChoiceCount, EffectAst};
 use crate::cards::builders::{IT_TAG, PlayerAst, TagKey, Value};
 use crate::effect::{EventValueSpec, Until};
+use crate::recognition::RuleId;
 use crate::runtime_backend::model::ast::{SubjectVerbActionAst, SubjectVerbRoleAst};
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::types::CardType;
@@ -197,46 +200,46 @@ pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
 
 pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 6] = [
     LexRuleDef {
-        id: "redirect-next-damage",
+        id: RuleId::new("redirect-next-damage"),
         priority: 100,
         heads: &["the", "all"],
         shape_mask: 0,
-        run: parse_redirect_next_damage_sentence_rule_lexed,
+        run: LexRuleHandler::Legacy(parse_redirect_next_damage_sentence_rule_lexed),
     },
     LexRuleDef {
-        id: "prevent-next-time-damage",
+        id: RuleId::new("prevent-next-time-damage"),
         priority: 110,
         heads: &["the"],
         shape_mask: 0,
-        run: parse_prevent_next_time_damage_sentence_rule_lexed,
+        run: LexRuleHandler::Legacy(parse_prevent_next_time_damage_sentence_rule_lexed),
     },
     LexRuleDef {
-        id: "scale-target-power",
+        id: RuleId::new("scale-target-power"),
         priority: 120,
         heads: &["double", "triple", "until"],
         shape_mask: 0,
-        run: parse_scaled_target_power_sentence_rule_lexed,
+        run: LexRuleHandler::Legacy(parse_scaled_target_power_sentence_rule_lexed),
     },
     LexRuleDef {
-        id: "keyword-bundle-pump",
+        id: RuleId::new("keyword-bundle-pump"),
         priority: 125,
         heads: &["until"],
         shape_mask: 0,
-        run: parse_keyword_bundle_pump_sentence_rule_lexed,
+        run: LexRuleHandler::Legacy(parse_keyword_bundle_pump_sentence_rule_lexed),
     },
     LexRuleDef {
-        id: "spell-this-way-pay-life",
+        id: RuleId::new("spell-this-way-pay-life"),
         priority: 130,
         heads: &["if"],
         shape_mask: RULE_SHAPE_STARTS_IF,
-        run: parse_spell_this_way_pay_life_rule_lexed,
+        run: LexRuleHandler::Legacy(parse_spell_this_way_pay_life_rule_lexed),
     },
     LexRuleDef {
-        id: "sacrifice-any-number-then-draw-that-many",
+        id: RuleId::new("sacrifice-any-number-then-draw-that-many"),
         priority: 140,
         heads: &["sacrifice"],
         shape_mask: 0,
-        run: parse_sacrifice_any_number_then_draw_that_many_rule_lexed,
+        run: LexRuleHandler::Legacy(parse_sacrifice_any_number_then_draw_that_many_rule_lexed),
     },
 ];
 

@@ -7,7 +7,7 @@ use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{LexedClause, OwnedLexToken};
 use super::super::object_filters::parse_object_filter;
 use super::super::rule_engine::{
-    LexClauseView, LexRuleDef, LexRuleHeadHint, LexRuleHintIndex, LexRuleIndex,
+    LexClauseView, LexRuleDef, LexRuleHandler, LexRuleHeadHint, LexRuleHintIndex, LexRuleIndex,
     build_lex_rule_hint_index,
 };
 use super::super::token_primitives::{iter_contains, lexed_head_words};
@@ -16,6 +16,7 @@ use super::super::util::{
     parse_counter_type_from_tokens, parse_subject, parse_subtype_flexible,
 };
 use super::super::util::{parse_target_phrase, parse_value, span_from_tokens};
+use crate::recognition::RuleId;
 use super::dispatch_inner::merge_filters;
 use super::search_library::parse_restriction_duration;
 use super::sentence_helpers::*;

@@ -1,6 +1,7 @@
 use super::super::token_primitives::lexed_head_words;
 use super::dispatch_entry::SentenceInput;
 use crate::cards::builders::{CardTextError, EffectAst};
+use crate::recognition::{ParseOutcome, RuleId};
 
 pub(super) mod generic_subject_verb_sequences;
 
@@ -1474,7 +1475,17 @@ pub(crate) fn try_parse_subject_verb_sequence_rule(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<SequenceRuleMatch>, CardTextError> {
+    recognize_subject_verb_sequence_rule(sentences, sentence_idx).into_legacy_result_option()
+}
+
+pub(crate) fn recognize_subject_verb_sequence_rule(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> ParseOutcome<SequenceRuleMatch> {
     let mut best_match: Option<(u16, SequenceRuleMatch)> = None;
+    let span = sentences
+        .get(sentence_idx)
+        .and_then(|sentence| crate::runtime_backend::span_from_tokens(sentence.lowered()));
     for rule in SUBJECT_VERB_SEQUENCE_RULES {
         if best_match
             .as_ref()
@@ -1488,8 +1499,14 @@ pub(crate) fn try_parse_subject_verb_sequence_rule(
         if !(rule.predicate)(sentences, sentence_idx) {
             continue;
         }
-        let Some(effects) = (rule.parser)(sentences, sentence_idx)? else {
-            continue;
+        let effects = match ParseOutcome::from_legacy_result_option(
+            RuleId::new(rule.name),
+            span,
+            (rule.parser)(sentences, sentence_idx),
+        ) {
+            ParseOutcome::Match(matched) => matched.value,
+            ParseOutcome::NoMatch => continue,
+            ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
         };
         let candidate = SequenceRuleMatch {
             name: rule.name,
@@ -1505,7 +1522,10 @@ pub(crate) fn try_parse_subject_verb_sequence_rule(
         }
     }
 
-    Ok(best_match.map(|(_, matched)| matched))
+    match best_match {
+        Some((_, matched)) => ParseOutcome::matched(matched, span),
+        None => ParseOutcome::NoMatch,
+    }
 }
 
 pub(crate) fn subject_verb_sequence_route(name: &str) -> &'static str {

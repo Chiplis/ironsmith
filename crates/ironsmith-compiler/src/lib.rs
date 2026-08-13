@@ -33,6 +33,7 @@ pub mod parse_trace;
 pub mod payload;
 pub mod pipeline;
 pub mod resolution;
+pub mod recognition;
 mod runtime_backend;
 mod slice_primitives;
 pub mod static_abilities;
@@ -127,6 +128,10 @@ pub use oracle_grammar::{
 pub use parse_context::{
     CardFaceMetadata, ContextDiagnostic, ParseArenaId, ParseArenas, ParseContext, ParseContextView,
     ParseDiagnosticSink, ParseFeatures, ParseScopeId, ParseScopeKind, SourceIdentity, SourceUnitId,
+};
+pub use recognition::{
+    ParseDiagnostic, ParseDiagnosticKind, ParseExpectation, ParseMatch, ParseOutcome, RuleId,
+    RuleMatch, UnsupportedReason,
 };
 pub use payload::{IfResultPredicate, KeywordAction};
 pub use pipeline::{LoweringPipeline, PostpassProcessor};

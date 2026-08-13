@@ -27,8 +27,9 @@ use super::super::permission_helpers::{
     parse_cast_or_play_tagged_clause, parse_permission_clause_spec_lexed,
     parse_unsupported_play_cast_permission_clause_lexed,
 };
-use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex};
+use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleHandler, LexRuleIndex};
 use super::super::span_from_tokens;
+use crate::recognition::RuleId;
 #[cfg(test)]
 use super::super::token_primitives::str_contains as string_contains;
 use super::super::util::{
@@ -307,11 +308,11 @@ pub(super) fn parse_effect_chain_rule_lexed(
 
 pub(super) const FALLBACK_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 1] =
     [LexRuleDef {
-        id: "effect-chain",
+        id: RuleId::new("effect-chain"),
         priority: 170,
         heads: &[],
         shape_mask: 0,
-        run: parse_effect_chain_rule_lexed,
+        run: LexRuleHandler::Legacy(parse_effect_chain_rule_lexed),
     }];
 
 pub(super) const FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
