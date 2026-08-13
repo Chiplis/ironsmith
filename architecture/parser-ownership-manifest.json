@@ -41,6 +41,7 @@
         "crates/ironsmith-compiler/src/model/card_document.rs",
         "crates/ironsmith-compiler/src/model/activated_abilities.rs",
         "crates/ironsmith-compiler/src/model/costs.rs",
+        "crates/ironsmith-compiler/src/model/legality.rs",
         "crates/ironsmith-compiler/src/model/selections.rs",
         "crates/ironsmith-compiler/src/model/static_abilities.rs",
         "crates/ironsmith-compiler/src/model/structured_abilities.rs",
@@ -145,14 +146,6 @@
       ],
       "removal_pr": 33,
       "reason": "Legacy parser facades expose runtime-backed output until every consumer uses canonical compiler AST plus explicit lowering."
-    },
-    {
-      "id": "BRIDGE-COST-CST-MATERIALIZATION",
-      "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/cost_materialization.rs"
-      ],
-      "removal_pr": 16,
-      "reason": "The dedicated cost materializer temporarily translates canonical cost nodes through the typed activation-cost CST while all cost families migrate."
     }
   ],
   "legacy_compatibility_registries": [

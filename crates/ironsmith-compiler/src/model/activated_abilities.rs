@@ -1,7 +1,7 @@
 use crate::effect::Value;
 use crate::model::ast::{EffectAst, PredicateAst};
 use crate::model::provenance::SemanticProvenance;
-use crate::model::{CompilerTotalCost, TargetAst};
+use crate::model::{CompilerActivationLegalityAst, CompilerTotalCost, TargetAst};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +74,7 @@ pub(crate) struct CompilerActivatedAbilityAst {
     pub effects: Vec<EffectAst>,
     pub targets: Vec<TargetAst>,
     pub timing: ActivationTimingAst,
-    pub restrictions: Vec<ActivationRestrictionAst>,
+    pub restrictions: Vec<CompilerActivationLegalityAst>,
     pub loyalty_cost: Option<LoyaltyCostAst>,
     pub mana_facts: ManaAbilityFacts,
     pub boundary: ActivatedLineBoundaryAst,

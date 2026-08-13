@@ -5,6 +5,7 @@ pub(crate) mod compiler_semantic;
 pub mod costs;
 pub(crate) mod facts;
 pub mod ir;
+pub(crate) mod legality;
 pub mod parse_types;
 pub mod provenance;
 pub mod reference;
@@ -25,6 +26,12 @@ pub(crate) use activated_abilities::{
     ManaAbilityFacts,
 };
 pub(crate) use card_document::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
+pub(crate) use legality::{
+    CompilerActivationLegalityAst, CompilerCastingLegalityAst, CompilerPermissionAst,
+    CompilerTriggerLegalityAst, LegalityFrequencyAst, LegalityPeriodAst,
+    LegalityRelationshipAst, ManaUseConstraintAst, PermissionKindAst, PhaseStepAst,
+    TimingWindowAst, TurnOwnerAst,
+};
 pub(crate) use selections::{
     ArithmeticOperatorAst, CompilerFilterAst, CompilerSelectionAst, CompilerValueAst,
     SelectionCardinalityAst, SelectionDomainAst, SelectionKindAst, SelectionLegalityAst,

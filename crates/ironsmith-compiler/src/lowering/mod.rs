@@ -1,5 +1,6 @@
 use crate::model::ParsedCardAst;
 
+pub(crate) mod legality_materialization;
 pub(crate) mod selection_materialization;
 
 pub(crate) trait CardAstMaterializer {

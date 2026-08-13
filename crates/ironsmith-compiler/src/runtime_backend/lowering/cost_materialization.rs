@@ -9,9 +9,122 @@ use crate::object::CounterType;
 use crate::target::PlayerFilter;
 use crate::types::CardType;
 
-use crate::runtime_backend::grammar::activation_costs::{
-    ActivationCostCst, ActivationCostSegmentCst,
-};
+#[derive(Debug, Clone, PartialEq)]
+enum MaterializationCost {
+    Mana(ManaCost),
+    Tap,
+    TapChosen {
+        count: u32,
+        filter: ObjectFilter,
+    },
+    Untap,
+    Life(crate::effect::Value),
+    Energy(u32),
+    DiscardSource,
+    DiscardHand,
+    DiscardCard(u32),
+    DiscardFiltered {
+        count: u32,
+        card_types: Vec<CardType>,
+        supertypes: Vec<crate::types::Supertype>,
+        filter: Option<ObjectFilter>,
+        random: bool,
+        name: Option<String>,
+        other: bool,
+    },
+    Mill(u32),
+    SacrificeSelf {
+        surface: Option<crate::target::SourceReferenceSurface>,
+    },
+    SacrificeChosen {
+        count: ChoiceCount,
+        filter: ObjectFilter,
+    },
+    SacrificeAll {
+        filter: ObjectFilter,
+    },
+    UnattachChosen {
+        count: u32,
+        filter: ObjectFilter,
+    },
+    ExileSelf,
+    ExileSelfFromGraveyard,
+    ExileFromHand {
+        count: u32,
+        color_filter: Option<crate::color::ColorSet>,
+    },
+    ExileChosen {
+        choice_count: ChoiceCount,
+        filter: ObjectFilter,
+        top_only: bool,
+        turn_face_up: bool,
+    },
+    ExileSourceAndChosen {
+        source_filter: ObjectFilter,
+        choice_count: ChoiceCount,
+        filter: ObjectFilter,
+    },
+    ExileSelfAndNamedArtifacts {
+        names: Vec<String>,
+    },
+    ExileTopLibrary {
+        count: u32,
+    },
+    RevealSourceFromHand,
+    RevealFromHand {
+        count: crate::effect::Value,
+        color_filter: Option<crate::color::ColorSet>,
+        card_type: Option<CardType>,
+    },
+    ReturnSelfToHand,
+    ReturnChosenToHand {
+        count: u32,
+        filter: ObjectFilter,
+    },
+    MoveChosenToLibraryTop {
+        filter: ObjectFilter,
+    },
+    MoveSelfToLibraryBottom {
+        surface: crate::target::SourceReferenceSurface,
+    },
+    MoveOpponentOwnedExiledCardToGraveyard,
+    ExertSelf {
+        display_text: String,
+    },
+    PutCounters {
+        counter_type: CounterType,
+        count: u32,
+    },
+    PutCountersChosen {
+        counter_type: CounterType,
+        count: u32,
+        filter: ObjectFilter,
+    },
+    Blight {
+        count: u32,
+    },
+    RemoveCounters {
+        counter_type: CounterType,
+        count: u32,
+    },
+    RemoveCountersAmong {
+        counter_type: Option<CounterType>,
+        count: u32,
+        filter: ObjectFilter,
+        display_x: bool,
+        dynamic: bool,
+        single_object: bool,
+    },
+    RemoveCountersDynamic {
+        counter_type: Option<CounterType>,
+        display_x: bool,
+        remove_all: bool,
+    },
+    Behold {
+        subtype: crate::types::Subtype,
+        count: u32,
+    },
+}
 
 fn apply_activation_cost_default_battlefield_scope(filter: &mut ObjectFilter) {
     if !filter.any_of.is_empty() {
@@ -32,34 +145,15 @@ fn apply_activation_cost_default_battlefield_scope(filter: &mut ObjectFilter) {
 pub(crate) fn materialize_compiler_total_cost(
     cost: &CompilerTotalCost,
 ) -> Result<TotalCost, CardTextError> {
-    let cst = compiler_cost_to_materialization_cst(cost)?;
-    lower_activation_cost_cst(&cst)
-}
-
-fn compiler_cost_to_materialization_cst(
-    cost: &CompilerTotalCost,
-) -> Result<ActivationCostCst, CardTextError> {
-    let mut alternative_branches = Vec::new();
-    let mut segments = Vec::new();
-    if cost.branches.len() > 1 {
-        for branch in &cost.branches {
-            alternative_branches.push(ActivationCostCst {
-                raw: String::new(),
-                segments: branch.iter().map(materialization_segment).collect(),
-                alternative_branches: Vec::new(),
-                is_loyalty_shorthand: cost.is_loyalty_shorthand,
-                waterbend_generic: None,
-            });
-        }
-    } else if let Some(branch) = cost.branches.first() {
+    let mut materialized = Vec::with_capacity(cost.branches.len());
+    for branch in &cost.branches {
         if let [CompilerCost::VariableMana { generic }] = branch.as_slice() {
-            return Ok(ActivationCostCst {
-                raw: String::new(),
-                segments: Vec::new(),
-                alternative_branches: Vec::new(),
-                is_loyalty_shorthand: cost.is_loyalty_shorthand,
-                waterbend_generic: Some(*generic),
-            });
+            materialized.push(
+                crate::runtime_backend::lowering::compile_support::waterbend_optional_total_cost(
+                    *generic,
+                ),
+            );
+            continue;
         }
         if branch
             .iter()
@@ -69,33 +163,32 @@ fn compiler_cost_to_materialization_cst(
                 "variable waterbend cost cannot be combined with another cost".to_string(),
             ));
         }
-        segments.extend(branch.iter().map(materialization_segment));
+        let segments = branch.iter().map(materialization_cost).collect::<Vec<_>>();
+        materialized.push(lower_materialization_costs(&segments)?);
     }
-    Ok(ActivationCostCst {
-        raw: String::new(),
-        segments,
-        alternative_branches,
-        is_loyalty_shorthand: cost.is_loyalty_shorthand,
-        waterbend_generic: None,
-    })
+    match materialized.len() {
+        0 => Ok(TotalCost::from_costs(Vec::new())),
+        1 => Ok(materialized.remove(0)),
+        _ => Ok(TotalCost::one_of(materialized)),
+    }
 }
 
-fn materialization_segment(cost: &CompilerCost) -> ActivationCostSegmentCst {
+fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
     match cost {
-        CompilerCost::Mana(cost) => ActivationCostSegmentCst::Mana(cost.clone()),
+        CompilerCost::Mana(cost) => MaterializationCost::Mana(cost.clone()),
         CompilerCost::VariableMana { .. } => {
             unreachable!("variable mana is handled at the total-cost boundary")
         }
-        CompilerCost::Tap => ActivationCostSegmentCst::Tap,
-        CompilerCost::TapChosen { count, filter } => ActivationCostSegmentCst::TapChosen {
+        CompilerCost::Tap => MaterializationCost::Tap,
+        CompilerCost::TapChosen { count, filter } => MaterializationCost::TapChosen {
             count: *count,
             filter: filter.clone(),
         },
-        CompilerCost::Untap => ActivationCostSegmentCst::Untap,
-        CompilerCost::Life(amount) => ActivationCostSegmentCst::Life(amount.clone()),
-        CompilerCost::Energy(amount) => ActivationCostSegmentCst::Energy(*amount),
-        CompilerCost::DiscardSource => ActivationCostSegmentCst::DiscardSource,
-        CompilerCost::DiscardHand => ActivationCostSegmentCst::DiscardHand,
+        CompilerCost::Untap => MaterializationCost::Untap,
+        CompilerCost::Life(amount) => MaterializationCost::Life(amount.clone()),
+        CompilerCost::Energy(amount) => MaterializationCost::Energy(*amount),
+        CompilerCost::DiscardSource => MaterializationCost::DiscardSource,
+        CompilerCost::DiscardHand => MaterializationCost::DiscardHand,
         CompilerCost::Discard {
             count,
             card_types,
@@ -112,7 +205,7 @@ fn materialization_segment(cost: &CompilerCost) -> ActivationCostSegmentCst {
             && name.is_none()
             && !*other =>
         {
-            ActivationCostSegmentCst::DiscardCard(*count)
+            MaterializationCost::DiscardCard(*count)
         }
         CompilerCost::Discard {
             count,
@@ -123,7 +216,7 @@ fn materialization_segment(cost: &CompilerCost) -> ActivationCostSegmentCst {
             name,
             other,
             ..
-        } => ActivationCostSegmentCst::DiscardFiltered {
+        } => MaterializationCost::DiscardFiltered {
             count: *count,
             card_types: card_types.clone(),
             supertypes: supertypes.clone(),
@@ -132,8 +225,8 @@ fn materialization_segment(cost: &CompilerCost) -> ActivationCostSegmentCst {
             name: name.clone(),
             other: *other,
         },
-        CompilerCost::Mill(count) => ActivationCostSegmentCst::Mill(*count),
-        CompilerCost::SacrificeSelf { surface } => ActivationCostSegmentCst::SacrificeSelf {
+        CompilerCost::Mill(count) => MaterializationCost::Mill(*count),
+        CompilerCost::SacrificeSelf { surface } => MaterializationCost::SacrificeSelf {
             surface: surface.clone(),
         },
         CompilerCost::Sacrifice {
@@ -141,30 +234,28 @@ fn materialization_segment(cost: &CompilerCost) -> ActivationCostSegmentCst {
             filter,
             all: true,
             ..
-        } => ActivationCostSegmentCst::SacrificeAll {
+        } => MaterializationCost::SacrificeAll {
             filter: filter.clone(),
         },
-        CompilerCost::Sacrifice { count, filter, .. } => {
-            ActivationCostSegmentCst::SacrificeChosen {
-                count: *count,
-                filter: filter.clone(),
-            }
-        }
-        CompilerCost::Unattach { count, filter } => ActivationCostSegmentCst::UnattachChosen {
+        CompilerCost::Sacrifice { count, filter, .. } => MaterializationCost::SacrificeChosen {
+            count: *count,
+            filter: filter.clone(),
+        },
+        CompilerCost::Unattach { count, filter } => MaterializationCost::UnattachChosen {
             count: *count,
             filter: filter.clone(),
         },
         CompilerCost::ExileSelf { from_graveyard } => {
             if *from_graveyard {
-                ActivationCostSegmentCst::ExileSelfFromGraveyard
+                MaterializationCost::ExileSelfFromGraveyard
             } else {
-                ActivationCostSegmentCst::ExileSelf
+                MaterializationCost::ExileSelf
             }
         }
         CompilerCost::ExileFromHand {
             count,
             color_filter,
-        } => ActivationCostSegmentCst::ExileFromHand {
+        } => MaterializationCost::ExileFromHand {
             count: *count,
             color_filter: *color_filter,
         },
@@ -174,7 +265,7 @@ fn materialization_segment(cost: &CompilerCost) -> ActivationCostSegmentCst {
             top_only,
             turn_face_up,
             ..
-        } => ActivationCostSegmentCst::ExileChosen {
+        } => MaterializationCost::ExileChosen {
             choice_count: *count,
             filter: filter.clone(),
             top_only: *top_only,
@@ -184,58 +275,58 @@ fn materialization_segment(cost: &CompilerCost) -> ActivationCostSegmentCst {
             source_filter,
             count,
             filter,
-        } => ActivationCostSegmentCst::ExileSourceAndChosen {
+        } => MaterializationCost::ExileSourceAndChosen {
             source_filter: source_filter.clone(),
             choice_count: *count,
             filter: filter.clone(),
         },
         CompilerCost::ExileSelfAndNamedArtifacts { names } => {
-            ActivationCostSegmentCst::ExileSelfAndNamedArtifacts {
+            MaterializationCost::ExileSelfAndNamedArtifacts {
                 names: names.clone(),
             }
         }
         CompilerCost::ExileTopLibrary { count } => {
-            ActivationCostSegmentCst::ExileTopLibrary { count: *count }
+            MaterializationCost::ExileTopLibrary { count: *count }
         }
-        CompilerCost::RevealSourceFromHand => ActivationCostSegmentCst::RevealSourceFromHand,
+        CompilerCost::RevealSourceFromHand => MaterializationCost::RevealSourceFromHand,
         CompilerCost::RevealFromHand {
             count,
             color_filter,
             card_type,
             ..
-        } => ActivationCostSegmentCst::RevealFromHand {
+        } => MaterializationCost::RevealFromHand {
             count: count.clone(),
             color_filter: *color_filter,
             card_type: *card_type,
         },
-        CompilerCost::ReturnSelfToHand => ActivationCostSegmentCst::ReturnSelfToHand,
+        CompilerCost::ReturnSelfToHand => MaterializationCost::ReturnSelfToHand,
         CompilerCost::ReturnChosenToHand { count, filter } => {
-            ActivationCostSegmentCst::ReturnChosenToHand {
+            MaterializationCost::ReturnChosenToHand {
                 count: *count,
                 filter: filter.clone(),
             }
         }
         CompilerCost::MoveChosenToLibraryTop { filter } => {
-            ActivationCostSegmentCst::MoveChosenToLibraryTop {
+            MaterializationCost::MoveChosenToLibraryTop {
                 filter: filter.clone(),
             }
         }
         CompilerCost::MoveSelfToLibraryBottom { surface } => {
-            ActivationCostSegmentCst::MoveSelfToLibraryBottom {
+            MaterializationCost::MoveSelfToLibraryBottom {
                 surface: surface.clone(),
             }
         }
         CompilerCost::MoveOpponentOwnedExiledCardToGraveyard => {
-            ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard
+            MaterializationCost::MoveOpponentOwnedExiledCardToGraveyard
         }
-        CompilerCost::ExertSelf { display } => ActivationCostSegmentCst::ExertSelf {
+        CompilerCost::ExertSelf { display } => MaterializationCost::ExertSelf {
             display_text: display.clone(),
         },
         CompilerCost::PutCounters {
             counter_type,
             count,
             filter: None,
-        } => ActivationCostSegmentCst::PutCounters {
+        } => MaterializationCost::PutCounters {
             counter_type: *counter_type,
             count: *count,
         },
@@ -243,19 +334,19 @@ fn materialization_segment(cost: &CompilerCost) -> ActivationCostSegmentCst {
             counter_type,
             count,
             filter: Some(filter),
-        } => ActivationCostSegmentCst::PutCountersChosen {
+        } => MaterializationCost::PutCountersChosen {
             counter_type: *counter_type,
             count: *count,
             filter: filter.clone(),
         },
-        CompilerCost::Blight { count } => ActivationCostSegmentCst::Blight { count: *count },
+        CompilerCost::Blight { count } => MaterializationCost::Blight { count: *count },
         CompilerCost::RemoveCounters {
             counter_type: Some(counter_type),
             count,
             filter: None,
             dynamic: false,
             ..
-        } => ActivationCostSegmentCst::RemoveCounters {
+        } => MaterializationCost::RemoveCounters {
             counter_type: *counter_type,
             count: *count,
         },
@@ -267,7 +358,7 @@ fn materialization_segment(cost: &CompilerCost) -> ActivationCostSegmentCst {
             dynamic,
             single_object,
             ..
-        } => ActivationCostSegmentCst::RemoveCountersAmong {
+        } => MaterializationCost::RemoveCountersAmong {
             counter_type: *counter_type,
             count: *count,
             filter: filter.clone(),
@@ -280,37 +371,21 @@ fn materialization_segment(cost: &CompilerCost) -> ActivationCostSegmentCst {
             display_x,
             remove_all,
             ..
-        } => ActivationCostSegmentCst::RemoveCountersDynamic {
+        } => MaterializationCost::RemoveCountersDynamic {
             counter_type: *counter_type,
             display_x: *display_x,
             remove_all: *remove_all,
         },
-        CompilerCost::Behold { subtype, count } => ActivationCostSegmentCst::Behold {
+        CompilerCost::Behold { subtype, count } => MaterializationCost::Behold {
             subtype: *subtype,
             count: *count,
         },
     }
 }
 
-pub(crate) fn lower_activation_cost_cst(
-    cst: &ActivationCostCst,
+fn lower_materialization_costs(
+    segments: &[MaterializationCost],
 ) -> Result<TotalCost, CardTextError> {
-    if let Some(generic) = cst.waterbend_generic {
-        return Ok(
-            crate::runtime_backend::lowering::compile_support::waterbend_optional_total_cost(
-                generic,
-            ),
-        );
-    }
-
-    if !cst.alternative_branches.is_empty() {
-        let mut branches = Vec::with_capacity(cst.alternative_branches.len());
-        for branch in &cst.alternative_branches {
-            branches.push(lower_activation_cost_cst(branch)?);
-        }
-        return Ok(TotalCost::one_of(branches));
-    }
-
     fn flush_pending_mana(costs: &mut Vec<Cost>, pending: &mut Vec<Vec<ManaSymbol>>) {
         if pending.is_empty() {
             return;
@@ -326,16 +401,16 @@ pub(crate) fn lower_activation_cost_cst(
     let mut exile_tag_id = 0usize;
     let mut return_tag_id = 0usize;
     let mut library_tag_id = 0usize;
-    for segment in &cst.segments {
+    for segment in segments {
         match segment {
-            ActivationCostSegmentCst::Mana(cost) => {
+            MaterializationCost::Mana(cost) => {
                 pending_mana_pips.extend(cost.pips().to_vec());
             }
-            ActivationCostSegmentCst::Tap => {
+            MaterializationCost::Tap => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::tap());
             }
-            ActivationCostSegmentCst::TapChosen { count, filter } => {
+            MaterializationCost::TapChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = filter.clone();
                 apply_activation_cost_default_battlefield_scope(&mut filter);
@@ -352,11 +427,11 @@ pub(crate) fn lower_activation_cost_cst(
                     crate::target::ChooseSpec::tagged(tag),
                 )));
             }
-            ActivationCostSegmentCst::Untap => {
+            MaterializationCost::Untap => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::untap());
             }
-            ActivationCostSegmentCst::Life(amount) => {
+            MaterializationCost::Life(amount) => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 if matches!(amount, crate::effect::Value::Fixed(_)) {
                     costs.push(Cost::life(amount.clone()));
@@ -367,23 +442,23 @@ pub(crate) fn lower_activation_cost_cst(
                     )));
                 }
             }
-            ActivationCostSegmentCst::Energy(amount) => {
+            MaterializationCost::Energy(amount) => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::energy(*amount));
             }
-            ActivationCostSegmentCst::DiscardSource => {
+            MaterializationCost::DiscardSource => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::discard_source());
             }
-            ActivationCostSegmentCst::DiscardHand => {
+            MaterializationCost::DiscardHand => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::discard_hand());
             }
-            ActivationCostSegmentCst::DiscardCard(count) => {
+            MaterializationCost::DiscardCard(count) => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::discard(*count, None));
             }
-            ActivationCostSegmentCst::DiscardFiltered {
+            MaterializationCost::DiscardFiltered {
                 count,
                 card_types,
                 supertypes,
@@ -437,15 +512,15 @@ pub(crate) fn lower_activation_cost_cst(
                     costs.push(Cost::discard(*count, None));
                 }
             }
-            ActivationCostSegmentCst::Mill(count) => {
+            MaterializationCost::Mill(count) => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::mill(*count));
             }
-            ActivationCostSegmentCst::Behold { subtype, count } => {
+            MaterializationCost::Behold { subtype, count } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::validated_effect(Effect::behold(*subtype, *count)));
             }
-            ActivationCostSegmentCst::Blight { count } => {
+            MaterializationCost::Blight { count } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let tag = format!("blight_cost_{tap_tag_id}");
                 tap_tag_id += 1;
@@ -461,7 +536,7 @@ pub(crate) fn lower_activation_cost_cst(
                     crate::target::ChooseSpec::tagged(tag),
                 )));
             }
-            ActivationCostSegmentCst::SacrificeSelf { surface } => {
+            MaterializationCost::SacrificeSelf { surface } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 if let Some(surface) = surface {
                     costs.push(Cost::validated_effect(Effect::new(
@@ -475,15 +550,7 @@ pub(crate) fn lower_activation_cost_cst(
                     costs.push(Cost::sacrifice_self());
                 }
             }
-            ActivationCostSegmentCst::SacrificeCreature => {
-                flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let tag = format!("sacrifice_cost_{sacrifice_tag_id}");
-                sacrifice_tag_id += 1;
-                costs.push(Cost::validated_effect(
-                    Effect::sacrifice(ObjectFilter::creature().you_control(), 1).tag(tag),
-                ));
-            }
-            ActivationCostSegmentCst::SacrificeChosen { count, filter } => {
+            MaterializationCost::SacrificeChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = filter.clone();
                 if filter.controller.is_none() {
@@ -513,7 +580,7 @@ pub(crate) fn lower_activation_cost_cst(
                     )));
                 }
             }
-            ActivationCostSegmentCst::SacrificeAll { filter } => {
+            MaterializationCost::SacrificeAll { filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = filter.clone();
                 if filter.controller.is_none() {
@@ -530,7 +597,7 @@ pub(crate) fn lower_activation_cost_cst(
                     .tag(tag),
                 ));
             }
-            ActivationCostSegmentCst::UnattachChosen { count, filter } => {
+            MaterializationCost::UnattachChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = filter.clone();
                 if filter.zone.is_none() {
@@ -548,22 +615,22 @@ pub(crate) fn lower_activation_cost_cst(
                     crate::target::ChooseSpec::tagged(tag),
                 )));
             }
-            ActivationCostSegmentCst::ExileSelf => {
+            MaterializationCost::ExileSelf => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::exile_self());
             }
-            ActivationCostSegmentCst::ExileSelfFromGraveyard => {
+            MaterializationCost::ExileSelfFromGraveyard => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::exile_self());
             }
-            ActivationCostSegmentCst::ExileFromHand {
+            MaterializationCost::ExileFromHand {
                 count,
                 color_filter,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::exile_from_hand(*count, *color_filter));
             }
-            ActivationCostSegmentCst::ExileChosen {
+            MaterializationCost::ExileChosen {
                 choice_count,
                 filter,
                 top_only,
@@ -600,7 +667,7 @@ pub(crate) fn lower_activation_cost_cst(
                 };
                 costs.push(Cost::validated_effect(Effect::new(exile)));
             }
-            ActivationCostSegmentCst::ExileSourceAndChosen {
+            MaterializationCost::ExileSourceAndChosen {
                 source_filter,
                 choice_count,
                 filter,
@@ -632,7 +699,7 @@ pub(crate) fn lower_activation_cost_cst(
                     )));
                 }
             }
-            ActivationCostSegmentCst::ExileSelfAndNamedArtifacts { names } => {
+            MaterializationCost::ExileSelfAndNamedArtifacts { names } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::exile_self());
                 for name in names {
@@ -656,7 +723,7 @@ pub(crate) fn lower_activation_cost_cst(
                     )));
                 }
             }
-            ActivationCostSegmentCst::ExileTopLibrary { count } => {
+            MaterializationCost::ExileTopLibrary { count } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 #[cfg(not(feature = "serialization"))]
                 costs.push(Cost::validated_effect(Effect::exile_top_of_library_player(
@@ -671,11 +738,11 @@ pub(crate) fn lower_activation_cost_cst(
                     PlayerFilter::You,
                 )));
             }
-            ActivationCostSegmentCst::RevealSourceFromHand => {
+            MaterializationCost::RevealSourceFromHand => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::effect(Effect::reveal_source_from_hand()));
             }
-            ActivationCostSegmentCst::RevealFromHand {
+            MaterializationCost::RevealFromHand {
                 count,
                 color_filter,
                 card_type,
@@ -687,11 +754,11 @@ pub(crate) fn lower_activation_cost_cst(
                     *color_filter,
                 )));
             }
-            ActivationCostSegmentCst::ReturnSelfToHand => {
+            MaterializationCost::ReturnSelfToHand => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::return_self_to_hand());
             }
-            ActivationCostSegmentCst::ReturnChosenToHand { count, filter } => {
+            MaterializationCost::ReturnChosenToHand { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = filter.clone();
                 if filter.controller.is_none() {
@@ -712,7 +779,7 @@ pub(crate) fn lower_activation_cost_cst(
                     ObjectFilter::tagged(tag),
                 )));
             }
-            ActivationCostSegmentCst::MoveChosenToLibraryTop { filter } => {
+            MaterializationCost::MoveChosenToLibraryTop { filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let tag = format!("library_cost_{library_tag_id}");
                 library_tag_id += 1;
@@ -728,7 +795,7 @@ pub(crate) fn lower_activation_cost_cst(
                     true,
                 )));
             }
-            ActivationCostSegmentCst::MoveSelfToLibraryBottom { surface } => {
+            MaterializationCost::MoveSelfToLibraryBottom { surface } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::validated_effect(Effect::move_to_zone(
                     crate::runtime_backend::front_end::shared::util::source_choose_spec_for_surface(
@@ -738,7 +805,7 @@ pub(crate) fn lower_activation_cost_cst(
                     false,
                 )));
             }
-            ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard => {
+            MaterializationCost::MoveOpponentOwnedExiledCardToGraveyard => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let tag = format!("graveyard_cost_{return_tag_id}");
                 return_tag_id += 1;
@@ -759,20 +826,20 @@ pub(crate) fn lower_activation_cost_cst(
                     false,
                 )));
             }
-            ActivationCostSegmentCst::ExertSelf { display_text } => {
+            MaterializationCost::ExertSelf { display_text } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::effect(crate::effects::ExertCostEffect::new(
                     display_text.clone(),
                 )));
             }
-            ActivationCostSegmentCst::PutCounters {
+            MaterializationCost::PutCounters {
                 counter_type,
                 count,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::add_counters(*counter_type, *count));
             }
-            ActivationCostSegmentCst::PutCountersChosen {
+            MaterializationCost::PutCountersChosen {
                 counter_type,
                 count,
                 filter,
@@ -790,14 +857,14 @@ pub(crate) fn lower_activation_cost_cst(
                     crate::target::ChooseSpec::Object(filter),
                 )));
             }
-            ActivationCostSegmentCst::RemoveCounters {
+            MaterializationCost::RemoveCounters {
                 counter_type,
                 count,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::remove_counters(*counter_type, *count));
             }
-            ActivationCostSegmentCst::RemoveCountersAmong {
+            MaterializationCost::RemoveCountersAmong {
                 counter_type,
                 count,
                 filter,
@@ -824,7 +891,7 @@ pub(crate) fn lower_activation_cost_cst(
                 }
                 costs.push(Cost::validated_effect(Effect::new(remove)));
             }
-            ActivationCostSegmentCst::RemoveCountersDynamic {
+            MaterializationCost::RemoveCountersDynamic {
                 counter_type,
                 display_x,
                 remove_all,
