@@ -119,7 +119,12 @@
     {
       "id": "BRIDGE-CANONICAL-MODEL-REEXPORT",
       "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend/model"
+        "crates/ironsmith-compiler/src/runtime_backend/model/ast.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/model/effect_ast_traversal.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/model/semantic.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/model/shared_types.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/model/token_definition.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/references/reference_model.rs"
       ],
       "removal_pr": 33,
       "reason": "Temporary re-exports preserve source compatibility while authoritative types move to the compiler-owned model."
@@ -127,7 +132,8 @@
     {
       "id": "BRIDGE-RUNTIME-PARSER-OUTPUT",
       "paths": [
-        "crates/ironsmith-compiler/src/runtime_backend"
+        "crates/ironsmith-compiler/src/model/ast/nodes.rs",
+        "crates/ironsmith-compiler/src/model/compiler_semantic.rs"
       ],
       "removal_pr": 33,
       "reason": "Legacy parser facades expose runtime-backed output until every consumer uses canonical compiler AST plus explicit lowering."

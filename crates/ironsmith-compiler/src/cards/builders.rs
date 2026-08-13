@@ -21,7 +21,7 @@ pub use crate::model::{
 use crate::object::AuraAttachmentFilter;
 pub use crate::payload::{IfResultPredicate, KeywordAction};
 use crate::resolution::ResolutionProgram;
-pub(crate) use crate::runtime_backend::semantic::{
+pub(crate) use crate::model::compiler_semantic::{
     ConditionalModeSelection, GiftTimingAst, LineAst, ParsedAbility, ParsedCardItem, ParsedConditionalModeChange, ParsedLevelAbilityAst,
     ParsedLevelAbilityItemAst, ParsedLevelActivatedAbilityAst, ParsedLineAst,
     ParsedModalActivatedHeader, ParsedModalAst, ParsedModalGate, ParsedModalHeader,
@@ -76,7 +76,7 @@ impl From<KeywordAction> for GrantedAbilityAst {
 
 pub(crate) use crate::runtime_backend::lexer::OwnedLexToken;
 
-pub(crate) use crate::runtime_backend::ast::{
+pub(crate) use crate::model::ast::{
     ChooseOneModeAst, EffectAst, PredicateAst, ReturnAsAuraAst, StaticAbilityAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
     TriggerSpec, TurnHistoryPredicateAst,

@@ -106,7 +106,9 @@ pub use ironsmith_core::{
 };
 pub use model::{
     AdditionalCostChoiceOptionAst, AnnotatedEffect, AnnotatedEffectSequence, ClashOpponentAst,
-    ControlDurationAst, DamageBySpec, ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst,
+    CompilerAbility, CompilerAbilityKind, CompilerAbilityPayload, CompilerActivatedAbility,
+    CompilerDocument, CompilerDocumentItem, CompilerTriggeredAbility, ControlDurationAst,
+    DamageBySpec, ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst,
     FutureZoneReplacementCausePolicyAst, GiftTimingAst, LibraryBottomOrderAst,
     LibraryConsultModeAst, LibraryConsultStopRuleAst, LineAst, LoweredEffects, ObjectRefAst,
     ParsedAbility, ParsedCardItem, ParsedCardItemKind, ParsedLevelAbilityAst,

@@ -1,10 +1,21 @@
+pub(crate) mod ast;
+pub(crate) mod compiler_semantic;
+pub(crate) mod facts;
 pub mod ir;
 pub mod parse_types;
 pub mod provenance;
 pub mod reference;
+pub(crate) mod reference_state;
 pub mod restrictions;
 pub mod semantic;
 pub mod symbols;
+pub(crate) mod token_definition;
+pub(crate) mod visit;
+
+pub use ast::{
+    CompilerAbility, CompilerAbilityKind, CompilerAbilityPayload, CompilerActivatedAbility,
+    CompilerDocument, CompilerDocumentItem, CompilerTriggeredAbility,
+};
 
 pub use ir::{
     RewriteActivatedLine, RewriteKeywordLine, RewriteLevelHeader, RewriteLevelItem,
