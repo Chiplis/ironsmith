@@ -6,7 +6,7 @@ use winnow::prelude::*;
 
 use crate::cards::builders::{ChoiceCount, LibraryBottomOrderAst};
 use crate::grammar::leaf;
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 
 use super::super::super::primitives;
 use super::{
@@ -496,7 +496,7 @@ pub(crate) fn parse_reveal_top_matching_followup_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

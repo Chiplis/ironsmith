@@ -633,14 +633,13 @@ mod tests {
             fn decide_priority(&mut self, game: &GameState, ctx: &PriorityContext) -> LegalAction {
                 // Find Mox Diamond cast action
                 for (i, action) in ctx.actions.iter().enumerate() {
-                    if let LegalAction::CastSpell { spell_id, .. } = action {
-                        if let Some(obj) = game.object(*spell_id) {
-                            if obj.name == "Mox Diamond" {
-                                self.decisions
-                                    .push(format!("Casting Mox Diamond (action {})", i));
-                                return action.clone();
-                            }
-                        }
+                    if let LegalAction::CastSpell { spell_id, .. } = action
+                        && let Some(obj) = game.object(*spell_id)
+                        && obj.name == "Mox Diamond"
+                    {
+                        self.decisions
+                            .push(format!("Casting Mox Diamond (action {})", i));
+                        return action.clone();
                     }
                 }
                 // Otherwise pass priority

@@ -1,11 +1,9 @@
 use crate::cards::builders::{IfResultPredicate, OwnedLexToken};
 use crate::color::ColorSet;
 use crate::filter::CounterConstraint;
-use crate::object::CounterType;
 use crate::grammar::{filters, leaf, primitives};
-use crate::front_end::lexer::{
-    LexStream, parser_token_word_refs, trim_lexed_commas,
-};
+use crate::lexer::{LexStream, parser_token_word_refs, trim_lexed_commas};
+use crate::object::CounterType;
 use crate::types::Subtype;
 use winnow::Parser as _;
 use winnow::combinator::{alt, opt, peek, repeat_till};
@@ -535,7 +533,7 @@ pub(crate) fn parse_token_granted_ability_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_counter_and_top_library_facts() {

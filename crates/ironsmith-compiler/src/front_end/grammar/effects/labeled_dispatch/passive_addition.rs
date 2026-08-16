@@ -1,5 +1,5 @@
 use crate::color::ColorSet;
-use crate::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
+use crate::lexer::{OwnedLexToken, parser_token_word_refs};
 use crate::types::{CardType, Subtype};
 use winnow::combinator::alt;
 use winnow::prelude::*;
@@ -108,13 +108,13 @@ pub(crate) fn parse_passive_color_type_addition_shape(
             continue;
         }
         if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
-            if !card_types.iter().any(|existing| *existing == card_type) {
+            if !card_types.contains(&card_type) {
                 card_types.push(card_type);
             }
             continue;
         }
         if let Ok(subtype) = leaf::parse_leaf_subtype_complete(word) {
-            if !subtypes.iter().any(|existing| *existing == subtype) {
+            if !subtypes.contains(&subtype) {
                 subtypes.push(subtype);
             }
             continue;
@@ -135,7 +135,7 @@ pub(crate) fn parse_passive_color_type_addition_shape(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

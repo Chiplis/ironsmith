@@ -206,7 +206,7 @@ impl EffectExecutor for ConniveEffect {
                 // Then discard that many cards if possible.
                 let hand_cards: Vec<ObjectId> = game
                     .player(controller)
-                    .map(|p| p.hand.iter().copied().collect())
+                    .map(|p| p.hand.to_vec())
                     .unwrap_or_default();
 
                 let required = count.min(hand_cards.len());

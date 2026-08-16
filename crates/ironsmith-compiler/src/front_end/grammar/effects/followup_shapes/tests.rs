@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::front_end::lexer::lex_line;
+use crate::lexer::lex_line;
 
 #[test]
 fn parses_create_more_prior_token_shape() {

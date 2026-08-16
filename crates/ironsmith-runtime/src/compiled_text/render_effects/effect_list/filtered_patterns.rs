@@ -102,6 +102,9 @@
         return compact;
     }
 
+    if let Some(compact) = describe_destroy_all_then_target_players_each(&filtered) {
+        return compact;
+    }
 
     if let Some(compact) = describe_target_players_each_effects(&filtered) {
         return compact;

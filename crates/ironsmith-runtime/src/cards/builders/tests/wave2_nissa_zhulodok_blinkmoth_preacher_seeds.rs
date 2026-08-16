@@ -22,7 +22,7 @@ fn nissa_shadowed_boughs_keeps_the_owned_zone_choice_and_entry_counters() {
             AbilityKind::Activated(activated) => Some(activated),
             _ => None,
         })
-        .last()
+        .next_back()
         .expect("Nissa must retain her −5 loyalty ability");
     let debug = format!("{:#?}", minus_five.effects);
     assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
@@ -59,7 +59,7 @@ fn nissa_can_put_the_eligible_card_from_either_owned_zone() {
             AbilityKind::Activated(activated) => Some(activated),
             _ => None,
         })
-        .last()
+        .next_back()
         .expect("Nissa −5");
 
     for origin in [Zone::Hand, Zone::Graveyard] {

@@ -122,11 +122,14 @@ pub(crate) fn parse_count_that_number_life_total_rewrite_tokens(
 }
 
 fn strip_terminal_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    tokens
+    if tokens
         .last()
         .is_some_and(|token| token.kind == TokenKind::Period)
-        .then(|| &tokens[..tokens.len().saturating_sub(1)])
-        .unwrap_or(tokens)
+    {
+        &tokens[..tokens.len().saturating_sub(1)]
+    } else {
+        tokens
+    }
 }
 
 fn additional_combat_rewrite(input: &mut LexStream<'_>) -> WResult<AdditionalCombatRewriteKind> {
@@ -236,7 +239,7 @@ fn graveyard_cast_subtype(input: &mut LexStream<'_>) -> WResult<GraveyardCastCon
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::{lex_line, render_token_slice};
+    use crate::lexer::{lex_line, render_token_slice};
 
     #[test]
     fn parses_typed_additional_combat_rewrite_variants() {

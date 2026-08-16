@@ -1,26 +1,20 @@
 use super::super::SentenceInput;
+use crate::activation_and_restrictions::parse_may_cast_it_sentence;
 use crate::cards::builders::{
     CardTextError, EffectAst, LibraryBottomOrderAst, ObjectFilter, PlayerAst, ReturnControllerAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst,
 };
 use crate::effect::ChoiceCount;
-use crate::model::visit::{
-    for_each_nested_effects, for_each_nested_effects_mut,
-};
 use crate::effect_sentences;
-use crate::families::activation_and_restrictions::parse_may_cast_it_sentence;
+use crate::grammar::effects::{clause_dispatch_shapes, control_copy_attach_shapes};
 use crate::grammar::permission_facts::subject_filters as permission_subject_filters;
 use crate::grammar::sentence_markers::{self, LeadingMayActor};
-use crate::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
-use crate::grammar::effects::{
-    clause_dispatch_shapes, control_copy_attach_shapes,
-};
+use crate::lexer::{OwnedLexToken, parser_token_word_refs};
+use crate::model::visit::{for_each_nested_effects, for_each_nested_effects_mut};
 use crate::object_filters::parse_object_filter_lexed;
-use crate::util::{
-    helper_tag_for_tokens, strip_leading_token_words_any, trim_commas,
-};
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
+use crate::util::{helper_tag_for_tokens, strip_leading_token_words_any, trim_commas};
 use crate::zone::Zone;
 use winnow::Parser;
 
@@ -398,7 +392,7 @@ fn parse_remaining_exiled_partition(
         // as "werent" even though token parsers retain the source spelling.
         || contains_word_phrase(tokens, &["werent", "cast"]);
     let direct_rest = contains_word_phrase(tokens, &["put", "the", "rest"]);
-    if !(mentions_remaining && contains_word_phrase(tokens, &["exiled"])) && !direct_rest {
+    if (!mentions_remaining || !contains_word_phrase(tokens, &["exiled"])) && !direct_rest {
         return Ok(None);
     }
 
@@ -413,32 +407,23 @@ fn parse_remaining_exiled_partition(
             ],
         )
     {
-        let Some((_, after_exiled)) =
-            crate::grammar::primitives::parse_prefix(
-                tokens,
-                (
-                    winnow::combinator::opt(
-                        crate::grammar::primitives::kw("then"),
-                    ),
-                    crate::grammar::primitives::phrase(&[
-                        "put", "the", "exiled",
-                    ]),
-                )
-                    .void(),
+        let Some((_, after_exiled)) = crate::grammar::primitives::parse_prefix(
+            tokens,
+            (
+                winnow::combinator::opt(crate::grammar::primitives::kw("then")),
+                crate::grammar::primitives::phrase(&["put", "the", "exiled"]),
             )
-        else {
+                .void(),
+        ) else {
             return Ok(None);
         };
         let Some((filter_end, _, _)) =
-            crate::grammar::primitives::find_prefix(
-                after_exiled,
-                || {
-                    crate::grammar::primitives::any_phrase(&[
-                        &["that", "weren't", "cast"],
-                        &["not", "cast", "this", "way"],
-                    ])
-                },
-            )
+            crate::grammar::primitives::find_prefix(after_exiled, || {
+                crate::grammar::primitives::any_phrase(&[
+                    &["that", "weren't", "cast"],
+                    &["not", "cast", "this", "way"],
+                ])
+            })
         else {
             return Ok(None);
         };
@@ -563,9 +548,9 @@ pub(crate) fn parse_random_graveyard_exile_choose_copy_then_cast_copy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::EffectLoweringContext;
-    use crate::runtime_backend::front_end::lexer::{lex_line, split_lexed_sentences};
-    use crate::runtime_backend::lowering::compile_support::compile_effects;
+    use crate::compile_support::compile_effects;
+    use crate::lexer::{lex_line, split_lexed_sentences};
+    use crate::model::facts::EffectLoweringContext;
 
     fn sentence_inputs(text: &str) -> Vec<SentenceInput> {
         let tokens = lex_line(text, 0).expect("collection-cast fixture should lex");

@@ -162,20 +162,17 @@
                 .to_string();
             header = format!("{base}. If {condition}, choose {selection} instead.");
         }
-        if choose_mode.random {
-            if let Some(prefix) = header.strip_suffix(" —") {
+        if choose_mode.random
+            && let Some(prefix) = header.strip_suffix(" —") {
                 header = format!("{prefix} at random —");
             }
-        }
         let has_weighted_modes = choose_mode.mode_point_costs.iter().any(|cost| *cost != 1);
-        if has_weighted_modes {
-            if let crate::effect::Value::Fixed(max) = &choose_mode.choose_count {
-                if choose_mode.min_choose_count == crate::effect::Value::Fixed(0) {
+        if has_weighted_modes
+            && let crate::effect::Value::Fixed(max) = &choose_mode.choose_count
+                && choose_mode.min_choose_count == crate::effect::Value::Fixed(0) {
                     let max_word = number_word(*max).unwrap_or_else(|| max.to_string());
                     header = format!("Choose up to {max_word} {{P}} worth of modes —");
                 }
-            }
-        }
         if choose_mode.disallow_previously_chosen_modes {
             header = if choose_mode.disallow_previously_chosen_modes_this_turn {
                 "Choose one that hasn't been chosen this turn —".to_string()
@@ -856,9 +853,7 @@
             exception_clauses.push(format!("{subject} {power}/{toughness}"));
         }
         if create_copy
-            .removed_supertypes
-            .iter()
-            .any(|supertype| *supertype == Supertype::Legendary)
+            .removed_supertypes.contains(&Supertype::Legendary)
         {
             exception_clauses.push(if singular_copy {
                 "it isn't legendary".to_string()
@@ -1399,7 +1394,7 @@
         if player == "you" {
             return format!(
                 "{} cards from the top of your library until you {followup_verb} {stop_text}",
-                capitalize_first(&subject_verb)
+                capitalize_first(subject_verb)
             );
         }
         return format!(
@@ -5346,7 +5341,7 @@
                 _ => format!(
                     "{} {}",
                     describe_choice_count(count),
-                    pluralize_noun_phrase(&strip_leading_article(&filter.description()))
+                    pluralize_noun_phrase(strip_leading_article(&filter.description()))
                 ),
             },
             crate::effects::VoteChoice::Players {

@@ -288,10 +288,12 @@ mod tests {
                 Zone::Battlefield,
                 crate::effects::ReplacementApplyMode::OneShot,
             )),
-            Effect::new(crate::effects::RegisterEnterUnderControlReplacementEffect::new(
-                ObjectFilter::specific(target_spell),
-                crate::effects::ReplacementApplyMode::UntilEndOfTurn,
-            )),
+            Effect::new(
+                crate::effects::RegisterEnterUnderControlReplacementEffect::new(
+                    ObjectFilter::specific(target_spell),
+                    crate::effects::ReplacementApplyMode::UntilEndOfTurn,
+                ),
+            ),
         ] {
             execute_effect(&mut game, &register, &mut ctx).unwrap();
         }

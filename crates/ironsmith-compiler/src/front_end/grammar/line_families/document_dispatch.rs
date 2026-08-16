@@ -3,8 +3,8 @@ use winnow::combinator::{alt, opt};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 
 use super::super::{primitives, trigger_surface};
-use crate::model::ast::TriggerIntroSurfaceAst;
 use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
+use crate::model::ast::TriggerIntroSurfaceAst;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SimpleDocumentLineShape {

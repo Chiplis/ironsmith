@@ -79,7 +79,7 @@ pub(crate) fn parse_dynamic_firebending(tokens: &[OwnedLexToken]) -> Option<Keyw
     let amount = parse_value_binding_clause(&tokens[binding_range])?;
     let surface_range = view.token_span_for_words(1, view.len())?;
     let surface =
-        crate::front_end::lexer::render_token_slice(&tokens[surface_range])
+        crate::lexer::render_token_slice(&tokens[surface_range])
             .trim()
             .trim_end_matches('.')
             .to_string();

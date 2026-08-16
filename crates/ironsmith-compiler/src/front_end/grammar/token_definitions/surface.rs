@@ -1,7 +1,5 @@
 use crate::color::ColorSet;
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, lex_line, parser_token_word_refs,
-};
+use crate::lexer::{LexStream, OwnedLexToken, lex_line, parser_token_word_refs};
 use crate::model::token_definition::{
     ArtifactTokenShape, AstartesWarriorTokenShape, BuiltinTokenShape,
     ConstructArtifactScalingShape, ConstructTokenShape, CreatureTokenInlineRuleKind,
@@ -56,7 +54,7 @@ fn artifact_subtypes(words: &[&str]) -> Vec<Subtype> {
             && ironsmith_core::SubtypeFamily::Artifact
                 .all_subtypes()
                 .contains(&subtype)
-            && !subtypes.iter().any(|candidate| *candidate == subtype)
+            && !subtypes.contains(&subtype)
         {
             subtypes.push(subtype);
         }
@@ -113,7 +111,7 @@ fn creature_subtypes(words: &[&str]) -> Vec<Subtype> {
         if let Some(subtype) = leaf::parse_leaf_subtype_flexible_complete(word)
             .ok()
             .or_else(|| leaf::classify_token_definition_subtype(word))
-            && !subtypes.iter().any(|candidate| *candidate == subtype)
+            && !subtypes.contains(&subtype)
         {
             subtypes.push(subtype);
         }
@@ -983,10 +981,12 @@ mod tests {
         };
         assert_eq!(
             creature.rules.token_rules.embedded_rules,
-            vec![crate::runtime_backend::token_definition::TokenEmbeddedRuleShape::DiesCreateBuiltinToken {
-                token: BuiltinTokenShape::Food,
-                count: 1,
-            }]
+            vec![
+                crate::model::token_definition::TokenEmbeddedRuleShape::DiesCreateBuiltinToken {
+                    token: BuiltinTokenShape::Food,
+                    count: 1,
+                }
+            ]
         );
     }
 
@@ -1004,7 +1004,7 @@ mod tests {
         assert_eq!(
             creature.rules.token_rules.embedded_rules,
             vec![
-                crate::runtime_backend::token_definition::TokenEmbeddedRuleShape::CantBlockOrBeBlockedByNonSubtypeCreatures {
+                crate::model::token_definition::TokenEmbeddedRuleShape::CantBlockOrBeBlockedByNonSubtypeCreatures {
                     subtype: Subtype::Spirit,
                 }
             ]
@@ -1041,7 +1041,7 @@ mod tests {
         assert_eq!(creature.name, "Zabu");
         assert_eq!(
             creature.rules.token_rules.embedded_rules,
-            vec![crate::runtime_backend::token_definition::TokenEmbeddedRuleShape::LandEntersPutCountersOnSelf {
+            vec![crate::model::token_definition::TokenEmbeddedRuleShape::LandEntersPutCountersOnSelf {
                 counter_type: crate::object::CounterType::PlusOnePlusOne,
                 count: 1,
             }]

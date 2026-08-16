@@ -137,7 +137,7 @@ fn ends_with_phrase(words: &[&str], expected: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn typed_subject_facts_preserve_players_sources_and_power_conditions() {

@@ -435,32 +435,27 @@ pub(super) fn rewrite_grammar_exile_to_countered_exile_splitter_accepts_instead_
 
 #[test]
 pub(super) fn parse_named_source_exile_instead_of_graveyard_from_anywhere() {
-    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-        "Hook-Haunt Drifter",
-        || {
-            let tokens = lex_line(
-                "if hook-haunt drifter would be put into a graveyard from anywhere, exile it instead.",
-                0,
-            )
-            .expect("named source exile-replacement line should lex");
+    crate::util::with_source_reference_context("Hook-Haunt Drifter", || {
+        let tokens = lex_line(
+            "if hook-haunt drifter would be put into a graveyard from anywhere, exile it instead.",
+            0,
+        )
+        .expect("named source exile-replacement line should lex");
 
-            let parsed =
-                super::super::keyword_static::parse_exile_to_exile_instead_of_graveyard_line(
-                    &tokens,
-                )
+        let parsed =
+            super::super::keyword_static::parse_exile_to_exile_instead_of_graveyard_line(&tokens)
                 .expect("named source exile-replacement line should parse");
-            let words = crate::runtime_backend::token_word_refs(&tokens);
-            assert!(
-                matches!(
-                    parsed,
-                    Some(ref ability)
-                        if ability.id()
-                            == crate::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
-                ),
-                "parsed={parsed:?} words={words:?}"
-            );
-        },
-    );
+        let words = crate::lexer::token_word_refs(&tokens);
+        assert!(
+            matches!(
+                parsed,
+                Some(ref ability)
+                    if ability.id()
+                        == crate::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
+            ),
+            "parsed={parsed:?} words={words:?}"
+        );
+    });
 }
 
 #[test]
@@ -1453,9 +1448,9 @@ pub(super) fn rewrite_grammar_players_cant_cycle_probe_matches_static_line() {
 
 #[test]
 pub(super) fn rewrite_grammar_exact_static_line_probes_match_simple_keyword_static_shapes() {
-    type Probe = fn(&[crate::runtime_backend::lexer::OwnedLexToken]) -> bool;
+    type Probe = fn(&[crate::lexer::OwnedLexToken]) -> bool;
     type Parser = fn(
-        &[crate::runtime_backend::lexer::OwnedLexToken],
+        &[crate::lexer::OwnedLexToken],
     ) -> Result<Option<crate::static_abilities::StaticAbility>, CardTextError>;
 
     for (text, probe, parser, expected_id) in [
@@ -1560,9 +1555,9 @@ pub(super) fn rewrite_grammar_creatures_cant_block_probe_matches_static_line() {
 
 #[test]
 pub(super) fn rewrite_grammar_prevention_static_line_probes_match_keyword_static_shapes() {
-    type Probe = fn(&[crate::runtime_backend::lexer::OwnedLexToken]) -> bool;
+    type Probe = fn(&[crate::lexer::OwnedLexToken]) -> bool;
     type Parser = fn(
-        &[crate::runtime_backend::lexer::OwnedLexToken],
+        &[crate::lexer::OwnedLexToken],
     ) -> Result<Option<crate::static_abilities::StaticAbility>, CardTextError>;
 
     for (text, probe, parser, expected_id) in [
@@ -1816,7 +1811,7 @@ pub(super) fn rewrite_grammar_flying_block_probes_match_keyword_static_shapes() 
 
 #[test]
 pub(super) fn rewrite_grammar_static_marker_exact_probes_match_keyword_static_shapes() {
-    type Probe = fn(&[crate::runtime_backend::lexer::OwnedLexToken]) -> bool;
+    type Probe = fn(&[crate::lexer::OwnedLexToken]) -> bool;
 
     for (text, probe, expected_id) in [
         (
@@ -1890,9 +1885,9 @@ pub(super) fn rewrite_grammar_assign_damage_as_unblocked_probe_matches_keyword_s
 
 #[test]
 pub(super) fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_static_shapes() {
-    type Probe = fn(&[crate::runtime_backend::lexer::OwnedLexToken]) -> bool;
+    type Probe = fn(&[crate::lexer::OwnedLexToken]) -> bool;
     type Parser = fn(
-        &[crate::runtime_backend::lexer::OwnedLexToken],
+        &[crate::lexer::OwnedLexToken],
     ) -> Result<Option<crate::static_abilities::StaticAbility>, CardTextError>;
 
     for (text, probe, parser, expected_id) in [
@@ -2116,9 +2111,9 @@ pub(super) fn parse_final_parting_search_two_split_destinations() {
 
 #[test]
 pub(super) fn rewrite_grammar_chosen_type_static_line_probes_match_keyword_static_shapes() {
-    type Probe = fn(&[crate::runtime_backend::lexer::OwnedLexToken]) -> bool;
+    type Probe = fn(&[crate::lexer::OwnedLexToken]) -> bool;
     type Parser = fn(
-        &[crate::runtime_backend::lexer::OwnedLexToken],
+        &[crate::lexer::OwnedLexToken],
     ) -> Result<Option<crate::static_abilities::StaticAbility>, CardTextError>;
 
     for (text, probe, parser, expected_id) in [
@@ -3094,7 +3089,7 @@ pub(super) fn rewrite_lexed_effect_sentence_parses_remove_all_named_counters_fro
 pub(super) fn rewrite_lexed_effect_entrypoint_matches_wrapper_comma_then_chain() {
     let text = "Discard your hand, then draw four cards.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify comma-then effect");
-    let compat = crate::runtime_backend::util::tokenize_line(text, 0);
+    let compat = crate::util::tokenize_line(text, 0);
 
     let wrapper = super::super::clause_support::parse_effect_sentences_lexed(&compat)
         .expect("wrapper effect sentence parser should succeed");
@@ -3108,7 +3103,7 @@ pub(super) fn rewrite_lexed_effect_entrypoint_matches_wrapper_comma_then_chain()
 pub(super) fn rewrite_lexed_effect_sentence_matches_wrapper_conditional_dispatch() {
     let text = "If you control an artifact, draw a card.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify conditional sentence");
-    let compat = crate::runtime_backend::util::tokenize_line(text, 0);
+    let compat = crate::util::tokenize_line(text, 0);
 
     let wrapper = super::super::clause_support::parse_effect_sentences_lexed(&compat)
         .expect("wrapper conditional sentence should parse");
@@ -3122,11 +3117,12 @@ pub(super) fn rewrite_lexed_effect_sentence_matches_wrapper_conditional_dispatch
 pub(super) fn rewrite_lexed_predicate_parser_matches_wrapper_output() {
     let text = "it's your turn";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify predicate text");
-    let compat = crate::runtime_backend::util::tokenize_line(text, 0);
+    let compat = crate::util::tokenize_line(text, 0);
 
-    let native = super::super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
-    let wrapper =
-        super::super::parse_predicate_lexed(&compat).expect("wrapper predicate should parse");
+    let native = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+        .expect("lexed predicate should parse");
+    let wrapper = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&compat)
+        .expect("wrapper predicate should parse");
 
     assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
@@ -3138,7 +3134,7 @@ pub(super) fn rewrite_lexed_effect_sentence_matches_wrapper_pre_diagnostic_claus
         "Double target creature's power until end of turn.",
     ] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify clause helper probe");
-        let compat = crate::runtime_backend::util::tokenize_line(text, 0);
+        let compat = crate::util::tokenize_line(text, 0);
         let native =
             parse_effect_sentence_lexed(&lexed).expect("lexed clause helper sentence should parse");
         let wrapper = parse_effect_sentence_lexed(&compat)
@@ -3344,7 +3340,8 @@ pub(super) fn rewrite_lexed_predicate_parser_matches_grammar_entrypoint_output()
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify predicate text");
 
     let parser_root =
-        super::super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("lexed predicate should parse");
     let grammar =
         super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
             .expect("grammar predicate entrypoint should parse");
@@ -3358,7 +3355,8 @@ pub(super) fn rewrite_lexed_predicate_parser_handles_color_contraction() {
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify color predicate text");
 
     let parser_root =
-        super::super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("lexed predicate should parse");
     let grammar =
         super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
             .expect("grammar predicate entrypoint should parse");
@@ -3381,7 +3379,8 @@ pub(super) fn rewrite_lexed_predicate_parser_splits_both_spell_cast_conditions()
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify spell-cast predicate");
 
     let parser_root =
-        super::super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("lexed predicate should parse");
     let grammar =
         super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
             .expect("grammar predicate entrypoint should parse");
@@ -3406,7 +3405,8 @@ pub(super) fn rewrite_lexed_predicate_parser_matches_grammar_entrypoint_for_this
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify graveyard-cast predicate");
 
     let parser_root =
-        super::super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("lexed predicate should parse");
     let grammar =
         super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
             .expect("grammar predicate entrypoint should parse");
@@ -3424,7 +3424,8 @@ pub(super) fn rewrite_lexed_predicate_parser_handles_exiled_source_with_named_co
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify exiled counter predicate");
 
     let parser_root =
-        super::super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("lexed predicate should parse");
     let grammar =
         super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
             .expect("grammar predicate entrypoint should parse");
@@ -3451,7 +3452,8 @@ pub(super) fn rewrite_lexed_predicate_parser_handles_no_more_named_counters_on_i
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify no-counter predicate");
 
     let parser_root =
-        super::super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("lexed predicate should parse");
     let debug = format!("{parser_root:?}");
 
     assert!(
@@ -3466,8 +3468,9 @@ pub(super) fn rewrite_lexed_predicate_parser_handles_named_counter_threshold_on_
     let lexed =
         lex_line(text, 0).expect("rewrite lexer should classify named-counter threshold predicate");
 
-    let parser_root = super::super::parse_predicate_lexed(&lexed)
-        .expect("lexed named-counter threshold predicate should parse");
+    let parser_root =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("lexed named-counter threshold predicate should parse");
     let grammar =
         super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
             .expect("grammar predicate entrypoint should parse named-counter threshold");
@@ -3509,7 +3512,7 @@ pub(super) fn rewrite_dispatch_inner_split_choose_list_routes_separator_helpers(
     let tokens = lex_line("an artifact, creature, and enchantment", 0)
         .expect("rewrite lexer should classify choose-list separators");
 
-    let segments: Vec<Vec<String>> = super::super::split_choose_list(&tokens)
+    let segments: Vec<Vec<String>> = crate::effect_sentences::split_choose_list(&tokens)
         .into_iter()
         .map(|segment| {
             super::super::token_word_refs(&segment)
@@ -3567,25 +3570,22 @@ pub(super) fn rewrite_lexed_trigger_clause_preserves_this_aura_leaves_surface() 
 
 #[test]
 pub(super) fn rewrite_lexed_trigger_clause_preserves_named_source_leaves_surface() {
-    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-        "Emrakul, the World Anew",
-        || {
-            let tokens = lex_line("emrakul leaves the battlefield", 0)
-                .expect("rewrite lexer should classify named leaves-the-battlefield trigger");
+    crate::util::with_source_reference_context("Emrakul, the World Anew", || {
+        let tokens = lex_line("emrakul leaves the battlefield", 0)
+            .expect("rewrite lexer should classify named leaves-the-battlefield trigger");
 
-            let parsed = super::super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+        let parsed = super::super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
                 &tokens,
             )
             .expect("named source leaves-the-battlefield trigger should parse");
-            let debug = format!("{parsed:?}");
+        let debug = format!("{parsed:?}");
 
-            assert!(
-                debug.contains("ThisLeavesBattlefieldWithSurface")
-                    && debug.contains("ShortName(\"Emrakul\")"),
-                "expected named source leaves trigger to preserve surface, got {debug}"
-            );
-        },
-    );
+        assert!(
+            debug.contains("ThisLeavesBattlefieldWithSurface")
+                && debug.contains("ShortName(\"Emrakul\")"),
+            "expected named source leaves trigger to preserve surface, got {debug}"
+        );
+    });
 }
 
 #[test]
@@ -3606,44 +3606,38 @@ pub(super) fn rewrite_lexed_triggered_line_supports_leave_battlefield_sacrifice_
 
 #[test]
 pub(super) fn rewrite_lexed_triggered_line_preserves_named_source_leaves_surface() {
-    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-        "Emrakul, the World Anew",
-        || {
-            let tokens = lex_line(
-                "When emrakul leaves the battlefield, sacrifice all creatures you control.",
-                0,
-            )
-            .expect("rewrite lexer should classify named leave-battlefield sacrifice line");
+    crate::util::with_source_reference_context("Emrakul, the World Anew", || {
+        let tokens = lex_line(
+            "When emrakul leaves the battlefield, sacrifice all creatures you control.",
+            0,
+        )
+        .expect("rewrite lexer should classify named leave-battlefield sacrifice line");
 
-            let parsed = super::super::clause_support::parse_triggered_line_lexed(&tokens)
-                .expect("named source leaves trigger line should parse");
-            let debug = format!("{parsed:#?}");
+        let parsed = super::super::clause_support::parse_triggered_line_lexed(&tokens)
+            .expect("named source leaves trigger line should parse");
+        let debug = format!("{parsed:#?}");
 
-            assert!(
-                debug.contains("ThisLeavesBattlefieldWithSurface")
-                    && debug.contains("ShortName")
-                    && debug.contains("\"Emrakul\""),
-                "expected named source leaves trigger line to preserve surface, got {debug}"
-            );
-        },
-    );
+        assert!(
+            debug.contains("ThisLeavesBattlefieldWithSurface")
+                && debug.contains("ShortName")
+                && debug.contains("\"Emrakul\""),
+            "expected named source leaves trigger line to preserve surface, got {debug}"
+        );
+    });
 }
 
 #[test]
 pub(super) fn compile_named_source_leaves_trigger_preserves_surface() {
     let (semantic, _) =
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Emrakul, the World Anew",
-            || {
-                parse_text_to_semantic_document(
-                    CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
-                        .card_types(vec![CardType::Creature]),
-                    "When Emrakul leaves the battlefield, sacrifice all creatures you control."
-                        .to_string(),
-                    false,
-                )
-            },
-        )
+        crate::util::with_source_reference_context("Emrakul, the World Anew", || {
+            parse_text_to_semantic_document(
+                CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+                    .card_types(vec![CardType::Creature]),
+                "When Emrakul leaves the battlefield, sacrifice all creatures you control."
+                    .to_string(),
+                false,
+            )
+        })
         .expect("named source leaves trigger should parse semantically");
     let semantic_debug = format!("{semantic:#?}");
     assert!(
@@ -3653,17 +3647,14 @@ pub(super) fn compile_named_source_leaves_trigger_preserves_surface() {
         "expected semantic document to carry the typed named-source trigger, got {semantic_debug}"
     );
 
-    let compiled = crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-        "Emrakul, the World Anew",
-        || {
-            super::super::compile_card_text(
-                CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
-                    .card_types(vec![CardType::Creature]),
-                "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
-                false,
-            )
-        },
-    )
+    let compiled = crate::util::with_source_reference_context("Emrakul, the World Anew", || {
+        super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+                .card_types(vec![CardType::Creature]),
+            "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
+            false,
+        )
+    })
     .expect("named source leaves trigger should compile");
     let debug = format!("{:#?}", compiled.definition.abilities);
 

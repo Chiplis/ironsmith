@@ -14,8 +14,8 @@ use winnow::token::any;
 
 use crate::ChoiceCount;
 #[cfg(test)]
-use crate::runtime_backend::front_end::lexer::LexStream;
-use crate::front_end::lexer::{OwnedLexToken, TokenWordView};
+use crate::lexer::LexStream;
+use crate::lexer::{OwnedLexToken, TokenWordView};
 
 use super::super::{leaf, primitives};
 
@@ -167,7 +167,7 @@ fn parse_cost_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a [Owned
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::{lex_line, parser_token_word_refs};
+    use crate::lexer::{lex_line, parser_token_word_refs};
 
     use super::*;
 

@@ -135,7 +135,7 @@ fn normalized_surface(tokens: &[OwnedLexToken]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("restriction should lex")

@@ -4,10 +4,8 @@ use winnow::combinator::{alt, eof, repeat};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
+use crate::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed_commas};
 use crate::mana::ManaCost;
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, TokenKind, trim_lexed_commas,
-};
 
 use super::super::{leaf, primitives};
 
@@ -92,7 +90,7 @@ pub(crate) fn parse_level_up_line_tokens(tokens: &[OwnedLexToken]) -> Option<Lev
 
 pub(crate) fn parse_madness_line_tokens(tokens: &[OwnedLexToken]) -> Option<MadnessLineFact<'_>> {
     let rest = parse_expected_head(tokens, SharedKeywordHead::Madness)?;
-    let comma = primitives::find_prefix(rest, || primitives::comma()).map(|(idx, _, _)| idx);
+    let comma = primitives::find_prefix(rest, primitives::comma).map(|(idx, _, _)| idx);
     let cost_tokens = strip_leading_cost_separators(&rest[..comma.unwrap_or(rest.len())]);
     let cost = primitives::parse_all(
         cost_tokens,
@@ -174,10 +172,10 @@ pub(crate) fn parse_reinforce_line_tokens(
     })
 }
 
-fn parse_expected_head<'a>(
-    tokens: &'a [OwnedLexToken],
+fn parse_expected_head(
+    tokens: &[OwnedLexToken],
     expected: SharedKeywordHead,
-) -> Option<&'a [OwnedLexToken]> {
+) -> Option<&[OwnedLexToken]> {
     let (actual, rest) = primitives::parse_prefix(tokens, parse_shared_keyword_head_lexed)?;
     (actual == expected).then_some(rest)
 }
@@ -259,7 +257,7 @@ fn strip_one_cost_separator(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::{lex_line, parser_token_word_refs};
+    use crate::lexer::{lex_line, parser_token_word_refs};
 
     use super::*;
 

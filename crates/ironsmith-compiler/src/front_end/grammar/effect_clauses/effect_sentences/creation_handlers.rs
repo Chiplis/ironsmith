@@ -29,13 +29,9 @@ fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
     // Give only the complete typed static-ability count first refusal. Other
     // number-of expressions still need the established aggregate dispatcher
     // (notably counters on a referenced object).
-    crate::families::keyword_static::parse_where_x_is_number_of_filter_value(tokens)
+    crate::keyword_static::parse_where_x_is_number_of_filter_value(tokens)
         .filter(|value| matches!(value.unhinted(), Value::StaticAbilitiesAmong { .. }))
-        .or_else(|| {
-        crate::families::keyword_static::parse_where_x_is_aggregate_filter_value(
-            tokens,
-        )
-    })
+        .or_else(|| crate::keyword_static::parse_where_x_is_aggregate_filter_value(tokens))
         .or_else(|| {
             crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(tokens)
         })
@@ -43,15 +39,9 @@ fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
         // the end of the clause. Keep it ahead of the broad number-of-filter
         // parser, which can otherwise retain only "creatures" or "lands".
         .or_else(|| {
-            crate::grammar::values::parse_players_who_control_more_than_you_value_lexed(
-                tokens,
-            )
+            crate::grammar::values::parse_players_who_control_more_than_you_value_lexed(tokens)
         })
-        .or_else(|| {
-            crate::families::keyword_static::parse_where_x_is_number_of_filter_value(
-                tokens,
-            )
-        })
+        .or_else(|| crate::keyword_static::parse_where_x_is_number_of_filter_value(tokens))
         .or_else(|| parse_value_binding_clause(tokens))
 }
 
@@ -307,9 +297,10 @@ fn append_inline_token_embedded_rule(
         TokenDefinitionSpec::Artifact(artifact) => (&artifact.name, &mut artifact.token_rules),
         _ => return false,
     };
-    let Some(rule) = crate::grammar::token_definitions::
-        parse_embedded_token_rule_tokens(rule_tokens, Some(name))
-    else {
+    let Some(rule) = crate::grammar::token_definitions::parse_embedded_token_rule_tokens(
+        rule_tokens,
+        Some(name),
+    ) else {
         return false;
     };
     if rules.embedded_rules.contains(&rule) {
@@ -434,9 +425,7 @@ fn parse_inline_token_granted_abilities(
     // slice that may omit quoted suffixes. Recover the typed authored order
     // and named self surfaces from the complete clause before reminder
     // merging adds the executable specialized rules.
-    if let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) =
-        definition
-    {
+    if let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition {
         let presentations = token_definition_grammar::authored_inline_rule_presentations(
             tokens,
             Some(&creature.name),
@@ -468,9 +457,9 @@ fn parse_inline_token_granted_abilities(
         // token's already-established keyword set across that broad scan.
         let outer_keywords = quoted_rule_creates_a_nested_token(rule_tokens)
             .then(|| match definition {
-                crate::model::token_definition::TokenDefinitionSpec::Creature(
-                    creature,
-                ) => Some(creature.keywords.clone()),
+                crate::model::token_definition::TokenDefinitionSpec::Creature(creature) => {
+                    Some(creature.keywords.clone())
+                }
                 _ => None,
             })
             .flatten();
@@ -478,9 +467,7 @@ fn parse_inline_token_granted_abilities(
         let conflicting_combat_restriction =
             match (&*definition, reminder.creature_combat_restriction()) {
                 (
-                    crate::model::token_definition::TokenDefinitionSpec::Creature(
-                        creature,
-                    ),
+                    crate::model::token_definition::TokenDefinitionSpec::Creature(creature),
                     Some(incoming),
                 ) => creature
                     .rules
@@ -569,9 +556,8 @@ fn parse_inline_token_granted_abilities(
         }
         let parse_definition = conflicting_combat_restriction.then(|| {
             let mut parse_definition = definition.clone();
-            if let crate::model::token_definition::TokenDefinitionSpec::Creature(
-                creature,
-            ) = &mut parse_definition
+            if let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) =
+                &mut parse_definition
             {
                 creature.rules.combat_restriction = None;
             }
@@ -628,9 +614,7 @@ fn intrinsic_token_ability_represents_dynamic_power_toughness(
         return true;
     }
 
-    let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) =
-        definition
-    else {
+    let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition else {
         return false;
     };
     let creature_count = Value::Count(ObjectFilter::creature().you_control());
@@ -823,15 +807,11 @@ fn attach_inline_token_granted_abilities_to_effect(
     }
 
     let mut found = false;
-    crate::model::effect_ast_traversal::for_each_nested_effects_mut(
-        effect,
-        true,
-        |nested| {
-            if !found {
-                found = attach_inline_token_granted_abilities_to_last_create(nested, tokens);
-            }
-        },
-    );
+    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+        if !found {
+            found = attach_inline_token_granted_abilities_to_last_create(nested, tokens);
+        }
+    });
     found
 }
 
@@ -879,17 +859,13 @@ pub(crate) fn attach_mixed_pronoun_token_rules_to_last_create(
         }
 
         let mut found = false;
-        crate::model::effect_ast_traversal::for_each_nested_effects_mut(
-            effect,
-            true,
-            |nested| {
-                for nested_effect in nested.iter_mut().rev() {
-                    if !found {
-                        found = mark_combined_separate_sentence(nested_effect);
-                    }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            for nested_effect in nested.iter_mut().rev() {
+                if !found {
+                    found = mark_combined_separate_sentence(nested_effect);
                 }
-            },
-        );
+            }
+        });
         found
     }
 
@@ -963,11 +939,9 @@ pub(crate) fn parse_create(
     let authored_dynamic_count =
         crate::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)
             .and_then(|binding| {
-                parse_create_value_binding(
-                    crate::util::trim_edge_punctuation_tokens(
-                        binding.binding_tokens,
-                    ),
-                )
+                parse_create_value_binding(crate::util::trim_edge_punctuation_tokens(
+                    binding.binding_tokens,
+                ))
             });
     let tokens = creation_grammar::creation_body_tokens(tokens);
     if let Some(choice) = parse_create_choice_of_options(tokens)? {
@@ -1021,13 +995,10 @@ pub(crate) fn parse_create(
     {
         count_value = with_where_x_surface_hints(authored_dynamic_count, tokens);
     }
-    if let Some(ability_token_index) =
-        crate::lexer::parser_token_word_positions(tokens)
-            .into_iter()
-            .find_map(|(index, word)| {
-                matches!(word, "ability" | "abilities").then_some(index)
-            })
-        && let Some(value) = crate::families::keyword_static::parse_static_abilities_among_scope_value(
+    if let Some(ability_token_index) = crate::lexer::parser_token_word_positions(tokens)
+        .into_iter()
+        .find_map(|(index, word)| matches!(word, "ability" | "abilities").then_some(index))
+        && let Some(value) = crate::keyword_static::parse_static_abilities_among_scope_value(
             &tokens[ability_token_index..],
         )
     {
@@ -1426,9 +1397,8 @@ pub(crate) fn parse_create(
         parse_unquoted_token_dynamic_power_toughness(&definition_tokens)
             .or_else(|| parse_unquoted_token_dynamic_power_toughness(tokens))
             .or_else(|| parse_quoted_token_dynamic_power_toughness(tokens));
-    let primary_definition_is_construct = name_words[..name_words_primary_len]
-        .iter()
-        .any(|word| *word == "construct");
+    let primary_definition_is_construct =
+        name_words[..name_words_primary_len].contains(&"construct");
     if let Some((pt_idx, pt)) = creation_grammar::first_pt_word(&name_words)
         && pt_idx < name_words_primary_len
     {
@@ -1474,9 +1444,8 @@ pub(crate) fn parse_create(
     let mut definition =
         token_definition_grammar::parse_token_definition_shape_tokens(&definition_tokens)
             .or_else(|| {
-                parse_prior_created_token_reference_words(&name_words).map(|_| {
-                    crate::model::token_definition::TokenDefinitionSpec::PriorCreated
-                })
+                parse_prior_created_token_reference_words(&name_words)
+                    .map(|_| crate::model::token_definition::TokenDefinitionSpec::PriorCreated)
             })
             .ok_or_else(|| {
                 CardTextError::ParseError(format!("unsupported token definition '{name}'"))
@@ -1494,9 +1463,7 @@ pub(crate) fn parse_create(
             _ => {}
         }
     }
-    if let crate::model::token_definition::TokenDefinitionSpec::Creature(shape) =
-        &mut definition
-    {
+    if let crate::model::token_definition::TokenDefinitionSpec::Creature(shape) = &mut definition {
         let (use_source_chosen_color, use_source_chosen_creature_type) =
             token_definition_grammar::source_chosen_token_characteristics(&clause_words);
         shape.use_source_chosen_color |= use_source_chosen_color;
@@ -1536,14 +1503,15 @@ pub(crate) fn parse_create(
 
     let grants_unblockable = tail_surface.has_phrase(CreatePhrase::Unblockable);
 
-    if let Some((start, end)) = rules_text_range {
-        if start < end && end <= modifier_tail_words.len() {
-            modifier_tail_words = modifier_tail_words[..start]
-                .iter()
-                .chain(modifier_tail_words[end..].iter())
-                .copied()
-                .collect();
-        }
+    if let Some((start, end)) = rules_text_range
+        && start < end
+        && end <= modifier_tail_words.len()
+    {
+        modifier_tail_words = modifier_tail_words[..start]
+            .iter()
+            .chain(modifier_tail_words[end..].iter())
+            .copied()
+            .collect();
     }
 
     if let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&tail_tokens) {
@@ -1640,10 +1608,12 @@ fn parse_direct_token_creation_alternative(
             inside_quotes = !inside_quotes;
             continue;
         }
-        if !inside_quotes && token.kind == TokenKind::Word && token.parser_text() == "or" {
-            if separator.replace(idx).is_some() {
-                return None;
-            }
+        if !inside_quotes
+            && token.kind == TokenKind::Word
+            && token.parser_text() == "or"
+            && separator.replace(idx).is_some()
+        {
+            return None;
         }
     }
 
@@ -1797,11 +1767,10 @@ pub(crate) fn parse_investigate(
     if matches!(count, Value::X)
         && creation_grammar::CreationWords::new(&trailing_words).first_is(CreateWord::Time)
         && let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&trailing)
+        && let Some(where_count) = parse_create_value_binding(where_tokens)
     {
-        if let Some(where_count) = parse_create_value_binding(where_tokens) {
-            count = where_count;
-            return Ok(EffectAst::subject_verb_investigate(player, count));
-        }
+        count = where_count;
+        return Ok(EffectAst::subject_verb_investigate(player, count));
     }
     let trailing_ok = creation_grammar::parse_time_only_words(&trailing_words);
     if !trailing_ok {
@@ -1912,10 +1881,7 @@ mod tests {
     fn later_quoted_set_grant_is_not_attached_to_token_blueprint() {
         let create_tokens = lex_line("Each player creates a green Elephant creature token.", 0)
             .expect("token sentence should lex");
-        let mut effects =
-            crate::runtime_backend::sentences::effect_sentences::parse_effect_sentence_lexed(
-                &create_tokens,
-            )
+        let mut effects = crate::effect_sentences::parse_effect_sentence_lexed(&create_tokens)
             .expect("quantified token sentence should parse");
         let authored_tokens = lex_line(
             "Each player creates a green Elephant creature token. Those creatures have \"This token's power and toughness are each equal to the number of creature cards in its controller's graveyard.\"",
@@ -1984,8 +1950,7 @@ mod tests {
         let SubjectVerbActionAst::CreateTokenWithMods { definition, .. } = effect.action else {
             panic!("expected a token creation with modifiers");
         };
-        let crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature) =
-            definition
+        let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition
         else {
             panic!("expected a creature token definition");
         };
@@ -2011,8 +1976,7 @@ mod tests {
         let SubjectVerbActionAst::CreateTokenWithMods { definition, .. } = effect.action else {
             panic!("expected a token creation with modifiers");
         };
-        let crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature) =
-            definition
+        let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition
         else {
             panic!("expected a creature token definition");
         };
@@ -2074,9 +2038,9 @@ mod tests {
             "{granted_abilities:#?}"
         );
 
-        let (effects, _) = crate::runtime_backend::compile_support::compile_effect(
+        let (effects, _) = crate::compile_support::compile_effect(
             &ast,
-            &mut crate::runtime_backend::EffectLoweringContext::new(),
+            &mut crate::model::facts::EffectLoweringContext::new(),
         )
         .expect("create AST should lower");
         let create = effects
@@ -2095,9 +2059,9 @@ mod tests {
 
         let sentence_effects = super::super::parse_effect_sentences_lexed(&tokens)
             .expect("Notebook sentence should parse through production dispatch");
-        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+        let (effects, _) = crate::compile_support::compile_effects(
             &sentence_effects,
-            &mut crate::runtime_backend::EffectLoweringContext::new(),
+            &mut crate::model::facts::EffectLoweringContext::new(),
         )
         .expect("production Notebook AST should lower");
         let create = effects
@@ -2124,9 +2088,9 @@ mod tests {
         .expect("nested token creation should lex");
         let sentence_effects = super::super::parse_effect_sentences_lexed(&tokens)
             .expect("nested token creation should parse through production dispatch");
-        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+        let (effects, _) = crate::compile_support::compile_effects(
             &sentence_effects,
-            &mut crate::runtime_backend::EffectLoweringContext::new(),
+            &mut crate::model::facts::EffectLoweringContext::new(),
         )
         .expect("nested token creation should lower");
         let egg = effects
@@ -2166,7 +2130,7 @@ mod tests {
         let dragon = dies_trigger
             .effects
             .flattened_default_effects()
-            .into_iter()
+            .iter()
             .find_map(crate::effect::Effect::as_create_token)
             .expect("the Egg's dies trigger should create the inner Dragon");
         assert!(
@@ -2217,9 +2181,9 @@ mod tests {
 
         let sentence_effects = super::super::parse_effect_sentences_lexed(&tokens)
             .expect("Triskelavite sentence should parse through production dispatch");
-        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+        let (effects, _) = crate::compile_support::compile_effects(
             &sentence_effects,
-            &mut crate::runtime_backend::EffectLoweringContext::new(),
+            &mut crate::model::facts::EffectLoweringContext::new(),
         )
         .expect("production Triskelavite AST should lower");
         let create = effects
@@ -2256,8 +2220,7 @@ mod tests {
         else {
             panic!("expected a token creation with modifiers");
         };
-        let crate::runtime_backend::token_definition::TokenDefinitionSpec::Construct(construct) =
-            definition
+        let crate::model::token_definition::TokenDefinitionSpec::Construct(construct) = definition
         else {
             panic!("expected a Construct token definition");
         };
@@ -2378,13 +2341,11 @@ mod tests {
             ),
             "{upkeep_rule:#?}"
         );
-        let ast = crate::runtime_backend::sentences::effect_sentences::parse_effect_sentence_lexed(
-            &tokens,
-        )
-        .expect("single-sentence dispatcher should parse the token creation");
-        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+        let ast = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+            .expect("single-sentence dispatcher should parse the token creation");
+        let (effects, _) = crate::compile_support::compile_effects(
             &ast,
-            &mut crate::runtime_backend::EffectLoweringContext::new(),
+            &mut crate::model::facts::EffectLoweringContext::new(),
         )
         .expect("multi-rule token creation should lower");
         let create = effects
@@ -2420,11 +2381,10 @@ mod tests {
             0,
         )
         .expect("quoted external dynamic token creation should lex");
-        let effect =
-            crate::runtime_backend::util::with_source_reference_context("Gutter Grime", || {
-                parse_create(&tokens, None)
-            })
-            .expect("quoted external dynamic token creation should parse");
+        let effect = crate::util::with_source_reference_context("Gutter Grime", || {
+            parse_create(&tokens, None)
+        })
+        .expect("quoted external dynamic token creation should parse");
         let lowered_ast = effect.clone();
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
@@ -2462,9 +2422,9 @@ mod tests {
             ))
         );
 
-        let (effects, _) = crate::runtime_backend::compile_support::compile_effect(
+        let (effects, _) = crate::compile_support::compile_effect(
             &lowered_ast,
-            &mut crate::runtime_backend::EffectLoweringContext::new(),
+            &mut crate::model::facts::EffectLoweringContext::new(),
         )
         .expect("creator-bound token CDA should lower");
         assert!(
@@ -2491,14 +2451,13 @@ mod tests {
             create.token.abilities
         );
 
-        let sentence_effects =
-            crate::runtime_backend::util::with_source_reference_context("Gutter Grime", || {
-                super::super::parse_effect_sentences_lexed(&tokens)
-            })
-            .expect("creator-bound token sentence should parse through production dispatch");
-        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+        let sentence_effects = crate::util::with_source_reference_context("Gutter Grime", || {
+            super::super::parse_effect_sentences_lexed(&tokens)
+        })
+        .expect("creator-bound token sentence should parse through production dispatch");
+        let (effects, _) = crate::compile_support::compile_effects(
             &sentence_effects,
-            &mut crate::runtime_backend::EffectLoweringContext::new(),
+            &mut crate::model::facts::EffectLoweringContext::new(),
         )
         .expect("production creator-bound token sentence should lower");
         assert!(
@@ -2548,8 +2507,7 @@ mod tests {
         };
         assert_eq!(dynamic_power_toughness, &None);
         assert_eq!(granted_abilities.len(), 1, "{granted_abilities:#?}");
-        let crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature) =
-            definition
+        let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition
         else {
             panic!("expected a creature token definition");
         };
@@ -2559,9 +2517,9 @@ mod tests {
             creature.rules.token_rules
         );
 
-        let (effects, _) = crate::runtime_backend::compile_support::compile_effect(
+        let (effects, _) = crate::compile_support::compile_effect(
             &ast,
-            &mut crate::runtime_backend::EffectLoweringContext::new(),
+            &mut crate::model::facts::EffectLoweringContext::new(),
         )
         .expect("create AST should lower");
         assert!(
@@ -2592,9 +2550,9 @@ mod tests {
         // fallback as the direct create parser above.
         let sentence_effects = super::super::parse_effect_sentences_lexed(&tokens)
             .expect("quoted dynamic token sentence should parse through production dispatch");
-        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+        let (effects, _) = crate::compile_support::compile_effects(
             &sentence_effects,
-            &mut crate::runtime_backend::EffectLoweringContext::new(),
+            &mut crate::model::facts::EffectLoweringContext::new(),
         )
         .expect("production token sentence should lower");
         assert!(
@@ -2815,7 +2773,7 @@ mod tests {
                 let GrantedAbilityAst::ParsedObjectAbility { ability, .. } = ability else {
                     return None;
                 };
-                let crate::runtime_backend::ast::TriggerSpec::WithIntro { intro, .. } =
+                let crate::model::ast::TriggerSpec::WithIntro { intro, .. } =
                     ability.trigger_spec.as_ref()?
                 else {
                     return None;
@@ -2824,13 +2782,13 @@ mod tests {
             });
             let expected_typed = match expected {
                 crate::triggers::TriggerIntroSurface::When => {
-                    crate::runtime_backend::ast::TriggerIntroSurfaceAst::When
+                    crate::model::ast::TriggerIntroSurfaceAst::When
                 }
                 crate::triggers::TriggerIntroSurface::Whenever => {
-                    crate::runtime_backend::ast::TriggerIntroSurfaceAst::Whenever
+                    crate::model::ast::TriggerIntroSurfaceAst::Whenever
                 }
                 crate::triggers::TriggerIntroSurface::At => {
-                    crate::runtime_backend::ast::TriggerIntroSurfaceAst::At
+                    crate::model::ast::TriggerIntroSurfaceAst::At
                 }
             };
             assert_eq!(typed_intro, Some(expected_typed), "{granted_abilities:#?}");

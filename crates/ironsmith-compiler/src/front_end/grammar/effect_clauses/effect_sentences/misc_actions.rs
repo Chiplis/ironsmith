@@ -113,7 +113,7 @@ pub(crate) fn parse_become(
     let Some(SubjectAst::Player(player)) = subject else {
         return Err(CardTextError::ParseError(format!(
             "unsupported become clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     };
 
@@ -127,7 +127,7 @@ pub(crate) fn parse_become(
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing life total amount (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
+                crate::lexer::token_word_refs(tokens).join(" ")
             ))
         })?;
     Ok(EffectAst::subject_verb_set_life_total(player, amount))
@@ -147,7 +147,7 @@ pub(crate) fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let Some(shape) = misc_action_shapes::parse_switch_power_toughness_tokens(&remainder) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported switch clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     };
     let target = match shape.target {
@@ -175,7 +175,7 @@ pub(crate) fn parse_skip(
         misc_action_shapes::parse_skip_action_tokens(tokens, subject_player).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported skip clause (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
+                crate::lexer::token_word_refs(tokens).join(" ")
             ))
         })?;
     Ok(match shape.action {
@@ -210,7 +210,7 @@ pub(crate) fn parse_end(
         }
         None => Err(CardTextError::ParseError(format!(
             "unsupported end clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))),
     }
 }
@@ -265,7 +265,7 @@ pub(crate) fn parse_roll(
     let Some(shape) = misc_action_shapes::parse_roll_die_tokens(tokens) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported roll clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     };
     Ok(EffectAst::subject_verb_roll_die_with_die_text(
@@ -276,7 +276,7 @@ pub(crate) fn parse_roll(
 }
 
 pub(crate) fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if words
         .first()
         .copied()
@@ -303,7 +303,7 @@ pub(crate) fn parse_mill(
         misc_action_shapes::parse_mill_action_tokens(tokens, subject_player)?.ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing or unsupported mill count (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
+                crate::lexer::token_word_refs(tokens).join(" ")
             ))
         })?;
 
@@ -385,7 +385,7 @@ pub(crate) fn parse_get(
         )))
     }
 
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     if let Some(alternative) = parse_fixed_pt_alternative_shape(tokens) {
         let branch_tokens = |modifier: &OwnedLexToken| {
             let mut tokens = Vec::with_capacity(1 + alternative.trailing_tokens.len());
@@ -662,7 +662,7 @@ pub(crate) fn parse_scry(
     let (count, _) = parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing scry count (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
 
@@ -682,7 +682,7 @@ pub(crate) fn parse_surveil(
     let (count, _) = parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing surveil count (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
 
@@ -705,7 +705,7 @@ pub(crate) fn parse_pay(
         .filter(|token| energy_symbol_token(token))
         .count();
 
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     if grammar::match_any_word_prefix(tokens, ANY_AMOUNT_OF_PREFIXES).is_some()
         && (grammar::contains_word(tokens, "e") || energy_symbol_count > 0)
     {
@@ -754,9 +754,8 @@ pub(crate) fn parse_pay(
         && let [pip] = parsed_cost.cost.pips()
         && let [crate::mana::ManaSymbol::Generic(multiplier)] = pip.as_slice()
     {
-        let count_words = crate::token_word_refs(&tokens[for_each_idx..]);
-        if let Some((count, used)) =
-            crate::util::parse_for_each_count_value_words(&count_words)
+        let count_words = crate::lexer::token_word_refs(&tokens[for_each_idx..]);
+        if let Some((count, used)) = crate::util::parse_for_each_count_value_words(&count_words)
             && used == count_words.len()
         {
             let count = match *multiplier {
@@ -827,7 +826,7 @@ pub(crate) fn parse_pay(
             }
             return Err(CardTextError::ParseError(format!(
                 "unsupported pay clause token '{word}' (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
+                crate::lexer::token_word_refs(tokens).join(" ")
             )));
         }
         if energy_count > 0 {
@@ -846,7 +845,7 @@ pub(crate) fn parse_pay(
             .map_err(|_| {
                 CardTextError::ParseError(format!(
                     "missing payment cost (clause: '{}')",
-                    crate::token_word_refs(tokens).join(" ")
+                    crate::lexer::token_word_refs(tokens).join(" ")
                 ))
             })?
     };
@@ -860,7 +859,7 @@ pub(crate) fn parse_pay(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn energy_for_each_keeps_for_each_value_surface() {

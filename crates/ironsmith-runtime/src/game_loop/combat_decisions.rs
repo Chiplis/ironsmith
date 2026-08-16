@@ -153,12 +153,11 @@ pub fn combat_damage_assignment_player_for_attacker(
 ) -> Option<PlayerId> {
     let attacker_obj = game.object(attacker)?;
     let attacking_player = game.controller_of(attacker_obj);
-    if defender_assigns_combat_damage_for_attacker(game, combat, attacker) {
-        if let crate::combat_state::AttackTarget::Player(defender) =
+    if defender_assigns_combat_damage_for_attacker(game, combat, attacker)
+        && let crate::combat_state::AttackTarget::Player(defender) =
             crate::combat_state::get_attack_target(combat, attacker)?
-        {
-            return Some(*defender);
-        }
+    {
+        return Some(*defender);
     }
 
     Some(attacking_player)
@@ -440,16 +439,12 @@ fn prepare_attacker_declarations_internal(
                 &attacking_creatures,
             ) && !can_attack
             {
-                return Err(
-                    ResponseError::InvalidAttackers(format!("{}", ability.display())).into(),
-                );
+                return Err(ResponseError::InvalidAttackers(ability.display().to_string()).into());
             }
             let can_pay_attack_cost =
                 ability.can_pay_attack_cost(game, creature.id, creature_controller);
             if can_pay_attack_cost.is_some_and(|can_pay| !can_pay) {
-                return Err(
-                    ResponseError::InvalidAttackers(format!("{}", ability.display())).into(),
-                );
+                return Err(ResponseError::InvalidAttackers(ability.display().to_string()).into());
             }
             if let Some(cost) =
                 ability.generic_attack_mana_cost_for_source(game, creature.id, creature_controller)
@@ -526,27 +521,27 @@ fn prepare_attacker_declarations_internal(
         }
     }
 
-    if enforce_requirements {
-        if attack_declaration_obeying_more_requirements_exists(
+    if enforce_requirements
+        && attack_declaration_obeying_more_requirements_exists(
             game,
             combat,
             &legal_attackers,
             declarations,
             requirements_obeyed,
-        ) {
-            if let Some(omitted) = legal_attackers
-                .iter()
-                .find(|option| option.must_attack && !declared_creatures.contains(&option.creature))
-                .map(|option| option.creature)
-            {
-                return Err(CombatError::MustAttackNotDeclared(omitted).into());
-            }
-            return Err(ResponseError::InvalidAttackers(
-                "The declaration obeys fewer attack requirements than another legal declaration"
-                    .to_string(),
-            )
-            .into());
+        )
+    {
+        if let Some(omitted) = legal_attackers
+            .iter()
+            .find(|option| option.must_attack && !declared_creatures.contains(&option.creature))
+            .map(|option| option.creature)
+        {
+            return Err(CombatError::MustAttackNotDeclared(omitted).into());
         }
+        return Err(ResponseError::InvalidAttackers(
+            "The declaration obeys fewer attack requirements than another legal declaration"
+                .to_string(),
+        )
+        .into());
     }
 
     let total_generic_attack_mana_cost = generic_attack_mana_costs
@@ -889,10 +884,9 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
         for ability in &prepared_decl.abilities {
             if let Some(result) =
                 ability.pay_non_mana_attack_cost(game, creature_source, creature_controller)
+                && let Err(msg) = result
             {
-                if let Err(msg) = result {
-                    return Err(ResponseError::InvalidAttackers(msg).into());
-                }
+                return Err(ResponseError::InvalidAttackers(msg).into());
             }
         }
         for (ability_index, _) in &prepared_decl.optional_attack_cost_prompts {
@@ -2312,7 +2306,8 @@ mod declaration_batch_tests {
         let bob = PlayerId::from_index(1);
         let required = create_attacker(&mut game, alice, "Required Attacker", false);
         let optional = create_attacker(&mut game, alice, "Optional Attacker", false);
-        for attacker in [required] {
+        {
+            let attacker = required;
             game.object_mut(attacker)
                 .expect("attacker exists")
                 .abilities_mut()

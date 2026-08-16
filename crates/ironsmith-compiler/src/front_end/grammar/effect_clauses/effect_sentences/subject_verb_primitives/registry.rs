@@ -1,11 +1,11 @@
 use super::*;
+use crate::grammar::effects::subject_verb_registry_shapes as registry_shapes;
+use crate::grammar::effects::typed_clause_heads::classify_typed_clause_head;
 use crate::parse_trace;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleMatch};
 use crate::registry::{
     HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
 };
-use crate::grammar::effects::subject_verb_registry_shapes as registry_shapes;
-use crate::grammar::effects::typed_clause_heads::classify_typed_clause_head;
 pub(super) const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
     &["you", "choose", "one", "of", "them"],
     &[
@@ -54,9 +54,7 @@ fn registry_token_matches_word(token: &OwnedLexToken, expected: &str) -> bool {
 }
 
 fn registry_word_is_card_or_cards(word: &str) -> bool {
-    REGISTRY_CARD_OR_CARDS_WORDS
-        .iter()
-        .any(|expected| word == *expected)
+    REGISTRY_CARD_OR_CARDS_WORDS.contains(&word)
 }
 
 fn registry_token_is_card_or_cards(token: &OwnedLexToken) -> bool {
@@ -371,7 +369,7 @@ fn summarize_effects(effects: &[EffectAst]) -> String {
         .map(|effect| {
             let debug = format!("{effect:?}");
             debug
-                .split(|ch: char| ch == ' ' || ch == '{' || ch == '(')
+                .split([' ', '{', '('])
                 .next()
                 .unwrap_or("Effect")
                 .to_string()
@@ -477,6 +475,13 @@ fn run_sentence_primitive_lexed(
     tokens: &[OwnedLexToken],
     lowered: &OnceCell<Vec<OwnedLexToken>>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // Possessive owner subjects carry executable target provenance in the
+    // apostrophe itself (`target creature's owner`). The shared parser-token
+    // normalizer intentionally strips that punctuation, so this one typed
+    // grammar rule must inspect the authored token stream before lowering.
+    if primitive.id == "shuffle-object-into-library" {
+        return run_sentence_primitive(primitive, tokens);
+    }
     let lowered_tokens = lowered.get_or_init(|| normalize_parser_tokens(tokens));
     run_sentence_primitive(primitive, lowered_tokens)
 }
@@ -495,14 +500,12 @@ fn recognize_subject_verb_primitives_lexed(
     };
     let lowered = OnceCell::new();
     let view = LexClauseView::from_tokens(tokens);
-    let candidate_indices =
-        index.candidate_indices(typed_head.first_word, typed_head.second_word);
+    let candidate_indices = index.candidate_indices(typed_head.first_word, typed_head.second_word);
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
     for idx in candidate_indices {
         let primitive = &primitives[idx];
-        if primitive.shape_mask != 0
-            && (view.shape & primitive.shape_mask) != primitive.shape_mask
+        if primitive.shape_mask != 0 && (view.shape & primitive.shape_mask) != primitive.shape_mask
         {
             continue;
         }
@@ -588,9 +591,9 @@ pub(super) fn parse_postconditional_subject_verb_primitives_rule_lexed(
 pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
     1] = [LexRuleDef {
     metadata: RegistryRuleMetadata::distinct(
-            RuleId::new("preconditional-subject-verb-primitives"),
-            HeadDiscriminator::words(&[]),
-        ),
+        RuleId::new("preconditional-subject-verb-primitives"),
+        HeadDiscriminator::words(&[]),
+    ),
     shape_mask: 0,
     run: LexRuleHandler::Structured(parse_preconditional_subject_verb_primitives_rule_lexed),
 }];
@@ -598,9 +601,9 @@ pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<
 pub(crate) const SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
     1] = [LexRuleDef {
     metadata: RegistryRuleMetadata::distinct(
-            RuleId::new("postconditional-subject-verb-primitives"),
-            HeadDiscriminator::words(&[]),
-        ),
+        RuleId::new("postconditional-subject-verb-primitives"),
+        HeadDiscriminator::words(&[]),
+    ),
     shape_mask: 0,
     run: LexRuleHandler::Structured(parse_postconditional_subject_verb_primitives_rule_lexed),
 }];
@@ -799,10 +802,7 @@ pub(crate) fn parse_you_and_player_each_create_sentence(
     let Some(shape) = registry_shapes::parse_joint_create_shape(clause.tokens()) else {
         return Ok(None);
     };
-    let Ok(parsed) =
-        crate::sentences::effect_sentences::parse_effect_sentence_lexed(
-            shape.effect_tokens,
-        )
+    let Ok(parsed) = crate::effect_sentences::parse_effect_sentence_lexed(shape.effect_tokens)
     else {
         return Ok(None);
     };
@@ -814,7 +814,7 @@ pub(crate) fn parse_you_and_player_each_create_sentence(
         player: PlayerAst,
     ) -> SubjectVerbEffectAst {
         let mut copy = template.clone();
-        copy.subject.player = player.clone();
+        copy.subject.player = player;
         if let SubjectVerbActionAst::CreateTokenWithMods {
             player: action_player,
             ..
@@ -834,80 +834,6 @@ pub(crate) fn parse_sentence_you_and_player_each_create(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_you_and_player_each_create_sentence(clause)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::effect::EventValueSpec;
-    use crate::runtime_backend::ast::SubjectVerbSubjectAst;
-    use crate::runtime_backend::lexer::lex_line;
-
-    #[test]
-    fn shared_draw_sentence_accepts_that_player() {
-        let tokens = lex_line("You and that player each draw that many cards.", 0)
-            .expect("xyris-style shared draw clause should lex");
-
-        let parsed = parse_you_and_target_player_each_draw_sentence(
-            SubjectVerbPrimitiveClause::new(&tokens),
-        )
-        .expect("xyris-style shared draw clause should not error")
-        .expect("xyris-style shared draw clause should parse");
-
-        assert!(matches!(
-            parsed.as_slice(),
-            [
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    subject: SubjectVerbSubjectAst {
-                        player: PlayerAst::You,
-                        ..
-                    },
-                    action: SubjectVerbActionAst::Draw {
-                        count: Value::EventValue(EventValueSpec::Amount),
-                    },
-                }),
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    subject: SubjectVerbSubjectAst {
-                        player: PlayerAst::That,
-                        ..
-                    },
-                    action: SubjectVerbActionAst::Draw {
-                        count: Value::EventValue(EventValueSpec::Amount),
-                    },
-                }),
-            ]
-        ));
-    }
-
-    #[test]
-    fn delayed_sacrifice_retains_resolution_time_condition() {
-        let tokens = lex_line(
-            "Sacrifice it at the beginning of the next end step if it has mana value 3 or less.",
-            0,
-        )
-        .expect("conditional delayed sacrifice should lex");
-
-        let parsed =
-            parse_sentence_sacrifice_it_next_end_step(SubjectVerbPrimitiveClause::new(&tokens))
-                .expect("conditional delayed sacrifice should not error")
-                .expect("conditional delayed sacrifice should use the registry route");
-        let debug = format!("{parsed:#?}");
-
-        assert!(debug.contains("DelayedUntilNextEndStep"), "{debug}");
-        assert!(debug.contains("TrailingIf"), "{debug}");
-        assert!(debug.contains("mana_value"), "{debug}");
-        assert!(debug.contains("LessThanOrEqual"), "{debug}");
-        assert!(debug.contains("Sacrifice"), "{debug}");
-
-        let full_parse =
-            crate::runtime_backend::sentences::effect_sentences::parse_effect_sentences_lexed(
-                &tokens,
-            )
-            .expect("the full dispatcher should retain the delayed condition");
-        let full_debug = format!("{full_parse:#?}");
-        assert!(full_debug.contains("TrailingIf"), "{full_debug}");
-        assert!(full_debug.contains("mana_value"), "{full_debug}");
-    }
 }
 
 pub(crate) fn parse_sentence_choose_player_to_effect(
@@ -1170,15 +1096,13 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
         vec![sacrifice]
     } else {
         let predicate =
-            crate::grammar::structure::parse_trailing_if_predicate_lexed(
-                shape.trailing_tokens,
-            )
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported delayed sacrifice condition (clause: '{}')",
-                    clause.text()
-                ))
-            })?;
+            crate::grammar::structure::parse_trailing_if_predicate_lexed(shape.trailing_tokens)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported delayed sacrifice condition (clause: '{}')",
+                        clause.text()
+                    ))
+                })?;
         vec![EffectAst::TrailingIf {
             predicate,
             effects: vec![sacrifice],
@@ -1231,15 +1155,13 @@ pub(crate) fn parse_sentence_exile_it_next_end_step(
         vec![exile]
     } else {
         let predicate =
-            crate::grammar::structure::parse_trailing_if_predicate_lexed(
-                shape.trailing_tokens,
-            )
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported delayed exile condition (clause: '{}')",
-                    clause.text()
-                ))
-            })?;
+            crate::grammar::structure::parse_trailing_if_predicate_lexed(shape.trailing_tokens)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported delayed exile condition (clause: '{}')",
+                        clause.text()
+                    ))
+                })?;
         vec![EffectAst::TrailingIf {
             predicate,
             effects: vec![exile],
@@ -1266,4 +1188,75 @@ pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled(
         parse_effect_chain_lexed,
     )
     .map(Some)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::effect::EventValueSpec;
+    use crate::lexer::lex_line;
+    use crate::model::ast::SubjectVerbSubjectAst;
+
+    #[test]
+    fn shared_draw_sentence_accepts_that_player() {
+        let tokens = lex_line("You and that player each draw that many cards.", 0)
+            .expect("xyris-style shared draw clause should lex");
+
+        let parsed = parse_you_and_target_player_each_draw_sentence(
+            SubjectVerbPrimitiveClause::new(&tokens),
+        )
+        .expect("xyris-style shared draw clause should not error")
+        .expect("xyris-style shared draw clause should parse");
+
+        assert!(matches!(
+            parsed.as_slice(),
+            [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject: SubjectVerbSubjectAst {
+                        player: PlayerAst::You,
+                        ..
+                    },
+                    action: SubjectVerbActionAst::Draw {
+                        count: Value::EventValue(EventValueSpec::Amount),
+                    },
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject: SubjectVerbSubjectAst {
+                        player: PlayerAst::That,
+                        ..
+                    },
+                    action: SubjectVerbActionAst::Draw {
+                        count: Value::EventValue(EventValueSpec::Amount),
+                    },
+                }),
+            ]
+        ));
+    }
+
+    #[test]
+    fn delayed_sacrifice_retains_resolution_time_condition() {
+        let tokens = lex_line(
+            "Sacrifice it at the beginning of the next end step if it has mana value 3 or less.",
+            0,
+        )
+        .expect("conditional delayed sacrifice should lex");
+
+        let parsed =
+            parse_sentence_sacrifice_it_next_end_step(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("conditional delayed sacrifice should not error")
+                .expect("conditional delayed sacrifice should use the registry route");
+        let debug = format!("{parsed:#?}");
+
+        assert!(debug.contains("DelayedUntilNextEndStep"), "{debug}");
+        assert!(debug.contains("TrailingIf"), "{debug}");
+        assert!(debug.contains("mana_value"), "{debug}");
+        assert!(debug.contains("LessThanOrEqual"), "{debug}");
+        assert!(debug.contains("Sacrifice"), "{debug}");
+
+        let full_parse = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("the full dispatcher should retain the delayed condition");
+        let full_debug = format!("{full_parse:#?}");
+        assert!(full_debug.contains("TrailingIf"), "{full_debug}");
+        assert!(full_debug.contains("mana_value"), "{full_debug}");
+    }
 }

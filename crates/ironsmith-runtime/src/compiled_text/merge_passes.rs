@@ -1747,14 +1747,14 @@ pub(super) fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {
             if let (Some(left_subject), Some(right_subject)) = (
                 left_no_period.strip_suffix(block_this_turn_tail),
                 right_no_period.strip_suffix(block_this_turn_tail),
-            ) {
-                if !left_subject.is_empty() && !right_subject.is_empty() {
-                    merged.push(format!(
-                        "{left_subject} creatures and {right_subject} creatures can't block this turn"
-                    ));
-                    idx += 2;
-                    continue;
-                }
+            ) && !left_subject.is_empty()
+                && !right_subject.is_empty()
+            {
+                merged.push(format!(
+                    "{left_subject} creatures and {right_subject} creatures can't block this turn"
+                ));
+                idx += 2;
+                continue;
             }
         }
         merged.push(lines[idx].clone());
@@ -1853,18 +1853,13 @@ pub(super) fn merge_attached_transform_keyword_loss_lines(lines: Vec<String>) ->
             consumed += 1;
         }
 
-        if consumed >= 4
+        if let (Some(subject), Some(replacement_subtypes), Some(base_pt)) =
+            (subject, replacement_subtypes, base_pt)
+            && consumed >= 4
             && loses_all_abilities
-            && base_pt.is_some()
-            && replacement_subtypes.is_some()
             && !granted_keywords.is_empty()
-            && subject
-                .as_deref()
-                .is_some_and(|subject| !subject_is_plural(subject))
+            && !subject_is_plural(&subject)
         {
-            let subject = subject.expect("merged transform group has a subject");
-            let replacement_subtypes = replacement_subtypes.expect("checked replacement subtype");
-            let base_pt = base_pt.expect("checked base pt");
             let subtype_phrase = capitalize_first(&replacement_subtypes);
             let article = indefinite_article_for_phrase(&replacement_subtypes);
 
@@ -2784,9 +2779,7 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
                         lowercase_first(&singularize_filter_subject(&start.subject))
                     )
                 });
-                let subject = each_subject
-                    .as_deref()
-                    .unwrap_or_else(|| start.subject.as_str());
+                let subject = each_subject.as_deref().unwrap_or(start.subject.as_str());
                 if !plural_subject {
                     let mut combined = format!(
                         "{condition}, {subject} is {} {replacement_subtypes}",

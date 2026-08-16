@@ -1,7 +1,7 @@
 use super::*;
 
-use crate::object::CounterType;
 use crate::grammar::{filters, leaf};
+use crate::object::CounterType;
 use crate::types::CardType;
 use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till, separated};
 use winnow::error::ModalResult as WResult;
@@ -624,6 +624,7 @@ fn tagged_enters_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         primitives::phrase(&["all", "of", "them", "enter", "with"]),
         primitives::phrase(&["that", "card", "enters", "with"]),
         primitives::phrase(&["that", "creature", "enters", "with"]),
+        primitives::phrase(&["that", "planeswalker", "enters", "with"]),
         primitives::phrase(&["that", "object", "enters", "with"]),
         primitives::phrase(&["that", "permanent", "enters", "with"]),
         primitives::phrase(&["it", "enters", "with"]),
@@ -1191,7 +1192,7 @@ pub(crate) fn parse_counter_pair_tokens(tokens: &[OwnedLexToken]) -> Option<Coun
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, render_token_slice};
+    use crate::lexer::{lex_line, render_token_slice};
 
     #[test]
     fn parses_return_destination_counters_and_timing() {

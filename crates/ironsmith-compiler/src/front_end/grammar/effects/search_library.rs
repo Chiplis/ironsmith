@@ -450,8 +450,7 @@ fn search_library_battlefield_entry_counters(words: &[&str]) -> Vec<BattlefieldE
             continue;
         }
         let descriptor = &words[with_idx + 1..=counter_idx];
-        let Some(counter_type) =
-            crate::grammar::filters::parse_counter_type_words(descriptor)
+        let Some(counter_type) = crate::grammar::filters::parse_counter_type_words(descriptor)
         else {
             continue;
         };
@@ -1011,8 +1010,7 @@ pub(crate) fn find_search_library_discard_after_shuffle_followup_lexed(
     if search_tokens[shuffle_idx + 1..discard_idx]
         .iter()
         .any(|token| {
-            !token.is_comma()
-                && !search_library_token_is_any_word(token, &["and", "then"])
+            !token.is_comma() && !search_library_token_is_any_word(token, &["and", "then"])
         })
     {
         return None;
@@ -1021,10 +1019,10 @@ pub(crate) fn find_search_library_discard_after_shuffle_followup_lexed(
     (!discard_tokens.is_empty()).then_some(discard_tokens)
 }
 
-pub(crate) fn find_search_library_trailing_life_followup_lexed<'a>(
-    search_tokens: &'a [OwnedLexToken],
+pub(crate) fn find_search_library_trailing_life_followup_lexed(
+    search_tokens: &[OwnedLexToken],
     start_idx: usize,
-) -> Option<&'a [OwnedLexToken]> {
+) -> Option<&[OwnedLexToken]> {
     let and_idx =
         find_search_library_marker_lexed(&search_tokens[start_idx..], search_library_and_marker)?;
     let and_idx = start_idx + and_idx;
@@ -1048,10 +1046,10 @@ pub(crate) fn find_search_library_trailing_life_followup_lexed<'a>(
     starts_with_life_clause.then_some(trailing_tokens)
 }
 
-pub(crate) fn find_search_library_trailing_create_followup_lexed<'a>(
-    search_tokens: &'a [OwnedLexToken],
+pub(crate) fn find_search_library_trailing_create_followup_lexed(
+    search_tokens: &[OwnedLexToken],
     start_idx: usize,
-) -> Option<&'a [OwnedLexToken]> {
+) -> Option<&[OwnedLexToken]> {
     let marker_idx = find_search_library_marker_lexed(
         &search_tokens[start_idx..],
         |input: &mut LexStream<'_>| {
@@ -1660,11 +1658,10 @@ pub(crate) fn parse_search_library_object_filter_lexed(
             && let Some(qualifier_idx) = filter_tokens
                 .iter()
                 .position(|token| token.as_word() == Some("with"))
-            && let Some(prefix_filter) =
-                crate::grammar::filters::parse_simple_object_filter_lexed(
-                    &filter_tokens[..qualifier_idx],
-                    false,
-                )
+            && let Some(prefix_filter) = crate::grammar::filters::parse_simple_object_filter_lexed(
+                &filter_tokens[..qualifier_idx],
+                false,
+            )
             && prefix_filter.all_card_types.len() >= 2
             && prefix_filter.card_types.is_empty()
             && prefix_filter.all_card_types == filter.card_types
@@ -1963,7 +1960,7 @@ pub(crate) fn search_library_starts_with_search_verb_lexed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn prior_or_trigger_amount_drives_that_many_search_counts() {
@@ -1988,7 +1985,10 @@ mod tests {
             .expect("exact search count should lex");
         let parsed = parse_search_library_count_prefix_lexed(&tokens);
 
-        assert_eq!(parsed.count, ChoiceCount::exactly(4).with_explicit_exactly());
+        assert_eq!(
+            parsed.count,
+            ChoiceCount::exactly(4).with_explicit_exactly()
+        );
         assert_eq!(parsed.count_used, 2);
         assert_eq!(parsed.search_mode, SearchSelectionMode::Exact);
     }
@@ -2002,11 +2002,9 @@ mod tests {
         .expect("search/discard fixture should lex");
         let markers = scan_search_library_clause_markers_lexed(&tokens)
             .expect("search/discard fixture should route");
-        let discard = find_search_library_discard_after_shuffle_followup_lexed(
-            &tokens,
-            markers.put_idx,
-        )
-        .expect("trailing random discard should be isolated");
+        let discard =
+            find_search_library_discard_after_shuffle_followup_lexed(&tokens, markers.put_idx)
+                .expect("trailing random discard should be isolated");
         assert_eq!(
             render_token_slice(discard),
             "discard three cards at random."
@@ -2020,11 +2018,8 @@ mod tests {
         let markers = scan_search_library_clause_markers_lexed(&near_miss)
             .expect("near miss should still route as a search");
         assert!(
-            find_search_library_discard_after_shuffle_followup_lexed(
-                &near_miss,
-                markers.put_idx,
-            )
-            .is_none(),
+            find_search_library_discard_after_shuffle_followup_lexed(&near_miss, markers.put_idx,)
+                .is_none(),
             "an intervening effect must not be absorbed into the search tail"
         );
     }

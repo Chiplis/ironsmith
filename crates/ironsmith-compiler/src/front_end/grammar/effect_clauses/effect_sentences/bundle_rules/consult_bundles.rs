@@ -211,8 +211,7 @@ fn lower_consult_repeated_move(
 }
 
 pub(crate) fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    let leading_result =
-        crate::grammar::structure::split_leading_result_prefix_lexed(tokens);
+    let leading_result = crate::grammar::structure::split_leading_result_prefix_lexed(tokens);
     let bundle_tokens = leading_result
         .as_ref()
         .map(|prefix| prefix.trailing_tokens)
@@ -279,18 +278,14 @@ pub(crate) fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Opti
     );
     match leading_result {
         Some(prefix) => Some(vec![match prefix.kind {
-            crate::grammar::structure::LeadingResultPrefixKind::If => {
-                EffectAst::IfResult {
-                    predicate: prefix.predicate,
-                    effects,
-                }
-            }
-            crate::grammar::structure::LeadingResultPrefixKind::When => {
-                EffectAst::WhenResult {
-                    predicate: prefix.predicate,
-                    effects,
-                }
-            }
+            crate::grammar::structure::LeadingResultPrefixKind::If => EffectAst::IfResult {
+                predicate: prefix.predicate,
+                effects,
+            },
+            crate::grammar::structure::LeadingResultPrefixKind::When => EffectAst::WhenResult {
+                predicate: prefix.predicate,
+                effects,
+            },
         }]),
         None => Some(effects),
     }
@@ -311,15 +306,11 @@ pub(super) fn parse_reveal_repeated_disposition_bundle(
             {
                 tags.push(tag.clone());
             }
-            crate::model::effect_ast_traversal::for_each_nested_effects(
-                effect,
-                true,
-                |nested| {
-                    for effect in nested {
-                        collect(effect, tags);
-                    }
-                },
-            );
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                for effect in nested {
+                    collect(effect, tags);
+                }
+            });
         }
 
         let mut tags = Vec::new();

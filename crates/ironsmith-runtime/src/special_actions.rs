@@ -1286,11 +1286,11 @@ fn can_turn_face_up(
     Err(last_error)
 }
 
-fn validate_turn_face_up_common<'a>(
-    game: &'a GameState,
+fn validate_turn_face_up_common(
+    game: &GameState,
     player: PlayerId,
     permanent_id: ObjectId,
-) -> Result<&'a crate::object::Object, ActionError> {
+) -> Result<&crate::object::Object, ActionError> {
     // Must have priority to take a special action.
     if !game.team_has_priority(player) {
         return Err(ActionError::NotYourPriority);
@@ -2614,8 +2614,7 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
                     reason,
                     execution_ctx,
                 )?;
-                game.validate_cost_for_payment_reason(payer, source, &adjusted_component, reason)
-                    .map_err(|err| err)?;
+                game.validate_cost_for_payment_reason(payer, source, &adjusted_component, reason)?;
                 let mut cost_ctx =
                     crate::costs::CostContext::new(source, payer, execution_ctx.decision_maker)
                         .with_reason(reason)
@@ -3982,11 +3981,11 @@ fn legal_exile_objects(
         Zone::Battlefield => game.battlefield.clone(),
         Zone::Hand => game
             .player(payer)
-            .map(|p| p.hand.iter().copied().collect())
+            .map(|p| p.hand.to_vec())
             .unwrap_or_default(),
         Zone::Graveyard => game
             .player(payer)
-            .map(|p| p.graveyard.iter().copied().collect())
+            .map(|p| p.graveyard.to_vec())
             .unwrap_or_default(),
         Zone::Exile => game.exile.clone(),
         _ => Vec::new(),
@@ -4080,10 +4079,10 @@ fn legal_cost_choice_objects(
     let ctx = game.filter_context_for(payer, Some(source));
 
     let ids: Vec<ObjectId> = match zone {
-        Zone::Battlefield => game.battlefield.iter().copied().collect(),
+        Zone::Battlefield => game.battlefield.to_vec(),
         Zone::Hand => game
             .player(payer)
-            .map(|p| p.hand.iter().copied().collect())
+            .map(|p| p.hand.to_vec())
             .unwrap_or_default(),
         Zone::Graveyard => game.player(payer).map_or_else(Vec::new, |p| {
             if top_only {
@@ -4092,7 +4091,7 @@ fn legal_cost_choice_objects(
                 p.graveyard.to_vec()
             }
         }),
-        Zone::Exile => game.exile.iter().copied().collect(),
+        Zone::Exile => game.exile.to_vec(),
         _ => Vec::new(),
     };
 

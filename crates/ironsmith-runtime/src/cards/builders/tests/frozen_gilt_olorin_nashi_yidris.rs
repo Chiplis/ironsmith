@@ -2,7 +2,6 @@
 
 use super::shard_16::{oracle_text_by_name, parse_oracle_card_definition};
 use super::*;
-use ironsmith_core::ValueSurfaceHint;
 
 fn triggered_ability(definition: &CardDefinition) -> &crate::ability::TriggeredAbility {
     definition
@@ -26,7 +25,7 @@ fn gilt_leaf_winnower_keeps_power_toughness_inequality() {
     let destroy = triggered_ability(&definition)
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::DestroyEffect>())
         .expect("the enter trigger should retain a typed destroy effect");
     let ChooseSpec::Object(filter) = destroy.spec.base() else {
@@ -108,7 +107,7 @@ fn yidris_keeps_hand_origin_cascade_grant_until_end_of_turn() {
     let apply = triggered_ability(&definition)
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
         .expect("Yidris should retain a typed temporary cascade grant");
     let crate::continuous::EffectTarget::Filter(filter) = &apply.target else {

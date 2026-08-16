@@ -27,7 +27,7 @@ pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported move clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     };
 
@@ -38,7 +38,7 @@ pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     let Some((from_tokens, to_tokens)) = split else {
         return Err(CardTextError::ParseError(format!(
             "missing move destination (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     };
 
@@ -64,7 +64,7 @@ pub(crate) fn parse_draw(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let head = zone_move_grammar::parse_draw_head_shape(tokens).map_err(|error| match error {
         zone_move_grammar::DrawHeadShapeError::MissingCount => CardTextError::ParseError(format!(
             "missing draw count (clause: '{}')",
@@ -102,18 +102,18 @@ pub(crate) fn parse_draw(
     );
 
     if !tail.is_empty() && head.parsed_offset.is_none() {
-        if let Some(parsed) = parse_draw_for_each_player_condition(&tail, effect.clone())? {
+        if let Some(parsed) = parse_draw_for_each_player_condition(tail, effect.clone())? {
             effect = parsed;
         } else {
             let has_for_each = zone_move_grammar::contains_draw_for_each_shape(tail);
             if has_for_each {
-                let dynamic = if let Some(value) = parse_draw_for_each_object_filter_value(&tail)? {
+                let dynamic = if let Some(value) = parse_draw_for_each_object_filter_value(tail)? {
                     value
                 } else {
-                    parse_dynamic_cost_modifier_value(&tail)?.ok_or_else(|| {
+                    parse_dynamic_cost_modifier_value(tail)?.ok_or_else(|| {
                         CardTextError::ParseError(format!(
                             "unsupported draw for-each clause (clause: '{}')",
-                            crate::token_word_refs(tokens).join(" ")
+                            crate::lexer::token_word_refs(tokens).join(" ")
                         ))
                     })?
                 };
@@ -122,7 +122,7 @@ pub(crate) fn parse_draw(
                     _ => {
                         return Err(CardTextError::ParseError(format!(
                             "unsupported multiplied draw count (clause: '{}')",
-                            crate::token_word_refs(tokens).join(" ")
+                            crate::lexer::token_word_refs(tokens).join(" ")
                         )));
                     }
                 }
@@ -133,7 +133,7 @@ pub(crate) fn parse_draw(
                         count: draw_count_with_surface(count.clone(), head.additional),
                     },
                 );
-            } else if let Some(parsed) = parse_draw_trailing_clause(&tail, effect.clone())? {
+            } else if let Some(parsed) = parse_draw_trailing_clause(tail, effect.clone())? {
                 effect = parsed;
             } else {
                 return Err(CardTextError::ParseError(format!(
@@ -150,6 +150,10 @@ fn parse_draw_for_each_player_condition(
     tokens: &[OwnedLexToken],
     draw_effect: EffectAst,
 ) -> Result<Option<EffectAst>, CardTextError> {
+    #[expect(
+        clippy::redundant_guards,
+        reason = "the recursive rewrite preserves each predicate variant's complete named fields"
+    )]
     fn bind_loop_player_predicate(predicate: PredicateAst) -> PredicateAst {
         match predicate {
             PredicateAst::And(left, right) => PredicateAst::And(
@@ -263,7 +267,7 @@ fn parse_draw_for_each_player_condition(
         }
     }
 
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let Some(shape) = zone_move_grammar::parse_draw_player_loop_shape(tokens) else {
         return Ok(None);
     };
@@ -277,7 +281,7 @@ fn parse_draw_for_each_player_condition(
     }
 
     let predicate = bind_loop_player_predicate(
-        parse_who_player_predicate_lexed(&inner_tokens).ok_or_else(|| {
+        parse_who_player_predicate_lexed(inner_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing predicate in draw for-each clause (clause: '{}')",
                 clause_words.join(" ")
@@ -392,40 +396,40 @@ fn parse_draw_for_each_object_filter_value(
         return Ok(None);
     };
 
-    if let Some(history_value) = crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(&filter_tokens)
+    if let Some(history_value) = crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(filter_tokens)
     {
         return Ok(Some(history_value.with_surface_hint(
             ironsmith_core::ValueSurfaceHint::ForEach,
         )));
     }
 
-    if let Some(known_value) = parse_draw_for_each_known_count_value(&filter_tokens)? {
+    if let Some(known_value) = parse_draw_for_each_known_count_value(filter_tokens)? {
         return Ok(Some(
             known_value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
         ));
     }
 
     if let Some(cast_this_turn_value) =
-        crate::grammar::shared_util::value_semantics::parse_spells_cast_this_turn_matching_count_value_lexed(&filter_tokens)
+        crate::grammar::shared_util::value_semantics::parse_spells_cast_this_turn_matching_count_value_lexed(filter_tokens)
     {
         return Ok(Some(cast_this_turn_value.with_surface_hint(
             ironsmith_core::ValueSurfaceHint::ForEach,
         )));
     }
 
-    if let Some(this_way_value) = parse_draw_for_each_this_way_metric_value(&filter_tokens) {
+    if let Some(this_way_value) = parse_draw_for_each_this_way_metric_value(filter_tokens) {
         return Ok(Some(
             this_way_value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
         ));
     }
 
-    if let Some(counter_value) = parse_draw_for_each_counter_reference_value(&filter_tokens) {
+    if let Some(counter_value) = parse_draw_for_each_counter_reference_value(filter_tokens) {
         return Ok(Some(
             counter_value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
         ));
     }
 
-    let filter_words = crate::token_word_refs(&filter_tokens);
+    let filter_words = crate::lexer::token_word_refs(filter_tokens);
     if let Some(aggregate_value) = crate::grammar::shared_util::value_helper_shapes::parse_aggregate_scope_value_words(&filter_words)
     {
         return Ok(Some(aggregate_value.with_surface_hint(
@@ -441,7 +445,7 @@ fn parse_draw_for_each_object_filter_value(
     }
 
     Ok(Some(
-        Value::Count(parse_object_filter(&filter_tokens, false)?)
+        Value::Count(parse_object_filter(filter_tokens, false)?)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
     ))
 }
@@ -480,7 +484,7 @@ pub(crate) fn parse_draw_equal_to_value(
     let Some(shape) = zone_move_grammar::parse_draw_equal_shape(tokens) else {
         return Ok(None);
     };
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if words
         .windows(2)
         .any(|window| window == ["differently", "named"])
@@ -509,7 +513,7 @@ pub(crate) fn parse_draw_equal_to_value(
         && let Ok(target) = parse_target_phrase(target_tokens)
     {
         let spec =
-            crate::references::reference_helpers::choose_spec_for_target(&target);
+            crate::reference_helpers::choose_spec_for_target(&target);
         let value = match stat {
             zone_move_grammar::DrawEqualStat::Power => Value::PowerOf(Box::new(spec)),
             zone_move_grammar::DrawEqualStat::Toughness => Value::ToughnessOf(Box::new(spec)),
@@ -596,16 +600,7 @@ fn counter_unless_payment_total_cost(
 }
 
 pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
-        eprintln!(
-            "parse_counter entry: {:?}",
-            crate::token_word_refs(tokens)
-        );
-    }
     if let Some(effect) = parse_counter_unless_source_damage(tokens)? {
-        if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
-            eprintln!("parse_counter: unless-source-damage claimed");
-        }
         return Ok(effect);
     }
 
@@ -617,7 +612,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         });
     }
 
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let shape =
         zone_move_grammar::parse_counter_clause_shape(tokens).map_err(|error| match error {
             zone_move_grammar::CounterClauseShapeError::MissingPays => {
@@ -653,7 +648,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     let target = parse_counter_target_phrase(unless_shape.target_tokens)?;
     let payment_clause_tokens = &unless_shape.normalized_payment_tokens;
     let has_dynamic_payment_tail = unless_shape.has_dynamic_payment_tail;
-    match crate::families::activation_and_restrictions::parse_payment_clause_as_total_cost(&payment_clause_tokens) {
+    match crate::activation_and_restrictions::parse_payment_clause_as_total_cost(payment_clause_tokens) {
             Ok(Some(cost)) => {
                 let should_keep_subject_verb_dynamic_path = has_dynamic_payment_tail
                     && cost.as_one_of().is_none()
@@ -666,7 +661,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 if !has_dynamic_payment_tail {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported counter-unless payment cost (clause: '{}')",
-                        crate::token_word_refs(tokens).join(" ")
+                        crate::lexer::token_word_refs(tokens).join(" ")
                     )));
                 }
             }
@@ -674,7 +669,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 if !has_dynamic_payment_tail {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported counter-unless payment cost (clause: '{}'): {err}",
-                        crate::token_word_refs(tokens).join(" ")
+                        crate::lexer::token_word_refs(tokens).join(" ")
                     )));
                 }
             }
@@ -700,7 +695,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         } else {
             return Err(CardTextError::ParseError(format!(
                 "missing mana cost (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
+                crate::lexer::token_word_refs(tokens).join(" ")
             )));
         }
     }
@@ -715,7 +710,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             same_name_graveyard,
             for_each,
         } => {
-            let trailing_words = crate::token_word_refs(trailing_tokens);
+            let trailing_words = crate::lexer::token_word_refs(trailing_tokens);
             if let Some(value) = parse_counter_unless_additional_generic_value(trailing_tokens)? {
                 additional_generic = Some(value);
             } else if *same_name_graveyard {
@@ -775,7 +770,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     {
         return Err(CardTextError::ParseError(format!(
             "missing mana cost (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -789,7 +784,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         });
     }
 
-    return Ok(EffectAst::subject_verb_counter_unless_pays(
+    Ok(EffectAst::subject_verb_counter_unless_pays(
         target,
         counter_unless_payment_total_cost(
             mana,
@@ -799,7 +794,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             x_value,
             dynamic_display_hint,
         ),
-    ));
+    ))
 }
 
 fn parse_counter_unless_source_damage(
@@ -876,7 +871,7 @@ mod turn_history_draw_tests {
     use super::*;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
-        let mut tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("lex");
+        let mut tokens = crate::lexer::lex_line(text, 0).expect("lex");
         for token in &mut tokens {
             token.lowercase_word();
         }

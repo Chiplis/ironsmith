@@ -115,7 +115,7 @@ fn coordinated_draw_token_program_executes_draw_loss_token_buff_and_trigger() {
         )
     );
 
-    let mut creature_queue = queue_spell_cast(&mut game, alice, vec![CardType::Creature]);
+    let creature_queue = queue_spell_cast(&mut game, alice, vec![CardType::Creature]);
     assert!(
         creature_queue.entries.is_empty(),
         "the embedded trigger must reject creature spells"

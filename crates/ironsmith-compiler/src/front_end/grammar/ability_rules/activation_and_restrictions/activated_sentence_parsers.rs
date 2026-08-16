@@ -43,7 +43,7 @@ fn parse_activate_only_sentence_details_lexed(
         return None;
     }
 
-    let timing = parse_activate_only_timing_lexed(tokens).unwrap_or_else(|| current_timing.clone());
+    let timing = parse_activate_only_timing_lexed(tokens).unwrap_or(*current_timing);
     let condition = parse_activation_condition_lexed(tokens)
         .and_then(|condition| strip_once_per_turn_condition_redundancy(condition, &timing));
     let normalized_restriction = normalize_activate_only_restriction(tokens, &timing);
@@ -52,7 +52,7 @@ fn parse_activate_only_sentence_details_lexed(
             window[0].is_word("and") && window[1].is_word("only") && window[2].is_word("once")
         });
     Some(ActivateOnlySentenceDetails {
-        timing: timing.clone(),
+        timing,
         condition,
         normalized_restriction,
         once_per_turn_after_other_restrictions,
@@ -226,7 +226,7 @@ pub(crate) fn normalize_activate_only_restriction(
         return None;
     }
     if timing != &ActivationTiming::OncePerTurn {
-        return Some(crate::token_word_refs(tokens).join(" "));
+        return Some(crate::lexer::token_word_refs(tokens).join(" "));
     }
     match activated_line_grammar::parse_once_per_turn_restriction_normalization_tokens(tokens) {
         OncePerTurnRestrictionNormalization::Redundant => None,
@@ -275,7 +275,7 @@ pub(crate) fn parse_activation_condition_lexed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("activation restriction should lex")
@@ -374,10 +374,7 @@ mod tests {
         let tokens = lex(
             "{T}: Add {C}. Spend this mana only to cast an artifact spell or activate an ability.",
         );
-        let parsed =
-            crate::runtime_backend::activation_and_restrictions::parse_activated_line_with_raw(
-                &tokens,
-            )
+        let parsed = crate::activation_and_restrictions::parse_activated_line_with_raw(&tokens)
             .expect("restricted mana line should parse")
             .expect("restricted mana ability");
         let debug = format!("{parsed:#?}");

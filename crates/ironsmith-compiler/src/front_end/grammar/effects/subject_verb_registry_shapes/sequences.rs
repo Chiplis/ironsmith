@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 use crate::util::trim_edge_punctuation_tokens;
 
 #[derive(Debug, Clone, Copy)]
@@ -183,7 +183,7 @@ pub(crate) fn parse_draw_for_exiled_hand_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn parses_registry_sequence_shapes() {

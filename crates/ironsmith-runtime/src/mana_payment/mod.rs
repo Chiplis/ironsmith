@@ -10,5 +10,5 @@ mod planner;
 pub use plan::*;
 pub use planner::{
     ManaPaymentPlanner, execute_mana_payment_plan, mana_payment_activation_inventory,
-    mana_payment_source_inventory, plan_mana_payment,
+    mana_payment_source_inventory, plan_first_mana_payment, plan_mana_payment,
 };

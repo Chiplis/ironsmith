@@ -451,6 +451,6 @@ mod tests {
         assert!(voted_with.contains(&charlie));
 
         // No one voted against Alice
-        assert!(event.player_tags.get("voted_against_you").is_none());
+        assert!(!event.player_tags.contains_key("voted_against_you"));
     }
 }

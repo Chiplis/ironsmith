@@ -3588,7 +3588,7 @@ fn test_counter_annihilation_enables_undying_loop() {
 
     // Put cards in library so we can draw
     for i in 0..5 {
-        let card = CardBuilder::new(CardId::new(), &format!("Test Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Test Card {}", i))
             .card_types(vec![CardType::Instant])
             .build();
         game.create_object_from_card(&card, alice, Zone::Library);
@@ -3825,7 +3825,7 @@ fn test_yawgmoth_undying_loop_draws_cards_until_death() {
 
     // Put some cards in library so we can draw
     for i in 0..30 {
-        let card = CardBuilder::new(CardId::new(), &format!("Test Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Test Card {}", i))
             .card_types(vec![CardType::Instant])
             .build();
         game.create_object_from_card(&card, alice, Zone::Library);

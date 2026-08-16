@@ -2107,14 +2107,14 @@ pub(crate) fn describe_for_each_double_counters(
         let plural = pluralize_noun_phrase(filter_text);
         return Some(format!(
             "Double the number of {} counters on each of those {}",
-            describe_counter_type(counter_type.clone()),
+            describe_counter_type(*counter_type),
             plural
         ));
     }
 
     Some(format!(
         "Double the number of {} counters on each {}",
-        describe_counter_type(counter_type.clone()),
+        describe_counter_type(*counter_type),
         filter_text
     ))
 }
@@ -3849,13 +3849,13 @@ pub(crate) fn describe_for_players_choose_types_then_sacrifice_rest(
     ];
     let chosen_party_roles = chooses
         .iter()
-        .filter_map(|choose| {
-            (choose_has_common_keep_shape(choose)
+        .filter(|&choose| {
+            choose_has_common_keep_shape(choose)
                 && choose.count == ChoiceCount::up_to(1)
                 && choose.filter.card_types.as_slice() == [CardType::Creature]
-                && choose.filter.subtypes.len() == 1)
-                .then(|| choose.filter.subtypes[0])
+                && choose.filter.subtypes.len() == 1
         })
+        .map(|choose| choose.filter.subtypes[0])
         .collect::<Vec<_>>();
     let sacrifice_is_party_complement = sacrifice.filter.card_types.as_slice()
         == [CardType::Creature]
@@ -3893,7 +3893,7 @@ pub(crate) fn describe_for_players_choose_types_then_sacrifice_rest(
         if choose.filter.card_types.len() != 1 {
             return None;
         }
-        let card_type = *choose.filter.card_types.iter().next()?;
+        let card_type = *choose.filter.card_types.first()?;
         let phrase = with_indefinite_article(describe_card_type_word_local(card_type));
         if !chosen_types.iter().any(|existing| existing == &phrase) {
             chosen_types.push(phrase);
@@ -4398,31 +4398,29 @@ pub(super) fn describe_for_players_choose_then_exile(
     let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     if let Some(exile) = unwrap_basic_tag_wrappers(&for_players.effects[1])
         .downcast_ref::<crate::effects::ExileEffect>()
+        && choose_primary_zone(choose) == Some(Zone::Library)
+        && choose.bottom_only
+        && !choose.top_only
+        && !choose.is_search
+        && choose.count.is_single()
+        && choose.chooser == PlayerFilter::IteratedPlayer
+        && choose.filter.zone == Some(Zone::Library)
+        && choose.filter.controller.is_none()
+        && choose.filter.owner.is_none()
+        && choose.filter.card_types.is_empty()
+        && choose.filter.tagged_constraints.is_empty()
+        && exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
     {
-        if choose_primary_zone(choose) == Some(Zone::Library)
-            && choose.bottom_only
-            && !choose.top_only
-            && !choose.is_search
-            && choose.count.is_single()
-            && choose.chooser == PlayerFilter::IteratedPlayer
-            && choose.filter.zone == Some(Zone::Library)
-            && choose.filter.controller.is_none()
-            && choose.filter.owner.is_none()
-            && choose.filter.card_types.is_empty()
-            && choose.filter.tagged_constraints.is_empty()
-            && exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
-        {
-            let subject = match for_players.filter {
-                PlayerFilter::Any => "each player's",
-                PlayerFilter::Opponent => "each opponent's",
-                PlayerFilter::You => "your",
-                _ => return None,
-            };
-            let face_down = if exile.face_down { " face down" } else { "" };
-            return Some(format!(
-                "Exile the bottom card of {subject} library{face_down}"
-            ));
-        }
+        let subject = match for_players.filter {
+            PlayerFilter::Any => "each player's",
+            PlayerFilter::Opponent => "each opponent's",
+            PlayerFilter::You => "your",
+            _ => return None,
+        };
+        let face_down = if exile.face_down { " face down" } else { "" };
+        return Some(format!(
+            "Exile the bottom card of {subject} library{face_down}"
+        ));
     }
     let move_to_zone = for_players.effects[1].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if choose_primary_zone(choose) == Some(Zone::Hand)
@@ -4776,7 +4774,7 @@ pub(crate) fn describe_for_players_choose_move_then_combined_characteristics(
     let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let apply = tagged_apply_continuous_effect(apply_effect)?;
     if !apply_continuous_is_forever_tagged(apply, &choose.tag)
-        || apply.runtime_modifications.len() != 0
+        || !apply.runtime_modifications.is_empty()
     {
         return None;
     }

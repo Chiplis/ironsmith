@@ -114,7 +114,7 @@ pub(super) fn irresistible_prey_runtime_requirement_survives_ability_removal() {
     )
     .expect("Irresistible Prey target should still be able to attack after ability removal");
 
-    let missing_block = crate::combat_state::declare_blockers(&mut game, &mut combat, vec![]);
+    let missing_block = crate::combat_state::declare_blockers(&game, &mut combat, vec![]);
     assert!(
         matches!(
             missing_block,
@@ -140,8 +140,7 @@ pub(super) fn irresistible_prey_runtime_requires_available_blocker_and_honors_if
     )
     .expect("Irresistible Prey target should be able to attack");
 
-    let missing_block =
-        crate::combat_state::declare_blockers(&mut game, &mut combat.clone(), vec![]);
+    let missing_block = crate::combat_state::declare_blockers(&game, &mut combat.clone(), vec![]);
     assert!(
         matches!(
             missing_block,
@@ -154,7 +153,7 @@ pub(super) fn irresistible_prey_runtime_requires_available_blocker_and_honors_if
         "Irresistible Prey should require a block while a blocker can block, got {missing_block:?}"
     );
 
-    crate::combat_state::declare_blockers(&mut game, &mut combat, vec![(blocker, attacker)])
+    crate::combat_state::declare_blockers(&game, &mut combat, vec![(blocker, attacker)])
         .expect("blocking the Irresistible Prey target should satisfy the requirement");
 
     let (mut unable_game, _alice, unable_bob, unable_attacker, _tapped_blocker) =
@@ -169,7 +168,7 @@ pub(super) fn irresistible_prey_runtime_requires_available_blocker_and_honors_if
         )],
     )
     .expect("Irresistible Prey target should be able to attack in tapped-blocker branch");
-    crate::combat_state::declare_blockers(&mut unable_game, &mut unable_combat, vec![])
+    crate::combat_state::declare_blockers(&unable_game, &mut unable_combat, vec![])
         .expect("Irresistible Prey should not require an impossible block");
 }
 
@@ -1429,7 +1428,7 @@ pub(super) fn krang_master_mind_etb_draws_up_to_four_cards_in_hand() {
         game.create_object_from_definition(
             &CardDefinitionBuilder::new(
                 CardId::from_raw(955_860 + idx),
-                &format!("Library Card {idx}"),
+                format!("Library Card {idx}"),
             )
             .card_types(vec![CardType::Artifact])
             .build(),
@@ -1477,7 +1476,7 @@ pub(super) fn krang_master_mind_etb_does_not_trigger_with_four_cards_in_hand() {
         game.create_object_from_definition(
             &CardDefinitionBuilder::new(
                 CardId::from_raw(955_870 + idx),
-                &format!("Hand Card {idx}"),
+                format!("Hand Card {idx}"),
             )
             .card_types(vec![CardType::Artifact])
             .build(),
@@ -1489,7 +1488,7 @@ pub(super) fn krang_master_mind_etb_does_not_trigger_with_four_cards_in_hand() {
         game.create_object_from_definition(
             &CardDefinitionBuilder::new(
                 CardId::from_raw(955_880 + idx),
-                &format!("Library Card {idx}"),
+                format!("Library Card {idx}"),
             )
             .card_types(vec![CardType::Artifact])
             .build(),
@@ -1529,7 +1528,7 @@ pub(super) fn krang_master_mind_etb_draw_condition_is_rechecked_on_resolution() 
         game.create_object_from_definition(
             &CardDefinitionBuilder::new(
                 CardId::from_raw(955_883 + idx),
-                &format!("Library Card {idx}"),
+                format!("Library Card {idx}"),
             )
             .card_types(vec![CardType::Artifact])
             .build(),
@@ -1571,7 +1570,7 @@ pub(super) fn krang_master_mind_etb_draw_condition_is_rechecked_on_resolution() 
         game.create_object_from_definition(
             &CardDefinitionBuilder::new(
                 CardId::from_raw(955_886 + idx),
-                &format!("Hand Card {idx}"),
+                format!("Hand Card {idx}"),
             )
             .card_types(vec![CardType::Artifact])
             .build(),

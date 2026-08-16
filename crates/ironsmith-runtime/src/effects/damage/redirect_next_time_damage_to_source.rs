@@ -310,7 +310,7 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
         self.destination_target
             .as_ref()
             .or(self.target.as_ref())
-            .or_else(|| match &self.source {
+            .or(match &self.source {
                 RedirectNextTimeDamageSource::Target(spec) => Some(spec),
                 _ => None,
             })

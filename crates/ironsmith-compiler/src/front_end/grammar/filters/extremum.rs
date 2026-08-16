@@ -52,13 +52,9 @@ fn parse_tie_suffix(
     direction: ExtremumDirection,
     characteristic: ExtremumCharacteristic,
 ) -> Option<bool> {
-    let Some(rest) = words.strip_prefix(&["or", "tied", "for"]) else {
-        return None;
-    };
+    let rest = words.strip_prefix(&["or", "tied", "for"])?;
     let rest = rest.strip_prefix(&["the"]).unwrap_or(rest);
-    let Some((&direction_word, rest)) = rest.split_first() else {
-        return None;
-    };
+    let (&direction_word, rest) = rest.split_first()?;
     if extremum_direction(direction_word) != Some(direction) {
         return None;
     }
@@ -154,13 +150,10 @@ pub(crate) fn parse_extremum_object_filter_words(
         return Ok(None);
     };
 
-    let mut selected = crate::object_filters::parse_object_filter_words(
-        split.subject_words,
-        other,
-    )?;
+    let mut selected =
+        crate::object_filters::parse_object_filter_words(split.subject_words, other)?;
     let scope = if let Some(scope_words) = split.scope_words {
-        let scope =
-            crate::object_filters::parse_object_filter_words(scope_words, false)?;
+        let scope = crate::object_filters::parse_object_filter_words(scope_words, false)?;
         inherit_scope_boundaries(&mut selected, &scope);
         scope
     } else {

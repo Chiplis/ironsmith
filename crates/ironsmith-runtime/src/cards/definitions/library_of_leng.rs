@@ -341,7 +341,7 @@ mod tests {
         // Verify the land is NOT on top of the library
         // (This confirms Library of Leng's replacement was correctly not applied)
         let library = &game.player(alice).unwrap().library;
-        let land_on_top_of_library = library.last().map_or(false, |&id| {
+        let land_on_top_of_library = library.last().is_some_and(|&id| {
             game.object(id)
                 .map(|obj| obj.has_card_type(CardType::Land))
                 .unwrap_or(false)
@@ -560,7 +560,7 @@ mod tests {
 
         // The land should be on top of the library (Library of Leng was used)
         let library = &game.player(alice).unwrap().library;
-        let land_on_top_of_library = library.last().map_or(false, |&id| {
+        let land_on_top_of_library = library.last().is_some_and(|&id| {
             game.object(id)
                 .map(|obj| obj.has_card_type(CardType::Land))
                 .unwrap_or(false)
@@ -623,8 +623,7 @@ mod tests {
         // 4. The result: Library of Leng's replacement simply cannot be chosen
         //    when discarding for Mox Diamond. The land must go to the graveyard.
 
-        // This test passes if it compiles - it documents the expected behavior
-        assert!(true, "Rule 701.8c interaction documented");
+        // This test passes if it compiles - it documents the expected behavior.
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

@@ -4,7 +4,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::front_end::lexer::{LexStream, OwnedLexToken, TokenKind};
+use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 
 use super::super::super::primitives;
 use super::{
@@ -511,11 +511,9 @@ fn additional_cast_mana_cost(
     ) {
         return Err(());
     }
-    crate::grammar::leaf::parse_leaf_mana_cost_tokens(
-        &tokens[cost_start..addition],
-    )
-    .map(Some)
-    .map_err(|_| ())
+    crate::grammar::leaf::parse_leaf_mana_cost_tokens(&tokens[cost_start..addition])
+        .map(Some)
+        .map_err(|_| ())
 }
 
 pub(crate) fn parse_graveyard_cast_replacement_shape(
@@ -714,7 +712,7 @@ pub(crate) fn is_delayed_dies_exile_play_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

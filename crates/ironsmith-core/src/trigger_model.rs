@@ -1716,6 +1716,10 @@ impl Trigger {
             from_not_hand,
         )
     }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each argument is an independent typed spell-cast trigger qualifier"
+    )]
     pub fn spell_cast_qualified_with_mana_source(
         filter: Option<ObjectFilter>,
         mana_source_filter: Option<ObjectFilter>,

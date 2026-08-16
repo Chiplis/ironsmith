@@ -1569,7 +1569,7 @@ pub(super) fn rewrite_zone_counter_helpers_parse_half_starting_life_total_varian
         .expect("rewrite lexer should classify rounded-down half-life value");
 
     assert_eq!(
-        super::super::parse_half_starting_life_total_value(
+        crate::effect_sentences::parse_half_starting_life_total_value(
             &your_tokens,
             crate::cards::builders::PlayerAst::Implicit,
         ),
@@ -1578,7 +1578,7 @@ pub(super) fn rewrite_zone_counter_helpers_parse_half_starting_life_total_varian
         ))
     );
     assert_eq!(
-        super::super::parse_half_starting_life_total_value(
+        crate::effect_sentences::parse_half_starting_life_total_value(
             &target_tokens,
             crate::cards::builders::PlayerAst::Target,
         ),
@@ -1968,7 +1968,7 @@ pub(super) fn rewrite_lexed_activation_condition_parser_handles_control_and_grav
 pub(super) fn rewrite_lexed_spell_filter_parser_preserves_native_shape() {
     let tokens = lex_line("face-down noncreature spells", 0)
         .expect("rewrite lexer should classify spell filter text");
-    let filter = super::super::parse_spell_filter_lexed(&tokens);
+    let filter = crate::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed(&tokens);
 
     assert_eq!(filter.face_down, Some(true));
     assert_eq!(filter.excluded_card_types, vec![CardType::Creature]);
@@ -1978,7 +1978,7 @@ pub(super) fn rewrite_lexed_spell_filter_parser_preserves_native_shape() {
 pub(super) fn rewrite_lexed_object_filter_tracks_spell_caster_and_origin_zone() {
     let tokens = lex_line("enchantment spells you cast from your hand", 0)
         .expect("rewrite lexer should classify spell grant filter text");
-    let filter = super::super::parse_object_filter_lexed(&tokens, false)
+    let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false)
         .expect("spell grant filter should parse");
 
     assert_eq!(filter.zone, Some(crate::zone::Zone::Hand));
@@ -2003,14 +2003,16 @@ pub(super) fn rewrite_lexed_value_and_permission_helpers_match_existing_semantic
     ));
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&permission_tokens),
-        Ok(Some(super::super::PermissionClauseSpec::Tagged {
-            player: crate::cards::builders::PlayerAst::You,
-            allow_land: false,
-            as_copy: false,
-            without_paying_mana_cost: false,
-            lifetime: super::super::PermissionLifetime::ThisTurn,
-            ..
-        }))
+        Ok(Some(
+            crate::permission_helpers::PermissionClauseSpec::Tagged {
+                player: crate::cards::builders::PlayerAst::You,
+                allow_land: false,
+                as_copy: false,
+                without_paying_mana_cost: false,
+                lifetime: crate::permission_helpers::PermissionLifetime::ThisTurn,
+                ..
+            }
+        ))
     ));
 }
 
@@ -2062,7 +2064,7 @@ pub(super) fn object_filter_source_reference_preserves_this_subtype_surface_hint
         || {
             let tokens =
                 lex_line("this Equipment", 0).expect("source-reference fixture should lex");
-            let filter = super::super::parse_object_filter_lexed(&tokens, false)
+            let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false)
                 .expect("source-reference object filter should parse");
             assert!(filter.source, "expected source object filter: {filter:?}");
             assert_eq!(
@@ -2154,7 +2156,7 @@ pub(super) fn rewrite_grammar_add_mana_equal_amount_value_entrypoint_matches_par
     let tokens = lex_line("equal to its toughness plus 2", 0)
         .expect("rewrite lexer should classify equal-amount value text");
 
-    let parsed = super::super::parse_add_mana_equal_amount_value(&tokens);
+    let parsed = crate::keyword_static::parse_add_mana_equal_amount_value(&tokens);
     let grammar_parsed =
         super::super::grammar::values::parse_add_mana_equal_amount_value_lexed(&tokens);
 
@@ -2182,7 +2184,7 @@ pub(super) fn rewrite_grammar_object_filter_entrypoint_matches_parser_root_lexed
     let grammar =
         super::super::grammar::filters::reference_tag_stage::parse_object_filter_with_grammar_entrypoint_lexed(&lexed, false)
             .expect("grammar-owned object filter entrypoint should parse");
-    let parser_root = super::super::parse_object_filter_lexed(&lexed, false)
+    let parser_root = crate::object_filters::parse_object_filter_lexed(&lexed, false)
         .expect("parser-root object filter entrypoint should parse");
 
     assert_eq!(format!("{grammar:?}"), format!("{parser_root:?}"));
@@ -2193,8 +2195,9 @@ pub(super) fn rewrite_parser_root_nonlexed_object_filter_entrypoint_matches_gram
     let tokens = lex_line("artifact card in your graveyard", 0)
         .expect("rewrite lexer should classify non-lexed object filter text");
 
-    let parser_root = super::super::parse_object_filter(&tokens, false)
-        .expect("parser-root non-lexed object filter entrypoint should parse");
+    let parser_root =
+        crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(&tokens, false)
+            .expect("parser-root non-lexed object filter entrypoint should parse");
     let grammar_lexed =
         super::super::grammar::filters::reference_tag_stage::parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
             .expect("grammar-owned lexed object filter entrypoint should parse");
@@ -2211,7 +2214,8 @@ pub(super) fn rewrite_grammar_spell_filter_entrypoint_matches_parser_root_output
         super::super::grammar::filters::spell_filters::parse_spell_filter_with_grammar_entrypoint_lexed(
             &lexed,
         );
-    let parser_root = super::super::parse_spell_filter_lexed(&lexed);
+    let parser_root =
+        crate::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed(&lexed);
 
     assert_eq!(format!("{grammar:?}"), format!("{parser_root:?}"));
 }
@@ -2221,8 +2225,8 @@ pub(super) fn rewrite_parser_root_nonlexed_spell_filter_entrypoint_matches_lexed
     let tokens = lex_line("face-down noncreature spells", 0)
         .expect("rewrite lexer should classify non-lexed spell filter text");
 
-    let parser_root = super::super::parse_spell_filter(&tokens);
-    let lexed = super::super::parse_spell_filter_lexed(&tokens);
+    let parser_root = crate::grammar::filters::parse_spell_filter_with_grammar_entrypoint(&tokens);
+    let lexed = crate::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed(&tokens);
 
     assert_eq!(format!("{parser_root:?}"), format!("{lexed:?}"));
 }
@@ -2615,10 +2619,10 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants(
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&flash_tokens),
-        Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+        Ok(Some(crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
             player: crate::cards::builders::PlayerAst::You,
             spec,
-            lifetime: super::super::PermissionLifetime::Static,
+            lifetime: crate::permission_helpers::PermissionLifetime::Static,
         })) if spec == crate::grant::GrantSpec::flash_to_spells_matching(
             crate::target::ObjectFilter {
                 card_types: vec![CardType::Creature],
@@ -2628,10 +2632,10 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants(
     ));
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&free_cast_tokens),
-        Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+        Ok(Some(crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
             player: crate::cards::builders::PlayerAst::You,
             spec,
-            lifetime: super::super::PermissionLifetime::Static,
+            lifetime: crate::permission_helpers::PermissionLifetime::Static,
         })) if !spec.filter.has_mana_cost
             && spec.filter.card_types == vec![CardType::Creature]
             && spec.zone == crate::zone::Zone::Hand
@@ -2640,10 +2644,10 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(
             &duration_free_cast_tokens
         ),
-        Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+        Ok(Some(crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
             player: crate::cards::builders::PlayerAst::You,
             spec,
-            lifetime: super::super::PermissionLifetime::UntilEndOfTurn,
+            lifetime: crate::permission_helpers::PermissionLifetime::UntilEndOfTurn,
         })) if !spec.filter.has_mana_cost
             && spec.zone == crate::zone::Zone::Hand
     ));
@@ -2674,10 +2678,10 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_once_each_turn_top_library_
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
-        Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+        Ok(Some(crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
             player: crate::cards::builders::PlayerAst::You,
             spec,
-            lifetime: super::super::PermissionLifetime::Static,
+            lifetime: crate::permission_helpers::PermissionLifetime::Static,
         })) if spec.zone == crate::zone::Zone::Library
             && matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
             && spec.usage_limit == Some(crate::grant::GrantUsageLimit::OnceEachTurn)
@@ -2693,10 +2697,10 @@ pub(super) fn rewrite_lexed_top_library_permissions_preserve_cast_and_land_domai
     fn parse_grant(line: &str) -> crate::grant::GrantSpec {
         let tokens = lex_line(line, 0).expect("top-library permission should lex");
         match super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens) {
-            Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+            Ok(Some(crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
                 player: crate::cards::builders::PlayerAst::You,
                 spec,
-                lifetime: super::super::PermissionLifetime::Static,
+                lifetime: crate::permission_helpers::PermissionLifetime::Static,
             })) => spec,
             parsed => panic!("expected a static top-library grant for {line:?}, got {parsed:?}"),
         }
@@ -2783,10 +2787,10 @@ pub(super) fn rewrite_lexed_permission_helpers_preserve_until_next_turn_flash_gr
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
-        Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+        Ok(Some(crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
             player: crate::cards::builders::PlayerAst::You,
             spec,
-            lifetime: super::super::PermissionLifetime::UntilYourNextTurn,
+            lifetime: crate::permission_helpers::PermissionLifetime::UntilYourNextTurn,
         })) if spec.filter.card_types == vec![CardType::Sorcery]
             && spec.zone == crate::zone::Zone::Hand
     ));
@@ -2822,10 +2826,10 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_temporary_graveyard_cast_gr
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
-        Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+        Ok(Some(crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
             player: crate::cards::builders::PlayerAst::You,
             spec,
-            lifetime: super::super::PermissionLifetime::ThisTurn,
+            lifetime: crate::permission_helpers::PermissionLifetime::ThisTurn,
         })) if spec.filter.card_types == vec![CardType::Creature]
             && spec.zone == crate::zone::Zone::Graveyard
     ));
@@ -2868,10 +2872,10 @@ pub(super) fn rewrite_lexed_permission_helpers_route_subject_filters_through_gra
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
-        Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+        Ok(Some(crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
             player: crate::cards::builders::PlayerAst::You,
             spec,
-            lifetime: super::super::PermissionLifetime::Static,
+            lifetime: crate::permission_helpers::PermissionLifetime::Static,
         })) if spec == crate::grant::GrantSpec::flash_to_spells_matching(
             crate::target::ObjectFilter {
                 card_types: vec![CardType::Creature],
@@ -2895,13 +2899,16 @@ pub(super) fn rewrite_lexed_permission_helpers_preserve_disjunctive_subject_filt
         .expect("permission clause should build a grant spec");
 
     match parsed {
-        super::super::PermissionClauseSpec::GrantBySpec {
+        crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
             player,
             spec,
             lifetime,
         } => {
             assert_eq!(player, crate::cards::builders::PlayerAst::You);
-            assert_eq!(lifetime, super::super::PermissionLifetime::Static);
+            assert_eq!(
+                lifetime,
+                crate::permission_helpers::PermissionLifetime::Static
+            );
             assert_eq!(spec.filter.any_of.len(), 2);
             assert!(
                 spec.filter
@@ -2934,13 +2941,16 @@ pub(super) fn rewrite_lexed_permission_helpers_preserve_conjunctive_artifact_cre
         .expect("permission clause should build a grant spec");
 
     match parsed {
-        super::super::PermissionClauseSpec::GrantBySpec {
+        crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
             player,
             spec,
             lifetime,
         } => {
             assert_eq!(player, crate::cards::builders::PlayerAst::You);
-            assert_eq!(lifetime, super::super::PermissionLifetime::Static);
+            assert_eq!(
+                lifetime,
+                crate::permission_helpers::PermissionLifetime::Static
+            );
             assert_eq!(spec.zone, crate::zone::Zone::Graveyard);
             assert_eq!(spec.filter.card_types, Vec::<CardType>::new());
             assert_eq!(
@@ -2963,10 +2973,10 @@ pub(super) fn rewrite_lexed_permission_helpers_route_free_cast_spell_filters_thr
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
-        Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+        Ok(Some(crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
             player: crate::cards::builders::PlayerAst::You,
             spec,
-            lifetime: super::super::PermissionLifetime::Static,
+            lifetime: crate::permission_helpers::PermissionLifetime::Static,
         })) if !spec.filter.has_mana_cost
             && spec.filter.card_types == vec![CardType::Creature]
             && spec.zone == crate::zone::Zone::Hand
@@ -3125,7 +3135,7 @@ pub(super) fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_
     )
     .expect("rewrite lexer should classify Counterpoint follow-up clause");
 
-    let token_words = crate::runtime_backend::token_word_refs(&tokens);
+    let token_words = crate::lexer::token_word_refs(&tokens);
     assert!(
         super::super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
             .expect("Counterpoint follow-up clause should not throw parser errors")
@@ -3346,14 +3356,16 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
-        Ok(Some(super::super::PermissionClauseSpec::Tagged {
-            player: crate::cards::builders::PlayerAst::You,
-            allow_land: true,
-            as_copy: false,
-            without_paying_mana_cost: false,
-            lifetime: super::super::PermissionLifetime::UntilYourNextTurn,
-            ..
-        }))
+        Ok(Some(
+            crate::permission_helpers::PermissionClauseSpec::Tagged {
+                player: crate::cards::builders::PlayerAst::You,
+                allow_land: true,
+                as_copy: false,
+                without_paying_mana_cost: false,
+                lifetime: crate::permission_helpers::PermissionLifetime::UntilYourNextTurn,
+                ..
+            }
+        ))
     ));
 }
 
@@ -3364,14 +3376,16 @@ pub(super) fn rewrite_lexed_permission_helpers_distinguish_next_end_step_from_ne
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
-        Ok(Some(super::super::PermissionClauseSpec::Tagged {
-            player: crate::cards::builders::PlayerAst::You,
-            allow_land: true,
-            as_copy: false,
-            without_paying_mana_cost: false,
-            lifetime: super::super::PermissionLifetime::UntilYourNextEndStep,
-            ..
-        }))
+        Ok(Some(
+            crate::permission_helpers::PermissionClauseSpec::Tagged {
+                player: crate::cards::builders::PlayerAst::You,
+                allow_land: true,
+                as_copy: false,
+                without_paying_mana_cost: false,
+                lifetime: crate::permission_helpers::PermissionLifetime::UntilYourNextEndStep,
+                ..
+            }
+        ))
     ));
 
     let effects = parse_effect_sentence_lexed(&tokens)
@@ -3400,11 +3414,13 @@ pub(super) fn rewrite_lexed_permission_helpers_keep_one_shared_play_for_tagged_p
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
-        Ok(Some(super::super::PermissionClauseSpec::Tagged {
-            lifetime: super::super::PermissionLifetime::UntilYourNextEndStep,
-            max_plays: Some(1),
-            ..
-        }))
+        Ok(Some(
+            crate::permission_helpers::PermissionClauseSpec::Tagged {
+                lifetime: crate::permission_helpers::PermissionLifetime::UntilYourNextEndStep,
+                max_plays: Some(1),
+                ..
+            }
+        ))
     ));
 
     let effects = parse_effect_sentence_lexed(&tokens)
@@ -3430,14 +3446,16 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
-        Ok(Some(super::super::PermissionClauseSpec::Tagged {
-            player: crate::cards::builders::PlayerAst::You,
-            allow_land: false,
-            as_copy: false,
-            without_paying_mana_cost: false,
-            lifetime: super::super::PermissionLifetime::UntilYourNextTurn,
-            ..
-        }))
+        Ok(Some(
+            crate::permission_helpers::PermissionClauseSpec::Tagged {
+                player: crate::cards::builders::PlayerAst::You,
+                allow_land: false,
+                as_copy: false,
+                without_paying_mana_cost: false,
+                lifetime: crate::permission_helpers::PermissionLifetime::UntilYourNextTurn,
+                ..
+            }
+        ))
     ));
 
     let effects = parse_effect_sentence_lexed(&tokens)
@@ -4083,11 +4101,11 @@ pub(super) fn rewrite_lexed_keyword_line_and_static_cost_probe_work_natively() {
         super::super::grammar::abilities::split_if_this_spell_costs_line_lexed(&cost_probe_tokens)
             .expect("grammar-owned this-spell cost splitter should match");
     assert_eq!(
-        crate::runtime_backend::token_word_refs(split.condition_tokens),
+        crate::lexer::token_word_refs(split.condition_tokens),
         vec!["it", "is", "night"],
     );
     assert_eq!(
-        crate::runtime_backend::token_word_refs(split.tail_tokens),
+        crate::lexer::token_word_refs(split.tail_tokens),
         vec!["this", "spell", "costs", "less", "to", "cast"],
     );
     assert!(matches!(
@@ -4239,10 +4257,9 @@ pub(super) fn flashback_keyword_accepts_non_mana_total_cost() {
     let flashback_tokens = lex_line("Flashback--Sacrifice three creatures", 0)
         .expect("rewrite lexer should classify non-mana flashback keyword line");
 
-    let parsed =
-        super::super::front_end::shared::util::parse_flashback_line_lexed(&flashback_tokens)
-            .expect("non-mana flashback should parse")
-            .expect("flashback line should be recognized");
+    let parsed = crate::util::parse_flashback_line_lexed(&flashback_tokens)
+        .expect("non-mana flashback should parse")
+        .expect("flashback line should be recognized");
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("Flashback"), "{debug}");
@@ -4342,13 +4359,11 @@ pub(super) fn jump_start_keyword_line_is_classified_as_alternative_cast() {
     .expect("rewrite lexer should classify jump-start keyword line");
 
     assert!(matches!(
-        super::super::families::keyword_families::parse_keyword_dispatch_hint(&tokens),
-        Some(
-            super::super::families::keyword_families::KeywordDispatchHint::AlternativeOrExertFamily
-        )
+        crate::keyword_families::parse_keyword_dispatch_hint(&tokens),
+        Some(crate::keyword_families::KeywordDispatchHint::AlternativeOrExertFamily)
     ));
 
-    let parsed = super::super::front_end::shared::util::parse_jump_start_line_lexed(&tokens)
+    let parsed = crate::util::parse_jump_start_line_lexed(&tokens)
         .expect("jump-start parse should not error")
         .expect("jump-start keyword line should parse");
     assert!(format!("{parsed:?}").contains("JumpStart"));
@@ -4430,7 +4445,7 @@ pub(super) fn rewrite_lower_routes_next_spell_cost_reduction_filters_through_gra
     let (doc, _) = parse_text_to_semantic_document(builder, text.to_string(), false).expect(
         "next-spell cost reduction should lower through the grammar-owned spell filter entrypoint",
     );
-    let parsed = super::super::pipeline::parse_semantic_document(doc)
+    let parsed = crate::compiler_pipeline::parse_semantic_document(doc)
         .expect("next-spell cost reduction should parse semantic items before preparation");
     let debug = format!("{parsed:?}");
 

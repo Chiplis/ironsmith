@@ -447,6 +447,20 @@ fn replace_names_with_map(
         first.span.start == local_start && last.span.end == local_start + len
     }
 
+    fn is_created_token_lifecycle_source(bytes: &[u8], idx: usize) -> bool {
+        let sentence_start = bytes[..idx]
+            .iter()
+            .rposition(|byte| matches!(*byte, b'.' | b';'))
+            .map_or(0, |separator| separator + 1);
+        let Some(prefix) = std::str::from_utf8(&bytes[sentence_start..idx]).ok() else {
+            return false;
+        };
+        let Ok(tokens) = lex_line(prefix, 0) else {
+            return false;
+        };
+        crate::lexer::parser_token_word_refs(&tokens).ends_with(&["exile", "that", "token", "when"])
+    }
+
     fn should_preserve_source_surface_context(bytes: &[u8], idx: usize, len: usize) -> bool {
         let prev = previous_word(bytes, idx);
         let next = next_word(bytes, idx + len);
@@ -457,6 +471,18 @@ fn replace_names_with_map(
                 .is_some_and(|byte| matches!(*byte, b's' | b'S'));
 
         if prev.is_some_and(|word| word == b"as") {
+            return false;
+        }
+
+        // The reciprocal created-token lifecycle is represented by a typed
+        // source-linked effect. Normalize the proper-name subject here so
+        // the lifecycle grammar sees the same source reference as ordinary
+        // `this ...` wording; the original source map still retains the
+        // authored name surface.
+        if prev == Some(&b"when"[..])
+            && next == Some(&b"leaves"[..])
+            && is_created_token_lifecycle_source(bytes, idx)
+        {
             return false;
         }
 
@@ -1087,15 +1113,14 @@ pub(crate) fn preprocess_document_with_provenance(
             matches!(
                 &line.kind,
                 crate::front_end::StructuralLineKind::ReminderOnly
-            )
-                && !line.nodes.iter().any(|node| {
-                    matches!(
-                        &node.kind,
-                        crate::front_end::StructuralNodeKind::ReminderText(
-                            ReminderTextDecision::TreatedAsRulesText
-                        )
+            ) && !line.nodes.iter().any(|node| {
+                matches!(
+                    &node.kind,
+                    crate::front_end::StructuralNodeKind::ReminderText(
+                        ReminderTextDecision::TreatedAsRulesText
                     )
-                })
+                )
+            })
         }) {
             continue;
         }
@@ -1358,6 +1383,22 @@ mod tests {
                 .first_printed_set_name
                 .as_deref(),
             Some("Antiquities")
+        );
+    }
+
+    #[test]
+    fn created_token_lifecycle_normalizes_named_source_after_token_name() {
+        let document = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Stangg"),
+            "Type: Creature\nWhen Stangg enters, create Stangg Twin, a legendary 3/4 creature token. Exile that token when Stangg leaves the battlefield. Sacrifice Stangg when that token leaves the battlefield.",
+        )
+        .expect("created-token lifecycle should preprocess");
+        let Some(PreprocessedItem::Line(line)) = document.items.get(1) else {
+            panic!("expected lifecycle line: {:#?}", document.items);
+        };
+        assert_eq!(
+            line.info.normalized.normalized,
+            "when stangg enters, create stangg twin, a legendary 3/4 creature token. exile that token when this leaves the battlefield. sacrifice this when that token leaves the battlefield."
         );
     }
 

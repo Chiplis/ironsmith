@@ -2,7 +2,7 @@ use super::*;
 use crate::CounterType;
 use crate::effect::{ChoiceCount, ValueComparisonOperator};
 use crate::filter::StackObjectKind;
-use crate::runtime_backend::front_end::lexer::lex_line;
+use crate::lexer::lex_line;
 
 const IF_WORD: &str = "if";
 
@@ -522,8 +522,7 @@ fn parse_predicate_demonstrative_permanent_spell_keeps_stack_domain() -> Result<
     assert_eq!(filter.stack_kind, Some(StackObjectKind::Spell));
     assert_eq!(
         filter.card_types,
-        crate::runtime_backend::front_end::grammar::permission_facts::subject_filters::permanent_spell_filter()
-            .card_types
+        crate::grammar::permission_facts::subject_filters::permanent_spell_filter().card_types
     );
     Ok(())
 }
@@ -3521,25 +3520,22 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
         assert_eq!(parsed, expected, "{text}");
     }
 
-    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-        "Sarulf, Realm Eater",
-        || {
-            let tokens = lex_line("If Sarulf has one or more +1/+1 counters on it", 0)?;
-            let predicate_tokens = predicate_tokens_after_if(&tokens);
+    crate::util::with_source_reference_context("Sarulf, Realm Eater", || {
+        let tokens = lex_line("If Sarulf has one or more +1/+1 counters on it", 0)?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
 
-            let parsed = parse_predicate(&predicate_tokens)?;
+        let parsed = parse_predicate(&predicate_tokens)?;
 
-            assert_eq!(
-                parsed,
-                PredicateAst::SourceHasCounterAtLeast {
-                    counter_type: CounterType::PlusOnePlusOne,
-                    count: 1,
-                    surface: crate::SourceCounterThresholdSurface::SourceHas,
-                }
-            );
-            Ok::<(), CardTextError>(())
-        },
-    )?;
+        assert_eq!(
+            parsed,
+            PredicateAst::SourceHasCounterAtLeast {
+                counter_type: CounterType::PlusOnePlusOne,
+                count: 1,
+                surface: crate::SourceCounterThresholdSurface::SourceHas,
+            }
+        );
+        Ok::<(), CardTextError>(())
+    })?;
     Ok(())
 }
 
@@ -3706,14 +3702,10 @@ fn parse_predicate_intervening_if_low_score_cohort_is_typed() {
     let failures = cases
         .into_iter()
         .filter_map(|(card_name, text)| {
-            let result =
-                crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-                    card_name,
-                    || {
-                        let tokens = lex_line(text, 0)?;
-                        parse_predicate(&tokens)
-                    },
-                );
+            let result = crate::util::with_source_reference_context(card_name, || {
+                let tokens = lex_line(text, 0)?;
+                parse_predicate(&tokens)
+            });
             result.err().map(|error| format!("{card_name}: {error}"))
         })
         .collect::<Vec<_>>();

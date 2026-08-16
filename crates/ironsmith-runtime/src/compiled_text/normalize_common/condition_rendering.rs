@@ -1003,7 +1003,7 @@ fn describe_behold_or_controlled_subtype_condition(
             return None;
         };
         let mut expected = ObjectFilter::default();
-        expected.subtypes.push(subtype.clone());
+        expected.subtypes.push(*subtype);
         if filter != &expected
             || label.discriminator.as_deref().is_some_and(|label_subtype| {
                 !label_subtype.eq_ignore_ascii_case(&subtype.to_string())
@@ -1887,10 +1887,17 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             let controller = object_filter.controller.take();
             let object = with_indefinite_article(strip_leading_article(&object_filter.description()));
             if let Some(controller) = controller {
-                format!(
-                    "{object} entered the battlefield under {} control this turn",
-                    describe_possessive_player_filter(&controller)
-                )
+                if filter.has_you_had_entry_surface() {
+                    format!(
+                        "you had {object} enter the battlefield under {} control this turn",
+                        describe_possessive_player_filter(&controller)
+                    )
+                } else {
+                    format!(
+                        "{object} entered the battlefield under {} control this turn",
+                        describe_possessive_player_filter(&controller)
+                    )
+                }
             } else {
                 format!("{object} entered the battlefield this turn")
             }
@@ -1901,10 +1908,17 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             let controller = object_filter.controller.take();
             let object = with_indefinite_article(strip_leading_article(&object_filter.description()));
             if let Some(controller) = controller {
-                format!(
-                    "{object} entered the battlefield under {} control last turn",
-                    describe_possessive_player_filter(&controller)
-                )
+                if filter.has_you_had_entry_surface() {
+                    format!(
+                        "you had {object} enter the battlefield under {} control last turn",
+                        describe_possessive_player_filter(&controller)
+                    )
+                } else {
+                    format!(
+                        "{object} entered the battlefield under {} control last turn",
+                        describe_possessive_player_filter(&controller)
+                    )
+                }
             } else {
                 format!("{object} entered the battlefield last turn")
             }
@@ -2667,7 +2681,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     && filter.zone.is_none()
                     && filter.controller.is_none()
                     && filter.owner.is_none()
-                    && filter.single_graveyard == false
+                    && !filter.single_graveyard
                     && filter.card_types.is_empty()
                     && filter.all_card_types.is_empty()
                     && filter.excluded_card_types.is_empty()
@@ -3566,6 +3580,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 Value::Fixed(1),
             ) = (left, operator, right)
             {
+                if *player == PlayerFilter::You {
+                    return format!(
+                        "you've cast {} this turn",
+                        describe_spell_cast_condition_object(filter)
+                    );
+                }
                 let subject = describe_player_filter(player);
                 return format!(
                     "{} {} cast {} this turn",
@@ -3585,11 +3605,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             ) = (left, operator, right)
                 && *count >= 2
             {
-                let subject = describe_player_filter(player);
                 let object = describe_spell_cast_condition_object(filter);
                 let objects = pluralize_relative_object_phrase(strip_indefinite_article(&object));
                 let count_text =
                     small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+                if *player == PlayerFilter::You {
+                    return format!("you've cast {count_text} or more {objects} this turn");
+                }
+                let subject = describe_player_filter(player);
                 return format!(
                     "{} {} cast {count_text} or more {objects} this turn",
                     subject,

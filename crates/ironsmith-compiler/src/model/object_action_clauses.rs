@@ -50,7 +50,7 @@ pub(crate) struct CompilerMovementClauseAst {
     pub replacement: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct CompilerCopyModificationsAst {
     pub set_colors: Option<ColorSet>,
     pub set_card_types: Option<Vec<CardType>>,
@@ -64,25 +64,6 @@ pub(crate) struct CompilerCopyModificationsAst {
     pub starting_loyalty: Option<u32>,
     pub has_haste: bool,
     pub loses_soulbond: bool,
-}
-
-impl Default for CompilerCopyModificationsAst {
-    fn default() -> Self {
-        Self {
-            set_colors: None,
-            set_card_types: None,
-            add_card_types: Vec::new(),
-            set_subtypes: None,
-            add_subtypes: Vec::new(),
-            remove_supertypes: Vec::new(),
-            set_base_power_toughness: None,
-            half_power_toughness_round_up: false,
-            set_power_toughness_to_source_totals: false,
-            starting_loyalty: None,
-            has_haste: false,
-            loses_soulbond: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

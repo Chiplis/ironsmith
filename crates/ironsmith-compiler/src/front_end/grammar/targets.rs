@@ -376,7 +376,7 @@ fn parse_word_phrase(
     expected: &[&'static str],
 ) -> WResult<()> {
     for word in expected {
-        primitives::word_slice_exact(*word)
+        primitives::word_slice_exact(word)
             .void()
             .parse_next(input)?;
     }
@@ -398,7 +398,7 @@ fn trim_comma_edges(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn words(tokens: &[OwnedLexToken]) -> Vec<&str> {
         TokenWordView::new(tokens).to_word_refs()

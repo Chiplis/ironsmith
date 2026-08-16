@@ -234,16 +234,15 @@ mod tests {
     fn test_giver_of_runes_targets_another_creature() {
         let def = giver_of_runes();
 
-        if let Some(ability) = def.abilities.first() {
-            if let AbilityKind::Activated(activated) = &ability.kind {
-                if let ChooseSpec::Object(filter) = &activated.choices[0] {
-                    // The filter should have the "other" flag set
-                    assert!(
-                        filter.other,
-                        "Giver of Runes should only target 'another' creature, not itself"
-                    );
-                }
-            }
+        if let Some(ability) = def.abilities.first()
+            && let AbilityKind::Activated(activated) = &ability.kind
+            && let ChooseSpec::Object(filter) = &activated.choices[0]
+        {
+            // The filter should have the "other" flag set
+            assert!(
+                filter.other,
+                "Giver of Runes should only target 'another' creature, not itself"
+            );
         }
     }
 

@@ -92,9 +92,7 @@ pub(crate) fn parse_carry_duration_prefix_tokens(
 pub(crate) fn parse_carryable_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CarryableSubjectShape> {
-    if crate::util::is_source_reference_words(
-        &TokenWordView::new(tokens).word_refs(),
-    ) {
+    if crate::util::is_source_reference_words(&TokenWordView::new(tokens).word_refs()) {
         return Some(CarryableSubjectShape::Source);
     }
     if leaf::parse_leaf_target_head_tokens(tokens)

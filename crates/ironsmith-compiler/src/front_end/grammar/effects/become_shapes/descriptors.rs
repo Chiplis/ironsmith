@@ -1,6 +1,6 @@
 use crate::color::ColorSet;
 use crate::effect::Value;
-use crate::front_end::lexer::{
+use crate::lexer::{
     OwnedLexToken, parser_token_word_positions, parser_token_word_refs, trim_lexed_commas,
 };
 use crate::types::{CardType, Subtype};
@@ -73,7 +73,7 @@ pub(crate) enum BecomeSimpleDescriptorShape {
 }
 
 fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {
-    if !items.iter().any(|existing| *existing == item) {
+    if !items.contains(&item) {
         items.push(item);
     }
 }
@@ -206,7 +206,7 @@ pub(crate) fn parse_become_creature_descriptor_words(
             return None;
         }
     }
-    if saw_subtype && !card_types.iter().any(|kind| *kind == CardType::Creature) {
+    if saw_subtype && !card_types.contains(&CardType::Creature) {
         card_types.insert(0, CardType::Creature);
     }
     if card_types.is_empty() && !saw_subtype {
@@ -442,7 +442,7 @@ pub(crate) fn parse_become_color_words(words: &[&str]) -> Option<ColorSet> {
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

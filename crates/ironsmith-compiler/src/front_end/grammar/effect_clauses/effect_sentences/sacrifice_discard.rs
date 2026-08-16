@@ -1,10 +1,10 @@
 use super::*;
 use crate::effect_sentences::parse_artifact_enchantment_or_token_filter;
-use crate::grammar::effects::sacrifice_discard_shapes as sacrifice_discard_grammar;
-use crate::grammar::filters::preserve_branch_scoped_card_type_union;
-use crate::sentences::effect_sentences::subject_verb_primitives::{
+use crate::effect_sentences::subject_verb_primitives::{
     SubjectVerbPrimitiveClause, rewrite_unless_cost_source_values_to_it_tag, try_build_unless,
 };
+use crate::grammar::effects::sacrifice_discard_shapes as sacrifice_discard_grammar;
+use crate::grammar::filters::preserve_branch_scoped_card_type_union;
 
 fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let discard_tokens = sacrifice_discard_grammar::parse_discard_alternative_shape(tokens)
@@ -33,9 +33,7 @@ fn parse_trailing_discard_unless_predicate(
             }
         };
     let predicate =
-        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
-            predicate_tokens,
-        )?;
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens)?;
     let discard =
         EffectAst::subject_verb_discard(player, count, false, any_number, discard_filter, None);
 
@@ -151,18 +149,14 @@ pub(crate) fn parse_sacrifice(
     subject: Option<SubjectAst>,
     target: Option<TargetAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let opponent_chooses_object =
-        crate::grammar::choices::parse_possessive_object_choice_tokens(
-            tokens,
-        )
-        .is_some_and(|shape| {
-            shape.actor
-                == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
-        });
+        crate::grammar::choices::parse_possessive_object_choice_tokens(tokens).is_some_and(
+            |shape| shape.actor == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent,
+        );
     let clause_shape = sacrifice_discard_grammar::parse_sacrifice_clause_shape(tokens);
     let tokens = clause_shape.body_tokens;
-    let normalized_words = crate::token_word_refs(tokens);
+    let normalized_words = crate::lexer::token_word_refs(tokens);
     let unless_escaped = matches!(
         clause_shape.unless_kind,
         sacrifice_discard_grammar::SacrificeUnlessKind::Escaped
@@ -173,7 +167,7 @@ pub(crate) fn parse_sacrifice(
             | sacrifice_discard_grammar::SacrificeUnlessKind::Escaped
     ) {
         let sacrifice_tokens = trim_commas(clause_shape.body_tokens);
-        let base = parse_sacrifice(&sacrifice_tokens, subject.clone(), target.clone())?;
+        let base = parse_sacrifice(&sacrifice_tokens, subject, target.clone())?;
         match clause_shape.unless_kind {
             sacrifice_discard_grammar::SacrificeUnlessKind::ManaSpent(symbol) => {
                 return Ok(EffectAst::Conditional {
@@ -261,10 +255,7 @@ pub(crate) fn parse_sacrifice(
             };
             Value::DividedRoundedDown(Box::new(basis), denominator)
         };
-        let tag = crate::util::helper_tag_for_tokens(
-            tokens,
-            "sacrificed",
-        );
+        let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
         return Ok(wrap_unless_escaped(
             EffectAst::Sequence {
                 effects: vec![
@@ -297,10 +288,7 @@ pub(crate) fn parse_sacrifice(
             )));
         }
         let filter = parse_object_filter_lexed(filter_tokens, false)?;
-        let tag = crate::util::helper_tag_for_tokens(
-            tokens,
-            "sacrificed",
-        );
+        let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
         return Ok(wrap_unless_escaped(
             EffectAst::Sequence {
                 effects: vec![
@@ -331,10 +319,7 @@ pub(crate) fn parse_sacrifice(
                     )));
                 }
                 let filter = parse_object_filter_lexed(filter_tokens, false)?;
-                let tag = crate::util::helper_tag_for_tokens(
-                    tokens,
-                    "sacrificed",
-                );
+                let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
                 return Ok(wrap_unless_escaped(
                     EffectAst::Sequence {
                         effects: vec![
@@ -397,10 +382,7 @@ pub(crate) fn parse_sacrifice(
                     Box::new(Value::Count(filter.clone())),
                     Box::new(Value::Fixed(-keep_count)),
                 );
-                let tag = crate::util::helper_tag_for_tokens(
-                    tokens,
-                    "sacrificed",
-                );
+                let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
                 return Ok(wrap_unless_escaped(
                     EffectAst::Sequence {
                         effects: vec![
@@ -487,7 +469,7 @@ pub(crate) fn parse_sacrifice(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing sacrifice object after chooser suffix (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
     let all_of_referenced_set = matches!(
@@ -526,7 +508,7 @@ pub(crate) fn parse_sacrifice(
     if filter.source && count != 1 {
         return Err(CardTextError::ParseError(format!(
             "source sacrifice only supports count 1 (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
     let excludes_attached_object =
@@ -549,10 +531,7 @@ pub(crate) fn parse_sacrifice(
         {
             filter.controller = Some(controller);
         }
-        let tag = crate::util::helper_tag_for_tokens(
-            tokens,
-            "sacrificed",
-        );
+        let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
         return Ok(wrap_unless_escaped(
             EffectAst::Sequence {
                 effects: vec![
@@ -615,7 +594,7 @@ pub(crate) fn parse_discard(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let clause_shape = sacrifice_discard_grammar::parse_discard_clause_shape(tokens).map_err(
         |error| match error {
             sacrifice_discard_grammar::DiscardShapeError::MissingCount => {
@@ -865,8 +844,8 @@ pub(crate) fn discard_subject_owner_filter(subject: Option<SubjectAst>) -> Optio
 #[cfg(test)]
 mod selected_sacrifice_tests {
     use super::*;
-    use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
+    use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
 
     #[test]
     fn opponent_choice_delegates_selection_without_changing_the_sacrificing_player() {

@@ -2,7 +2,11 @@ use std::ops::{Deref, DerefMut};
 
 use crate::effect::EffectId;
 use crate::filter::PlayerFilter;
-use crate::front_end::OwnedLexToken;
+// This model is still consumed by the legacy runtime-backend pipeline.  Keep
+// its source-token payload on that pipeline's lexer type until the lexer
+// extraction itself is complete; mixing it with the new public front-end
+// token creates two nominally distinct token graphs throughout lowering.
+use crate::lexer::OwnedLexToken;
 use crate::zone::Zone;
 
 use super::ast::PredicateAst;
@@ -35,7 +39,7 @@ pub(crate) struct LineSemanticFacts {
     pub(crate) triggered_ability: TriggeredLineSemanticFacts,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct StatementLineSemanticFacts {
     pub(crate) instead_followup: InsteadFollowupFacts,
     pub(crate) trailing_instead_if_predicate: Option<PredicateAst>,
@@ -45,21 +49,6 @@ pub(crate) struct StatementLineSemanticFacts {
     pub(crate) presentation_label: Option<crate::ability::PresentationLabel>,
     pub(crate) creature_type_choice_buff: bool,
     pub(crate) leading_condition_intro: Option<StatementConditionIntro>,
-}
-
-impl Default for StatementLineSemanticFacts {
-    fn default() -> Self {
-        Self {
-            instead_followup: InsteadFollowupFacts::default(),
-            trailing_instead_if_predicate: None,
-            replacement_surfaces: Vec::new(),
-            as_enters_effect_program: None,
-            as_transforms_effect_program: None,
-            presentation_label: None,
-            creature_type_choice_buff: false,
-            leading_condition_intro: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

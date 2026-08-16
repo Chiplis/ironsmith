@@ -1710,11 +1710,10 @@ fn resolve_filter_comparison_rhs_value(
         Value::DistinctPowers(filter) => {
             let mut seen = std::collections::HashSet::new();
             for object in game.objects_in_deterministic_order() {
-                if filter.matches(object, ctx, game) {
-                    if let Some(power) = game.calculated_power(object.id).or_else(|| object.power())
-                    {
-                        seen.insert(power);
-                    }
+                if filter.matches(object, ctx, game)
+                    && let Some(power) = game.calculated_power(object.id).or_else(|| object.power())
+                {
+                    seen.insert(power);
                 }
             }
             Some(seen.len() as i32)
@@ -2047,7 +2046,7 @@ impl PlayerFilterExt for PlayerFilter {
 
             PlayerFilter::You => ctx.you.is_some_and(|you| player == you),
 
-            PlayerFilter::NotYou => ctx.you.map_or(true, |you| player != you),
+            PlayerFilter::NotYou => ctx.you != Some(player),
 
             PlayerFilter::Opponent => ctx.opponents.contains(&player),
 
@@ -3607,10 +3606,10 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
-        if let Some(required_colors) = &self.colors {
-            if required_colors.intersection(object_colors).is_empty() {
-                return false;
-            }
+        if let Some(required_colors) = &self.colors
+            && required_colors.intersection(object_colors).is_empty()
+        {
+            return false;
         }
         if self.chosen_color {
             let Some(chosen_color) = ctx.source.and_then(|source| game.chosen_color(source)) else {
@@ -3870,10 +3869,9 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             }
         }
-        if self.in_combat_with_source {
-            if !object_is_in_combat_with_source_lki(game, ctx, object.id) {
-                return false;
-            }
+        if self.in_combat_with_source && !object_is_in_combat_with_source_lki(game, ctx, object.id)
+        {
+            return false;
         }
         if let Some(reference) = &self.in_combat_with {
             let partners = resolve_object_ref_ids(reference, ctx);
@@ -4810,10 +4808,10 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             }
         }
-        if self.in_combat_with_source {
-            if !object_is_in_combat_with_source_lki(game, ctx, snapshot.object_id) {
-                return false;
-            }
+        if self.in_combat_with_source
+            && !object_is_in_combat_with_source_lki(game, ctx, snapshot.object_id)
+        {
+            return false;
         }
         if let Some(reference) = &self.in_combat_with {
             let partners = resolve_object_ref_ids(reference, ctx);
@@ -5134,10 +5132,8 @@ impl ObjectFilterExt for ObjectFilter {
         };
 
         // Handle "other" modifier
-        if self.other {
-            if other_source_surface_text.is_none() {
-                parts.push("another".to_string());
-            }
+        if self.other && other_source_surface_text.is_none() {
+            parts.push("another".to_string());
         }
         if self.is_target_object {
             parts.push("target".to_string());
@@ -6111,7 +6107,7 @@ impl ObjectFilterExt for ObjectFilter {
                     Some(Zone::Battlefield) | None if self.is_commander => "commander",
                     Some(Zone::Battlefield) | None => "permanent",
                     Some(Zone::Stack) => {
-                        let kind = self.stack_kind.unwrap_or_else(|| {
+                        let kind = self.stack_kind.unwrap_or({
                             if self.has_mana_cost {
                                 StackObjectKind::Spell
                             } else {

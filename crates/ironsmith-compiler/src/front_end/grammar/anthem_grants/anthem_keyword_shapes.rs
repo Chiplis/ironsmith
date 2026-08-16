@@ -479,7 +479,7 @@ mod tests {
         let shape = parse_keyword_before_anthem_shape(&tokens, head).unwrap();
         assert!(!shape.subject_tokens.is_empty());
         assert_eq!(
-            crate::runtime_backend::lexer::parser_token_word_refs(shape.keyword_tokens),
+            crate::lexer::parser_token_word_refs(shape.keyword_tokens),
             ["first", "strike"]
         );
         assert_eq!(shape.anthem_tail_tokens[0].parser_text(), "gets");
@@ -557,7 +557,7 @@ mod tests {
         assert_eq!(split.ability_tokens.len(), 2);
         assert!(split.trailing_if_surface);
         assert_eq!(
-            crate::runtime_backend::lexer::parser_token_word_refs(split.condition_tokens),
+            crate::lexer::parser_token_word_refs(split.condition_tokens),
             [
                 "mana", "from", "an", "artifact", "was", "spent", "to", "cast", "it"
             ]

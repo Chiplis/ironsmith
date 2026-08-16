@@ -16,11 +16,6 @@ use super::super::util::{
     parse_subject, parse_target_phrase, record_source_reference_surface,
     source_reference_surface_for_words, span_from_tokens,
 };
-use crate::recognition::{ParseOutcome, RuleId, RuleMatch};
-use crate::registry::{
-    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
-};
-use crate::grammar::effects::typed_clause_heads::classify_typed_clause_head;
 use super::parse_restriction_duration;
 use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
@@ -30,6 +25,11 @@ use crate::cards::builders::{
     SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
+use crate::grammar::effects::typed_clause_heads::classify_typed_clause_head;
+use crate::recognition::{ParseOutcome, RuleId, RuleMatch};
+use crate::registry::{
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
+};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
@@ -122,9 +122,7 @@ pub(crate) fn parse_choose_new_targets_clause(
     let Some(split) = split_choose_new_targets_clause_lexed(tokens) else {
         return Ok(None);
     };
-    let plural_copy_reference = crate::token_word_refs(tokens)
-        .iter()
-        .any(|word| *word == "copies");
+    let plural_copy_reference = crate::lexer::token_word_refs(tokens).contains(&"copies");
     if split.reference_target {
         let reference_tag = match clause_shapes::parse_retarget_reference_shape(split.target_tokens)
         {
@@ -193,10 +191,10 @@ pub(crate) fn parse_change_target_clause(
     }
 
     if let Some((main_tokens, unless_tokens)) = split_change_target_unless_clause_lexed(tokens) {
-        let Some(inner) = parse_change_target_clause_inner(&main_tokens)? else {
+        let Some(inner) = parse_change_target_clause_inner(main_tokens)? else {
             return Ok(None);
         };
-        let (player, cost) = parse_unless_pays_clause(&unless_tokens)?;
+        let (player, cost) = parse_unless_pays_clause(unless_tokens)?;
         return Ok(Some(EffectAst::UnlessPays {
             effects: vec![inner],
             player,
@@ -272,20 +270,22 @@ pub(crate) fn parse_unless_pays_clause(
     let shape = parse_unless_pays_shape_tokens(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing typed unless-payment shape (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
     let player = match parse_subject(shape.player_tokens) {
         SubjectAst::Player(player) => player,
         _ => PlayerAst::Implicit,
     };
-    let cost = crate::families::activation_and_restrictions::parse_payment_clause_as_total_cost(shape.payment_tokens)?
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported unless-payment clause (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
-            ))
-        })?;
+    let cost = crate::activation_and_restrictions::parse_payment_clause_as_total_cost(
+        shape.payment_tokens,
+    )?
+    .ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported unless-payment clause (clause: '{}')",
+            crate::lexer::token_word_refs(tokens).join(" ")
+        ))
+    })?;
 
     Ok((player, cost))
 }
@@ -368,7 +368,7 @@ pub(crate) fn run_clause_primitives(
         ),
         ClausePrimitive::specific(
             "for-each-target-player-clause",
-            &["for"],
+            &["for", "any"],
             parse_for_each_target_players_clause,
         ),
         ClausePrimitive::specific(
@@ -481,7 +481,11 @@ pub(crate) fn run_clause_primitives(
             &[],
             parse_keyword_mechanic_clause,
         ),
-        ClausePrimitive::specific("connive-clause", &["connive", "target"], parse_connive_clause),
+        ClausePrimitive::specific(
+            "connive-clause",
+            &["connive", "target"],
+            parse_connive_clause,
+        ),
         ClausePrimitive::fallback(
             "choose-target-action-fallback",
             parse_choose_target_and_verb_clause,
@@ -522,6 +526,18 @@ pub(crate) fn run_clause_primitives(
                 )),
                 ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
             }
+        }
+        // The equal-to-power grammar is the typed specialization of the
+        // general anaphoric damage sentence and retains the correlated value
+        // source. Once it claims the complete clause, the generic anaphoric
+        // interpretation is not an independent semantic candidate.
+        if candidates
+            .iter()
+            .any(|candidate| candidate.metadata.id.as_str() == "damage-equal-power-clause")
+        {
+            candidates.retain(|candidate| {
+                candidate.metadata.id.as_str() != "anaphoric-object-damage-clause"
+            });
         }
         resolve_registry_candidates(
             RuleId::new("effect-clause-primitive-registry"),
@@ -1406,7 +1422,12 @@ pub(crate) fn parse_fight_clause(
                 effects: vec![EffectAst::subject_verb_fight_iterated(creature2)],
             }));
         }
-        parse_target_phrase(left_tokens)?
+        let left_words = crate::lexer::parser_token_word_refs(left_tokens);
+        if left_words.as_slice() == ["it"] || left_words.ends_with(&["you", "may", "have", "it"]) {
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(left_tokens))
+        } else {
+            parse_target_phrase(left_tokens)?
+        }
     } else {
         TargetAst::Source(None)
     };
@@ -1440,8 +1461,39 @@ pub(crate) fn parse_clash_clause(
 #[cfg(test)]
 mod result_subject_tests {
     use super::*;
-    use crate::runtime_backend::ast::SubjectVerbEffectAst;
+    use crate::model::ast::SubjectVerbEffectAst;
     use crate::types::CardType;
+
+    #[test]
+    fn registry_routes_any_number_target_players_each_to_the_typed_fanout() {
+        let tokens = crate::lexer::lex_line(
+            "Any number of target players each mill half their library, rounded down",
+            0,
+        )
+        .expect("lex target-player fanout");
+        let effect = run_clause_primitives(&tokens)
+            .expect("parse target-player fanout")
+            .expect("registry should claim target-player fanout");
+
+        assert!(matches!(
+            effect,
+            EffectAst::ForEachTargetPlayers {
+                count,
+                filter: PlayerFilter::Any,
+                effects,
+            } if count.is_any_number()
+                && matches!(
+                    effects.as_slice(),
+                    [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        subject: crate::model::ast::SubjectVerbSubjectAst {
+                            player: PlayerAst::That,
+                            ..
+                        },
+                        action: SubjectVerbActionAst::Mill { .. },
+                    })]
+                )
+        ));
+    }
 
     #[test]
     fn copy_retarget_keeps_authored_reference_number() {
@@ -1449,7 +1501,7 @@ mod result_subject_tests {
             ("You may choose new targets for the copy.", false),
             ("You may choose new targets for the copies.", true),
         ] {
-            let tokens = crate::runtime_backend::lex_line(text, 0).expect("lex copy retarget");
+            let tokens = crate::lexer::lex_line(text, 0).expect("lex copy retarget");
             let effect = parse_choose_new_targets_clause(&tokens)
                 .expect("parse copy retarget")
                 .expect("match copy retarget");
@@ -1468,7 +1520,7 @@ mod result_subject_tests {
 
     #[test]
     fn dealt_damage_this_way_attack_subject_keeps_result_tag() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each creature dealt damage this way attacks this turn if able.",
             0,
         )
@@ -1483,9 +1535,8 @@ mod result_subject_tests {
 
     #[test]
     fn named_source_damage_to_each_other_player_excludes_only_controller() {
-        let tokens =
-            crate::runtime_backend::lex_line("This spell deals 2 damage to each other player.", 0)
-                .expect("lex each-other-player damage");
+        let tokens = crate::lexer::lex_line("This spell deals 2 damage to each other player.", 0)
+            .expect("lex each-other-player damage");
         let effects = super::super::parse_effect_sentence_lexed(&tokens)
             .expect("parse damage sentence through the ordinary dispatcher");
 
@@ -1500,19 +1551,18 @@ mod result_subject_tests {
 
     #[test]
     fn named_source_excess_damage_keeps_source_and_damaged_target_identity() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Excess Herald deals damage equal to the excess to any target other than that permanent.",
             0,
         )
         .expect("lex named-source excess damage");
-        let effects =
-            crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
-                "Excess Herald",
-                &[CardType::Creature],
-                &[],
-                || super::super::parse_effect_sentence_lexed(&tokens),
-            )
-            .expect("parse named-source excess damage");
+        let effects = crate::util::with_card_source_reference_context(
+            "Excess Herald",
+            &[CardType::Creature],
+            &[],
+            || super::super::parse_effect_sentence_lexed(&tokens),
+        )
+        .expect("parse named-source excess damage");
 
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1541,7 +1591,7 @@ mod result_subject_tests {
 
     #[test]
     fn each_object_power_damage_preserves_the_source_set_as_an_iteration() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each creature with power 4 or greater you control deals damage equal to its power to that permanent.",
             0,
         )
@@ -1579,9 +1629,8 @@ mod result_subject_tests {
 
     #[test]
     fn additional_damage_pronoun_keeps_the_spell_or_ability_as_source() {
-        let tokens =
-            crate::runtime_backend::lex_line("It deals an additional 3 damage to that player.", 0)
-                .expect("lex additional damage");
+        let tokens = crate::lexer::lex_line("It deals an additional 3 damage to that player.", 0)
+            .expect("lex additional damage");
         let effect = parse_anaphoric_object_deals_damage_clause(&tokens)
             .expect("parse additional damage")
             .expect("match additional damage");
@@ -1600,7 +1649,7 @@ mod result_subject_tests {
 
     #[test]
     fn personal_pronoun_damage_keeps_the_authored_source_surface() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "She deals that much damage to target opponent or planeswalker.",
             0,
         )
@@ -1620,7 +1669,7 @@ mod result_subject_tests {
             panic!("expected source target: {source:#?}");
         };
         assert_eq!(
-            crate::runtime_backend::util::source_reference_surface_for_span(span),
+            crate::util::source_reference_surface_for_span(span),
             Some(crate::target::SourceReferenceSurface::ThisPermanentType(
                 "she".to_string()
             ))
@@ -1629,9 +1678,8 @@ mod result_subject_tests {
 
     #[test]
     fn demonstrative_land_damage_keeps_the_trigger_object_and_authored_noun() {
-        let tokens =
-            crate::runtime_backend::lex_line("That land deals 1 damage to that player.", 0)
-                .expect("lex demonstrative-land damage");
+        let tokens = crate::lexer::lex_line("That land deals 1 damage to that player.", 0)
+            .expect("lex demonstrative-land damage");
         let effect = parse_anaphoric_object_deals_damage_clause(&tokens)
             .expect("parse demonstrative-land damage")
             .expect("match demonstrative-land damage");
@@ -1651,7 +1699,7 @@ mod result_subject_tests {
         };
         assert_eq!(tag.as_str(), IT_TAG);
         assert_eq!(
-            crate::runtime_backend::util::source_reference_surface_for_span(span),
+            crate::util::source_reference_surface_for_span(span),
             Some(crate::target::SourceReferenceSurface::ThisPermanentType(
                 "that land".to_string()
             ))
@@ -1660,7 +1708,7 @@ mod result_subject_tests {
 
     #[test]
     fn combat_scoped_attack_or_block_requirement_does_not_become_a_prohibition() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Up to one target creature attacks or blocks this combat if able and up to one target creature can't attack or block this combat.",
             0,
         )

@@ -10,11 +10,14 @@ fn turn_history_player_subject(clause: LexedClause<'_>) -> Option<PlayerAst> {
         return Some(PlayerAst::You);
     }
     let words = clause.word_refs();
-    let subject_end = words
+    let subject_end = if words
         .last()
         .is_some_and(|word| matches!(*word, "has" | "have"))
-        .then_some(words.len().saturating_sub(1))
-        .unwrap_or(words.len());
+    {
+        words.len().saturating_sub(1)
+    } else {
+        words.len()
+    };
     comparison_player_subject_clause(clause.between_words_trimmed(0, subject_end))
 }
 
@@ -661,8 +664,7 @@ pub(super) fn player_ast_from_status_player_filter(player: PlayerFilter) -> Opti
 }
 
 pub(super) fn parse_player_status_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let status =
-        crate::grammar::conditions::parse_player_status_condition(tokens)?;
+    let status = crate::grammar::conditions::parse_player_status_condition(tokens)?;
     match status.status {
         crate::grammar::conditions::PlayerStatusAst::Monarch => {
             Some(PredicateAst::PlayerIsMonarch {
@@ -867,19 +869,18 @@ pub(super) fn parse_source_controllers_main_phase_predicate_shape(
 }
 
 pub(super) fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let achievement =
-        crate::grammar::conditions::parse_player_achievement_condition(tokens)?;
+    let achievement = crate::grammar::conditions::parse_player_achievement_condition(tokens)?;
     let player = player_ast_from_status_player_filter(achievement.player)?;
     let predicate = match achievement.achievement {
         crate::grammar::conditions::PlayerAchievementAst::CitysBlessing => {
             Some(PredicateAst::PlayerHasCitysBlessing { player })
         }
-        crate::grammar::conditions::PlayerAchievementAst::CompletedDungeon {
-            dungeon_name,
-        } => Some(PredicateAst::PlayerCompletedDungeon {
-            player,
-            dungeon_name,
-        }),
+        crate::grammar::conditions::PlayerAchievementAst::CompletedDungeon { dungeon_name } => {
+            Some(PredicateAst::PlayerCompletedDungeon {
+                player,
+                dungeon_name,
+            })
+        }
         crate::grammar::conditions::PlayerAchievementAst::FullParty => {
             if player == PlayerAst::You {
                 Some(PredicateAst::YouHaveFullParty)
@@ -921,9 +922,7 @@ pub(super) fn parse_player_cards_in_hand_predicate(
     }
 
     let condition =
-        crate::grammar::conditions::parse_player_cards_in_hand_condition(
-            &present_tokens,
-        )?;
+        crate::grammar::conditions::parse_player_cards_in_hand_condition(&present_tokens)?;
     let player_filter = condition.player.clone();
     let player = player_ast_from_status_player_filter(condition.player.clone())?;
 
@@ -1008,8 +1007,7 @@ pub(super) fn strip_at_beginning_this_turn_suffix_clause(
 }
 
 pub(super) fn parse_player_life_total_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let condition =
-        crate::grammar::conditions::parse_player_life_total_condition(tokens)?;
+    let condition = crate::grammar::conditions::parse_player_life_total_condition(tokens)?;
     let (operator, amount) = comparison_to_value_comparison_operator(condition.comparison)?;
     Some(PredicateAst::ValueComparison {
         left: crate::effect::Value::LifeTotal(condition.player),
@@ -1019,8 +1017,7 @@ pub(super) fn parse_player_life_total_predicate(tokens: &[OwnedLexToken]) -> Opt
 }
 
 pub(super) fn parse_player_life_tie_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let condition =
-        crate::grammar::conditions::parse_player_life_tie_condition(tokens)?;
+    let condition = crate::grammar::conditions::parse_player_life_tie_condition(tokens)?;
     Some(PredicateAst::ValueComparison {
         left: crate::effect::Value::CountPlayers(condition.tied_players),
         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -1031,8 +1028,7 @@ pub(super) fn parse_player_life_tie_predicate(tokens: &[OwnedLexToken]) -> Optio
 pub(super) fn parse_player_life_relation_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
-    let relation =
-        crate::grammar::conditions::parse_player_life_relation_condition(tokens)?;
+    let relation = crate::grammar::conditions::parse_player_life_relation_condition(tokens)?;
     let player = player_ast_from_status_player_filter(relation.player)?;
     match relation.relation {
         crate::grammar::conditions::PlayerLifeRelationAst::HasMoreLifeThanYou => {
@@ -1107,9 +1103,7 @@ pub(super) fn parse_player_cards_in_hand_relation_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let relation =
-        crate::grammar::conditions::parse_player_cards_in_hand_relation_condition(
-            tokens,
-        )?;
+        crate::grammar::conditions::parse_player_cards_in_hand_relation_condition(tokens)?;
     let player = player_ast_from_status_player_filter(relation.player)?;
     match relation.relation {
         crate::grammar::conditions::PlayerCardsInHandRelationAst::HasMoreCardsInHandThanYou => {
@@ -1122,8 +1116,7 @@ pub(super) fn parse_player_cards_in_hand_relation_predicate(
 }
 
 pub(super) fn parse_player_turn_event_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let condition =
-        crate::grammar::conditions::parse_player_turn_event_condition(tokens)?;
+    let condition = crate::grammar::conditions::parse_player_turn_event_condition(tokens)?;
     let (operator, count) = comparison_to_value_comparison_operator(condition.comparison)?;
     let mut left = match condition.event {
         crate::grammar::conditions::PlayerTurnEventAst::CardsDrawn => {
@@ -1132,15 +1125,10 @@ pub(super) fn parse_player_turn_event_predicate(tokens: &[OwnedLexToken]) -> Opt
         crate::grammar::conditions::PlayerTurnEventAst::LandsEnteredBattlefieldUnderControl => {
             if comparison_to_strict_at_least_threshold(&condition.comparison)
                 .is_some_and(|count| count <= 1)
-                || matches!(
-                    condition.comparison,
-                    crate::effect::Comparison::Equal(1)
-                )
+                || matches!(condition.comparison, crate::effect::Comparison::Equal(1))
             {
                 let player = player_ast_from_status_player_filter(condition.player)?;
-                return Some(PredicateAst::PlayerHadLandEnterBattlefieldThisTurn {
-                    player,
-                });
+                return Some(PredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player });
             }
             Value::LandsEnteredBattlefieldThisTurn(condition.player)
         }
@@ -1348,11 +1336,8 @@ pub(super) fn parse_controlled_creatures_total_power_predicate(
         .parse_next(&mut comparison_words)
         .ok()?;
     let clause_words = LexedClause::new(tokens).word_refs();
-    let Some((comparison, used)) =
-        parse_filter_comparison_tokens("power", comparison_words, &clause_words).ok()?
-    else {
-        return None;
-    };
+    let (comparison, used) =
+        parse_filter_comparison_tokens("power", comparison_words, &clause_words).ok()??;
     if used != comparison_words.len() {
         return None;
     }
@@ -1403,9 +1388,7 @@ pub(super) fn parse_value_reference_comparison_predicate(
             continue;
         }
         let Some((operator, right_tokens)) =
-            crate::grammar::values::parse_value_comparison_tokens(
-                &tokens[comparison_start..],
-            )
+            crate::grammar::values::parse_value_comparison_tokens(&tokens[comparison_start..])
         else {
             continue;
         };
@@ -1562,8 +1545,7 @@ pub(super) fn parse_no_vote_objects_matched_predicate(
 }
 
 pub(super) fn parse_spell_context_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let condition =
-        crate::grammar::conditions::parse_spell_context_condition(tokens)?;
+    let condition = crate::grammar::conditions::parse_spell_context_condition(tokens)?;
     match condition {
         crate::grammar::conditions::SpellContextConditionAst::ControllerIsPoisoned {
             ..
@@ -1581,9 +1563,7 @@ pub(super) fn parse_player_spell_cast_this_turn_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let condition =
-        crate::grammar::conditions::parse_player_spell_cast_this_turn_condition(
-            tokens,
-        )?;
+        crate::grammar::conditions::parse_player_spell_cast_this_turn_condition(tokens)?;
     match condition {
         crate::grammar::conditions::PlayerSpellCastThisTurnConditionAst::CountAtLeast {
             player,
@@ -1637,9 +1617,7 @@ pub(super) fn parse_player_life_change_this_turn_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let condition =
-        crate::grammar::conditions::parse_player_life_change_this_turn_condition(
-            tokens,
-        )?;
+        crate::grammar::conditions::parse_player_life_change_this_turn_condition(tokens)?;
     match condition.direction {
         crate::grammar::conditions::PlayerLifeChangeDirectionAst::Gained => {
             let count = comparison_to_strict_at_least_threshold(&condition.comparison)?;
@@ -1695,12 +1673,9 @@ pub(super) fn parse_player_descended_this_turn_predicate(
 pub(super) fn parse_object_death_this_turn_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let explicit_one_or_more = words.starts_with(&["one", "or", "more"]);
-    let condition =
-        crate::grammar::conditions::parse_object_death_this_turn_condition(
-            tokens,
-        )?;
+    let condition = crate::grammar::conditions::parse_object_death_this_turn_condition(tokens)?;
     match condition.event {
         crate::grammar::conditions::ObjectDeathThisTurnEventAst::Died => {
             let count = comparison_to_strict_at_least_threshold(&condition.comparison)?;
@@ -1733,8 +1708,7 @@ pub(super) fn parse_object_death_this_turn_predicate(
 pub(super) fn parse_player_would_action_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
-    let condition =
-        crate::grammar::conditions::parse_player_would_action_condition(tokens)?;
+    let condition = crate::grammar::conditions::parse_player_would_action_condition(tokens)?;
     let player = player_ast_from_status_player_filter(condition.player)?;
     match condition.action {
         crate::grammar::conditions::PlayerWouldActionAst::DrawCard => {
@@ -1750,8 +1724,7 @@ pub(super) fn parse_player_would_action_predicate(
 }
 
 pub(super) fn parse_battlefield_entry_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let condition =
-        crate::grammar::conditions::parse_battlefield_entry_condition(tokens)?;
+    let condition = crate::grammar::conditions::parse_battlefield_entry_condition(tokens)?;
     match condition {
         crate::grammar::conditions::BattlefieldEntryConditionAst::ObjectEntered {
             filter,
@@ -1786,9 +1759,7 @@ pub(super) fn parse_battlefield_change_this_turn_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let condition =
-        crate::grammar::conditions::parse_battlefield_change_this_turn_condition(
-            tokens,
-        )?;
+        crate::grammar::conditions::parse_battlefield_change_this_turn_condition(tokens)?;
     match condition {
         crate::grammar::conditions::BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield {
             negated,
@@ -2564,7 +2535,7 @@ pub(super) fn parse_named_spell_label_action_shape(
     action_phrase: &[&str],
     negated: bool,
 ) -> Option<PredicateAst> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let mut input: primitives::WordSliceInput<'_> = words.as_slice();
     if input
         .first()
@@ -2647,7 +2618,7 @@ pub(super) fn parse_mana_spent_capture_predicate(tokens: &[OwnedLexToken]) -> Op
         .or_else(|| parse_mana_symbol_spent_to_cast_shape(tokens))
         .or_else(|| {
             parse_same_color_mana_spent_to_cast_predicate(tokens)
-                .map(|amount| PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(amount))
+                .map(PredicateAst::SameColorManaSpentToCastThisSpellAtLeast)
         })
         .or_else(|| {
             parse_mana_spent_to_cast_predicate(tokens).map(|(amount, symbol)| {
@@ -3394,9 +3365,9 @@ pub(super) fn comparison_player_subject_clause(clause: LexedClause<'_>) -> Optio
             .is_some_and(|token| token_word_is(token, YOU_WORD))
     {
         Some(PlayerAst::You)
-    } else if surface::exact_any(clause, AN_OR_THE_OPPONENT_SUBJECT_PHRASES) {
-        Some(PlayerAst::Opponent)
-    } else if word_len == 1 && surface::exact_any(clause, OPPONENT_SUBJECT_PREFIXES) {
+    } else if surface::exact_any(clause, AN_OR_THE_OPPONENT_SUBJECT_PHRASES)
+        || (word_len == 1 && surface::exact_any(clause, OPPONENT_SUBJECT_PREFIXES))
+    {
         Some(PlayerAst::Opponent)
     } else if word_len == 1
         && clause

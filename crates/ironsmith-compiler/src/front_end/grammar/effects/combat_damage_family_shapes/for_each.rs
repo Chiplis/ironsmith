@@ -2,7 +2,7 @@ use winnow::combinator::alt;
 use winnow::prelude::*;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{OwnedLexToken, trim_lexed_commas};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ForEachCommaShape<'a> {
@@ -48,7 +48,7 @@ pub(crate) fn parse_for_each_this_way_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn captures_subject_and_effect_around_comma() {

@@ -1803,7 +1803,7 @@ mod tests {
         )
         .expect("attacker should be declared");
 
-        let missing_block = declare_blockers(&mut game, &mut combat.clone(), Vec::new());
+        let missing_block = declare_blockers(&game, &mut combat.clone(), Vec::new());
         assert_eq!(
             missing_block,
             Err(CombatError::NotEnoughBlockers {
@@ -1813,7 +1813,7 @@ mod tests {
             })
         );
 
-        declare_blockers(&mut game, &mut combat, vec![(blocker_id, attacker_id)])
+        declare_blockers(&game, &mut combat, vec![(blocker_id, attacker_id)])
             .expect("blocking the required attacker should satisfy the requirement");
     }
 
@@ -1842,7 +1842,7 @@ mod tests {
         )
         .expect("attacker should be declared");
 
-        declare_blockers(&mut game, &mut combat, Vec::new())
+        declare_blockers(&game, &mut combat, Vec::new())
             .expect("no block should be required when no creature can block");
     }
 
@@ -2583,7 +2583,7 @@ mod tests {
         .unwrap();
         set_attacking_band(&game, &mut combat, vec![bander, companion]).unwrap();
 
-        declare_blockers(&mut game, &mut combat, vec![(blocker, bander)]).unwrap();
+        declare_blockers(&game, &mut combat, vec![(blocker, bander)]).unwrap();
         assert_eq!(combat.blockers.get(&bander), Some(&vec![blocker]));
         assert_eq!(combat.blockers.get(&companion), Some(&vec![blocker]));
     }
@@ -2759,13 +2759,13 @@ mod tests {
 
         assert!(
             declare_blockers(
-                &mut game,
+                &game,
                 &mut combat.clone(),
                 vec![(outsider_blocker, attacker)],
             )
             .is_err()
         );
-        declare_blockers(&mut game, &mut combat, vec![(protector_blocker, attacker)])
+        declare_blockers(&game, &mut combat, vec![(protector_blocker, attacker)])
             .expect("the protector may block for the battle");
     }
 

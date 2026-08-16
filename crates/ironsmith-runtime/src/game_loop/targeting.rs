@@ -314,13 +314,13 @@ pub(super) fn queue_ability_activated_event(
         event_provenance,
     );
     queue_triggers_from_event(game, trigger_queue, event, true);
-    if is_mana_ability {
-        if matches!(
+    if is_mana_ability
+        && matches!(
             resolve_triggered_mana_abilities_with_dm(game, trigger_queue, decision_maker),
             Err(GameLoopError::MandatoryLoopDraw)
-        ) {
-            game.mark_mandatory_loop_draw();
-        }
+        )
+    {
+        game.mark_mandatory_loop_draw();
     }
 }
 
@@ -672,10 +672,10 @@ pub fn extract_target_spec(effect: &Effect) -> Option<ExtractedTarget<'_>> {
 }
 
 fn exchange_control_target_specs(effect: &Effect) -> Option<(ChooseSpec, ChooseSpec)> {
-    if let Some(exchange) = effect.downcast_ref::<crate::effects::ExchangeControlEffect>() {
-        if exchange.permanent1 != exchange.permanent2 {
-            return Some((exchange.permanent1.clone(), exchange.permanent2.clone()));
-        }
+    if let Some(exchange) = effect.downcast_ref::<crate::effects::ExchangeControlEffect>()
+        && exchange.permanent1 != exchange.permanent2
+    {
+        return Some((exchange.permanent1.clone(), exchange.permanent2.clone()));
     }
 
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
@@ -708,13 +708,12 @@ fn relaxed_exchange_later_target_spec(spec: &ChooseSpec) -> ChooseSpec {
             filter.tagged_constraints.clear();
             ChooseSpec::Object(filter)
         }
-        ChooseSpec::WithCount(inner, count) => ChooseSpec::WithCount(
-            Box::new(relaxed_exchange_later_target_spec(inner)),
-            count.clone(),
-        ),
+        ChooseSpec::WithCount(inner, count) => {
+            ChooseSpec::WithCount(Box::new(relaxed_exchange_later_target_spec(inner)), *count)
+        }
         ChooseSpec::WithCountValue(inner, count, value) => ChooseSpec::WithCountValue(
             Box::new(relaxed_exchange_later_target_spec(inner)),
-            count.clone(),
+            *count,
             value.clone(),
         ),
         _ => spec.clone(),
@@ -1976,11 +1975,11 @@ pub(super) fn specialize_iterated_player_choose_spec(
         }
         ChooseSpec::WithCount(inner, count) => ChooseSpec::WithCount(
             Box::new(specialize_iterated_player_choose_spec(inner, player)),
-            count.clone(),
+            *count,
         ),
         ChooseSpec::WithCountValue(inner, count, value) => ChooseSpec::WithCountValue(
             Box::new(specialize_iterated_player_choose_spec(inner, player)),
-            count.clone(),
+            *count,
             value.clone(),
         ),
         _ => spec.clone(),

@@ -5,13 +5,16 @@
 //! now have a real home in `ironsmith-compiler`.
 
 pub mod cst_primitives;
-pub mod document_structure;
 pub mod document_cst;
+pub mod document_structure;
 pub mod lexer;
 pub mod parser_support;
 pub mod preprocess;
 pub mod source_model;
 pub mod token_utils;
+
+pub(crate) use crate::grammar;
+pub(crate) mod semantic_domain_migration;
 
 pub use cst_primitives::{
     KeywordLineCst, KeywordLineKindCst, MetadataLineCst, StatementLineCst, StaticLineCst,

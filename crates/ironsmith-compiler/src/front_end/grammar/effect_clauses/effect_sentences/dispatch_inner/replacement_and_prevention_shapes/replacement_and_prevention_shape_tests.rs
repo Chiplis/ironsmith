@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn look_top_then_exile_one_uses_captured_count_owner_and_followup() {
-    let tokens = crate::runtime_backend::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Look at the top three cards of your library, then exile one of those cards.",
         0,
     )
@@ -21,7 +21,7 @@ fn look_top_then_exile_one_uses_captured_count_owner_and_followup() {
 
 #[test]
 fn exile_then_return_same_object_uses_captured_clauses_and_counter_followup() {
-    let tokens = crate::runtime_backend::lex_line(
+    let tokens = crate::lexer::lex_line(
         "You may exile target artifact or creature, then return it to the battlefield under its owner's control with a +1/+1 counter on it.",
         0,
     )
@@ -40,7 +40,7 @@ fn exile_then_return_same_object_uses_captured_clauses_and_counter_followup() {
 
 #[test]
 fn exile_then_face_down_return_keeps_the_same_object_link() {
-    let tokens = crate::runtime_backend::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Exile this creature, then return it to the battlefield face down under its owner's control.",
         0,
     )
@@ -60,7 +60,7 @@ fn exile_then_face_down_return_keeps_the_same_object_link() {
 
 #[test]
 fn source_exile_then_return_at_end_of_combat_stays_delayed() {
-    let tokens = crate::runtime_backend::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Exile it at end of combat, then return it to the battlefield transformed under your control.",
         0,
     )
@@ -81,13 +81,13 @@ fn source_exile_then_return_at_end_of_combat_stays_delayed() {
 
 #[test]
 fn token_end_of_combat_recognizer_uses_captured_verb_object_and_timing() {
-    let exile_tokens = crate::runtime_backend::lex_line("Exile those tokens at end of combat.", 0)
+    let exile_tokens = crate::lexer::lex_line("Exile those tokens at end of combat.", 0)
         .expect("exile token end-combat text should lex");
     assert!(is_exile_that_token_at_end_of_combat(&exile_tokens));
     assert!(!is_sacrifice_that_token_at_end_of_combat(&exile_tokens));
 
     let sacrifice_tokens =
-        crate::runtime_backend::lex_line("Sacrifice it at the end of combat.", 0)
+        crate::lexer::lex_line("Sacrifice it at the end of combat.", 0)
             .expect("sacrifice token end-combat text should lex");
     assert!(is_sacrifice_that_token_at_end_of_combat_lexed(
         &sacrifice_tokens
@@ -99,15 +99,15 @@ fn token_end_of_combat_recognizer_uses_captured_verb_object_and_timing() {
 
 #[test]
 fn extra_turn_parser_uses_captured_subject_action_and_anchor() {
-    let you_tokens = crate::runtime_backend::lex_line("Take an extra turn after this one.", 0)
+    let you_tokens = crate::lexer::lex_line("Take an extra turn after this one.", 0)
         .expect("you extra-turn text should lex");
-    let chosen_tokens = crate::runtime_backend::lex_line(
+    let chosen_tokens = crate::lexer::lex_line(
         "The chosen player takes an extra turn after this one.",
         0,
     )
     .expect("chosen-player extra-turn text should lex");
     let that_tokens =
-        crate::runtime_backend::lex_line("After that turn, that player takes an extra turn.", 0)
+        crate::lexer::lex_line("After that turn, that player takes an extra turn.", 0)
             .expect("that-player referenced-turn text should lex");
 
     let you_effect = parse_take_extra_turn_sentence(&you_tokens)
@@ -131,17 +131,17 @@ fn extra_turn_parser_uses_captured_subject_action_and_anchor() {
 
 #[test]
 fn additional_phase_parser_uses_captured_count_and_tail() {
-    let one_combat_tokens = crate::runtime_backend::lex_line(
+    let one_combat_tokens = crate::lexer::lex_line(
         "After this phase, there is an additional combat phase.",
         0,
     )
     .expect("single additional combat text should lex");
-    let two_combat_tokens = crate::runtime_backend::lex_line(
+    let two_combat_tokens = crate::lexer::lex_line(
         "After this main phase, there are two additional combat phases.",
         0,
     )
     .expect("two additional combats text should lex");
-    let combat_main_tokens = crate::runtime_backend::lex_line(
+    let combat_main_tokens = crate::lexer::lex_line(
         "After this main phase, there is an additional combat phase followed by an additional main phase.",
         0,
     )
@@ -164,14 +164,14 @@ fn additional_phase_parser_uses_captured_count_and_tail() {
 
 #[test]
 fn look_at_hand_parser_uses_captured_player_and_followup() {
-    let target_player_tokens = crate::runtime_backend::lex_line("Look at target player's hand.", 0)
+    let target_player_tokens = crate::lexer::lex_line("Look at target player's hand.", 0)
         .expect("target-player hand text should lex");
-    let opponent_choose_tokens = crate::runtime_backend::lex_line(
+    let opponent_choose_tokens = crate::lexer::lex_line(
         "Look at an opponent's hand, then choose any card name.",
         0,
     )
     .expect("opponent choose-name hand text should lex");
-    let iterated_tokens = crate::runtime_backend::lex_line("Look at that player's hand.", 0)
+    let iterated_tokens = crate::lexer::lex_line("Look at that player's hand.", 0)
         .expect("iterated-player hand text should lex");
 
     let target_player = parse_look_at_hand_sentence(&target_player_tokens)
@@ -194,7 +194,7 @@ fn look_at_hand_parser_uses_captured_player_and_followup() {
 
 #[test]
 fn voted_with_you_scry_parser_uses_captured_count() {
-    let tokens = crate::runtime_backend::lex_line(
+    let tokens = crate::lexer::lex_line(
         "You and each opponent who voted for a choice you voted for may scry 2.",
         0,
     )
@@ -214,7 +214,7 @@ fn voted_with_you_scry_parser_uses_captured_count() {
 
 #[test]
 fn for_each_counter_removed_uses_captured_subject_action_and_modifier() {
-    let tokens = crate::runtime_backend::lex_line(
+    let tokens = crate::lexer::lex_line(
         "For each counter removed this way, this creature gets +1/+0 until end of turn.",
         0,
     )
@@ -233,7 +233,7 @@ fn for_each_counter_removed_uses_captured_subject_action_and_modifier() {
 
 #[test]
 fn counter_removed_result_shapes_route_before_generic_object_iteration() {
-    let pump_tokens = crate::runtime_backend::lex_line(
+    let pump_tokens = crate::lexer::lex_line(
         "For each counter removed this way, this creature gets +1/+0 until end of turn.",
         0,
     )
@@ -243,7 +243,7 @@ fn counter_removed_result_shapes_route_before_generic_object_iteration() {
     let pump_debug = format!("{pump:#?}");
     assert!(pump_debug.contains("PumpByLastEffect"), "{pump_debug}");
 
-    let grouped_tokens = crate::runtime_backend::lex_line(
+    let grouped_tokens = crate::lexer::lex_line(
         "For each five counters removed this way, take an extra turn after this one.",
         0,
     )
@@ -261,7 +261,7 @@ fn counter_removed_result_shapes_route_before_generic_object_iteration() {
 
 #[test]
 fn typed_for_each_result_shapes_route_before_generic_object_iteration() {
-    let prevention_tokens = crate::runtime_backend::lex_line(
+    let prevention_tokens = crate::lexer::lex_line(
         "For each attacking red creature, prevent all combat damage that would be dealt by that creature this turn unless its controller pays {2}{R}.",
         0,
     )
@@ -286,7 +286,7 @@ fn typed_for_each_result_shapes_route_before_generic_object_iteration() {
         "{prevention_debug}"
     );
 
-    let graveyard_tokens = crate::runtime_backend::lex_line(
+    let graveyard_tokens = crate::lexer::lex_line(
         "For each permanent put into a graveyard this way, its controller creates a 3/3 green Elephant creature token.",
         0,
     )
@@ -303,7 +303,7 @@ fn typed_for_each_result_shapes_route_before_generic_object_iteration() {
 
 #[test]
 fn destroy_all_split_uses_captured_verb_and_object_tail() {
-    let tokens = crate::runtime_backend::lex_line("Destroy all artifacts and enchantments.", 0)
+    let tokens = crate::lexer::lex_line("Destroy all artifacts and enchantments.", 0)
         .expect("destroy-all split text should lex");
 
     let effects = parse_destroy_or_exile_all_split_sentence(&tokens)
@@ -320,7 +320,7 @@ fn destroy_all_split_uses_captured_verb_and_object_tail() {
 
 #[test]
 fn public_split_exile_scopes_types_away_from_requantified_bare_card_domains() {
-    let tokens = crate::runtime_backend::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Exile all artifacts, creatures, and lands from the battlefield, all cards from all graveyards, and all cards from all hands.",
         0,
     )
@@ -363,7 +363,7 @@ fn public_split_exile_scopes_types_away_from_requantified_bare_card_domains() {
 
 #[test]
 fn repeated_all_or_branches_remain_a_resolution_choice() {
-    let tokens = crate::runtime_backend::lex_line("Destroy all lands or all creatures.", 0)
+    let tokens = crate::lexer::lex_line("Destroy all lands or all creatures.", 0)
         .expect("destroy-all alternative text should lex");
 
     let effects = parse_destroy_or_exile_all_split_sentence(&tokens)
@@ -391,7 +391,7 @@ fn repeated_all_or_branches_remain_a_resolution_choice() {
 
 #[test]
 fn destroy_all_split_preserves_branch_scoped_collection_surface() {
-    let tokens = crate::runtime_backend::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Destroy all other enchantments you control, all other Auras attached to permanents you control, and all other Auras attached to attacking creatures your opponents control.",
         0,
     )
@@ -417,7 +417,7 @@ fn destroy_all_split_preserves_branch_scoped_collection_surface() {
         "{filter:#?}"
     );
 
-    let then_tokens = crate::runtime_backend::lex_line(
+    let then_tokens = crate::lexer::lex_line(
         "Then destroy all other enchantments you control, all other Auras attached to permanents you control, and all other Auras attached to attacking creatures your opponents control.",
         0,
     )
@@ -447,14 +447,14 @@ fn destroy_all_split_preserves_branch_scoped_collection_surface() {
 #[test]
 fn destroy_all_split_exclusions_use_clause_and_zone_captures() {
     let except_tokens =
-        crate::runtime_backend::lex_line("Destroy all creatures except Elves and Goblins.", 0)
+        crate::lexer::lex_line("Destroy all creatures except Elves and Goblins.", 0)
             .expect("except split text should lex");
-    let temporary_exile_tokens = crate::runtime_backend::lex_line(
+    let temporary_exile_tokens = crate::lexer::lex_line(
         "Exile all creatures and planeswalkers until this enchantment leaves the battlefield.",
         0,
     )
     .expect("temporary exile split text should lex");
-    let multi_zone_tokens = crate::runtime_backend::lex_line(
+    let multi_zone_tokens = crate::lexer::lex_line(
         "Exile all cards from target player's graveyard and hand.",
         0,
     )
@@ -480,7 +480,7 @@ fn destroy_all_split_exclusions_use_clause_and_zone_captures() {
 #[test]
 fn monstrosity_uses_captured_amount() {
     let tokens =
-        crate::runtime_backend::lex_line("Monstrosity 3.", 0).expect("monstrosity text should lex");
+        crate::lexer::lex_line("Monstrosity 3.", 0).expect("monstrosity text should lex");
 
     let effect = parse_monstrosity_sentence(&tokens)
         .expect("monstrosity parser should not error")
@@ -493,7 +493,7 @@ fn monstrosity_uses_captured_amount() {
 
 #[test]
 fn exile_up_to_one_each_target_type_uses_captured_target_clauses() {
-    let tokens = crate::runtime_backend::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Exile up to one target artifact, up to one target creature, and up to one target enchantment.",
         0,
     )

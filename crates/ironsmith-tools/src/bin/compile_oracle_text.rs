@@ -664,7 +664,7 @@ mod tests {
 
     #[test]
     fn show_definition_defaults_on() {
-        assert!(DEFAULT_SHOW_DEFINITION);
+        assert!(std::hint::black_box(DEFAULT_SHOW_DEFINITION));
     }
 
     #[test]

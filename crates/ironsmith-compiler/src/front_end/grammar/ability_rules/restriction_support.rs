@@ -76,13 +76,13 @@ pub(crate) fn apply_pending_activation_restriction(
 
     let mut timing_applied = false;
     if let Some(parsed_timing) = restriction.timing.as_ref() {
-        let merged_timing = merge_activation_timing(&ability.timing, parsed_timing.clone());
+        let merged_timing = merge_activation_timing(&ability.timing, *parsed_timing);
         timing_applied = &merged_timing == parsed_timing;
         ability.timing = merged_timing;
         if !timing_applied {
             push_restriction_condition(
                 ability,
-                crate::ConditionExpr::ActivationTiming(parsed_timing.clone()),
+                crate::ConditionExpr::ActivationTiming(*parsed_timing),
             );
         }
     }
@@ -135,7 +135,7 @@ pub(crate) fn apply_pending_mana_restriction(
 ) {
     apply_mana_restriction_facts(
         ability,
-        restriction.timing.clone(),
+        restriction.timing,
         restriction.condition.clone(),
         restriction.usage_restriction.clone(),
     );
@@ -165,7 +165,7 @@ fn apply_pending_activation_restriction_to_mana_ability(
 ) {
     apply_mana_restriction_facts(
         ability,
-        restriction.timing.clone().unwrap_or_default(),
+        restriction.timing.unwrap_or_default(),
         restriction.condition.clone(),
         restriction.mana_usage_restriction.clone(),
     );
@@ -186,7 +186,7 @@ fn apply_mana_restriction_facts(
     }
 
     let condition_with_timing = condition
-        .map(|condition| combine_mana_activation_condition(Some(condition), timing.clone()))
+        .map(|condition| combine_mana_activation_condition(Some(condition), timing))
         .unwrap_or_else(|| combine_mana_activation_condition(None, timing));
 
     let existing = ability.activation_condition.take();
@@ -199,10 +199,10 @@ fn merge_activation_timing(
     next: ActivationTiming,
 ) -> ActivationTiming {
     match (existing, &next) {
-        (current, ActivationTiming::AnyTime) => current.clone(),
+        (current, ActivationTiming::AnyTime) => *current,
         (ActivationTiming::AnyTime, _) => next,
-        (current, next_timing) if current == next_timing => current.clone(),
-        (current, _) => current.clone(),
+        (current, next_timing) if current == next_timing => *current,
+        (current, _) => *current,
     }
 }
 

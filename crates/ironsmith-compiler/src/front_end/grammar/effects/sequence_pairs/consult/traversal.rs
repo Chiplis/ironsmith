@@ -3,12 +3,8 @@ use winnow::token::any;
 
 use crate::cards::builders::{LibraryConsultModeAst, LibraryConsultStopRuleAst};
 use crate::effect::{EventValueSpec, Value};
-use crate::grammar::{
-    leaf, permission_shapes, primitives, sentence_markers, values,
-};
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, TokenKind, TokenWordView,
-};
+use crate::grammar::{leaf, permission_shapes, primitives, sentence_markers, values};
+use crate::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView};
 
 use super::super::{
     ends_content_sequence, seek_sequence_phrase, sequence_any_phrase, sequence_phrase,
@@ -104,7 +100,9 @@ fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     .map(|(_, rest)| trim_commas(rest))
     .unwrap_or(value_tokens);
     let words = TokenWordView::new(value_tokens).word_refs();
-    if let Some(value) = crate::grammar::shared_util::value_helper_shapes::parse_aggregate_scope_value_words(&words) {
+    if let Some(value) =
+        crate::grammar::shared_util::value_helper_shapes::parse_aggregate_scope_value_words(&words)
+    {
         return Some(value);
     }
     let (value, used) = values::parse_value_prefix_lexed(value_tokens)?;

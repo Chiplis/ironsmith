@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::lexer::lex_line;
+use crate::lexer::lex_line;
 
 fn parse_coordinated(text: &str) -> Vec<EffectAst> {
     let tokens = lex_line(text, 0).expect("fixture should lex");

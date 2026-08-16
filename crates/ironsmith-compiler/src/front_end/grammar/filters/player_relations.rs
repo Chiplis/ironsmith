@@ -1682,8 +1682,8 @@ pub(super) fn is_name_clause_boundary(word: &str) -> bool {
 
 pub(super) fn find_name_clause_end(all_words: &[&str], name_start: usize) -> usize {
     let mut name_end = all_words.len();
-    for idx in (name_start + 1)..all_words.len() {
-        if is_name_clause_boundary(all_words[idx]) {
+    for (idx, word) in all_words.iter().enumerate().skip(name_start + 1) {
+        if is_name_clause_boundary(word) {
             name_end = idx;
             break;
         }
@@ -1826,9 +1826,8 @@ mod tests {
             "that opponent or that planeswalker's controller",
             "that player or that planeswalker's controller",
         ] {
-            let tokens =
-                crate::runtime_backend::lex_line(&format!("creatures {subject} controls"), 0)
-                    .expect("controller-relative object filter should lex");
+            let tokens = crate::lexer::lex_line(&format!("creatures {subject} controls"), 0)
+                .expect("controller-relative object filter should lex");
             let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
                 .expect("controller-relative object filter should parse");
 

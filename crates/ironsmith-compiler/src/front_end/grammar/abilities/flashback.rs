@@ -3,8 +3,8 @@ use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 use winnow::token::rest;
 
-use crate::mana::ManaCost;
 use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
+use crate::mana::ManaCost;
 
 use super::super::{leaf, primitives};
 
@@ -76,7 +76,7 @@ fn parse_flashback_cost_clause<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn parses_grouped_flashback_cost_and_tail() {

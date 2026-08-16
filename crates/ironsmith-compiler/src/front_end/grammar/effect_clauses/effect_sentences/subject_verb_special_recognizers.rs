@@ -7,9 +7,9 @@ use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexe
 use crate::cards::builders::{CardTextError, ChoiceCount, EffectAst};
 use crate::cards::builders::{IT_TAG, PlayerAst, TagKey, Value};
 use crate::effect::{EventValueSpec, Until};
+use crate::model::ast::{SubjectVerbActionAst, SubjectVerbRoleAst};
 use crate::recognition::RuleId;
 use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
-use crate::model::ast::{SubjectVerbActionAst, SubjectVerbRoleAst};
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::types::CardType;
 
@@ -17,7 +17,7 @@ pub(crate) fn parse_keyword_bundle_pump_sentence(
     tokens: &[crate::lexer::OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let shape = shapes::parse_keyword_bundle_pump_shape(tokens).map_err(|error| {
-        let clause = crate::token_word_refs(tokens).join(" ");
+        let clause = crate::lexer::token_word_refs(tokens).join(" ");
         match error {
             shapes::KeywordBundleShapeError::UnsupportedAbility => CardTextError::ParseError(
                 format!("unsupported keyword-bundle ability in gets clause: '{clause}'"),

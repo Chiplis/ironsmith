@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use crate::cards::builders::CardTextError;
 use crate::effect::{Until, Value};
 use crate::grammar::{leaf, primitives};
-use crate::front_end::lexer::{OwnedLexToken, render_token_slice};
+use crate::lexer::{OwnedLexToken, render_token_slice};
 use crate::util::trim_edge_punctuation_tokens;
 
 #[derive(Debug, Clone)]
@@ -23,9 +23,7 @@ pub(crate) struct BasePowerToughnessClauseShape<'a> {
     pub(crate) where_x_tokens: Option<&'a [OwnedLexToken]>,
 }
 
-fn has_or_have<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
-) -> winnow::error::ModalResult<()> {
+fn has_or_have<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
     alt((primitives::kw("has"), primitives::kw("have")))
         .void()
         .parse_next(input)
@@ -243,7 +241,7 @@ pub(crate) fn parse_base_power_toughness_clause_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_typed_base_characteristics() {

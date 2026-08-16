@@ -29,6 +29,17 @@ pub fn plan_mana_payment(
     ManaPaymentPlanner::default().plan(game, request)
 }
 
+/// Return the first legal proposal discovered by the planner's ordered search.
+///
+/// This is intended for latency-sensitive previews. Callers that need the
+/// best bounded-search result should continue to use [`plan_mana_payment`].
+pub fn plan_first_mana_payment(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
+    ManaPaymentPlanner::default().first_plan(game, request)
+}
+
 /// Legal source-level controls the client may use to constrain replanning.
 pub fn mana_payment_source_inventory(
     game: &GameState,
@@ -196,6 +207,26 @@ impl ManaPaymentPlanner {
         game: &GameState,
         request: &ManaPaymentRequest,
     ) -> Result<Vec<ManaPaymentPlan>, ManaPaymentFailure> {
+        self.plan_internal(game, request, false)
+    }
+
+    pub fn first_plan(
+        mut self,
+        game: &GameState,
+        request: &ManaPaymentRequest,
+    ) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
+        self.plan_internal(game, request, true)?
+            .into_iter()
+            .next()
+            .ok_or(ManaPaymentFailure::NoLegalPlan)
+    }
+
+    fn plan_internal(
+        &mut self,
+        game: &GameState,
+        request: &ManaPaymentRequest,
+        stop_after_first: bool,
+    ) -> Result<Vec<ManaPaymentPlan>, ManaPaymentFailure> {
         let player = game
             .player(request.payer)
             .ok_or(ManaPaymentFailure::MissingPlayer)?;
@@ -280,7 +311,12 @@ impl ManaPaymentPlanner {
                     .saturating_add(MAX_EXTRA_ACTIVATIONS)
                     .max(payment_request.preferences.required_activations.len())
                     .max(1);
-                let found = self.search_candidates(staged, &payment_request, depth_limit)?;
+                let found = self.search_candidates(
+                    staged,
+                    &payment_request,
+                    depth_limit,
+                    stop_after_first,
+                )?;
                 if found.is_empty() {
                     continue;
                 }
@@ -302,9 +338,12 @@ impl ManaPaymentPlanner {
                     pool_after,
                     steps,
                 ));
-                if plans.len() >= MAX_TOTAL_PLANS {
+                if stop_after_first || plans.len() >= MAX_TOTAL_PLANS {
                     break;
                 }
+            }
+            if stop_after_first && !plans.is_empty() {
+                break;
             }
         }
         plans.sort_by_key(|plan| plan.score);
@@ -319,6 +358,7 @@ impl ManaPaymentPlanner {
         game: GameState,
         request: &ManaPaymentRequest,
         depth_limit: usize,
+        stop_after_first: bool,
     ) -> Result<Vec<(GameState, Vec<PlannedManaActivation>)>, ManaPaymentFailure> {
         let mut queue = VecDeque::from([(game, Vec::<SearchStep>::new())]);
         let mut seen_safe_states = HashSet::new();
@@ -342,11 +382,15 @@ impl ManaPaymentPlanner {
                     .iter()
                     .map(|step| step.activation.clone())
                     .collect::<Vec<_>>();
-                out.push((
-                    search_candidate_score(&game, request, &activations),
-                    game.clone(),
-                    activations,
-                ));
+                let score = search_candidate_score(&game, request, &activations);
+                out.push((score, game.clone(), activations));
+                // Every score field is non-negative. Breadth-first traversal
+                // has already exhausted every shorter activation sequence, so
+                // a candidate at the absolute floor of the higher-priority
+                // fields cannot be improved by continuing this selection.
+                if stop_after_first || score_reaches_search_floor(score) {
+                    break;
+                }
                 out.sort_by_key(|candidate| candidate.0);
                 out.truncate(MAX_PLANS_PER_SELECTION);
 
@@ -452,6 +496,14 @@ impl ManaPaymentPlanner {
             .map(|(_, game, activations)| (game, activations))
             .collect())
     }
+}
+
+fn score_reaches_search_floor(score: ManaPaymentScore) -> bool {
+    score.irreversible_cost == 0
+        && score.life_paid == 0
+        && score.preserved_sources_used == 0
+        && score.excess_mana == 0
+        && score.flexible_sources_used == 0
 }
 
 #[derive(Debug, Clone)]
@@ -1235,6 +1287,20 @@ mod tests {
     }
 
     #[test]
+    fn first_plan_returns_a_legal_preview_without_waiting_for_all_candidates() {
+        let (mut game, alice) = game();
+        let source = game.new_object_id();
+        game.player_mut(alice).unwrap().mana_pool.red = 1;
+        let request = request(&game, alice, source, ManaCost::new().add_generic(1));
+
+        let first = plan_first_mana_payment(&game, &request).unwrap();
+        let all = plan_mana_payment(&game, &request).unwrap();
+
+        assert!(all.iter().any(|candidate| candidate.id == first.id));
+        assert_eq!(first.expected_pool_after_payment.total(), 0);
+    }
+
+    #[test]
     fn prefer_life_changes_both_preview_and_commit() {
         let (mut game, alice) = game();
         let source = game.new_object_id();
@@ -1328,6 +1394,58 @@ mod tests {
         assert_eq!(plan.mana_ability_steps[0].source, island);
         assert_eq!(plan.expected_pool_after_payment.total(), 0);
         assert_eq!(plan.score.excess_mana, 0);
+    }
+
+    #[test]
+    fn full_search_stops_when_a_basic_land_plan_reaches_the_score_floor() {
+        let (mut game, alice) = game();
+        for (name, symbol) in [
+            ("Test Plains", ManaSymbol::White),
+            ("Test Island", ManaSymbol::Blue),
+            ("Test Swamp", ManaSymbol::Black),
+            ("Test Mountain", ManaSymbol::Red),
+            ("Test Forest", ManaSymbol::Green),
+        ] {
+            let definition = CardBuilder::new(CardId::new(), name)
+                .card_types(vec![CardType::Land])
+                .build();
+            let land = game.create_object_from_card(&definition, alice, Zone::Battlefield);
+            game.object_mut(land)
+                .expect("land should exist")
+                .abilities_mut()
+                .push(crate::ability::Ability::mana(
+                    crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+                    vec![symbol],
+                ));
+        }
+        let source = game.new_object_id();
+        let request = request(
+            &game,
+            alice,
+            source,
+            ManaCost::from_pips(vec![
+                vec![ManaSymbol::White],
+                vec![ManaSymbol::Blue],
+                vec![ManaSymbol::Black],
+                vec![ManaSymbol::Red],
+                vec![ManaSymbol::Green],
+            ]),
+        );
+        let mut planner = ManaPaymentPlanner::default();
+
+        let plan = planner
+            .plan_internal(&game, &request, false)
+            .unwrap()
+            .remove(0);
+
+        assert_eq!(
+            plan.score,
+            ManaPaymentScore {
+                source_count: 5,
+                ..ManaPaymentScore::default()
+            }
+        );
+        assert!(planner.visited_nodes < 64);
     }
 
     #[test]

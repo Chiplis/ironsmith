@@ -18,11 +18,20 @@ use super::{EnterBattlefieldEvent, ZoneChangeEvent};
 #[derive(Debug, Clone)]
 pub struct WouldEnterBattlefieldMatcher {
     pub filter: ObjectFilter,
+    pub stable_id: Option<crate::ids::StableId>,
 }
 
 impl WouldEnterBattlefieldMatcher {
     pub fn new(filter: ObjectFilter) -> Self {
-        Self { filter }
+        Self {
+            filter,
+            stable_id: None,
+        }
+    }
+
+    pub fn with_stable_id(mut self, stable_id: crate::ids::StableId) -> Self {
+        self.stable_id = Some(stable_id);
+        self
     }
 
     /// Matches any creature entering the battlefield.
@@ -44,6 +53,12 @@ impl WouldEnterBattlefieldMatcher {
         let Some(obj) = prospective_game.object(object_id) else {
             return false;
         };
+        if self
+            .stable_id
+            .is_some_and(|stable_id| obj.stable_id != stable_id)
+        {
+            return false;
+        }
         let view = crate::derived_view::DerivedGameView::new(prospective_game);
         self.filter
             .matches_with_view(obj, &ctx.filter_ctx, prospective_game, &view)

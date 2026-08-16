@@ -8,14 +8,14 @@ use crate::cost::OptionalCost;
 use crate::model::provenance::ProvenanceStore;
 use crate::model::symbols::SymbolTable;
 
-use super::ast::{StaticAbilityAst, TriggerSpec};
-use super::reference_model::{
-    AnnotatedEffectSequence, ReferenceEnv, ReferenceExports, ReferenceImports,
-};
-use super::semantic::{
+use crate::model::ast::{StaticAbilityAst, TriggerSpec};
+use crate::model::compiler_semantic::{
     GiftTimingAst, ParsedAbility, ParsedLevelAbilityAst, ParsedModalHeader, ParsedRestrictions,
 };
-use super::shared_types::{LineInfo, LineSemanticFacts};
+use crate::model::facts::{LineInfo, LineSemanticFacts};
+use crate::model::reference_state::{
+    AnnotatedEffectSequence, ReferenceEnv, ReferenceExports, ReferenceImports,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EffectPreludeTag {

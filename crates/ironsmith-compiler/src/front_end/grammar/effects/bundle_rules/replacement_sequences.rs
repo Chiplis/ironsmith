@@ -4,11 +4,9 @@ use winnow::prelude::*;
 
 use crate::cards::builders::PlayerAst;
 use crate::effect::{ChoiceCount, SearchSelectionMode};
-use crate::mana::ManaCost;
 use crate::grammar::{filters, leaf, primitives};
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, split_lexed_sentences, trim_lexed_commas,
-};
+use crate::lexer::{LexStream, OwnedLexToken, split_lexed_sentences, trim_lexed_commas};
+use crate::mana::ManaCost;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
@@ -346,7 +344,7 @@ pub(crate) fn parse_persistent_exile_play_tax_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
     use crate::types::Subtype;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {

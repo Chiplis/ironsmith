@@ -22,7 +22,7 @@ fn parse_rewritten_effects(tokens: Vec<OwnedLexToken>) -> Result<Vec<EffectAst>,
     if effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "optional-companion branch produced no semantic effects (clause: '{}')",
-            crate::token_word_refs(&tokens).join(" ")
+            crate::lexer::token_word_refs(&tokens).join(" ")
         )));
     }
     Ok(effects)
@@ -192,7 +192,7 @@ pub(crate) fn parse_optional_companion_fanout_sentence(
 mod tests {
     use super::*;
     use crate::cards::builders::ChoiceCount;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn optional_target(target: &TargetAst) -> Option<(&TargetAst, ChoiceCount)> {
         let TargetAst::WithCount(inner, count) = target else {

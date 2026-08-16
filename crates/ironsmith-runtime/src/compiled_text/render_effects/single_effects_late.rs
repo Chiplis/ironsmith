@@ -1427,10 +1427,18 @@ pub(super) fn describe_mana_usage_restriction(
             ability_source_filter,
         } => {
             let spell_text =
-                describe_mana_usage_spell_filter_target_with_options(spell_filter, false)?;
+                describe_mana_usage_spell_filter_target_with_options(spell_filter, true)?;
             let source_text = describe_mana_usage_ability_source_filter(ability_source_filter)?;
+            let source_text = source_text
+                .strip_prefix("a ")
+                .or_else(|| source_text.strip_prefix("an "))
+                .unwrap_or(&source_text);
+            let source_text = source_text
+                .strip_suffix(" source")
+                .map(|prefix| format!("{prefix}s"))
+                .unwrap_or_else(|| source_text.to_string());
             Some(format!(
-                "Spend this mana only to cast {spell_text} or activate an ability of {source_text}"
+                "Spend this mana only to cast {spell_text} or activate abilities of {source_text}"
             ))
         }
         crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
@@ -3294,7 +3302,7 @@ pub(super) fn cumulative_upkeep_move_to_zone_text(
         return None;
     }
 
-    let count_text = ironsmith_core::cardinal_word(count.min as usize as u32)?;
+    let count_text = ironsmith_core::cardinal_word(count.min as u32)?;
     if count.min == 1 {
         Some("Put a card from a single graveyard on the bottom of its owner's library".to_string())
     } else {
@@ -4150,10 +4158,10 @@ pub(super) fn describe_structural_exalted_keyword(
     if triggered.intervening_if.is_some()
         || !triggered.choices.is_empty()
         || triggered.trigger.display() != "Whenever a creature you control attacks alone"
-        || !triggered
+        || triggered
             .trigger
             .downcast_ref::<crate::triggers::AttacksAloneTrigger>()
-            .is_some()
+            .is_none()
     {
         return None;
     }

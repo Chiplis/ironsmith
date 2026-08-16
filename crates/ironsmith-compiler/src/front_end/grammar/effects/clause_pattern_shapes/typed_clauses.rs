@@ -1,6 +1,6 @@
 use crate::cards::builders::OwnedLexToken;
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, trim_lexed_commas};
+use crate::lexer::{LexStream, trim_lexed_commas};
 use winnow::Parser as _;
 use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
@@ -409,9 +409,7 @@ fn parse_can_attack_no_defender_lexed<'a>(
     .parse_next(input)?;
     primitives::phrase(&["can", "attack"]).parse_next(input)?;
     let tail = input.as_ref();
-    if !marker_present(tail, primitives::phrase(&["as", "though"]))
-        || !has_no_defender_tail(tail)
-    {
+    if !marker_present(tail, primitives::phrase(&["as", "though"])) || !has_no_defender_tail(tail) {
         return Err(primitives::backtrack_err(
             "attack as though",
             "turn and no-defender phrase",
@@ -499,7 +497,7 @@ pub(crate) fn parse_choose_target_prelude_shape_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_choose_and_prevent_shapes() {

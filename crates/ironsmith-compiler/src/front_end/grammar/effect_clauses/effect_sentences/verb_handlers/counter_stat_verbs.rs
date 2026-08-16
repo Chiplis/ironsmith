@@ -99,7 +99,7 @@ fn generic_mana_amount_from_symbol(symbol: ManaSymbol) -> Option<i32> {
 pub(crate) fn parse_counter_target_phrase(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if matches!(
         words.as_slice(),
         [
@@ -136,7 +136,7 @@ pub(crate) fn parse_counter_target_phrase(
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported counter-ability target clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -176,7 +176,7 @@ fn parse_counter_ability_target_phrase(
     {
         clause_tokens.drain(..1);
     }
-    let clause_words = crate::token_word_refs(&clause_tokens);
+    let clause_words = crate::lexer::token_word_refs(&clause_tokens);
     let is_controller_tail = |idx: usize| {
         counter_prefix_at(&clause_words, idx, COUNTER_YOU_CONTROL_PREFIXES)
             || counter_prefix_at(&clause_words, idx, COUNTER_YOU_DONT_CONTROL_PREFIXES)
@@ -198,13 +198,13 @@ fn parse_counter_ability_target_phrase(
             .as_word()
             .is_some_and(|word| counter_word_choice(word, COUNTER_TARGET_WORDS))
     });
-    if explicit_target {
-        idx += 1;
-    } else if clause_tokens.get(idx).is_some_and(|token| {
-        token
-            .as_word()
-            .is_some_and(|word| counter_word_choice(word, COUNTER_ALL_OR_EACH_WORDS))
-    }) {
+    if explicit_target
+        || clause_tokens.get(idx).is_some_and(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| counter_word_choice(word, COUNTER_ALL_OR_EACH_WORDS))
+        })
+    {
         idx += 1;
     } else {
         return Ok(None);
@@ -360,7 +360,7 @@ fn parse_counter_ability_target_phrase(
             let filter_start = idx + if targets_only { 3 } else { 2 };
             let filter_tokens: Vec<OwnedLexToken> = clause_tokens[filter_start..].to_vec();
             if let Ok((target_player, target_object, targets_any_of)) =
-                crate::families::keyword_static::parse_cost_modifier_target_spec(
+                crate::keyword_static::parse_cost_modifier_target_spec(
                     &filter_tokens,
                 )
             {
@@ -418,14 +418,9 @@ fn parse_counter_ability_target_phrase(
         }
         if counter_prefix_at(&clause_words, idx, COUNTER_OPPONENTS_CONTROL_PREFIXES) {
             controller_filter = Some(PlayerFilter::Opponent);
-            idx += if clause_tokens
-                .get(idx)
-                .is_some_and(|token| token.as_word() == Some("your"))
-            {
-                3
-            } else if clause_tokens
-                .get(idx)
-                .is_some_and(|token| token.as_word() == Some("an"))
+            idx += if clause_tokens.get(idx).is_some_and(|token| {
+                matches!(token.as_word(), Some("your" | "an"))
+            })
             {
                 3
             } else {
@@ -447,7 +442,7 @@ fn parse_counter_ability_target_phrase(
             let filter_start = idx + if targets_only { 3 } else { 2 };
             let filter_tokens = clause_tokens[filter_start..].to_vec();
             let Ok((target_player, target_object, targets_any_of)) =
-                crate::families::keyword_static::parse_cost_modifier_target_spec(
+                crate::keyword_static::parse_cost_modifier_target_spec(
                     &filter_tokens,
                 )
             else {
@@ -597,18 +592,18 @@ pub(crate) fn parse_counter_unless_additional_generic_value(
     };
 
     let filter_tokens = trim_commas(shape.filter_tokens);
-    let filter_words = crate::token_word_refs(&filter_tokens);
+    let filter_words = crate::lexer::token_word_refs(&filter_tokens);
     if counter_grammar::parse_prefix(&filter_words, &[FOR_EACH_PREFIX]).is_none() {
         return Err(CardTextError::ParseError(format!(
             "unsupported additional counter payment tail (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
     let dynamic = parse_dynamic_cost_modifier_value(&filter_tokens)?.ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported additional counter payment filter (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
     Ok(Some(scale_value_multiplier(dynamic, multiplier)))
@@ -620,7 +615,7 @@ pub(crate) fn parse_reveal(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     // Revealing every card in a library is a collection operation, not the
     // ordinary singular `RevealTop` fallback. Tag the exact zone contents so
     // later chooser and movement clauses can consume the same stable set.
@@ -838,7 +833,7 @@ pub(crate) fn parse_life_amount(
     tokens: &[OwnedLexToken],
     amount_kind: &str,
 ) -> Result<(Value, usize), CardTextError> {
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     if counter_grammar::parse_exact(&clause_words, &[THAT_MUCH_LIFE_WORDS]).is_some() {
         // "that much life" binds to the triggering event amount.
         return Ok((Value::EventValue(EventValueSpec::Amount), 2));
@@ -855,13 +850,13 @@ pub(crate) fn parse_life_amount(
 pub(crate) fn parse_life_equal_to_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     if counter_grammar::parse_prefix(&clause_words, &[LIFE_EQUAL_TO_PREFIX]).is_none() {
         return Ok(None);
     }
 
     let amount_tokens = &tokens[1..];
-    let amount_words = crate::token_word_refs(amount_tokens);
+    let amount_words = crate::lexer::token_word_refs(amount_tokens);
 
     if let Some(value) = parse_add_mana_equal_amount_value(amount_tokens) {
         return Ok(Some(
@@ -904,14 +899,14 @@ pub(crate) fn parse_life_equal_to_value(
     }
     if counter_grammar::parse_prefix(&amount_words, &[EQUAL_TO_PREFIX]).is_some() {
         let value_tokens = &amount_tokens[2..];
-        let mut value_words = crate::token_word_refs(value_tokens);
+        let mut value_words = crate::lexer::token_word_refs(value_tokens);
 
         let parse_stat_of_target =
             |stat_words: &[&str], constructor: fn(Box<ChooseSpec>) -> Value| {
                 if counter_grammar::parse_prefix(&value_words, &[stat_words]).is_some() {
                     let target_tokens = &value_tokens[stat_words.len()..];
                     if let Ok(target) = parse_target_phrase(target_tokens) {
-                        let spec = crate::references::reference_helpers::choose_spec_for_target(&target);
+                        let spec = crate::reference_helpers::choose_spec_for_target(&target);
                         return Some(constructor(Box::new(spec)));
                     }
                 }
@@ -960,7 +955,7 @@ pub(crate) fn parse_life_equal_to_value(
             {
                 return Ok(Some(value));
             }
-            value_words = crate::token_word_refs(stripped_tokens);
+            value_words = crate::lexer::token_word_refs(stripped_tokens);
         }
         for (prefix, stat_words) in [
             (&["power", "of"][..], &["power"][..]),
@@ -997,7 +992,7 @@ fn parse_possessive_target_stat_value(tokens: &[OwnedLexToken]) -> Option<Value>
     };
     let target = parse_target_phrase(&shape.target_tokens).ok()?;
     let spec =
-        crate::references::reference_helpers::choose_spec_for_target(&target);
+        crate::reference_helpers::choose_spec_for_target(&target);
     Some(constructor(Box::new(spec)))
 }
 
@@ -1064,7 +1059,7 @@ pub(crate) fn parse_life_amount_from_trailing(
     // correlations. Unlike a bare pending effect count, this preserves noun
     // restrictions such as "land card discarded this way" and resolves the
     // IT_TAG placeholder to the prior action's affected-object snapshots.
-    let trailing_words = crate::token_word_refs(trailing);
+    let trailing_words = crate::lexer::token_word_refs(trailing);
     if let Some((value, used)) =
         crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
             &trailing_words,
@@ -1095,19 +1090,18 @@ pub(crate) fn parse_life_amount_from_trailing(
         ));
     }
 
-    if let Some(dynamic) = parse_dynamic_cost_modifier_value(trailing)? {
-        if let Some(multiplier) = match base_amount {
+    if let Some(dynamic) = parse_dynamic_cost_modifier_value(trailing)?
+        && let Some(multiplier) = match base_amount {
             Value::Fixed(value) => Some(*value),
             Value::X => Some(1),
             _ => None,
         } {
             return Ok(Some(scale_value_multiplier(dynamic, multiplier)));
         }
-    }
 
     if let Some(where_value) = parse_value_binding_clause(trailing) {
         if value_contains_unbound_x(base_amount) {
-            let clause = crate::token_word_refs(trailing).join(" ");
+            let clause = crate::lexer::token_word_refs(trailing).join(" ");
             return Ok(Some(replace_unbound_x_with_value(
                 base_amount.clone(),
                 &where_value,
@@ -1128,7 +1122,7 @@ fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option
             counter_type_tokens,
         } => {
             let counter_type =
-                crate::parse_counter_type_from_tokens(counter_type_tokens);
+                crate::grammar::filters::parse_counter_type_from_tokens(counter_type_tokens);
             Some(match counter_type {
                 Some(counter_type) => Value::CountersOnSource(counter_type),
                 None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
@@ -1138,7 +1132,7 @@ fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option
             counter_type_tokens,
         } => Some(Value::CountersOn(
             Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
-            crate::parse_counter_type_from_tokens(counter_type_tokens),
+            crate::grammar::filters::parse_counter_type_from_tokens(counter_type_tokens),
         )),
     }
 }
@@ -1206,7 +1200,7 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
 }
 
 fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let shape = counter_grammar::parse_half_life(&clause_words)?;
     let player_filter = player_filter_for_life_reference(player)?;
     if shape.rounded_down {
@@ -1219,7 +1213,7 @@ fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<
 #[cfg(test)]
 mod filtered_prior_action_life_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn life_multiplier_preserves_discarded_land_filter() {
@@ -1253,7 +1247,7 @@ mod filtered_prior_action_life_tests {
 #[cfg(test)]
 mod counter_spell_target_kind_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn assert_typed_spell_target(text: &str) {
         let target = parse_counter_target_phrase(&lex_line(text, 0).unwrap()).unwrap();
@@ -1369,7 +1363,7 @@ mod counter_spell_target_kind_tests {
 #[cfg(test)]
 mod reveal_hand_count_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn that_many_cards_from_hand_keeps_the_prior_effect_amount() {

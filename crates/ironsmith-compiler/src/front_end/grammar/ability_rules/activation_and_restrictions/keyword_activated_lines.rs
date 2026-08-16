@@ -1,7 +1,5 @@
 use super::*;
-use crate::grammar::activated_lines::{
-    self as activated_line_grammar, ActivatedCyclingContext,
-};
+use crate::grammar::activated_lines::{self as activated_line_grammar, ActivatedCyclingContext};
 use crate::grammar::keyword_activated_lines::{
     self as keyword_activated_grammar, CraftMaterialKind, CyclingFilterSpec,
     CyclingKeywordCostGroup, CyclingKeywordCostKind, CyclingSearchParseError, CyclingSearchSpec,
@@ -17,7 +15,7 @@ pub(crate) fn parse_cycling_line(
 pub(crate) fn parse_cycling_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let word_refs = crate::token_word_refs(tokens);
+    let word_refs = crate::lexer::token_word_refs(tokens);
     if word_refs.is_empty() {
         return Ok(None);
     }
@@ -40,10 +38,10 @@ pub(crate) fn parse_cycling_line_lexed(
         return Ok(None);
     }
 
-    let base_cost = parse_activation_cost(&first_group.cost_tokens)?;
+    let base_cost = parse_activation_cost(first_group.cost_tokens)?;
     let base_cost_display = base_cost.display();
     for group in cycling_groups.iter().skip(1) {
-        let next_cost = parse_activation_cost(&group.cost_tokens)?;
+        let next_cost = parse_activation_cost(group.cost_tokens)?;
         if next_cost.display() != base_cost_display {
             return Err(CardTextError::ParseError(format!(
                 "unsupported mixed cycling costs (clause: '{clause_text}')",
@@ -62,9 +60,9 @@ pub(crate) fn parse_cycling_line_lexed(
     );
     let mana_cost = crate::cost::TotalCost::from_costs(merged_costs);
 
-    let mut search_filter = parse_cycling_search_filter(&first_group.keyword_tokens)?;
+    let mut search_filter = parse_cycling_search_filter(first_group.keyword_tokens)?;
     for group in cycling_groups.iter().skip(1) {
-        let next_filter = parse_cycling_search_filter(&group.keyword_tokens)?;
+        let next_filter = parse_cycling_search_filter(group.keyword_tokens)?;
         match (&mut search_filter, next_filter) {
             (Some(current), Some(next)) => merge_cycling_search_filters(current, &next),
             (None, None) => {}
@@ -87,16 +85,16 @@ pub(crate) fn parse_cycling_line_lexed(
         .map(ManaCost::to_oracle)
         .or_else(|| base_cost.mana_cost().map(|cost| cost.to_oracle()))
         .unwrap_or_else(|| {
-            ActivationRestrictionCompatWords::new(&first_group.cost_tokens).join(" ")
+            ActivationRestrictionCompatWords::new(first_group.cost_tokens).join(" ")
         });
     let render_text = if let Some(group) = parse_cycling_keyword_group_text(&cycling_groups) {
         group
-    } else if crate::token_word_refs(&first_group.keyword_tokens).is_empty() {
+    } else if crate::lexer::token_word_refs(first_group.keyword_tokens).is_empty() {
         cost_text
     } else {
         format!(
             "{} {cost_text}",
-            crate::token_word_refs(&first_group.keyword_tokens).join(" ")
+            crate::lexer::token_word_refs(first_group.keyword_tokens).join(" ")
         )
     };
 
@@ -141,7 +139,7 @@ pub(crate) fn parse_craft_line_lexed(
     let Some(spec) = keyword_activated_grammar::parse_craft_line_spec_tokens(tokens) else {
         return Ok(None);
     };
-    let material_text = crate::token_word_refs(spec.material_tokens).join(" ");
+    let material_text = crate::lexer::token_word_refs(spec.material_tokens).join(" ");
     let (material_filter, material_count) = match spec.material {
         CraftMaterialKind::Artifact => (
             craft_battlefield_or_graveyard_filter(CardType::Artifact),
@@ -189,7 +187,7 @@ pub(crate) fn parse_craft_line_lexed(
     let cost_text = base_cost
         .mana_cost()
         .map(|cost| cost.to_oracle())
-        .unwrap_or_else(|| crate::token_word_refs(spec.cost_tokens).join(" "));
+        .unwrap_or_else(|| crate::lexer::token_word_refs(spec.cost_tokens).join(" "));
 
     Ok(Some(ParsedAbility {
         ability: Ability {
@@ -300,7 +298,7 @@ fn parse_cycling_keyword_group_text(groups: &[CyclingKeywordCostGroup]) -> Optio
     let parts = groups
         .iter()
         .filter_map(|group| {
-            let keyword = crate::token_word_refs(&group.keyword_tokens).join(" ");
+            let keyword = crate::lexer::token_word_refs(group.keyword_tokens).join(" ");
             if keyword.is_empty() {
                 return None;
             }
@@ -345,7 +343,7 @@ pub(crate) fn parse_cycling_search_filter(
             "missing cycling keyword".to_string(),
         )),
         Err(CyclingSearchParseError::UnsupportedRoot(_)) => {
-            let words = crate::token_word_refs(tokens);
+            let words = crate::lexer::token_word_refs(tokens);
             Err(CardTextError::ParseError(format!(
                 "unsupported cycling variant (clause: '{}')",
                 words.join(" ")
@@ -388,7 +386,7 @@ pub(crate) fn parse_equip_line(
                     .unwrap_or_else(|| ActivationRestrictionCompatWords::new(cost_tokens).join(" "))
             };
             let qualifier_text =
-                keyword_title(&crate::token_word_refs(qualifier.tokens).join(" "));
+                keyword_title(&crate::lexer::token_word_refs(qualifier.tokens).join(" "));
             let mut target_filter = ObjectFilter::creature().you_control();
             target_filter.subtypes = qualifier.subtypes;
             Ok(Some(build_equip_ability(
@@ -399,7 +397,7 @@ pub(crate) fn parse_equip_line(
         }
         EquipLineSpec::ActivationCost { cost_tokens } => {
             let total_cost = parse_activation_cost(cost_tokens)?;
-            let tail_words = crate::token_word_refs(cost_tokens);
+            let tail_words = crate::lexer::token_word_refs(cost_tokens);
             if tail_words.is_empty() {
                 return Err(CardTextError::ParseError(
                     "equip missing activation cost".to_string(),

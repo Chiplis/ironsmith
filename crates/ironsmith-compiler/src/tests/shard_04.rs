@@ -6,7 +6,7 @@ use super::shard_03::*;
 use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
-use crate::runtime_backend::ast::SubjectVerbEffectAst;
+use crate::model::ast::SubjectVerbEffectAst;
 
 fn contains_choice_debug(debug: &str) -> bool {
     debug.contains("ChooseObjects") || debug.contains("ChooseTaggedObjectsInZone")
@@ -317,7 +317,7 @@ pub(super) fn rewrite_lexed_gain_ability_sentence_keeps_if_you_do_result_prefix(
 
 #[test]
 pub(super) fn rewrite_lexed_gain_ability_named_creature_subject_prefers_this_creature_surface() {
-    crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
+    crate::util::with_card_source_reference_context(
         "Thief of Existence",
         &[CardType::Creature],
         &[],
@@ -385,7 +385,7 @@ pub(super) fn rewrite_copy_clause_keeps_trailing_if_after_structure_cutover() {
     let tokens = lex_line("Copy it if it's blue", 0)
         .expect("rewrite lexer should classify copy clause with trailing if");
 
-    let parsed = super::super::clause_pattern_helpers::parse_copy_spell_clause(&tokens)
+    let parsed = crate::effect_sentences::clause_pattern_helpers::parse_copy_spell_clause(&tokens)
         .expect("copy clause parser should succeed")
         .expect("copy clause should be recognized");
     let debug = format!("{parsed:?}");
@@ -1401,20 +1401,21 @@ pub(super) fn rewrite_sequence_registry_links_and_or_revealed_choice_to_x_destin
         "Reveal the top X plus one cards of your library. Choose a creature card and/or a land card from among them. Put those cards into your hand and the rest on the bottom of your library in a random order. If X is 5 or more, instead put the chosen cards onto the battlefield or into your hand and the rest on the bottom of your library in a random order.",
     );
 
-    let choice_shape = crate::runtime_backend::grammar::effects::sequence_quad_shapes::parse_choose_looked_card_and_or_shape(
-        sentences[1].lowered(),
-    )
-    .expect("typed looked-card choice should parse");
+    let choice_shape =
+        crate::grammar::effects::sequence_quad_shapes::parse_choose_looked_card_and_or_shape(
+            sentences[1].lowered(),
+        )
+        .expect("typed looked-card choice should parse");
     assert!(choice_shape.uses_and_or);
     assert!(
-        crate::runtime_backend::grammar::effects::sequence_quad_shapes::parse_chosen_cards_hand_remainder_shape(
+        crate::grammar::effects::sequence_quad_shapes::parse_chosen_cards_hand_remainder_shape(
             sentences[2].lowered(),
         )
         .is_some(),
         "default chosen-card disposition should parse"
     );
     assert!(
-        crate::runtime_backend::grammar::effects::sequence_quad_shapes::parse_chosen_cards_destination_replacement_shape(
+        crate::grammar::effects::sequence_quad_shapes::parse_chosen_cards_destination_replacement_shape(
             sentences[3].lowered(),
         )
         .is_some(),
@@ -1875,7 +1876,7 @@ pub(super) fn rewrite_exile_counter_cast_permission_with_mana_permission_static_
     assert!(
         direct.is_some(),
         "expected direct parser to accept {:?}",
-        crate::runtime_backend::token_word_refs(&tokens)
+        crate::lexer::token_word_refs(&tokens)
     );
     let direct_abilities = direct.expect("direct parser should produce abilities");
     assert_eq!(direct_abilities.len(), 2);
@@ -1944,7 +1945,7 @@ pub(super) fn rewrite_exile_counter_cast_permission_with_mana_permission_static_
     assert!(
         parsed_static.is_some(),
         "expected static parser to accept {:?}",
-        crate::runtime_backend::token_word_refs(&tokens)
+        crate::lexer::token_word_refs(&tokens)
     );
 
     let def = CardDefinitionBuilder::new(CardId::new(), "Draugr Necromancer Variant")
@@ -1974,7 +1975,7 @@ pub(super) fn rewrite_source_exiled_counter_play_and_cast_permission_static_line
     assert!(
         direct.is_some(),
         "expected direct parser to accept {:?}",
-        crate::runtime_backend::token_word_refs(&tokens)
+        crate::lexer::token_word_refs(&tokens)
     );
 
     let direct_abilities = direct.expect("direct parser should produce abilities");
@@ -3365,15 +3366,11 @@ pub(super) fn rewrite_lexed_consult_any_number_and_repeated_moves_keep_explicit_
                 _ => {}
             }
         }
-        crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effects(
-            effect,
-            true,
-            |nested| {
-                for child in nested {
-                    collect_reveal_partition_filters(child, reveal_tags, captures);
-                }
-            },
-        );
+        crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+            for child in nested {
+                collect_reveal_partition_filters(child, reveal_tags, captures);
+            }
+        });
     }
 
     let mut reveal_tags = Vec::new();

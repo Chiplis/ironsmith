@@ -9,7 +9,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let shape = shapes::parse_remove_clause_shape(tokens).map_err(|error| match error {
         shapes::RemoveShapeError::MissingAmount => CardTextError::ParseError(format!(
             "missing counter removal amount (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )),
         shapes::RemoveShapeError::MissingCounterKeyword => {
             CardTextError::ParseError("missing counter keyword".to_string())
@@ -24,7 +24,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             if target_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "missing remove-from-combat target (clause: '{}')",
-                    crate::token_word_refs(tokens).join(" ")
+                    crate::lexer::token_word_refs(tokens).join(" ")
                 )));
             }
             Ok(EffectAst::subject_verb_remove_from_combat(
@@ -38,7 +38,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             leave_one,
         } => {
             let counter_type = parse_counter_type_from_descriptor_tokens(counter_descriptor);
-            let target_words = crate::token_word_refs(target_tokens);
+            let target_words = crate::lexer::token_word_refs(target_tokens);
             if !leave_one && target_words.first().copied() == Some("all") {
                 let filter_tokens = strip_leading_token_words_any(target_tokens, &["all"]);
                 let filter = parse_object_filter(filter_tokens, false)?;
@@ -189,7 +189,7 @@ fn wrap_destroy_with_delayed_timing(
 
 fn parse_destroy_all_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, CardTextError> {
     if let Some(shape) = shapes::parse_destroy_counter_constraint_shape(tokens) {
-        let tail_words = crate::token_word_refs(shape.constraint_tokens);
+        let tail_words = crate::lexer::token_word_refs(shape.constraint_tokens);
         if let Some((counter_constraint, consumed)) =
             parse_filter_counter_constraint_words(&tail_words)
             && consumed == tail_words.len()
@@ -301,8 +301,8 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
 }
 
 pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    let original_clause = crate::token_word_refs(tokens).join(" ");
-    if crate::token_word_refs(tokens).as_slice() == ["both", "creatures"] {
+    let original_clause = crate::lexer::token_word_refs(tokens).join(" ");
+    if crate::lexer::token_word_refs(tokens).as_slice() == ["both", "creatures"] {
         return Ok(EffectAst::Coordinated {
             effects: vec![
                 EffectAst::subject_verb_destroy(TargetAst::Source(None)),
@@ -373,7 +373,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                     crate::cost::TotalCost::from_cost(crate::costs::Cost::life(value))
                 }
                 crate::grammar::effects::UnlessPaymentKind::Cost => {
-                    crate::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
+                    crate::activation_and_restrictions::parse_payment_clause_as_total_cost(
                         payment.payment_tokens,
                     )?
                     .ok_or_else(|| {
@@ -474,9 +474,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             // target choice to an opponent: declare the target with that
             // chooser, then destroy the declared object.
             if let Some(choice_shape) =
-                crate::grammar::choices::parse_possessive_object_choice_tokens(
-                    target_tokens,
-                )
+                crate::grammar::choices::parse_possessive_object_choice_tokens(target_tokens)
                 && choice_shape.actor
                     == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
             {
@@ -543,13 +541,13 @@ pub(crate) fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
-    use crate::runtime_backend::clause_support::parse_effect_sentences_lexed;
+    use crate::clause_support::parse_effect_sentences_lexed;
+    use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::{CardType, Subtype};
 
     #[test]
     fn destroy_all_except_lands_and_tokens_transports_both_union_exclusions() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Destroy all other permanents except for lands and tokens.",
             0,
         )
@@ -573,8 +571,7 @@ mod tests {
     #[test]
     fn destroy_all_single_exception_does_not_synthesize_the_other_exception() {
         fn parsed_filter(text: &str) -> ObjectFilter {
-            let tokens =
-                crate::runtime_backend::lex_line(text, 0).expect("destroy exception should lex");
+            let tokens = crate::lexer::lex_line(text, 0).expect("destroy exception should lex");
             let effect = parse_destroy(&tokens).expect("destroy exception should parse");
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::Destroy { target, .. },
@@ -606,11 +603,9 @@ mod tests {
 
     #[test]
     fn destroy_all_plural_shared_color_keeps_tagged_relation() {
-        let tokens = crate::runtime_backend::lex_line(
-            "Destroy all other creatures that share a color with it.",
-            0,
-        )
-        .expect("shared-color destroy clause should lex");
+        let tokens =
+            crate::lexer::lex_line("Destroy all other creatures that share a color with it.", 0)
+                .expect("shared-color destroy clause should lex");
         let effect = parse_destroy(&tokens).expect("shared-color destroy clause should parse");
         let debug = format!("{effect:#?}");
 
@@ -620,7 +615,7 @@ mod tests {
 
     #[test]
     fn repeated_or_if_destroy_condition_is_one_disjunction() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "target nonland permanent if it's a creature or if {G}{W} was spent to cast this spell",
             0,
         )
@@ -645,12 +640,12 @@ mod tests {
 
     #[test]
     fn destroy_all_except_named_source_keeps_identity_exclusion_and_regeneration_rider() {
-        let effects = crate::runtime_backend::util::with_card_source_reference_context(
+        let effects = crate::util::with_card_source_reference_context(
             "Mageta the Lion",
             &[CardType::Creature],
             &[Subtype::Human, Subtype::Spellshaper],
             || {
-                let tokens = crate::runtime_backend::lex_line(
+                let tokens = crate::lexer::lex_line(
                     "Destroy all creatures except for Mageta. Those creatures can't be regenerated.",
                     0,
                 )
@@ -691,9 +686,8 @@ mod tests {
 
     #[test]
     fn inline_same_object_regeneration_rider_sets_destroy_semantics() {
-        let tokens =
-            crate::runtime_backend::lex_line("target Knight and it can't be regenerated", 0)
-                .expect("destroy clause should lex");
+        let tokens = crate::lexer::lex_line("target Knight and it can't be regenerated", 0)
+            .expect("destroy clause should lex");
         let effect = parse_destroy(&tokens).expect("inline rider should parse");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
             panic!("expected one destroy action, got {effect:#?}");

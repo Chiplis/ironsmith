@@ -2448,6 +2448,30 @@
             && let Some(choose) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(reveal) =
+                filtered[idx + 2].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && reveal.tag == choose.tag
+            && let Some((_, move_to_hand)) = for_each_tagged_for_compaction(filtered[idx + 3])
+            && let Some(rest) = filtered[idx + 4]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
+            && let Some(compact) = describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
+                look_at_top,
+                choose,
+                None,
+                move_to_hand,
+                rest,
+            )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(reveal) =
                 filtered[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
             && let Some((_, move_to_hand)) = for_each_tagged_for_compaction(filtered[idx + 3])
             && let Some(rest) =

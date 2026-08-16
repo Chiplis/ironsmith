@@ -41,6 +41,10 @@ struct Row {
     compiled_lines_count: usize,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the report worker transfers one fully compiled definition at a time without retaining outcome collections"
+)]
 enum ParseOutcome {
     Success(CardDefinition),
     Error(String),

@@ -2,7 +2,7 @@ use super::super::*;
 
 use crate::effect::Until;
 use crate::grammar::leaf;
-use crate::front_end::lexer::TokenWordView;
+use crate::lexer::TokenWordView;
 use winnow::combinator::{alt, repeat};
 use winnow::error::ModalResult as WResult;
 
@@ -285,10 +285,7 @@ pub(crate) fn parse_pump_subject_shape(tokens: &[OwnedLexToken]) -> Option<PumpS
         alt((primitives::kw("that"), primitives::kw("those"))),
     )
     .is_some()
-        || crate::grammar::targets::parse_chosen_object_target(
-            normalized,
-        )
-        .is_some()
+        || crate::grammar::targets::parse_chosen_object_target(normalized).is_some()
     {
         return Some(PumpSubjectShape {
             subject_tokens,

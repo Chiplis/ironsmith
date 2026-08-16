@@ -4,7 +4,7 @@ use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 
 use super::super::super::primitives;
 use super::{
@@ -115,7 +115,7 @@ pub(crate) fn is_consult_battlefield_or_hand_shape(tokens: &[OwnedLexToken]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

@@ -460,7 +460,7 @@ pub(crate) fn parse_sacrifice_then_draw_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn parses_scaled_target_and_sweep_shapes() {

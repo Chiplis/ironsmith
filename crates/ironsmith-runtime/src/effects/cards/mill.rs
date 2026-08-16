@@ -186,7 +186,7 @@ mod tests {
             .map(|idx| {
                 let card = CardBuilder::new(
                     CardId::from_raw(20_000 + idx as u32),
-                    &format!("Library Card {idx}"),
+                    format!("Library Card {idx}"),
                 )
                 .card_types(vec![CardType::Instant])
                 .build();

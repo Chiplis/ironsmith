@@ -42,12 +42,11 @@ pub(crate) fn scope_types_away_from_requantified_bare_card_domains(
     tokens: &[OwnedLexToken],
     mut filter: ObjectFilter,
 ) -> ObjectFilter {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let mut bare_zones = Vec::new();
     for window in words.windows(5) {
         if window[..4] == ["all", "cards", "from", "all"]
-            && let Some(zone) =
-                crate::util::parse_zone_word(window[4])
+            && let Some(zone) = crate::util::parse_zone_word(window[4])
             && !bare_zones.contains(&zone)
         {
             bare_zones.push(zone);
@@ -195,7 +194,7 @@ fn parse_independent_exile_pair(
     until_source_leaves: bool,
     face_down: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if words.iter().filter(|word| **word == "and").count() != 1 {
         return Ok(None);
     }
@@ -208,7 +207,7 @@ fn parse_independent_exile_pair(
         return Ok(None);
     };
     let starts_with_indefinite_article = |branch: &[OwnedLexToken]| {
-        crate::token_word_refs(branch)
+        crate::lexer::token_word_refs(branch)
             .first()
             .is_some_and(|word| matches!(*word, "a" | "an"))
     };
@@ -235,7 +234,7 @@ fn parse_independent_exile_pair(
         return Ok(None);
     }
 
-    apply_exile_subject_hand_owner_context(&mut first, subject.clone());
+    apply_exile_subject_hand_owner_context(&mut first, subject);
     apply_exile_subject_hand_owner_context(&mut second, subject);
     let exile = |target| {
         if until_source_leaves {
@@ -270,7 +269,7 @@ pub(crate) fn parse_exile(
     if let Some(target_tokens) = split_until_opponent_becomes_monarch_tail(tokens) {
         let (target_tokens, face_down) = split_exile_face_down_suffix(target_tokens);
         let mut target = parse_target_phrase(target_tokens)?;
-        apply_exile_subject_hand_owner_context(&mut target, subject.clone());
+        apply_exile_subject_hand_owner_context(&mut target, subject);
         return Ok(with_exile_actor(
             EffectAst::subject_verb_exile_until_opponent_becomes_monarch(target, face_down),
             subject,
@@ -280,7 +279,7 @@ pub(crate) fn parse_exile(
     let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
     let (tokens, face_down) = split_exile_face_down_suffix(tokens);
     let tokens = split_exile_graveyard_replacement_suffix(tokens);
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     if grammar::contains_word(tokens, "unless") {
         return Err(CardTextError::ParseError(format!(
             "unsupported exile-unless clause (clause: '{}')",
@@ -336,7 +335,7 @@ pub(crate) fn parse_exile(
     if let Some(filter_tokens) = effect_grammar::strip_exile_all_or_each_shape(tokens) {
         if let Some(effect) = parse_except_then_additional_exile_all_filter(
             filter_tokens,
-            subject.clone(),
+            subject,
             until_source_leaves,
             face_down,
         )? {
@@ -353,10 +352,7 @@ pub(crate) fn parse_exile(
             false,
         )
         .or_else(|| {
-            crate::grammar::filters::parse_domain_union_object_filter_lexed(
-                filter_tokens,
-                false,
-            )
+            crate::grammar::filters::parse_domain_union_object_filter_lexed(filter_tokens, false)
         });
         let mut filter = match scoped_union {
             Some(filter) => filter,
@@ -439,7 +435,7 @@ pub(crate) fn parse_exile(
         )));
     }
     if let Some(effect) =
-        parse_independent_exile_pair(tokens, subject.clone(), until_source_leaves, face_down)?
+        parse_independent_exile_pair(tokens, subject, until_source_leaves, face_down)?
     {
         return Ok(effect);
     }
@@ -519,7 +515,7 @@ fn parse_attached_object_exile_bundle(
     };
     let target = parse_target_phrase(&shape.target)?;
     let mut attachment_filter = parse_object_filter_lexed(&shape.attachment_filter, false)?;
-    let antecedent_surface = crate::token_word_refs(&shape.target)
+    let antecedent_surface = crate::lexer::token_word_refs(&shape.target)
         .into_iter()
         .rev()
         .find_map(ironsmith_core::DemonstrativeAntecedentSurface::from_noun);
@@ -529,234 +525,6 @@ fn parse_attached_object_exile_bundle(
         target,
         face_down,
     )))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::Subtype;
-    use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
-    use crate::runtime_backend::front_end::lexer::lex_line;
-
-    #[test]
-    fn attached_exile_bundle_retains_the_authored_antecedent_noun() {
-        let tokens = lex_line("enchanted creature and all Auras attached to it", 0)
-            .expect("attached exile bundle should lex");
-        let effect = parse_attached_object_exile_bundle(&tokens, false)
-            .expect("attached exile bundle should parse")
-            .expect("attached exile bundle should be recognized");
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ExileAllAttachedTo { filter, .. },
-            ..
-        }) = effect
-        else {
-            panic!("expected a typed attached-object exile bundle");
-        };
-        assert_eq!(
-            filter.demonstrative_antecedent_surface(),
-            Some(ironsmith_core::DemonstrativeAntecedentSurface::Creature)
-        );
-    }
-
-    #[test]
-    fn plural_demonstrative_exile_retains_the_referenced_collection() {
-        let tokens = lex_line("those Auras", 0).expect("plural demonstrative should lex");
-        let effect = parse_exile(&tokens, None).expect("plural demonstrative should parse");
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::Exile {
-                    target: TargetAst::Object(filter, ..),
-                    target_plural_surface,
-                    ..
-                },
-            ..
-        }) = effect
-        else {
-            panic!("expected a typed object-filter exile");
-        };
-        assert!(filter.subtypes.contains(&Subtype::Aura));
-        assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == IT_TAG
-                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-        }));
-        assert!(filter.has_plural_object_noun_surface());
-        assert!(target_plural_surface);
-    }
-
-    #[test]
-    fn face_down_singular_per_each_exile_keeps_top_order_and_typed_count() {
-        let tokens = lex_line(
-            "a card from the top of your library face down for each opponent you have",
-            0,
-        )
-        .expect("top-library clause should lex");
-        let effect = parse_exile(&tokens, None).expect("top-library clause should parse");
-
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            subject:
-                crate::runtime_backend::ast::SubjectVerbSubjectAst {
-                    player: PlayerAst::You,
-                    ..
-                },
-            action:
-                SubjectVerbActionAst::ExileTopOfLibrary {
-                    count, face_down, ..
-                },
-            ..
-        }) = effect
-        else {
-            panic!("expected an ordered exile-top action: {effect:#?}");
-        };
-        assert!(face_down);
-        assert_eq!(
-            count.unhinted(),
-            &Value::CountPlayers(PlayerFilter::Opponent)
-        );
-        assert!(count.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
-    }
-
-    #[test]
-    fn exile_until_distinct_target_leaves_keeps_both_targets_in_order() {
-        let tokens = lex_line(
-            "target creature or enchantment you don't control until target enchantment you control leaves the battlefield",
-            0,
-        )
-        .expect("clause should lex");
-        let effect = parse_exile(&tokens, None).expect("clause should parse");
-
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::ExileUntilSourceLeaves {
-                    target: TargetAst::Object(exiled_filter, Some(_), _),
-                    leave_watcher: Some(TargetAst::Object(watcher_filter, Some(_), _)),
-                    ..
-                },
-            ..
-        }) = effect
-        else {
-            panic!("expected typed exile target and distinct leave watcher");
-        };
-
-        assert!(exiled_filter.card_types.contains(&CardType::Creature));
-        assert!(exiled_filter.card_types.contains(&CardType::Enchantment));
-        assert_eq!(watcher_filter.card_types, vec![CardType::Enchantment]);
-        assert_eq!(watcher_filter.controller, Some(PlayerFilter::You));
-    }
-
-    #[test]
-    fn exile_until_opponent_becomes_monarch_keeps_the_event_duration() {
-        let tokens = lex_line(
-            "target creature an opponent controls until an opponent becomes the monarch",
-            0,
-        )
-        .expect("clause should lex");
-        let effect = parse_exile(&tokens, None).expect("clause should parse");
-
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::ExileUntilSourceLeaves {
-                    target: TargetAst::Object(filter, Some(_), _),
-                    duration: ironsmith_core::ExileUntilDuration::OpponentBecomesMonarch,
-                    ..
-                },
-            ..
-        }) = effect
-        else {
-            panic!("expected a typed targeted exile with a monarch-event duration");
-        };
-
-        assert_eq!(filter.card_types, vec![CardType::Creature]);
-        assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
-    }
-
-    #[test]
-    fn exile_one_per_card_type_keeps_owner_and_selection_constraint() {
-        let tokens = lex_line(
-            "up to one card of each card type from defending player's graveyard",
-            0,
-        )
-        .expect("clause should lex");
-        let effect = parse_exile(&tokens, None).expect("clause should parse");
-
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::Exile {
-                    target: TargetAst::WithCount(target, count),
-                    ..
-                },
-            ..
-        }) = effect
-        else {
-            panic!("expected counted exile");
-        };
-        let TargetAst::Object(filter, None, None) = target.as_ref() else {
-            panic!("expected graveyard object filter");
-        };
-        assert_eq!(filter.zone, Some(Zone::Graveyard));
-        assert_eq!(filter.owner, Some(PlayerFilter::Defending));
-        assert!(filter.one_per_card_type);
-        assert_eq!(count, crate::effect::ChoiceCount::any_number());
-    }
-
-    #[test]
-    fn requantified_bare_card_domains_do_not_inherit_the_battlefield_type_list() {
-        let tokens = lex_line(
-            "all artifacts, creatures, and lands from the battlefield, all cards from all graveyards, and all cards from all hands",
-            0,
-        )
-        .expect("collection should lex");
-        let effect = parse_exile(&tokens, None).expect("collection should parse");
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ExileAll { filter, .. },
-            ..
-        }) = effect
-        else {
-            panic!("expected one typed exhaustive exile union: {effect:#?}");
-        };
-
-        assert!(filter.card_types.is_empty(), "{filter:#?}");
-        assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
-        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
-        let battlefield = filter
-            .any_of
-            .iter()
-            .find(|branch| branch.zone == Some(Zone::Battlefield))
-            .expect("battlefield arm");
-        assert_eq!(
-            battlefield.card_types,
-            [CardType::Artifact, CardType::Creature, CardType::Land]
-        );
-        for zone in [Zone::Graveyard, Zone::Hand] {
-            let branch = filter
-                .any_of
-                .iter()
-                .find(|branch| branch.zone == Some(zone))
-                .expect("bare card-domain arm");
-            assert!(branch.card_types.is_empty(), "{branch:#?}");
-        }
-    }
-
-    #[test]
-    fn explicitly_typed_later_card_domains_are_not_treated_as_bare() {
-        let tokens = lex_line(
-            "artifacts from the battlefield, all artifact cards from all graveyards",
-            0,
-        )
-        .expect("near miss should lex");
-        let mut filter = ObjectFilter {
-            card_types: vec![CardType::Artifact],
-            any_of: vec![
-                ObjectFilter::default().in_zone(Zone::Battlefield),
-                ObjectFilter::default().in_zone(Zone::Graveyard),
-            ],
-            ..ObjectFilter::default()
-        };
-        filter.set_conjunctive_set_surface(true);
-        assert_eq!(
-            scope_types_away_from_requantified_bare_card_domains(&tokens, filter.clone()),
-            filter
-        );
-    }
 }
 
 pub(crate) fn parse_same_name_exile_hand_and_graveyard_clause(
@@ -915,12 +683,12 @@ fn parse_except_then_additional_exile_all_filter(
         };
     }
     base.characteristic_relations.extend(inverse_relations);
-    apply_exile_subject_owner_context(&mut base, subject.clone());
+    apply_exile_subject_owner_context(&mut base, subject);
 
     let mut branches = vec![base];
     for segment in additional_segments {
         let mut filter = parse_object_filter_lexed(&segment, false)?;
-        apply_exile_subject_owner_context(&mut filter, subject.clone());
+        apply_exile_subject_owner_context(&mut filter, subject);
         branches.push(filter);
     }
     let mut union = ObjectFilter::default();
@@ -952,7 +720,7 @@ fn parse_battlefield_graveyard_exile_all_pair(
             return Ok(None);
         };
         let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
-        apply_exile_subject_owner_context(&mut filter, subject.clone());
+        apply_exile_subject_owner_context(&mut filter, subject);
         filters.push(filter);
     }
 
@@ -1247,4 +1015,232 @@ pub(crate) fn parse_target_player_graveyard_filter(
     };
     filter.owner.as_ref()?;
     Some(filter)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Subtype;
+    use crate::lexer::lex_line;
+    use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
+
+    #[test]
+    fn attached_exile_bundle_retains_the_authored_antecedent_noun() {
+        let tokens = lex_line("enchanted creature and all Auras attached to it", 0)
+            .expect("attached exile bundle should lex");
+        let effect = parse_attached_object_exile_bundle(&tokens, false)
+            .expect("attached exile bundle should parse")
+            .expect("attached exile bundle should be recognized");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ExileAllAttachedTo { filter, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected a typed attached-object exile bundle");
+        };
+        assert_eq!(
+            filter.demonstrative_antecedent_surface(),
+            Some(ironsmith_core::DemonstrativeAntecedentSurface::Creature)
+        );
+    }
+
+    #[test]
+    fn plural_demonstrative_exile_retains_the_referenced_collection() {
+        let tokens = lex_line("those Auras", 0).expect("plural demonstrative should lex");
+        let effect = parse_exile(&tokens, None).expect("plural demonstrative should parse");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Exile {
+                    target: TargetAst::Object(filter, ..),
+                    target_plural_surface,
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected a typed object-filter exile");
+        };
+        assert!(filter.subtypes.contains(&Subtype::Aura));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(filter.has_plural_object_noun_surface());
+        assert!(target_plural_surface);
+    }
+
+    #[test]
+    fn face_down_singular_per_each_exile_keeps_top_order_and_typed_count() {
+        let tokens = lex_line(
+            "a card from the top of your library face down for each opponent you have",
+            0,
+        )
+        .expect("top-library clause should lex");
+        let effect = parse_exile(&tokens, None).expect("top-library clause should parse");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject:
+                crate::model::ast::SubjectVerbSubjectAst {
+                    player: PlayerAst::You,
+                    ..
+                },
+            action:
+                SubjectVerbActionAst::ExileTopOfLibrary {
+                    count, face_down, ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected an ordered exile-top action: {effect:#?}");
+        };
+        assert!(face_down);
+        assert_eq!(
+            count.unhinted(),
+            &Value::CountPlayers(PlayerFilter::Opponent)
+        );
+        assert!(count.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+    }
+
+    #[test]
+    fn exile_until_distinct_target_leaves_keeps_both_targets_in_order() {
+        let tokens = lex_line(
+            "target creature or enchantment you don't control until target enchantment you control leaves the battlefield",
+            0,
+        )
+        .expect("clause should lex");
+        let effect = parse_exile(&tokens, None).expect("clause should parse");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ExileUntilSourceLeaves {
+                    target: TargetAst::Object(exiled_filter, Some(_), _),
+                    leave_watcher: Some(TargetAst::Object(watcher_filter, Some(_), _)),
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected typed exile target and distinct leave watcher");
+        };
+
+        assert!(exiled_filter.card_types.contains(&CardType::Creature));
+        assert!(exiled_filter.card_types.contains(&CardType::Enchantment));
+        assert_eq!(watcher_filter.card_types, vec![CardType::Enchantment]);
+        assert_eq!(watcher_filter.controller, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn exile_until_opponent_becomes_monarch_keeps_the_event_duration() {
+        let tokens = lex_line(
+            "target creature an opponent controls until an opponent becomes the monarch",
+            0,
+        )
+        .expect("clause should lex");
+        let effect = parse_exile(&tokens, None).expect("clause should parse");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ExileUntilSourceLeaves {
+                    target: TargetAst::Object(filter, Some(_), _),
+                    duration: ironsmith_core::ExileUntilDuration::OpponentBecomesMonarch,
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected a typed targeted exile with a monarch-event duration");
+        };
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+    }
+
+    #[test]
+    fn exile_one_per_card_type_keeps_owner_and_selection_constraint() {
+        let tokens = lex_line(
+            "up to one card of each card type from defending player's graveyard",
+            0,
+        )
+        .expect("clause should lex");
+        let effect = parse_exile(&tokens, None).expect("clause should parse");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Exile {
+                    target: TargetAst::WithCount(target, count),
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected counted exile");
+        };
+        let TargetAst::Object(filter, None, None) = target.as_ref() else {
+            panic!("expected graveyard object filter");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::Defending));
+        assert!(filter.one_per_card_type);
+        assert_eq!(count, crate::effect::ChoiceCount::any_number());
+    }
+
+    #[test]
+    fn requantified_bare_card_domains_do_not_inherit_the_battlefield_type_list() {
+        let tokens = lex_line(
+            "all artifacts, creatures, and lands from the battlefield, all cards from all graveyards, and all cards from all hands",
+            0,
+        )
+        .expect("collection should lex");
+        let effect = parse_exile(&tokens, None).expect("collection should parse");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ExileAll { filter, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected one typed exhaustive exile union: {effect:#?}");
+        };
+
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
+        assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        let battlefield = filter
+            .any_of
+            .iter()
+            .find(|branch| branch.zone == Some(Zone::Battlefield))
+            .expect("battlefield arm");
+        assert_eq!(
+            battlefield.card_types,
+            [CardType::Artifact, CardType::Creature, CardType::Land]
+        );
+        for zone in [Zone::Graveyard, Zone::Hand] {
+            let branch = filter
+                .any_of
+                .iter()
+                .find(|branch| branch.zone == Some(zone))
+                .expect("bare card-domain arm");
+            assert!(branch.card_types.is_empty(), "{branch:#?}");
+        }
+    }
+
+    #[test]
+    fn explicitly_typed_later_card_domains_are_not_treated_as_bare() {
+        let tokens = lex_line(
+            "artifacts from the battlefield, all artifact cards from all graveyards",
+            0,
+        )
+        .expect("near miss should lex");
+        let mut filter = ObjectFilter {
+            card_types: vec![CardType::Artifact],
+            any_of: vec![
+                ObjectFilter::default().in_zone(Zone::Battlefield),
+                ObjectFilter::default().in_zone(Zone::Graveyard),
+            ],
+            ..ObjectFilter::default()
+        };
+        filter.set_conjunctive_set_surface(true);
+        assert_eq!(
+            scope_types_away_from_requantified_bare_card_domains(&tokens, filter.clone()),
+            filter
+        );
+    }
 }

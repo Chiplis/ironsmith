@@ -758,13 +758,12 @@ fn check_permanent_sbas_with_view(
         // Aura not attached to anything or attached to an illegal object or player
         if view.object_has_card_type(obj_id, CardType::Enchantment)
             && calculated_subtypes.contains(&Subtype::Aura)
+            && obj.attached_to.is_none()
         {
-            if obj.attached_to.is_none() {
-                if obj.is_bestow_overlay_active() {
-                    actions.push(StateBasedAction::BestowBecomesCreature(obj_id));
-                } else {
-                    actions.push(StateBasedAction::AuraFallsOff(obj_id));
-                }
+            if obj.is_bestow_overlay_active() {
+                actions.push(StateBasedAction::BestowBecomesCreature(obj_id));
+            } else {
+                actions.push(StateBasedAction::AuraFallsOff(obj_id));
             }
         }
 
@@ -884,7 +883,7 @@ fn is_damage_based_creature_death_sba(
         game.object(creature_id)
             .and_then(|object| object.toughness())
     });
-    if !toughness.is_some_and(|toughness| toughness > 0) {
+    if toughness.is_none_or(|toughness| toughness <= 0) {
         return false;
     }
 
@@ -1337,7 +1336,7 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
                     ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
                         obj,
                         game,
-                        &all_effects,
+                        all_effects,
                     ),
                 )
             })

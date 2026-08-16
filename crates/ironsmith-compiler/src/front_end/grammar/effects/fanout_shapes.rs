@@ -5,7 +5,7 @@ use winnow::token::any;
 
 use crate::effect::{EventValueSpec, Value};
 use crate::grammar::{primitives, values};
-use crate::front_end::lexer::{LexStream, LexedClause, OwnedLexToken};
+use crate::lexer::{LexStream, LexedClause, OwnedLexToken};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ReferenceSpanShape {
@@ -361,8 +361,7 @@ pub(crate) fn parse_same_name_fanout_shape(
     if let Some((deal_start, (), deal_rest)) = primitives::find_prefix(tokens, || deal_verb) {
         let source_tokens = trimmed(&tokens[..deal_start]);
         let deal_is_valid = deal_start == 0 || {
-            let words = crate::front_end::lexer::TokenWordView::new(source_tokens)
-                .to_word_refs();
+            let words = crate::lexer::TokenWordView::new(source_tokens).to_word_refs();
             crate::util::is_source_reference_words(&words)
         };
         if deal_is_valid
@@ -826,7 +825,7 @@ pub(crate) fn parse_compound_damage_shape(tokens: &[OwnedLexToken]) -> Option<Co
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn tokens(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()

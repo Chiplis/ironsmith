@@ -10,7 +10,7 @@ const STRIKE_COUNTER_PREFIXES: &[(&str, CounterType)] = &[
 pub(crate) fn parse_counter_type_from_descriptor_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterType> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let last = *words.last()?;
     if let Some(counter_type) = parse_counter_type_word(last) {
         return Some(counter_type);
@@ -18,9 +18,7 @@ pub(crate) fn parse_counter_type_from_descriptor_tokens(
     if last == STRIKE_WORD && words.len() >= 2 {
         return strike_counter_type_from_prefix(words[words.len() - 2]);
     }
-    if last == ANOTHER_WORD
-        || crate::grammar::leaf::parse_number_complete(last).is_ok()
-    {
+    if last == ANOTHER_WORD || crate::grammar::leaf::parse_number_complete(last).is_ok() {
         return None;
     }
     if last
@@ -35,5 +33,5 @@ pub(crate) fn parse_counter_type_from_descriptor_tokens(
 fn strike_counter_type_from_prefix(word: &str) -> Option<CounterType> {
     STRIKE_COUNTER_PREFIXES
         .iter()
-        .find_map(|(prefix, counter_type)| (*prefix == word).then(|| counter_type.clone()))
+        .find_map(|(prefix, counter_type)| (*prefix == word).then_some(*counter_type))
 }

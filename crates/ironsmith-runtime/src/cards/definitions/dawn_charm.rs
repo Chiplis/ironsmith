@@ -208,7 +208,7 @@ mod tests {
                 true, // is combat
                 ObjectId::from_raw(999),
                 &ColorSet::COLORLESS,
-                &vec![CardType::Creature],
+                &[CardType::Creature],
                 true,
             );
 
@@ -237,7 +237,7 @@ mod tests {
                 false, // NOT combat
                 ObjectId::from_raw(999),
                 &ColorSet::RED,
-                &vec![CardType::Instant],
+                &[CardType::Instant],
                 true,
             );
 

@@ -711,7 +711,7 @@ impl WasmGame {
         let mut fallback_land = Self::basic_land_name_for_symbol(fallback_color);
         if self.registry.get(fallback_land).is_none() {
             fallback_land = DEMO_BASIC_LANDS
-                .into_iter()
+                .iter()
                 .find(|name| self.registry.get(name).is_some())
                 .ok_or_else(|| "registry has no basic lands for demo manabase".to_string())?;
         }

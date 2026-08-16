@@ -4,9 +4,7 @@ use winnow::prelude::*;
 
 use crate::effect::Until;
 use crate::grammar::primitives;
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas,
-};
+use crate::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SharedAbilityVerb {
@@ -108,10 +106,7 @@ fn independent_player_action_precedes_shared_subject(tokens: &[OwnedLexToken]) -
     let Some(verb) = super::super::chain_splitting::find_chain_verb_words(&words) else {
         return false;
     };
-    verb.word_index == player_subject_words
-        && words[verb.word_index + 1..]
-            .iter()
-            .any(|word| *word == "and")
+    verb.word_index == player_subject_words && words[verb.word_index + 1..].contains(&"and")
 }
 
 pub(crate) fn parse_gain_then_get_shape(tokens: &[OwnedLexToken]) -> Option<GainThenGetShape<'_>> {

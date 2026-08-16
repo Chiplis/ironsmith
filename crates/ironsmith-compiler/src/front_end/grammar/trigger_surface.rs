@@ -1,6 +1,6 @@
-use super::super::ast::TriggerIntroSurfaceAst;
 use super::super::lexer::{OwnedLexToken, TokenKind};
 use super::primitives;
+use crate::model::ast::TriggerIntroSurfaceAst;
 use winnow::Parser;
 use winnow::combinator::alt;
 

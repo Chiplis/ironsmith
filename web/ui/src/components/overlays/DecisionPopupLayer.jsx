@@ -38,7 +38,7 @@ import {
 import { useHoverSuppressedWhileScrolling } from "@/lib/useHoverSuppressedWhileScrolling";
 import { cn } from "@/lib/utils";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
-import { X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 
 const ACTION_STRIP_BODY_CLASS = "min-h-0 h-full";
 const MANA_PAYMENT_TAB_EXIT_MS = 320;
@@ -2206,6 +2206,58 @@ function PriorityControlStack({
   );
 }
 
+const PAYMENT_POOL_SYMBOLS = [
+  ["white", "W"],
+  ["blue", "U"],
+  ["black", "B"],
+  ["red", "R"],
+  ["green", "G"],
+  ["colorless", "C"],
+];
+
+function ManaPaymentToolbarPool({ label, pool }) {
+  const entries = PAYMENT_POOL_SYMBOLS
+    .map(([key, symbol]) => ({ symbol, amount: Number(pool?.[key] || 0) }))
+    .filter((entry) => entry.amount > 0);
+  return (
+    <span className="mana-payment-toolbar-pool" aria-label={`${label} ${entries.length ? "mana" : "Empty"}`}>
+      <span className="mana-payment-toolbar-pool-label">{label}</span>
+      <span className="mana-payment-toolbar-pool-value">
+        {entries.length ? entries.map(({ symbol, amount }) => (
+          <span key={symbol} className="mana-payment-toolbar-pool-symbol">
+            <ManaSymbol sym={symbol} size={15} />
+            {amount > 1 ? <span>×{amount}</span> : null}
+          </span>
+        )) : <span>Empty</span>}
+      </span>
+    </span>
+  );
+}
+
+function ManaPaymentToolbarMeta({ payment }) {
+  if (!payment) return null;
+  return (
+    <div className="mana-payment-toolbar-meta">
+      <div className="mana-payment-toolbar-title" title={`Pay for ${payment.source_name || "mana cost"}`}>
+        Pay for {payment.source_name || "mana cost"}
+      </div>
+      <div className="mana-payment-toolbar-pools" aria-label="Mana pool payment preview">
+        <ManaPaymentToolbarPool label="Pool" pool={payment.pool_before} />
+        <span className="mana-payment-toolbar-arrow">→</span>
+        <ManaPaymentToolbarPool label="Sources" pool={payment.pool_after_activations} />
+        <span className="mana-payment-toolbar-arrow">→</span>
+        <ManaPaymentToolbarPool label="After" pool={payment.pool_after_payment} />
+      </div>
+      {!payment.planning_complete ? (
+        <span className="mana-payment-toolbar-planning" title="Checking for a better payment plan">
+          <LoaderCircle size={15} className="animate-spin" />
+          <span>Planning</span>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function ActionStripMainTitleText({ children }) {
   const textRef = useRef(null);
 
@@ -2517,6 +2569,11 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     && !!effectiveSubmitAction
     && !effectiveSubmitAction.disabled
     && typeof effectiveSubmitAction.onSubmit === "function";
+  const secondarySubmitAction = effectiveSubmitAction?.secondaryAction || null;
+  const canSubmitSecondary = canAct
+    && !!secondarySubmitAction
+    && !secondarySubmitAction.disabled
+    && typeof secondarySubmitAction.onSubmit === "function";
   const canAdvanceViewedCardsStep = !!decision;
   const compactLandscapeViewport = typeof window !== "undefined"
     && window.matchMedia("(max-width: 720px) and (orientation: landscape)").matches;
@@ -2742,7 +2799,9 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             <div className="action-strip-decision-stack flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 py-1">
               <div className="action-strip-decision-toolbar flex min-w-0 items-stretch gap-2">
                 <div className="flex min-w-0 flex-1 items-stretch gap-2">
-                  {!triggerOrderingDecision && (
+                  {manaPayment ? (
+                    <ManaPaymentToolbarMeta payment={manaPayment} />
+                  ) : !triggerOrderingDecision && (
                     <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center px-1">
                       <div className="flex min-w-0 items-baseline gap-2">
                         <div className="action-strip-decision-title text-[11px] font-bold uppercase tracking-[0.14em]">
@@ -2765,12 +2824,20 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     ref={setDecisionToolbarSearchTarget}
                     className="action-strip-decision-toolbar-search min-w-0"
                   />
-                  <div className="flex min-w-0 max-w-[320px] shrink-0 items-stretch gap-2">
+                  <div className={cn(
+                    "flex min-w-0 shrink-0 items-stretch gap-2",
+                    manaPayment ? "max-w-[360px]" : "max-w-[320px]"
+                  )}>
                     <PeerWaitPopover peerWait={peerWait}>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="decision-neon-button decision-main-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
+                        className={cn(
+                          "decision-neon-button decision-main-button decision-submit-button h-full self-stretch rounded-none text-[clamp(11px,0.88vw,14px)] font-bold uppercase",
+                          manaPayment
+                            ? "mana-payment-pay-button min-w-[82px] flex-[0.75_1_0] px-2"
+                            : "min-w-[104px] flex-[1.2_1_0] px-3"
+                        )}
                         style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
                         aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
@@ -2805,6 +2872,29 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                         )}
                       </Button>
                     </PeerWaitPopover>
+                    {manaPayment && secondarySubmitAction ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "decision-neon-button decision-plan-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide",
+                          secondarySubmitAction.active && "is-active"
+                        )}
+                        disabled={!canSubmitSecondary}
+                        onPointerDown={(event) => {
+                          if (!canSubmitSecondary || event.button !== 0) return;
+                          event.preventDefault();
+                          secondarySubmitAction.onSubmit();
+                        }}
+                        onClick={(event) => {
+                          if (!canSubmitSecondary || event.detail !== 0) return;
+                          secondarySubmitAction.onSubmit();
+                        }}
+                      >
+                        {secondarySubmitAction.label || "Plan"}
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="ghost"
@@ -2825,12 +2915,14 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     </Button>
                   </div>
                 </div>
-                <PriorityControlStack
-                  holdEnabled={holdRule === "always"}
-                  onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                  showActionCount={false}
-                  className="ml-auto min-w-[104px]"
-                />
+                {!manaPayment ? (
+                  <PriorityControlStack
+                    holdEnabled={holdRule === "always"}
+                    onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                    showActionCount={false}
+                    className="ml-auto min-w-[104px]"
+                  />
+                ) : null}
               </div>
               <div className="action-strip-decision-content min-w-0 flex-1 overflow-hidden">
                 {showPeerWaitOpeningPreviews ? (
@@ -3021,7 +3113,9 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             <>
               <div className="action-strip-decision-stack flex min-w-0 w-full flex-col gap-y-1">
                 <div className="action-strip-decision-toolbar flex min-h-[46px] items-stretch gap-2">
-                  {!triggerOrderingDecision && (
+                  {manaPayment ? (
+                    <ManaPaymentToolbarMeta payment={manaPayment} />
+                  ) : !triggerOrderingDecision && (
                     <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center py-1.5">
                       <div className="action-strip-decision-title truncate text-[11px] font-bold uppercase tracking-[0.14em]">
                         {resolveDecisionTitle(decision)}
@@ -3033,12 +3127,20 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       )}
                     </div>
                   )}
-                  <div className="flex min-w-0 max-w-[320px] shrink-0 items-stretch gap-2">
+                  <div className={cn(
+                    "flex min-w-0 shrink-0 items-stretch gap-2",
+                    manaPayment ? "max-w-[360px]" : "max-w-[320px]"
+                  )}>
                     <PeerWaitPopover peerWait={peerWait}>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="decision-neon-button decision-main-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
+                        className={cn(
+                          "decision-neon-button decision-main-button decision-submit-button h-full self-stretch rounded-none text-[clamp(11px,0.88vw,14px)] font-bold uppercase",
+                          manaPayment
+                            ? "mana-payment-pay-button min-w-[82px] flex-[0.75_1_0] px-2"
+                            : "min-w-[104px] flex-[1.2_1_0] px-3"
+                        )}
                         style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
                         aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
@@ -3073,6 +3175,29 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                         )}
                       </Button>
                     </PeerWaitPopover>
+                    {manaPayment && secondarySubmitAction ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "decision-neon-button decision-plan-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide",
+                          secondarySubmitAction.active && "is-active"
+                        )}
+                        disabled={!canSubmitSecondary}
+                        onPointerDown={(event) => {
+                          if (!canSubmitSecondary || event.button !== 0) return;
+                          event.preventDefault();
+                          secondarySubmitAction.onSubmit();
+                        }}
+                        onClick={(event) => {
+                          if (!canSubmitSecondary || event.detail !== 0) return;
+                          secondarySubmitAction.onSubmit();
+                        }}
+                      >
+                        {secondarySubmitAction.label || "Plan"}
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="ghost"
@@ -3092,12 +3217,14 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       Cancel
                     </Button>
                   </div>
-                  <PriorityControlStack
-                    holdEnabled={holdRule === "always"}
-                    onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                    showActionCount={false}
-                    className="ml-auto min-w-[104px]"
-                  />
+                  {!manaPayment ? (
+                    <PriorityControlStack
+                      holdEnabled={holdRule === "always"}
+                      onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                      showActionCount={false}
+                      className="ml-auto min-w-[104px]"
+                    />
+                  ) : null}
                 </div>
               </div>
             </>

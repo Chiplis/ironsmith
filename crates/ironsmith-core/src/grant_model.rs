@@ -11,6 +11,10 @@ pub trait GrantStaticAbility: Clone + PartialEq {
 
 /// A granted alternative cast whose exact cost is derived from the granted card.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "derived casting grants preserve typed conditions and costs inline"
+)]
 pub enum DerivedAlternativeCast<C> {
     /// Flashback using the card's mana cost plus optional extra cost components.
     FlashbackFromCardManaCost { additional_costs: Vec<C> },
@@ -183,6 +187,10 @@ pub enum GrantDuration {
 
 /// What can be granted to a card.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "grant payloads preserve shared static-ability values inline"
+)]
 pub enum Grantable<SA, E, C, Cond> {
     /// Grant a static ability (flash, flying, hexproof, etc.)
     Ability(SA),
@@ -1030,10 +1038,7 @@ where
                 if source_linked {
                     return None;
                 }
-                let excluded_lands = normalized
-                    .excluded_card_types
-                    .iter()
-                    .any(|card_type| *card_type == CardType::Land);
+                let excluded_lands = normalized.excluded_card_types.contains(&CardType::Land);
                 normalized
                     .excluded_card_types
                     .retain(|card_type| *card_type != CardType::Land);
@@ -1488,8 +1493,7 @@ where
                 "that"
             };
             return format!(
-                "Each {base} card in {owner_phrase} hand has miracle. Its miracle cost is equal to its mana cost reduced by {}",
-                format!("{{{reduction}}}")
+                "Each {base} card in {owner_phrase} hand has miracle. Its miracle cost is equal to its mana cost reduced by {{{reduction}}}"
             );
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::ManaValueAsGenericFromHand) =

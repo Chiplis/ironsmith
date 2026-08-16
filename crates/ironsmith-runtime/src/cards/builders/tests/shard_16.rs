@@ -2166,6 +2166,52 @@ pub(super) fn parse_oracle_oblation_shuffle_clause_regression() {
 }
 
 #[test]
+pub(super) fn owner_subject_shuffle_cards_keep_one_atomic_authored_clause() {
+    for (name, expected_clause) in [
+        (
+            "Oblation",
+            "The owner of target nonland permanent shuffles it into their library, then draws two cards",
+        ),
+        (
+            "Cathartic Parting",
+            "The owner of target artifact or enchantment an opponent controls shuffles it into their library",
+        ),
+        (
+            "Ominous Cemetery",
+            "Target creature's owner shuffles it into their library",
+        ),
+        (
+            "Chaos Warp",
+            "The owner of target permanent shuffles it into their library",
+        ),
+        (
+            "Audacious Swap",
+            "The owner of target nonenchantment permanent shuffles it into their library, then exiles the top card of their library",
+        ),
+    ] {
+        let def = parse_oracle_card_definition(name);
+        // The clause can live on the spell program or inside an activated ability
+        // (Ominous Cemetery), so inspect the complete compiled definition.
+        let debug = format!("{def:?}").to_ascii_lowercase();
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+        assert!(
+            debug.contains("shuffleobjectsintolibraryeffect"),
+            "expected {name} to use the atomic owner-correlated shuffle effect, got {debug}"
+        );
+        assert!(
+            rendered.contains(expected_clause),
+            "expected {name} to preserve its authored owner-shuffle clause, got {rendered}"
+        );
+        assert!(
+            !rendered.contains("bottom of its owner's library")
+                && !rendered.contains("shuffle its controller's library"),
+            "expected {name} not to expose the old move-then-wrong-player fallback, got {rendered}"
+        );
+    }
+}
+
+#[test]
 pub(super) fn parse_oracle_derevi_command_zone_put_regression() {
     let def = parse_oracle_card_definition("Derevi, Empyrial Tactician");
 
@@ -2432,17 +2478,17 @@ pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionO
             else {
                 continue;
             };
-            let primary_power_toughness = root_power_toughness.clone().or_else(|| {
+            let primary_power_toughness = root_power_toughness.or_else(|| {
                 face_entries
                     .first()
-                    .and_then(|(_, _, _, power_toughness, _)| power_toughness.clone())
+                    .and_then(|(_, _, _, power_toughness, _)| *power_toughness)
             });
 
             out.entry(full_name.clone())
                 .or_insert(RegressionOracleCardInfo {
                     oracle_text: primary_text.clone(),
                     type_line: card.type_line.clone(),
-                    power_toughness: primary_power_toughness.clone(),
+                    power_toughness: primary_power_toughness,
                     attraction_lights: root_attraction_lights.clone(),
                 });
             // A real face entry is more specific than the convenience aliases
@@ -2459,7 +2505,7 @@ pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionO
                 out.entry(face_name).or_insert(RegressionOracleCardInfo {
                     oracle_text: face_text,
                     type_line: face_type_line.or_else(|| card.type_line.clone()),
-                    power_toughness: face_power_toughness.or_else(|| root_power_toughness.clone()),
+                    power_toughness: face_power_toughness.or(root_power_toughness),
                     attraction_lights: if face_attraction_lights.is_empty() {
                         root_attraction_lights.clone()
                     } else {
@@ -2473,7 +2519,7 @@ pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionO
                         .or_insert(RegressionOracleCardInfo {
                             oracle_text: primary_text.clone(),
                             type_line: card.type_line.clone(),
-                            power_toughness: primary_power_toughness.clone(),
+                            power_toughness: primary_power_toughness,
                             attraction_lights: root_attraction_lights.clone(),
                         });
                 }
@@ -2501,7 +2547,7 @@ pub(super) fn parse_oracle_card_definition(name: &str) -> CardDefinition {
     if !info.attraction_lights.is_empty() {
         builder = builder.attraction_lights(info.attraction_lights.clone());
     }
-    if let Some(power_toughness) = info.power_toughness.clone() {
+    if let Some(power_toughness) = info.power_toughness {
         builder = builder.power_toughness(power_toughness);
     }
     if let Some(type_line) = info.type_line.as_deref() {
@@ -2702,7 +2748,7 @@ pub(super) fn ocelot_pride_city_blessing_clause_copies_each_matching_recent_toke
     let conditional = triggered
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find(|effect| effect.downcast_ref::<ConditionalEffect>().is_some())
         .expect("Ocelot's city's-blessing follow-up should lower to a conditional effect")
         .clone();
@@ -3310,7 +3356,7 @@ pub(super) fn pay_azorius_guildmage_activation(
         .add(colored_mana, 3);
     crate::cost::can_pay_cost(game, source, player, &activated.mana_cost)
         .expect("Azorius Guildmage activation cost should be payable");
-    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    let mut dm = crate::decision::AutoPassDecisionMaker;
     crate::special_actions::pay_total_cost_with_choice(
         game,
         player,

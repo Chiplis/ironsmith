@@ -20,16 +20,14 @@ pub(crate) fn parse_keyword_line_cst(
     recognize_keyword_line_cst(line).into_legacy_result_option()
 }
 
-pub(crate) fn recognize_keyword_line_cst(
-    line: &PreprocessedLine,
-) -> ParseOutcome<KeywordLineCst> {
+pub(crate) fn recognize_keyword_line_cst(line: &PreprocessedLine) -> ParseOutcome<KeywordLineCst> {
     let tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
     let full_parse_tokens = line.info.source_tokens.clone();
     let Some(hint) = parse_keyword_dispatch_hint(&tokens) else {
         return ParseOutcome::NoMatch;
     };
     let rules = keyword_line_rules();
-    let span = crate::span_from_tokens(&tokens);
+    let span = crate::util::span_from_tokens(&tokens);
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
 

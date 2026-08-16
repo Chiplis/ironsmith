@@ -58,7 +58,7 @@ pub(crate) fn parse_draw_reveal_matching_rest_bottom(
     }
     Some(DrawRevealMatchingRestBottomShape {
         count: parsed.count,
-        card_type_word: *words.get(parsed.card_type_word)?,
+        card_type_word: words.get(parsed.card_type_word)?,
         order: parsed.order,
     })
 }

@@ -5,7 +5,7 @@ use winnow::token::any;
 
 use crate::cards::builders::PlayerAst;
 use crate::grammar::{leaf, primitives};
-use crate::front_end::lexer::{LexStream, LexedClause, OwnedLexToken};
+use crate::lexer::{LexStream, LexedClause, OwnedLexToken};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DelayedActionShape {
@@ -210,7 +210,7 @@ fn exact_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bo
 }
 
 fn words_to_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
-    crate::front_end::lexer::synthetic_word_tokens(words.iter().copied())
+    crate::lexer::synthetic_word_tokens(words.iter().copied())
 }
 
 #[path = "delayed_step_shapes/timing_and_subjects.rs"]

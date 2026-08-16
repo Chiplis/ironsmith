@@ -208,7 +208,7 @@ fn strip_per_blocking_creature_tail(tokens: &[OwnedLexToken]) -> &[OwnedLexToken
         if !token.is_word("for") {
             continue;
         }
-        let tail = crate::token_word_refs(&tokens[index..]);
+        let tail = crate::lexer::token_word_refs(&tokens[index..]);
         if matches!(
             tail.as_slice(),
             ["for", "each", "of", "those", "creatures"]
@@ -240,7 +240,7 @@ fn block_cost_static_ability(
         return Ok(None);
     };
 
-    let subject_words = crate::token_word_refs(&tokens[..cant_index]);
+    let subject_words = crate::lexer::token_word_refs(&tokens[..cant_index]);
     let (blockers, blocker_is_attached_to_source) = match subject_words.as_slice() {
         ["this"] | ["this", "creature"] => (ObjectFilter::source(), false),
         ["creatures"] => (ObjectFilter::creature(), false),
@@ -249,7 +249,7 @@ fn block_cost_static_ability(
     };
 
     let action_tokens = trim_edge_punctuation_tokens(&tokens[cant_index + 1..unless_index]);
-    let action_words = crate::token_word_refs(action_tokens);
+    let action_words = crate::lexer::token_word_refs(action_tokens);
     let attackers = match action_words.as_slice() {
         // A number of cards use the combined restriction wording even when
         // the declaration-time cost is the CR 509.1d blocking cost.  Keep the
@@ -271,7 +271,7 @@ fn block_cost_static_ability(
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported attacker filter for blocking cost (clause: '{}')",
-                        crate::token_word_refs(attacker_tokens).join(" ")
+                        crate::lexer::token_word_refs(attacker_tokens).join(" ")
                     ))
                 })?
         }
@@ -297,7 +297,7 @@ fn block_cost_static_ability(
         else {
             return Ok(None);
         };
-        let payer_words = crate::token_word_refs(&payment_tokens[..pay_index]);
+        let payer_words = crate::lexer::token_word_refs(&payment_tokens[..pay_index]);
         if !matches!(
             payer_words.as_slice(),
             ["you"] | ["its", "controller"] | ["their", "controller"]
@@ -317,7 +317,7 @@ fn block_cost_static_ability(
     let Some(cost) = parsed_cost else {
         return Err(CardTextError::ParseError(format!(
             "unsupported blocking payment cost (clause: '{}')",
-            crate::token_word_refs(cost_tokens).join(" ")
+            crate::lexer::token_word_refs(cost_tokens).join(" ")
         )));
     };
 
@@ -345,7 +345,7 @@ fn except_for_cant_attack_static_ability(
     };
     let exception_tokens = trim_edge_punctuation_tokens(&tokens[2..comma_idx]);
     let restriction_tokens = trim_edge_punctuation_tokens(&tokens[comma_idx + 1..]);
-    let Some(parsed) = parse_negated_object_restriction_clause(&restriction_tokens)? else {
+    let Some(parsed) = parse_negated_object_restriction_clause(restriction_tokens)? else {
         return Ok(None);
     };
     if parsed.target.is_some() {
@@ -368,8 +368,8 @@ fn except_for_cant_attack_static_ability(
             continue;
         }
         let (Ok(left), Ok(right)) = (
-            parse_object_filter(&left, false),
-            parse_object_filter(&right, false),
+            parse_object_filter(left, false),
+            parse_object_filter(right, false),
         ) else {
             continue;
         };
@@ -455,11 +455,7 @@ pub(crate) fn parse_cant_clauses(
     // rule claims it as a static restriction, the duration is lost and
     // temporary spell effects such as "Until end of turn, players can't gain
     // life" compile without a spell effect at all.
-    if crate::token_primitives::parse_simple_restriction_duration_prefix(
-        tokens,
-    )
-    .is_some()
-    {
+    if crate::token_primitives::parse_simple_restriction_duration_prefix(tokens).is_some() {
         return Ok(None);
     }
 
@@ -543,9 +539,11 @@ pub(crate) fn parse_cant_clauses(
         crate::grammar::activation_restrictions::parse_mana_retention_negated_clause_words(
             &normalized_words,
         ),
-        Some(crate::grammar::activation_restrictions::ManaRetentionNegatedClause {
-            tail: crate::grammar::activation_restrictions::ManaRetentionTailKind::ThisMana,
-        })
+        Some(
+            crate::grammar::activation_restrictions::ManaRetentionNegatedClause {
+                tail: crate::grammar::activation_restrictions::ManaRetentionTailKind::ThisMana,
+            }
+        )
     ) {
         return Ok(None);
     }
@@ -584,7 +582,7 @@ pub(crate) fn parse_cant_clauses(
             let Some(ability) = parse_cant_clause(&segment)? else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported cant clause segment (clause: '{}')",
-                    crate::token_word_refs(&segment).join(" ")
+                    crate::lexer::token_word_refs(&segment).join(" ")
                 )));
             };
             abilities.push(ability);
@@ -600,7 +598,7 @@ pub(crate) fn parse_cant_clauses(
             let Some(ability) = parse_cant_clause(&segment)? else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported cant clause segment (clause: '{}')",
-                    crate::token_word_refs(&segment).join(" ")
+                    crate::lexer::token_word_refs(&segment).join(" ")
                 )));
             };
             abilities.push(ability);
@@ -614,10 +612,8 @@ pub(crate) fn parse_cant_clauses(
 }
 
 pub(crate) fn split_cant_clause_on_or(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>> {
-    crate::grammar::activation_restrictions::parse_cant_restriction_or_split_tokens(
-        tokens,
-    )
-    .map(|split| vec![split.first, split.second])
+    crate::grammar::activation_restrictions::parse_cant_restriction_or_split_tokens(tokens)
+        .map(|split| vec![split.first, split.second])
 }
 
 /// "Players/You don't lose unspent [color] mana as steps and phases end."
@@ -628,7 +624,8 @@ fn parse_unspent_mana_retention_static(
 ) -> Option<StaticAbility> {
     use crate::grammar::activation_restrictions::ManaRetentionSubject;
 
-    let parsed = crate::grammar::activation_restrictions::parse_unspent_mana_retention_static_words(words)?;
+    let parsed =
+        crate::grammar::activation_restrictions::parse_unspent_mana_retention_static_words(words)?;
     let subject = match parsed.subject {
         ManaRetentionSubject::You => PlayerFilter::You,
         ManaRetentionSubject::AnyPlayer => PlayerFilter::Any,
@@ -675,9 +672,11 @@ pub(crate) fn parse_cant_clause(
         crate::grammar::activation_restrictions::parse_mana_retention_negated_clause_words(
             &normalized,
         ),
-        Some(crate::grammar::activation_restrictions::ManaRetentionNegatedClause {
-            tail: crate::grammar::activation_restrictions::ManaRetentionTailKind::ThisMana,
-        })
+        Some(
+            crate::grammar::activation_restrictions::ManaRetentionNegatedClause {
+                tail: crate::grammar::activation_restrictions::ManaRetentionTailKind::ThisMana,
+            }
+        )
     ) {
         return Ok(None);
     }
@@ -714,7 +713,7 @@ pub(crate) fn parse_cant_clause(
                     .ok_or_else(|| {
                         CardTextError::ParseError(format!(
                             "unsupported blocker restriction filter (clause: '{}')",
-                            crate::token_word_refs(tokens).join(" ")
+                            crate::lexer::token_word_refs(tokens).join(" ")
                         ))
                     })?;
                 return Ok(Some(StaticAbility::restriction(
@@ -724,7 +723,7 @@ pub(crate) fn parse_cant_clause(
                     ),
                     format!(
                         "this creature can't block {}",
-                        crate::token_word_refs(&attacker_tokens).join(" ")
+                        crate::lexer::token_word_refs(&attacker_tokens).join(" ")
                     ),
                 )));
             }
@@ -735,8 +734,7 @@ pub(crate) fn parse_cant_clause(
                 let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
                     return Ok(None);
                 };
-                let subject_text =
-                    crate::token_word_refs(&subject_tokens).join(" ");
+                let subject_text = crate::lexer::token_word_refs(&subject_tokens).join(" ");
                 if subject_text.is_empty() {
                     return Ok(None);
                 }
@@ -820,7 +818,7 @@ mod tests {
 
     #[test]
     fn permanents_cant_phase_in_is_a_typed_static_restriction() {
-        let tokens = crate::runtime_backend::lexer::lex_line("Permanents can't phase in.", 0)
+        let tokens = crate::lexer::lex_line("Permanents can't phase in.", 0)
             .expect("phase-in restriction should lex");
         let abilities = parse_cant_clauses(&tokens)
             .expect("phase-in restriction should parse")
@@ -838,15 +836,14 @@ mod tests {
             "{repeated:#?}"
         );
 
-        let contextual =
-            crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
-                "Disciple of Caelus Nin",
-                &[crate::types::CardType::Creature],
-                &[],
-                || parse_cant_clauses(&tokens),
-            )
-            .expect("phase-in restriction should parse in a card source context")
-            .expect("phase-in restriction should remain static in a card source context");
+        let contextual = crate::util::with_card_source_reference_context(
+            "Disciple of Caelus Nin",
+            &[crate::types::CardType::Creature],
+            &[],
+            || parse_cant_clauses(&tokens),
+        )
+        .expect("phase-in restriction should parse in a card source context")
+        .expect("phase-in restriction should remain static in a card source context");
         assert!(
             format!("{:#?}", contextual[0]).contains("PhaseIn"),
             "{contextual:#?}"
@@ -855,7 +852,7 @@ mod tests {
 
     #[test]
     fn except_for_named_and_type_filters_stay_one_attack_restriction() {
-        let tokens = crate::runtime_backend::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Except for creatures named Akron Legionnaire and artifact creatures, creatures you control can't attack.",
             0,
         )

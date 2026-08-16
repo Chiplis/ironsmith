@@ -6,7 +6,7 @@ fn parse_return_back_reference_target(
 ) -> Result<TargetAst, CardTextError> {
     if crate::grammar::effects::is_return_back_reference_shape(tokens) {
         let span = span_from_tokens(tokens);
-        let words = crate::token_word_refs(tokens);
+        let words = crate::lexer::token_word_refs(tokens);
         if matches!(words.as_slice(), ["that" | "those", noun] if crate::util::is_demonstrative_object_head(noun))
         {
             crate::util::record_source_reference_surface(
@@ -52,17 +52,15 @@ pub(crate) enum DelayedReturnTimingAst {
 }
 
 pub(crate) fn parse_delayed_return_timing_words(words: &[&str]) -> Option<DelayedReturnTimingAst> {
-    crate::grammar::effects::parse_return_timing_words_shape(words).map(|shape| {
-        match shape {
-            crate::grammar::effects::ReturnTimingShape::NextEndStep(player) => {
-                DelayedReturnTimingAst::NextEndStep(player)
-            }
-            crate::grammar::effects::ReturnTimingShape::NextUpkeep(player) => {
-                DelayedReturnTimingAst::NextUpkeep(player)
-            }
-            crate::grammar::effects::ReturnTimingShape::EndOfCombat => {
-                DelayedReturnTimingAst::EndOfCombat
-            }
+    crate::grammar::effects::parse_return_timing_words_shape(words).map(|shape| match shape {
+        crate::grammar::effects::ReturnTimingShape::NextEndStep(player) => {
+            DelayedReturnTimingAst::NextEndStep(player)
+        }
+        crate::grammar::effects::ReturnTimingShape::NextUpkeep(player) => {
+            DelayedReturnTimingAst::NextUpkeep(player)
+        }
+        crate::grammar::effects::ReturnTimingShape::EndOfCombat => {
+            DelayedReturnTimingAst::EndOfCombat
         }
     })
 }
@@ -94,7 +92,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         .rev()
         .find(|&idx| tokens[idx].is_word("for") && tokens[idx + 1].is_word("each"))
     {
-        let count_words = crate::token_word_refs(&tokens[for_each_idx..]);
+        let count_words = crate::lexer::token_word_refs(&tokens[for_each_idx..]);
         if let Some((count, used_words)) =
             crate::util::parse_for_each_count_value_words(&count_words)
             && used_words == count_words.len()
@@ -109,25 +107,22 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         }
     }
 
-    let clause_text = crate::token_word_refs(tokens).join(" ");
+    let clause_text = crate::lexer::token_word_refs(tokens).join(" ");
     let mut exiled_with_source_surface =
         crate::effect_sentences::verb_handlers::parse_exiled_with_source_return_tail_surface(
             tokens,
         )
         .or_else(|| {
-            crate::effect_sentences::verb_handlers::parse_exiled_with_source_move_surface(
-                tokens,
-            )
+            crate::effect_sentences::verb_handlers::parse_exiled_with_source_move_surface(tokens)
         });
     if let Some(surface) = &mut exiled_with_source_surface {
         surface.verb = ironsmith_core::ExiledWithSourceMoveVerbSurface::Return;
     }
-    let shape = crate::grammar::effects::parse_return_clause_shape(tokens)
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing return destination (clause: '{clause_text}')"
-            ))
-        })?;
+    let shape = crate::grammar::effects::parse_return_clause_shape(tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing return destination (clause: '{clause_text}')"
+        ))
+    })?;
     if shape.has_unless {
         return Err(CardTextError::ParseError(format!(
             "unsupported return-unless clause (clause: '{clause_text}')"
@@ -152,18 +147,12 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             DelayedReturnTimingAst::EndOfCombat
         }
     });
-    let under_that_player_control = destination.controller
-        == crate::grammar::effects::ReturnControllerShape::ThatPlayer;
+    let under_that_player_control =
+        destination.controller == crate::grammar::effects::ReturnControllerShape::ThatPlayer;
     let return_controller = match destination.controller {
-        crate::grammar::effects::ReturnControllerShape::Preserve => {
-            ReturnControllerAst::Preserve
-        }
-        crate::grammar::effects::ReturnControllerShape::You => {
-            ReturnControllerAst::You
-        }
-        crate::grammar::effects::ReturnControllerShape::Owner => {
-            ReturnControllerAst::Owner
-        }
+        crate::grammar::effects::ReturnControllerShape::Preserve => ReturnControllerAst::Preserve,
+        crate::grammar::effects::ReturnControllerShape::You => ReturnControllerAst::You,
+        crate::grammar::effects::ReturnControllerShape::Owner => ReturnControllerAst::Owner,
         crate::grammar::effects::ReturnControllerShape::ThatPlayer => {
             // The exact player is carried by the actor of the generic
             // PutOntoBattlefield action below, so no new controller model is
@@ -176,11 +165,9 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         .as_deref()
         .map(|tokens| {
             let mut target = parse_return_back_reference_target(tokens)?;
-            if crate::grammar::filters::reference_tag_stage::has_plural_object_head_surface(
-                tokens,
-            )
+            if crate::grammar::filters::reference_tag_stage::has_plural_object_head_surface(tokens)
                 && let Some(filter) =
-                    crate::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(
+                    crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(
                         &mut target,
                     )
             {
@@ -191,9 +178,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         .transpose()?;
 
     let effect = match shape.target {
-        crate::grammar::effects::ReturnTargetShape::PairedSourceAndExiled {
-            source_subtype,
-        } => {
+        crate::grammar::effects::ReturnTargetShape::PairedSourceAndExiled { source_subtype } => {
             let mut source_filter = ObjectFilter::source();
             if let Some(subtype) = source_subtype {
                 source_filter.subtypes.push(subtype);
@@ -500,13 +485,15 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             } else {
                 parse_target_phrase(&target_tokens)?
             };
-            let words = crate::token_word_refs(tokens);
-            if destination.zone
-                == crate::grammar::effects::ReturnZoneShape::Battlefield
-                && words.windows(3).any(|window| {
-                    window == ["from", "your", "graveyard"]
-                })
-                && let Some(filter) = crate::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
+            let words = crate::lexer::token_word_refs(tokens);
+            if destination.zone == crate::grammar::effects::ReturnZoneShape::Battlefield
+                && words
+                    .windows(3)
+                    .any(|window| window == ["from", "your", "graveyard"])
+                && let Some(filter) =
+                    crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(
+                        &mut target,
+                    )
             {
                 // A historical attachment predicate defaults to the
                 // battlefield for ordinary "attached to" queries. In a
@@ -616,18 +603,17 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         }
     };
     let mut effect = effect.with_exiled_with_source_surface(exiled_with_source_surface);
-    effect = if destination.zone == crate::grammar::effects::ReturnZoneShape::Hand
-    {
+    effect = if destination.zone == crate::grammar::effects::ReturnZoneShape::Hand {
         effect.with_return_destination_player_surface(destination.destination_player_surface)
     } else {
         effect
     };
-    if destination.zone
-        == crate::grammar::effects::ReturnZoneShape::Battlefield
+    if destination.zone == crate::grammar::effects::ReturnZoneShape::Battlefield
         && destination.destination_player_surface == Some(PlayerAst::That)
         && let EffectAst::SubjectVerb(subject_verb) = &mut effect
         && let SubjectVerbActionAst::ReturnToBattlefield { target, .. } = &mut subject_verb.action
-        && let Some(filter) = crate::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(target)
+        && let Some(filter) =
+            crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(target)
     {
         // This surface fact distinguishes an authored "under their control"
         // destination from the ordinary rules-default owner controller. The
@@ -680,13 +666,12 @@ pub(crate) fn parse_exchange(
         }
     }
 
-    let clause_text = crate::token_word_refs(tokens).join(" ");
-    let shape = crate::grammar::effects::parse_exchange_clause_shape(tokens)
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported exchange clause (clause: '{clause_text}')"
-            ))
-        })?;
+    let clause_text = crate::lexer::token_word_refs(tokens).join(" ");
+    let shape = crate::grammar::effects::parse_exchange_clause_shape(tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported exchange clause (clause: '{clause_text}')"
+        ))
+    })?;
     match shape {
         ExchangeClauseShape::LifeTotalsOnly => match subject {
             Some(SubjectAst::Player(PlayerAst::Target)) => Ok(
@@ -725,13 +710,12 @@ pub(crate) fn parse_exchange(
                 } else {
                     (Until::Forever, trim_commas(tokens).to_vec())
                 };
-            let (left, right) =
-                crate::grammar::effects::parse_exchange_value_operands(&remainder)
-                    .ok_or_else(|| {
-                        CardTextError::ParseError(format!(
-                            "unsupported exchange value operands (clause: '{clause_text}')"
-                        ))
-                    })?;
+            let (left, right) = crate::grammar::effects::parse_exchange_value_operands(&remainder)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported exchange value operands (clause: '{clause_text}')"
+                    ))
+                })?;
             Ok(EffectAst::subject_verb_exchange_values(
                 value_operand(left)?,
                 value_operand(right)?,
@@ -760,9 +744,7 @@ pub(crate) fn parse_exchange(
                 ));
             }
             let controller_set =
-                crate::grammar::targets::parse_target_controller_set_suffix(
-                    control.filter_tokens,
-                );
+                crate::grammar::targets::parse_target_controller_set_suffix(control.filter_tokens);
             let mut filter = parse_object_filter(&controller_set.core_tokens, false)?;
             match controller_set.constraint {
                 crate::grammar::targets::TargetControllerSetConstraint::None => {}
@@ -785,9 +767,9 @@ pub(crate) fn parse_exchange(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
-    use crate::runtime_backend::front_end::lexer::lex_line;
-    use crate::runtime_backend::parse_effect_sentence_lexed;
+    use crate::effect_sentences::parse_effect_sentence_lexed;
+    use crate::lexer::lex_line;
+    use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::types::CardType;
 
     #[test]

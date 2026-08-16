@@ -22,7 +22,7 @@ fn delayed_return(
     activated
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>())
         .expect("the activated ability should register one delayed return")
 }

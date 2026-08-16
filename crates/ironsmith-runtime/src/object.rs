@@ -918,7 +918,7 @@ impl Object {
         };
         crate::cards::CardDefinition {
             card: Card {
-                id: self.card.unwrap_or(CardId::new()),
+                id: self.card.unwrap_or_default(),
                 name: self.name.to_owned_string(),
                 first_printed_set_name: self
                     .first_printed_set_name

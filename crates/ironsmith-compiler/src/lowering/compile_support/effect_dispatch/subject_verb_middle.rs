@@ -884,10 +884,8 @@ pub(super) fn compile_subject_verb_middle(
             let refers_to_milled_cards =
                 resolved_filter.tagged_constraints.iter().any(|constraint| {
                     constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                        && (crate::util::is_sentence_helper_tag(
-                            constraint.tag.as_str(),
-                            "milled",
-                        ) || constraint.tag.as_str().starts_with("milled_"))
+                        && (crate::util::is_sentence_helper_tag(constraint.tag.as_str(), "milled")
+                            || constraint.tag.as_str().starts_with("milled_"))
                 });
             if resolved_filter.zone == Some(Zone::Battlefield) && refers_to_milled_cards {
                 // A tagged mill result is a graveyard snapshot. Some "cards
@@ -983,9 +981,10 @@ pub(super) fn compile_subject_verb_middle(
                     ))
                 }
             };
-            let actor_surface = if matches!(player, PlayerAst::Implicit) {
-                None
-            } else if matches!(player, PlayerAst::Target | PlayerAst::TargetOpponent) {
+            let actor_surface = if matches!(
+                player,
+                PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
+            ) {
                 None
             } else {
                 Some(resolve_non_target_player_filter(
@@ -1073,7 +1072,7 @@ pub(super) fn compile_subject_verb_middle(
                 let choose = Effect::new(
                     crate::effects::ChooseObjectsEffect::new(
                         choice_filter,
-                        count.clone(),
+                        *count,
                         chooser,
                         chosen_tag.clone(),
                     )
@@ -2160,7 +2159,7 @@ pub(super) fn compile_subject_verb_middle(
             grantable,
             duration,
         } => compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
-            Effect::grant(grantable.clone(), spec, *duration)
+            Effect::grant(grantable.as_ref().clone(), spec, *duration)
         }),
         SubjectVerbActionAst::GrantBySpec {
             spec,
@@ -2168,9 +2167,8 @@ pub(super) fn compile_subject_verb_middle(
             duration,
         } => {
             let resolved_filter = resolve_it_tag(&spec.filter, &current_reference_env(ctx))?;
-            let player =
-                resolve_non_target_player_filter(player.clone(), &current_reference_env(ctx))?;
-            let mut resolved_spec = spec.clone();
+            let player = resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            let mut resolved_spec = spec.as_ref().clone();
             resolved_spec.filter = resolved_filter;
             Ok((
                 vec![Effect::grant_by_spec(resolved_spec, player, *duration)],
@@ -2558,7 +2556,16 @@ pub(super) fn compile_subject_verb_middle(
                     token.abilities.push(ability);
                 }
             }
-            let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
+            let subject = if *action_player == PlayerAst::Opponent {
+                // A singular authored "an opponent creates ..." is a
+                // resolution-time player choice. Export that chosen player so
+                // a following "they" action stays correlated to the same
+                // opponent instead of resolving a second broad Opponent
+                // filter independently.
+                LoweredSubject::resolve_resolution_chooser(*action_player, ctx, true, true, true)?
+            } else {
+                LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?
+            };
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
             let player_filter = subject.clone_player_filter();
             let count = per_player_partition_value_for_filter(count, &player_filter);
@@ -2635,7 +2642,8 @@ pub(super) fn compile_subject_verb_middle(
                 created_tag = Some(tag);
             }
 
-            let mut compiled = vec![effect];
+            let mut compiled = subject.resolution_prelude();
+            compiled.push(effect);
             if let Some((power, toughness)) = resolved_dynamic_pt {
                 let Some(created_tag) = created_tag.clone() else {
                     return Err(CardTextError::InvariantViolation(

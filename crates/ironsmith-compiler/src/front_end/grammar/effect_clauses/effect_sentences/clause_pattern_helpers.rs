@@ -193,7 +193,7 @@ pub(crate) fn parse_copy_spell_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     fn parse_copy_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, CardTextError> {
-        let words = crate::token_word_refs(tokens);
+        let words = crate::lexer::token_word_refs(tokens);
         let among = words.iter().position(|word| *word == "among");
         if let Some(among) = among
             && matches!(
@@ -219,12 +219,19 @@ pub(crate) fn parse_copy_spell_clause(
             crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
         {
             Ok(history_count)
-        } else if let Some(player) =
-            crate::grammar::shared_util::value_helper_shapes::parse_commander_cast_count_player(
-                &crate::token_word_refs(tokens),
-            )
+        } else if let words = crate::lexer::token_word_refs(tokens)
+            && let Some(player) =
+                crate::grammar::shared_util::value_helper_shapes::parse_commander_cast_count_player(
+                    &words,
+                )
         {
-            Ok(Value::CommanderCastCount(player))
+            let mut value = Value::CommanderCastCount(player);
+            if words.windows(2).any(|window| window == ["a", "commander"]) {
+                value = value.with_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference,
+                );
+            }
+            Ok(value)
         } else {
             Ok(Value::Count(parse_object_filter(tokens, false)?))
         }
@@ -303,7 +310,7 @@ pub(crate) fn parse_copy_spell_clause(
     }
 
     fn target_reference_kind(tokens: &[OwnedLexToken]) -> Option<crate::filter::StackObjectKind> {
-        let words = crate::token_word_refs(tokens);
+        let words = crate::lexer::token_word_refs(tokens);
         let mentions_spell = words.iter().any(|word| matches!(*word, "spell" | "spells"));
         let mentions_ability = words
             .iter()
@@ -640,11 +647,11 @@ fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Optio
 #[cfg(test)]
 mod copy_all_tests {
     use super::*;
-    use crate::runtime_backend::ast::{PredicateAst, SubjectVerbEffectAst};
+    use crate::model::ast::{PredicateAst, SubjectVerbEffectAst};
 
     #[test]
     fn copy_for_each_kind_of_counter_uses_a_distinct_counter_type_value() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Copy it for each kind of counter among permanents you control.",
             0,
         )
@@ -677,9 +684,8 @@ mod copy_all_tests {
                 .you_control()
         );
 
-        let ordinary =
-            crate::runtime_backend::lex_line("Copy it for each permanent you control.", 0)
-                .expect("ordinary per-permanent copy should lex");
+        let ordinary = crate::lexer::lex_line("Copy it for each permanent you control.", 0)
+            .expect("ordinary per-permanent copy should lex");
         assert!(
             format!(
                 "{:#?}",
@@ -694,7 +700,7 @@ mod copy_all_tests {
 
     #[test]
     fn create_token_copies_are_not_claimed_as_spell_copy_actions() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Create X tokens that are copies of another target creature you control, where X is one plus the number of instant and sorcery spells you've cast this turn.",
             0,
         )
@@ -707,7 +713,7 @@ mod copy_all_tests {
             "a create-led token-copy clause is not a spell-copy action"
         );
 
-        let parsed = crate::runtime_backend::parse_effect_sentence_lexed(&tokens)
+        let parsed = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
             .expect("token-copy sentence should reach creation dispatch");
         assert!(matches!(
             parsed.as_slice(),
@@ -728,7 +734,7 @@ mod copy_all_tests {
 
     #[test]
     fn parses_coordinated_copy_all_stack_sets_without_collapsing_them() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Copy all spells you control, then copy all other activated and triggered abilities you control.",
             0,
         )
@@ -765,7 +771,7 @@ mod copy_all_tests {
 
     #[test]
     fn preserves_variable_copy_count_before_retarget_clause() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Copy that spell X times. You may choose new targets for the copies.",
             0,
         )
@@ -795,7 +801,7 @@ mod copy_all_tests {
 
     #[test]
     fn condition_before_retarget_keeps_triggering_spell_and_both_target_domains() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Copy that spell if it targets a permanent or player, and you may choose new targets for the copy.",
             0,
         )
@@ -829,7 +835,7 @@ mod copy_all_tests {
 
     #[test]
     fn terminal_instead_does_not_hide_copy_count() {
-        let tokens = crate::runtime_backend::lex_line("Copy that spell twice instead.", 0)
+        let tokens = crate::lexer::lex_line("Copy that spell twice instead.", 0)
             .expect("replacement copy sentence should lex");
         let parsed = parse_copy_spell_clause(&tokens)
             .expect("replacement copy sentence should parse")
@@ -848,12 +854,12 @@ mod copy_all_tests {
 
     #[test]
     fn conditional_copy_replacement_keeps_twice_cardinality() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "If this spell was kicked, copy that spell twice instead.",
             0,
         )
         .expect("conditional replacement should lex");
-        let parsed = crate::runtime_backend::parse_effect_sentence_lexed(&tokens)
+        let parsed = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
             .expect("conditional replacement should parse");
         assert!(matches!(
             parsed.as_slice(),
@@ -884,8 +890,7 @@ mod copy_all_tests {
                 crate::filter::StackObjectKind::SpellOrAbility,
             ),
         ] {
-            let tokens =
-                crate::runtime_backend::lex_line(text, 0).expect("copy reference should lex");
+            let tokens = crate::lexer::lex_line(text, 0).expect("copy reference should lex");
             let parsed = parse_copy_spell_clause(&tokens)
                 .expect("copy reference should parse")
                 .expect("copy parser should match");
@@ -906,8 +911,7 @@ mod copy_all_tests {
 
     #[test]
     fn copy_pronoun_surface_survives_independently_of_stack_kind() {
-        let tokens =
-            crate::runtime_backend::lex_line("Copy it.", 0).expect("copy pronoun should lex");
+        let tokens = crate::lexer::lex_line("Copy it.", 0).expect("copy pronoun should lex");
         let parsed = parse_copy_spell_clause(&tokens)
             .expect("copy pronoun should parse")
             .expect("copy parser should match");
@@ -927,7 +931,7 @@ mod copy_all_tests {
 
     #[test]
     fn copy_target_keeps_shared_spell_domain_controller_and_mana_value() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Copy target instant or sorcery spell you control with mana value X. You may choose new targets for the copy.",
             0,
         )
@@ -976,7 +980,7 @@ mod copy_all_tests {
 
     #[test]
     fn explicit_spell_copy_keeps_color_exception_on_the_copy_action() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Copy target instant or sorcery spell, except that the copy is red.",
             0,
         )
@@ -1011,7 +1015,7 @@ mod copy_all_tests {
 
     #[test]
     fn spell_copy_keeps_fixed_pt_and_added_subtype_exception() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "You may copy it, except the copy is a 1/1 Spirit in addition to its other types.",
             0,
         )
@@ -1042,12 +1046,12 @@ mod copy_all_tests {
 
     #[test]
     fn whole_sentence_dispatch_keeps_color_exception_on_the_copy_action() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Copy target instant or sorcery spell, except that the copy is red.",
             0,
         )
         .expect("colored spell-copy sentence should lex");
-        let parsed = crate::runtime_backend::parse_effect_sentence_lexed(&tokens)
+        let parsed = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
             .expect("whole colored spell-copy sentence should parse");
 
         assert!(matches!(
@@ -1139,7 +1143,7 @@ fn parse_counter_ability_target_phrase(
     if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
         eprintln!(
             "counter-ability shape: tokens={:?} shape={:?}",
-            crate::token_word_refs(tokens),
+            crate::lexer::token_word_refs(tokens),
             shape_result.is_some()
         );
     }
@@ -1268,10 +1272,32 @@ pub(crate) fn parse_can_attack_as_though_no_defender_clause(
     else {
         return Ok(None);
     };
-    let target = if subject_tokens.is_empty() {
+    // The shape parser deliberately finds the final `can attack ... as though`
+    // clause, so a coordinated sentence such as `this creature gets +3/+0 ...
+    // and can attack ...` leaves the earlier action in `subject_tokens`.  That
+    // text is not an object subject: claiming it here silently drops the pump
+    // (and any preceding granted abilities).  Let the ordinary effect-chain
+    // parser own those compound sentences and reserve this helper for a real
+    // standalone subject.
+    let subject_words = crate::lexer::parser_token_word_refs(subject_tokens);
+    if subject_words
+        .iter()
+        .any(|word| matches!(*word, "get" | "gets" | "gain" | "gains"))
+    {
+        return Ok(None);
+    }
+    let target = if subject_tokens.is_empty() || subject_words.as_slice() == ["it"] {
         TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()))
+    } else if let Ok(target) = parse_target_phrase(subject_tokens) {
+        target
+    } else if let Ok(filter) = parse_object_filter(subject_tokens, false) {
+        return Ok(Some(EffectAst::subject_verb_grant_abilities_all(
+            filter,
+            vec![GrantedAbilityAst::CanAttackAsThoughNoDefender],
+            Until::EndOfTurn,
+        )));
     } else {
-        parse_target_phrase(subject_tokens)?
+        return Ok(None);
     };
 
     Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
@@ -1532,14 +1558,13 @@ pub(crate) fn parse_redirect_next_damage_sentence(
                         EffectAst::subject_verb_redirect_next_damage_from_source_to_target(
                             amount, target,
                         );
-                    if let EffectAst::SubjectVerb(subject_verb) = &mut effect {
-                        if let SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                    if let EffectAst::SubjectVerb(subject_verb) = &mut effect
+                        && let SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
                             protected_target: effect_protected_target,
                             ..
                         } = &mut subject_verb.action
-                        {
-                            *effect_protected_target = protected_target;
-                        }
+                    {
+                        *effect_protected_target = protected_target;
                     }
                     effect
                 }
@@ -1601,7 +1626,7 @@ pub(crate) fn parse_win_the_game_clause(
             Ok(None)
         }
         clause_shapes::WinGameShape::NamedZones { name_tokens } => {
-            let name = crate::token_word_refs(name_tokens)
+            let name = crate::lexer::token_word_refs(name_tokens)
                 .iter()
                 .map(|word| title_case_token_word(word))
                 .collect::<Vec<_>>()
@@ -1609,7 +1634,7 @@ pub(crate) fn parse_win_the_game_clause(
             if name.is_empty() {
                 return Ok(None);
             }
-            return Ok(Some(EffectAst::Conditional {
+            Ok(Some(EffectAst::Conditional {
                 predicate: crate::cards::builders::PredicateAst::PlayerOwnsCardNamedInZones {
                     player: PlayerAst::You,
                     name,
@@ -1617,7 +1642,7 @@ pub(crate) fn parse_win_the_game_clause(
                 },
                 if_true: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
                 if_false: Vec::new(),
-            }));
+            }))
         }
     }
 }
@@ -1629,9 +1654,10 @@ fn parse_choose_target_prelude_targets(
     let mut start = 0;
     let mut index = 0;
     while index < target_tokens.len() {
-        let mut next = if target_tokens[index].is_comma() {
-            index + 1
-        } else if target_tokens[index].is_word("and") || target_tokens[index].is_word("and/or") {
+        let mut next = if target_tokens[index].is_comma()
+            || target_tokens[index].is_word("and")
+            || target_tokens[index].is_word("and/or")
+        {
             index + 1
         } else {
             index += 1;
@@ -1724,7 +1750,7 @@ mod choose_target_prelude_tests {
 
     #[test]
     fn preserves_three_repeated_optional_target_slots_under_one_chosen_tag() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Choose up to one target artifact, up to one target creature, and up to one target land.",
             0,
         )
@@ -1766,7 +1792,7 @@ mod choose_target_prelude_tests {
 
     #[test]
     fn preserves_two_repeated_target_slots_with_controller_qualifiers() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Choose target creature you control and target creature an opponent controls.",
             0,
         )
@@ -1962,7 +1988,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
             )?)
         }
         clause_shapes::KeywordMechanicShape::Meld { result_name_tokens } => {
-            let result_name = crate::token_word_refs(result_name_tokens).join(" ");
+            let result_name = crate::lexer::token_word_refs(result_name_tokens).join(" ");
             EffectAst::subject_verb_meld(result_name, false, false)
         }
         clause_shapes::KeywordMechanicShape::Numeric { keyword, amount } => match keyword {
@@ -2000,17 +2026,13 @@ pub(crate) fn parse_keyword_mechanic_clause(
                 }
                 clause_shapes::KeywordSubjectShape::Source(subject_tokens) => {
                     let span = span_from_tokens(subject_tokens);
-                    let subject_words = crate::token_word_refs(subject_tokens);
+                    let subject_words = crate::lexer::token_word_refs(subject_tokens);
                     if let Some(
                         surface @ (crate::target::SourceReferenceSurface::FullName(_)
                         | crate::target::SourceReferenceSurface::ShortName(_)),
-                    ) = crate::util::source_reference_surface_for_words(
-                        &subject_words,
-                    ) {
-                        crate::util::record_source_reference_surface(
-                            span,
-                            surface.clone(),
-                        );
+                    ) = crate::util::source_reference_surface_for_words(&subject_words)
+                    {
+                        crate::util::record_source_reference_surface(span, surface.clone());
                         // The source-reference context's span map exists only
                         // during parsing. Carry the grammar-proven proper-name
                         // surface on the typed source filter as well so public
@@ -2075,7 +2097,7 @@ pub(crate) fn parse_connive_clause(
             count = super::super::util::replace_unbound_x_with_value(
                 count,
                 &where_value,
-                &crate::token_word_refs(&trailing_tokens).join(" "),
+                &crate::lexer::token_word_refs(&trailing_tokens).join(" "),
             )?;
         }
     }

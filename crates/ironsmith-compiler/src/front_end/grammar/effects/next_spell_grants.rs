@@ -333,7 +333,7 @@ fn spell_filter(
     subject_tokens: &[OwnedLexToken],
     cast_by: PlayerFilter,
 ) -> Result<ObjectFilter, CardTextError> {
-    let subject_words = crate::token_word_refs(subject_tokens);
+    let subject_words = crate::lexer::token_word_refs(subject_tokens);
     let mut filter =
         super::super::filters::parse_spell_filter_with_grammar_entrypoint_lexed(subject_tokens);
     // A subject such as "an instant or sorcery spell from your hand" carries

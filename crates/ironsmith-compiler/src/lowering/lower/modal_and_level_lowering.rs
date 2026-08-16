@@ -1,6 +1,6 @@
 use super::*;
-use crate::EffectLoweringContext;
 use crate::compile_support::compile_condition_from_predicate_ast;
+use crate::model::facts::EffectLoweringContext;
 
 pub(crate) fn try_merge_modal_into_remove_mode(
     effects: &mut crate::resolution::ResolutionProgram,
@@ -84,7 +84,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
 pub(crate) fn rewrite_lower_parsed_modal(
     mut builder: CardDefinitionBuilder,
     pending_modal: NormalizedModalAst,
-    _allow_unsupported: bool,
+    allow_unsupported: bool,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
     let NormalizedModalAst {
         header,
@@ -116,7 +116,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         common_prefix_effects_ast: _,
         common_suffix_effects_ast,
         modal_gate,
-        ..
+        line_text,
     } = header;
     let common_suffix_effect_count = common_suffix_effects_ast.len();
     let modal_spell_presentation = trigger
@@ -124,48 +124,60 @@ pub(crate) fn rewrite_lower_parsed_modal(
         .then(|| presentation_label.clone())
         .flatten();
 
-    let (prefix_effects, mut prefix_choices) = if prepared_prefix.is_none() {
-        (crate::resolution::ResolutionProgram::default(), Vec::new())
-    } else if trigger.is_some() || activated.is_some() {
-        match materialize_prepared_effects_with_trigger_context(
-            prepared_prefix
-                .as_ref()
-                .expect("prepared prefix exists when checked above"),
-        ) {
-            Ok(lowered) => (lowered.effects, lowered.choices),
-            Err(err) => return Err(err),
+    let (prefix_effects, mut prefix_choices) = if let Some(prepared_prefix) =
+        prepared_prefix.as_ref()
+    {
+        if trigger.is_some() || activated.is_some() {
+            match materialize_prepared_effects_with_trigger_context(prepared_prefix) {
+                Ok(lowered) => (lowered.effects, lowered.choices),
+                Err(err) if allow_unsupported => {
+                    builder =
+                        push_unsupported_marker(builder, line_text.as_str(), format!("{err:?}"));
+                    return Ok(builder);
+                }
+                Err(err) => return Err(err),
+            }
+        } else {
+            match rewrite_lower_prepared_statement_effects(prepared_prefix) {
+                Ok(lowered) => (lowered.effects, lowered.choices),
+                Err(err) if allow_unsupported => {
+                    builder =
+                        push_unsupported_marker(builder, line_text.as_str(), format!("{err:?}"));
+                    return Ok(builder);
+                }
+                Err(err) => return Err(err),
+            }
         }
     } else {
-        match rewrite_lower_prepared_statement_effects(
-            prepared_prefix
-                .as_ref()
-                .expect("prepared prefix exists when checked above"),
-        ) {
-            Ok(lowered) => (lowered.effects, lowered.choices),
-            Err(err) => return Err(err),
-        }
+        (crate::resolution::ResolutionProgram::default(), Vec::new())
     };
 
-    let (common_prefix_effects, common_prefix_choices) = if prepared_common_prefix.is_none() {
-        (crate::resolution::ResolutionProgram::default(), Vec::new())
-    } else if trigger.is_some() || activated.is_some() {
-        match materialize_prepared_effects_with_trigger_context(
-            prepared_common_prefix
-                .as_ref()
-                .expect("prepared common prefix exists when checked above"),
-        ) {
-            Ok(lowered) => (lowered.effects, lowered.choices),
-            Err(err) => return Err(err),
+    let (common_prefix_effects, common_prefix_choices) = if let Some(prepared_common_prefix) =
+        prepared_common_prefix.as_ref()
+    {
+        if trigger.is_some() || activated.is_some() {
+            match materialize_prepared_effects_with_trigger_context(prepared_common_prefix) {
+                Ok(lowered) => (lowered.effects, lowered.choices),
+                Err(err) if allow_unsupported => {
+                    builder =
+                        push_unsupported_marker(builder, line_text.as_str(), format!("{err:?}"));
+                    return Ok(builder);
+                }
+                Err(err) => return Err(err),
+            }
+        } else {
+            match rewrite_lower_prepared_statement_effects(prepared_common_prefix) {
+                Ok(lowered) => (lowered.effects, lowered.choices),
+                Err(err) if allow_unsupported => {
+                    builder =
+                        push_unsupported_marker(builder, line_text.as_str(), format!("{err:?}"));
+                    return Ok(builder);
+                }
+                Err(err) => return Err(err),
+            }
         }
     } else {
-        match rewrite_lower_prepared_statement_effects(
-            prepared_common_prefix
-                .as_ref()
-                .expect("prepared common prefix exists when checked above"),
-        ) {
-            Ok(lowered) => (lowered.effects, lowered.choices),
-            Err(err) => return Err(err),
-        }
+        (crate::resolution::ResolutionProgram::default(), Vec::new())
     };
     prefix_choices.extend(common_prefix_choices);
 
@@ -177,6 +189,14 @@ pub(crate) fn rewrite_lower_parsed_modal(
         let additional_mana_cost = mode.additional_mana_cost;
         let effects = match rewrite_lower_prepared_statement_effects(&mode.prepared) {
             Ok(lowered) => lowered.effects,
+            Err(err) if allow_unsupported => {
+                builder = push_unsupported_marker(
+                    builder,
+                    mode.info.raw_line.as_str(),
+                    format!("{err:?}"),
+                );
+                continue;
+            }
             Err(err) => return Err(err),
         };
         compiled_modes.push(crate::effect::EffectMode {
@@ -186,9 +206,10 @@ pub(crate) fn rewrite_lower_parsed_modal(
         mode_point_costs.push(point_cost);
         if spree || tiered {
             mode_additional_mana_costs.push(additional_mana_cost.ok_or_else(|| {
-                CardTextError::InvariantViolation(
-                    "costed modal mode is missing its typed additional mana cost".to_string(),
-                )
+                CardTextError::ParseError(format!(
+                    "Costed modal mode '{}' is missing its typed additional mana cost",
+                    mode.info.raw_line
+                ))
             })?);
         }
     }
@@ -340,7 +361,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
             .as_ref()
             .map(|(_, selection)| match selection {
                 crate::cards::builders::ConditionalModeSelection::BothOrTwo => {
-                    (1, (mode_count.min(2)).max(1))
+                    (1, mode_count.clamp(1, 2))
                 }
                 crate::cards::builders::ConditionalModeSelection::AnyNumber => {
                     (0, mode_count.max(1))
@@ -350,7 +371,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
                 }
                 crate::cards::builders::ConditionalModeSelection::One => (1, 1),
             })
-            .unwrap_or((1, (mode_count.min(2)).max(1)));
+            .unwrap_or((1, mode_count.clamp(1, 2)));
         let choose_both = if max_both == 1 {
             let mut effect =
                 apply_modal_metadata(crate::effect::Effect::choose_one(compiled_modes.clone()));
@@ -477,7 +498,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
             trigger,
             Vec::new(),
             vec![Zone::Battlefield],
-            None,
+            Some(line_text),
             None,
             None,
             ReferenceImports::default(),

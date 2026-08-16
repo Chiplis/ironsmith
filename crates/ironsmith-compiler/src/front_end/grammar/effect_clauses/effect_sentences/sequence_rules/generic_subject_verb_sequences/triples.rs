@@ -14,28 +14,26 @@ use crate::cards::builders::{
     TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Value};
-use crate::object::CounterType;
 use crate::effect_sentences;
 use crate::effect_sentences::SentenceInput;
-use crate::grammar::lexical::TokenWordView;
-use crate::grammar::sentence_markers::{
-    self, ConditionalFollowupActor, LeadingMayActor,
-};
-use crate::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint;
-use crate::front_end::lexer::OwnedLexToken;
 use crate::grammar::effects::{
     ExileLibraryPlayerShape, control_copy_attach_shapes::BattlefieldControllerShape,
     looked_card_shapes as looked_grammar, parse_exile_dynamic_top_library_shape,
     sequence_quad_shapes as quad_grammar, triple_sequence_shapes as triple_grammar,
 };
+use crate::grammar::lexical::TokenWordView;
+use crate::grammar::sentence_markers::{self, ConditionalFollowupActor, LeadingMayActor};
+use crate::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint;
+use crate::lexer::OwnedLexToken;
+use crate::object::CounterType;
 use crate::object_filters::parse_object_filter_lexed;
 use crate::permission_helpers::parse_cast_or_play_tagged_clause;
-use crate::util::{
-    helper_tag_for_tokens, parse_target_phrase, strip_leading_token_words_any, trim_commas,
-};
 use crate::target::ChooseSpec;
 use crate::target::{ObjectRef, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
+use crate::util::{
+    helper_tag_for_tokens, parse_target_phrase, strip_leading_token_words_any, trim_commas,
+};
 use crate::zone::Zone;
 
 /// Keep a damage outcome, its excess-damage-derived exile count, and the
@@ -127,14 +125,14 @@ pub(crate) fn parse_each_player_mill_then_land_result_then_cast_one_milled_spell
     let first_tokens = sentences[sentence_idx].lowered();
     let second_tokens = sentences[sentence_idx + 1].lowered();
     let third_tokens = sentences[sentence_idx + 2].lowered();
-    if crate::token_word_refs(first_tokens).as_slice()
+    if crate::lexer::token_word_refs(first_tokens).as_slice()
         != ["each", "player", "mills", "a", "card"]
-        || crate::token_word_refs(second_tokens).as_slice()
+        || crate::lexer::token_word_refs(second_tokens).as_slice()
             != [
                 "if", "a", "land", "card", "was", "milled", "this", "way", "create", "a",
                 "treasure", "token",
             ]
-        || crate::token_word_refs(third_tokens).as_slice()
+        || crate::lexer::token_word_refs(third_tokens).as_slice()
             != [
                 "until", "end", "of", "turn", "you", "may", "cast", "a", "spell", "from", "among",
                 "those", "cards",
@@ -215,7 +213,7 @@ pub(crate) fn parse_each_player_mill_then_land_result_then_cast_one_milled_spell
 #[cfg(test)]
 mod mill_result_permission_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse_three(third: &str) -> Option<Vec<EffectAst>> {
         let first = lex_line("Each player mills a card.", 0).expect("first sentence");
@@ -537,8 +535,10 @@ pub(crate) fn parse_reveal_top_opponent_chooses_then_partition(
             tag: revealed_tag.clone(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-    let remainder_filter =
-        super::pairs::tagged_library_candidate_filter(&revealed_tag, &[selected_tag.clone()]);
+    let remainder_filter = super::pairs::tagged_library_candidate_filter(
+        &revealed_tag,
+        std::slice::from_ref(&selected_tag),
+    );
 
     Ok(Some(vec![
         EffectAst::subject_verb_reveal_top_cards(library_owner, count, revealed_tag.clone()),
@@ -3389,7 +3389,7 @@ pub(crate) fn parse_look_at_top_may_put_with_counter_then_rest_bottom(
 #[cfg(test)]
 mod hidden_filtered_permission_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(third: &str) -> Option<Vec<EffectAst>> {
         let lexed = [
@@ -3442,7 +3442,7 @@ mod hidden_filtered_permission_tests {
 #[cfg(test)]
 mod optional_looked_entry_counter_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn may_put_keeps_an_exact_choice_inside_the_optional_action() {
@@ -3478,8 +3478,8 @@ mod optional_looked_entry_counter_tests {
                         },
                         EffectAst::ForEachTagged { .. }
                     ] if count.is_single()
-                        && filter.card_types.iter().any(|kind| *kind == CardType::Artifact)
-                        && filter.card_types.iter().any(|kind| *kind == CardType::Creature))
+                        && filter.card_types.contains(&CardType::Artifact)
+                        && filter.card_types.contains(&CardType::Creature))
             ),
             "{effects:#?}"
         );
@@ -3489,7 +3489,7 @@ mod optional_looked_entry_counter_tests {
 #[cfg(test)]
 mod explicit_stack_copy_assignment_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(second: &str) -> Option<Vec<EffectAst>> {
         let lexed = [
@@ -3708,16 +3708,15 @@ pub(crate) fn parse_top_cards_reveal_any_matching_to_hand_rest_bottom(
             None,
         )],
     });
-    let remainder_surface = if crate::lexer::parser_token_word_refs(
-        sentences[sentence_idx + 2].lexed(),
-    )
-    .first()
-    .is_some_and(|word| *word == "then")
-    {
-        ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest
-    } else {
-        ironsmith_core::LibraryRemainderSurface::Rest
-    };
+    let remainder_surface =
+        if crate::lexer::parser_token_word_refs(sentences[sentence_idx + 2].lexed())
+            .first()
+            .is_some_and(|word| *word == "then")
+        {
+            ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest
+        } else {
+            ironsmith_core::LibraryRemainderSurface::Rest
+        };
     effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
             looked_tag,
@@ -3925,7 +3924,10 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
         return Ok(None);
     };
     let filter_prefix_tokens = trim_commas(&second_tokens[spell_filter]);
-    let mut spell_filter = crate::parse_spell_filter_lexed(&filter_prefix_tokens);
+    let mut spell_filter =
+        crate::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed(
+            &filter_prefix_tokens,
+        );
     spell_filter.zone = Some(Zone::Stack);
     spell_filter.has_mana_cost = true;
 
@@ -4786,7 +4788,7 @@ pub(crate) fn parse_consult_cleanup_then_typed_when_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, split_lexed_sentences};
+    use crate::lexer::{lex_line, split_lexed_sentences};
 
     #[test]
     fn opponent_revealed_choice_tags_the_filtered_selection_and_exact_remainder() {

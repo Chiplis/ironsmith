@@ -53,7 +53,7 @@ fn whirlwind_denial_keeps_one_universal_spell_and_ability_domain() {
     let for_each = program
         .flattened_default_effects()
         .iter()
-        .find_map(|effect| find_nested::<crate::effects::ForEachObject>(effect))
+        .find_map(find_nested::<crate::effects::ForEachObject>)
         .unwrap_or_else(|| panic!("expected quantified Stack domain: {program:#?}"));
 
     assert_eq!(for_each.filter.zone, Some(Zone::Stack));
@@ -191,7 +191,7 @@ fn knight_of_the_mists_keeps_the_same_knight_target_on_no_regeneration_destroy()
         .effects
         .flattened_default_effects()
         .iter()
-        .find_map(|effect| find_nested::<crate::effects::DestroyNoRegenerationEffect>(effect))
+        .find_map(find_nested::<crate::effects::DestroyNoRegenerationEffect>)
         .unwrap_or_else(|| panic!("expected typed no-regeneration destroy: {triggered:#?}"));
     let ChooseSpec::Target(destroy_target) = destroy.spec.unhinted() else {
         panic!("the destroy should consume the declared target: {destroy:#?}");

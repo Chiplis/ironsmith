@@ -392,7 +392,7 @@ fn parse_choice_head_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ChoiceClaus
 #[cfg(test)]
 mod choice_clause_head_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn opponent_choice_head_retains_the_choice_verb_for_type_parsers() {

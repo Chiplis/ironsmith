@@ -9,11 +9,9 @@ use crate::grammar::structure::{
     split_trailing_if_clause_lexed,
 };
 use crate::lexer::{OwnedLexToken, parser_token_word_refs, trim_lexed_commas};
-use crate::util::parse_target_phrase;
-use crate::util::{
-    parse_choice_count_before_target_prefix, parse_number_word_u32,
-};
 use crate::target::PlayerFilter;
+use crate::util::parse_target_phrase;
+use crate::util::{parse_choice_count_before_target_prefix, parse_number_word_u32};
 
 const ADDITIONAL_PREFIXES: &[&[&str]] = &[&["an", "additional"], &["additional"]];
 const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[
@@ -534,7 +532,7 @@ fn phrase_occurs(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> b
 fn one_of_words_occurs(tokens: &[OwnedLexToken], words: &'static [&'static str]) -> bool {
     words
         .iter()
-        .any(|word| primitives::find_prefix(tokens, || primitives::kw(*word)).is_some())
+        .any(|word| primitives::find_prefix(tokens, || primitives::kw(word)).is_some())
 }
 
 fn normalize_damage_target_tokens(
@@ -787,7 +785,7 @@ pub(crate) fn parse_combat_damage_target_shape_lexed(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

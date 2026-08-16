@@ -525,12 +525,9 @@ pub(super) fn test_rageform_parses_and_renders_aura_become_clause() {
             .and_then(|sequence| sequence.effects.iter().find_map(manifested_tag))
     }
 
-    let manifested_tag = effects
-        .iter()
-        .find_map(|effect| manifested_tag(effect))
-        .unwrap_or_else(|| {
-            panic!("manifest should export the manifested permanent under a tag: {effects:#?}")
-        });
+    let manifested_tag = effects.iter().find_map(manifested_tag).unwrap_or_else(|| {
+        panic!("manifest should export the manifested permanent under a tag: {effects:#?}")
+    });
     fn attachment_specs(effect: &crate::effect::Effect) -> Option<(ChooseSpec, ChooseSpec)> {
         if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>() {
             return Some((attach.objects.clone(), attach.target.clone()));
@@ -605,7 +602,7 @@ pub(super) fn cryptic_coat_cloaks_then_attaches_to_the_cloaked_card() {
 
     let cloaked_tag = effects
         .iter()
-        .find_map(|effect| cloaked_tag(effect))
+        .find_map(cloaked_tag)
         .expect("cloak should export the cloaked permanent under a tag");
 
     fn attachment_specs(effect: &crate::effect::Effect) -> Option<(ChooseSpec, ChooseSpec)> {
@@ -624,7 +621,7 @@ pub(super) fn cryptic_coat_cloaks_then_attaches_to_the_cloaked_card() {
 
     let (attach_objects, attach_target) = effects
         .iter()
-        .find_map(|effect| attachment_specs(effect))
+        .find_map(attachment_specs)
         .expect("Cryptic Coat should attach itself after cloaking");
     assert_eq!(attach_objects, ChooseSpec::Source);
     assert_eq!(attach_target, ChooseSpec::Tagged(cloaked_tag));

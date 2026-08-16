@@ -3632,7 +3632,7 @@ pub(super) fn clockspinning_counter_effect(
         .as_ref()
         .expect("Clockspinning should have spell effects")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find(|effect| {
             effect
                 .downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()
@@ -3800,7 +3800,7 @@ pub(super) fn all_of_history_time_travel_effect(
         .as_ref()
         .expect("All of History, All at Once should have spell effects")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find(|effect| {
             effect
                 .downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()

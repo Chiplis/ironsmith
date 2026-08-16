@@ -1,8 +1,8 @@
 use winnow::combinator::alt;
 use winnow::prelude::*;
 
-use crate::mana::ManaSymbol;
 use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use crate::mana::ManaSymbol;
 
 use super::super::super::{leaf, permission_shapes, primitives};
 
@@ -149,7 +149,7 @@ pub(crate) fn parse_repeated_tagged_mana_payment_tokens(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 
@@ -168,11 +168,11 @@ mod tests {
         let conjoined = parse_conjoined_untap_all_tokens(&conjoined)
             .expect("two quantified untap sets should parse");
         assert_eq!(
-            crate::runtime_backend::token_word_refs(conjoined.left_filter_tokens),
+            crate::lexer::token_word_refs(conjoined.left_filter_tokens),
             ["nonland", "permanents", "you", "control"]
         );
         assert_eq!(
-            crate::runtime_backend::token_word_refs(conjoined.right_filter_tokens),
+            crate::lexer::token_word_refs(conjoined.right_filter_tokens),
             ["nonland", "permanents", "that", "player", "controls"]
         );
         let tagged = lex_line("them", 0).unwrap();
@@ -185,8 +185,7 @@ mod tests {
 
         let chosen = lex_line("the chosen permanents you control", 0).unwrap();
         assert_eq!(
-            parse_chosen_object_set_filter_tokens(&chosen)
-                .map(crate::runtime_backend::token_word_refs),
+            parse_chosen_object_set_filter_tokens(&chosen).map(crate::lexer::token_word_refs),
             Some(vec!["permanents", "you", "control"])
         );
 

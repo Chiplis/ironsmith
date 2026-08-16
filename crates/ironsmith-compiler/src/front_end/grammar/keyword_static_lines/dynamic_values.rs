@@ -370,7 +370,7 @@ fn parse_counter_reference(tokens: &[OwnedLexToken]) -> Option<CounterReferenceS
 /// text that happens to end immediately before the word "counter". This keeps
 /// `for each creature ... with a +1/+1 counter on it` in the object-count path.
 fn parse_counter_reference_type(tokens: &[OwnedLexToken]) -> Option<Option<CounterType>> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if words.is_empty() {
         Some(None)
     } else if words.len() == 1 {
@@ -535,7 +535,7 @@ mod tests {
         assert!(matches!(
             parse_dynamic_cost_value_shape_tokens(&tokens),
             Some(DynamicCostValueShape::Other { filter_tokens })
-                if crate::runtime_backend::token_word_refs(filter_tokens)
+                if crate::lexer::token_word_refs(filter_tokens)
                     == ["creature", "you", "control", "with", "a", "+1/+1", "counter", "on", "it"]
         ));
     }

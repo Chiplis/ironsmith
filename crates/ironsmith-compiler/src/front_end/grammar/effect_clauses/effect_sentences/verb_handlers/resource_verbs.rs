@@ -113,7 +113,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Regenerate => parse_regenerate(tokens),
         Verb::Heal => Err(CardTextError::ParseError(format!(
             "unsupported heal clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))),
         Verb::Mill => parse_mill(tokens, subject),
         Verb::Get => parse_get(tokens, subject),
@@ -202,7 +202,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Detain => parse_detain(tokens),
         Verb::Assign => Err(CardTextError::ParseError(format!(
             "unsupported generic assign clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))),
         Verb::Goad => parse_goad(tokens),
         Verb::Suspect => parse_suspect(tokens),
@@ -224,7 +224,7 @@ fn untargeted_object_choice_parts(
             };
             explicit_target_span
                 .is_none()
-                .then(|| (filter.clone(), count.clone(), None))
+                .then(|| (filter.clone(), *count, None))
         }
         TargetAst::WithCountValue(inner, count, value) => {
             let TargetAst::Object(filter, explicit_target_span, _) = inner.as_ref() else {
@@ -232,7 +232,7 @@ fn untargeted_object_choice_parts(
             };
             explicit_target_span
                 .is_none()
-                .then(|| (filter.clone(), count.clone(), Some(value.clone())))
+                .then(|| (filter.clone(), *count, Some(value.clone())))
         }
         _ => None,
     }
@@ -242,7 +242,7 @@ fn parse_unlock_room_door(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let words = if words
         .first()
         .is_some_and(|word| matches!(*word, "unlock" | "unlocks"))
@@ -268,7 +268,7 @@ fn parse_reverse(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     }
     Err(CardTextError::ParseError(format!(
         "unsupported reverse clause: '{}'",
-        crate::token_word_refs(tokens).join(" ")
+        crate::lexer::token_word_refs(tokens).join(" ")
     )))
 }
 
@@ -282,7 +282,7 @@ fn parse_note(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     }
     Err(CardTextError::ParseError(format!(
         "unsupported note clause: '{}'",
-        crate::token_word_refs(tokens).join(" ")
+        crate::lexer::token_word_refs(tokens).join(" ")
     )))
 }
 
@@ -299,7 +299,7 @@ fn parse_take(
 
     Err(CardTextError::ParseError(format!(
         "unsupported take clause (clause: '{}')",
-        crate::token_word_refs(tokens).join(" ")
+        crate::lexer::token_word_refs(tokens).join(" ")
     )))
 }
 
@@ -315,14 +315,14 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             _ => parse_value(tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing proliferate count (clause: '{}')",
-                    crate::token_word_refs(tokens).join(" ")
+                    crate::lexer::token_word_refs(tokens).join(" ")
                 ))
             })?,
         }
     } else {
         return Err(CardTextError::ParseError(format!(
             "missing proliferate count (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     };
 
@@ -331,7 +331,7 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
     if !trailing_ok {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing proliferate clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -354,7 +354,7 @@ pub(crate) fn parse_look(
         resource_grammar::parse_resource_look_shape(tokens, subject_player).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported look clause (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
+                crate::lexer::token_word_refs(tokens).join(" ")
             ))
         })?;
     match shape {
@@ -393,7 +393,7 @@ pub(crate) fn parse_look(
                 _ => {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported look clause (clause: '{}')",
-                        crate::token_word_refs(tokens).join(" ")
+                        crate::lexer::token_word_refs(tokens).join(" ")
                     )));
                 }
             };
@@ -457,8 +457,8 @@ pub(crate) fn parse_reorder(
     tokens: &[OwnedLexToken],
     _subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let clause = crate::token_word_refs(tokens).join(" ");
-    let clause_words = crate::token_word_refs(tokens);
+    let clause = crate::lexer::token_word_refs(tokens).join(" ");
+    let clause_words = crate::lexer::token_word_refs(tokens);
     if clause_words.is_empty() {
         return Err(CardTextError::ParseError(
             "missing reorder target".to_string(),
@@ -514,7 +514,7 @@ pub(crate) fn parse_shuffle(
         resource_grammar::parse_resource_shuffle_shape(tokens, player).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported shuffle clause (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
+                crate::lexer::token_word_refs(tokens).join(" ")
             ))
         })?;
     match shape {
@@ -577,7 +577,7 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     ) {
         return Err(CardTextError::ParseError(format!(
             "goad target must be a creature (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -657,7 +657,7 @@ pub(crate) fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     ) {
         return Err(CardTextError::ParseError(format!(
             "suspect target must be a creature (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -670,7 +670,7 @@ mod counter_qualified_zone_move_tests {
 
     #[test]
     fn counter_in_source_filter_does_not_turn_zone_move_into_counter_placement() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "a card you own with a silver counter on it from exile into your hand",
             0,
         )

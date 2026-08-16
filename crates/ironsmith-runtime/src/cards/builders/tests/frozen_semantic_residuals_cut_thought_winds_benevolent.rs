@@ -40,7 +40,7 @@ fn cut_short_keeps_convoke_first_and_activated_planeswalker_legality() {
         .as_ref()
         .expect("Cut Short should be a spell")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| {
             transparent_provenance_leaf(effect).downcast_ref::<crate::effects::DestroyEffect>()
         })
@@ -91,7 +91,7 @@ fn thought_distortion_keeps_shared_noncreature_nonland_hand_and_graveyard_filter
         .as_ref()
         .expect("Thought Distortion should be a spell")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| {
             transparent_provenance_leaf(effect).downcast_ref::<crate::effects::ExileEffect>()
         })
@@ -154,7 +154,7 @@ fn winds_of_rath_excludes_exactly_creatures_with_an_aura_attached() {
         .as_ref()
         .expect("Winds of Rath should be a spell")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| {
             transparent_provenance_leaf(effect)
                 .downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()

@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::OwnedLexToken;
+use crate::lexer::OwnedLexToken;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ManaClauseShape {
@@ -137,7 +137,7 @@ pub(crate) fn starts_choose(tokens: &[OwnedLexToken]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn recognizes_word_facts_without_lowering_probes() {

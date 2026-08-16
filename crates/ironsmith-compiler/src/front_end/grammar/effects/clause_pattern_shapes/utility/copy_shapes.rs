@@ -87,10 +87,7 @@ pub(crate) fn parse_copy_clause_shape_tokens(tokens: &[OwnedLexToken]) -> Option
         let words = parser_token_word_refs(tokens);
         let token_end = words
             .get(index..)
-            .and_then(|_| {
-                crate::front_end::lexer::TokenWordView::new(tokens)
-                    .token_boundary_for_word(index)
-            })
+            .and_then(|_| crate::lexer::TokenWordView::new(tokens).token_boundary_for_word(index))
             .unwrap_or(tokens.len());
         &tokens[..token_end]
     });

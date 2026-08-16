@@ -51,7 +51,7 @@ fn touch_of_moonglove_keeps_the_previous_damager_and_independent_dying_victim() 
         .as_ref()
         .expect("Touch should have a spell program")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>())
         .expect("Touch should register one delayed death watcher");
     let dies = schedule

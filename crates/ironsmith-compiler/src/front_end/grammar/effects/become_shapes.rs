@@ -124,15 +124,8 @@ fn parsed_controller_owner_shape(
 ) -> Option<ControllerOwnerSubjectShape> {
     let target_tokens = normalize_trailing_possessive(target_tokens);
     let target_words = TokenWordView::new(&target_tokens).to_word_refs();
-    let persistent_source_surface =
-        crate::util::source_reference_surface_for_words(
-            &target_words,
-        )
-        .or_else(|| {
-            crate::util::this_source_surface_for_words(
-                &target_words,
-            )
-        });
+    let persistent_source_surface = crate::util::source_reference_surface_for_words(&target_words)
+        .or_else(|| crate::util::this_source_surface_for_words(&target_words));
     let target = crate::util::parse_target_phrase(&target_tokens).ok()?;
     let target = match (persistent_source_surface, target) {
         (Some(surface), TargetAst::Source(_)) => {
@@ -324,11 +317,7 @@ fn parse_become_iterated_counter_value_words(words: &[&str]) -> Option<Value> {
     }
     let counter_word = index + counter_offset;
     let counter_type = (counter_word > index)
-        .then(|| {
-            crate::grammar::filters::parse_counter_type_words(
-                &words[index..=counter_word],
-            )
-        })
+        .then(|| crate::grammar::filters::parse_counter_type_words(&words[index..=counter_word]))
         .flatten();
     let reference_words = words.get(counter_word + 1..)?;
     if ![
@@ -361,7 +350,7 @@ pub(crate) fn parse_filtered_object_animation_tokens(
     let lose_all = words
         .windows(4)
         .position(|window| matches!(window, ["lose" | "loses", "all", "abilities", "and"]));
-    let subject_word_end = lose_all.unwrap_or_else(|| words.len());
+    let subject_word_end = lose_all.unwrap_or(words.len());
     let copula_search_start = lose_all.map_or(0, |start| start + 4);
     let mut parsed = None;
     for copula_word in copula_search_start..words.len() {
@@ -496,7 +485,7 @@ pub(crate) fn parse_become_iterated_mana_value_pt_words<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_controller_owner_and_base_pt_subjects() {
@@ -550,26 +539,21 @@ mod tests {
 
     #[test]
     fn named_possessive_controller_subject_persists_source_identity() {
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Hold for Ransom",
-            || {
-                let tokens =
-                    lex_line("Hold for Ransom's controller", 0).expect("lex named controller");
-                let shape =
-                    parse_controller_owner_subject_tokens(&tokens).expect("controller subject");
-                assert_eq!(shape.subject, SubjectAst::Player(PlayerAst::ItsController));
-                let TargetAst::Object(filter, None, None) = shape.target else {
-                    panic!("named source must persist in an object-backed source target");
-                };
-                assert!(filter.source);
-                assert_eq!(
-                    filter.source_surface,
-                    Some(crate::target::SourceReferenceSurface::FullName(
-                        "Hold for Ransom".to_string()
-                    ))
-                );
-            },
-        );
+        crate::util::with_source_reference_context("Hold for Ransom", || {
+            let tokens = lex_line("Hold for Ransom's controller", 0).expect("lex named controller");
+            let shape = parse_controller_owner_subject_tokens(&tokens).expect("controller subject");
+            assert_eq!(shape.subject, SubjectAst::Player(PlayerAst::ItsController));
+            let TargetAst::Object(filter, None, None) = shape.target else {
+                panic!("named source must persist in an object-backed source target");
+            };
+            assert!(filter.source);
+            assert_eq!(
+                filter.source_surface,
+                Some(crate::target::SourceReferenceSurface::FullName(
+                    "Hold for Ransom".to_string()
+                ))
+            );
+        });
     }
 
     #[test]

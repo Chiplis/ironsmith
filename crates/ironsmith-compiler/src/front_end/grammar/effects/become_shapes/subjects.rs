@@ -1,11 +1,7 @@
-use crate::front_end::lexer::{
-    OwnedLexToken, parser_token_word_refs, trim_lexed_commas,
-};
-use crate::util::{
-    source_reference_surface_for_words, this_source_surface_for_words,
-};
+use crate::lexer::{OwnedLexToken, parser_token_word_refs, trim_lexed_commas};
 use crate::target::SourceReferenceSurface;
 use crate::types::Subtype;
+use crate::util::{source_reference_surface_for_words, this_source_surface_for_words};
 use winnow::combinator::alt;
 use winnow::prelude::*;
 
@@ -165,7 +161,7 @@ pub(crate) fn aura_subject_prefers_source(tokens: &[OwnedLexToken]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 
@@ -201,17 +197,14 @@ mod tests {
             ["target", "artifact"]
         );
 
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Sarkhan, Soul Aflame",
-            || {
-                let named_source = lex("Sarkhan");
-                assert_eq!(
-                    parse_become_target_subject_shape(&named_source, &body),
-                    BecomeTargetSubjectShape::Source(SourceReferenceSurface::ShortName(
-                        "Sarkhan".to_string()
-                    ))
-                );
-            },
-        );
+        crate::util::with_source_reference_context("Sarkhan, Soul Aflame", || {
+            let named_source = lex("Sarkhan");
+            assert_eq!(
+                parse_become_target_subject_shape(&named_source, &body),
+                BecomeTargetSubjectShape::Source(SourceReferenceSurface::ShortName(
+                    "Sarkhan".to_string()
+                ))
+            );
+        });
     }
 }

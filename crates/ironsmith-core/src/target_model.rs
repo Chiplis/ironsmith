@@ -355,7 +355,7 @@ mod tests {
     fn target_wrapper_and_count_are_stable() {
         let target_creature = ChooseSpec::target_creature().with_count(2usize.into());
         assert!(target_creature.is_target());
-        assert!(target_creature.inner().is_target() == false);
+        assert!(!target_creature.inner().is_target());
         assert_eq!(target_creature.count(), 2usize.into());
     }
 

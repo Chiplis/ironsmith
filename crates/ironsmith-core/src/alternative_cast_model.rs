@@ -670,10 +670,9 @@ mod tests {
             };
 
         let mapped: AlternativeCastingMethod<(), Cost<usize>, ()> = method
-            .try_map(
-                |effect| Ok::<_, ()>(effect),
-                |cost| cost.try_map_effect(|effect| Ok::<_, ()>(effect.len())),
-            )
+            .try_map(Ok::<_, ()>, |cost| {
+                cost.try_map_effect(|effect| Ok::<_, ()>(effect.len()))
+            })
             .expect("composed alternatives should map recursively");
 
         let AlternativeCastingMethod::Composed { total_cost, .. } = mapped else {

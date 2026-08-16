@@ -4,9 +4,7 @@ use winnow::prelude::*;
 
 use crate::effect::ChoiceCount;
 use crate::grammar::primitives;
-use crate::lexer::{
-    LexStream, OwnedLexToken, parser_token_word_refs, trim_lexed_commas,
-};
+use crate::lexer::{LexStream, OwnedLexToken, parser_token_word_refs, trim_lexed_commas};
 use crate::util::{
     is_source_reference_words, parse_choice_count_token_prefix_consumed,
     trim_edge_punctuation_tokens,

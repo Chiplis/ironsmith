@@ -284,7 +284,7 @@ pub(crate) fn rewrite_attached_controller_effect_tokens_lexed(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::lexer::{lex_line, parser_token_word_refs};
+    use crate::lexer::{lex_line, parser_token_word_refs};
 
     use super::*;
 

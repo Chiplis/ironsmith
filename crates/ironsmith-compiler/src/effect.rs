@@ -478,12 +478,12 @@ impl Effect {
             }
             return;
         }
-        if let Some(vote) = self.downcast_ref::<crate::effects::VoteEffect>() {
-            if let ironsmith_core::VoteChoice::NamedOptions(options) = &vote.choice {
-                for option in options {
-                    for effect in &option.effects_per_vote {
-                        visitor(effect);
-                    }
+        if let Some(vote) = self.downcast_ref::<crate::effects::VoteEffect>()
+            && let ironsmith_core::VoteChoice::NamedOptions(options) = &vote.choice
+        {
+            for option in options {
+                for effect in &option.effects_per_vote {
+                    visitor(effect);
                 }
             }
         }

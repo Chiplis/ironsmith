@@ -31,8 +31,7 @@ mod lines;
 mod static_chunks;
 mod triggered_chunks;
 
-pub(crate) use chosen_options::condition_for_chosen_option;
-use chosen_options::wrap_chosen_option_static_chunk;
+pub(crate) use chosen_options::{condition_for_chosen_option, wrap_chosen_option_static_chunk};
 use effect_programs::*;
 use static_chunks::*;
 pub(crate) use triggered_chunks::{
@@ -42,16 +41,21 @@ pub(crate) use triggered_chunks::{
 
 pub(crate) use activated::parse_activated_line;
 pub(crate) use lines::{
-    has_linked_created_token_next_turn_sacrifice_surface, parse_exert_attack_keyword_line,
+    dynamic_zone_change_group_token_creation_from_authored_trigger,
+    exact_graveyard_card_copy_cast_sequence, exact_looked_hand_optional_cast_bundle,
+    exact_target_same_name_graveyard_may_cast_bundle,
+    has_created_token_reciprocal_lifecycle_surface,
+    has_linked_created_token_next_turn_sacrifice_surface,
+    is_authored_dynamic_exile_permission_bundle, is_authored_look_hand_optional_cast_bundle,
+    is_exact_correlated_trigger_effect_bundle, parse_exert_attack_keyword_line,
     parse_gift_keyword_line, parse_keyword_special_cases,
     parse_library_origin_source_pump_unblockable_triggered_line,
-    parse_statement_token_groups_to_chunks, parse_static_line, parse_triggered_line,
-    rewrite_modal_to_parsed_item,
+    parse_statement_token_groups_to_chunks, parse_static_line, rewrite_modal_to_parsed_item,
 };
 #[cfg(test)]
 pub(crate) use lines::{
     normalize_exert_followup_source_reference_tokens, parse_keyword_line_for_test,
-    parse_keyword_line_with_full_tokens_for_test, parse_single_effect_lexed,
+    parse_keyword_line_with_full_tokens_for_test, parse_single_effect_lexed, parse_triggered_line,
     strip_lexed_suffix_phrase,
 };
 
@@ -91,11 +95,11 @@ use super::lowering_support::{
 };
 use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects_ast};
 use super::parser_support::split_tokens_for_parse;
-use super::reference_model::ReferenceEnv;
 use super::restriction_support::apply_pending_mana_restrictions;
 use super::token_primitives::strip_leading_if_you_do_lexed;
 use super::util::{join_sentences_with_period, parse_level_up_line_lexed};
 use crate::effect_sentences::merge_filters;
+use crate::model::reference_state::ReferenceEnv;
 
 fn first_for_each_object_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
     for effect in effects {
@@ -103,15 +107,11 @@ fn first_for_each_object_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
             return Some(filter.clone());
         }
         let mut found = None;
-        crate::model::visit::for_each_nested_effects(
-            effect,
-            true,
-            |nested| {
-                if found.is_none() {
-                    found = first_for_each_object_filter(nested);
-                }
-            },
-        );
+        crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+            if found.is_none() {
+                found = first_for_each_object_filter(nested);
+            }
+        });
         if found.is_some() {
             return found;
         }
@@ -132,15 +132,11 @@ fn mark_matching_for_each_object_leading_then(
             return true;
         }
         let mut marked = false;
-        crate::model::visit::for_each_nested_effects_mut(
-            effect,
-            true,
-            |nested| {
-                if !marked {
-                    marked = mark_matching_for_each_object_leading_then(nested, expected);
-                }
-            },
-        );
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            if !marked {
+                marked = mark_matching_for_each_object_leading_then(nested, expected);
+            }
+        });
         if marked {
             return true;
         }
@@ -217,11 +213,10 @@ fn parse_effect_sentences_preserving_source_boundaries(
     let mut parse_sentences = sentences.clone();
     let mut stripped_participant_ordering = false;
     if let Some(first) = parse_sentences.first_mut()
-        && let Some((_, remainder)) =
-            crate::grammar::primitives::strip_lexed_prefix_phrases(
-                first,
-                &[&["starting", "with", "you"]],
-            )
+        && let Some((_, remainder)) = crate::grammar::primitives::strip_lexed_prefix_phrases(
+            first,
+            &[&["starting", "with", "you"]],
+        )
     {
         *first = trim_lexed_commas(remainder).to_vec();
         stripped_participant_ordering = true;
@@ -231,15 +226,24 @@ fn parse_effect_sentences_preserving_source_boundaries(
     } else {
         parse_effect_sentences_lexed(tokens)?
     };
+    // Cross-sentence self-replacement construction can rebuild a token-copy
+    // action after the sentence-local parser has already discarded its
+    // quoted exception. The complete authored token stream is still present
+    // at this boundary, so reattach the typed inline rule before comparing
+    // prefix parses. A changed joint AST intentionally falls back to the flat
+    // program below, preserving the enriched replacement as one unit.
+    crate::effect_sentences::attach_inline_token_granted_abilities_to_last_create(
+        &mut parsed_together,
+        tokens,
+    );
     if sentences.len() < 2 {
         let Some(sentence) = sentences.first() else {
             return Ok(parsed_together);
         };
-        let effects =
-            crate::effect_sentences::preserve_coordinated_effect_chain_surface(
-                sentence,
-                parsed_together,
-            );
+        let effects = crate::effect_sentences::preserve_coordinated_effect_chain_surface(
+            sentence,
+            parsed_together,
+        );
         if stripped_participant_ordering {
             return Ok(vec![EffectAst::SourceSentence {
                 effects,
@@ -300,11 +304,10 @@ fn parse_effect_sentences_preserving_source_boundaries(
         }
 
         let sentence_effects = parsed_together[previous_effect_count..prefix_effect_count].to_vec();
-        let sentence_effects =
-            crate::effect_sentences::preserve_coordinated_effect_chain_surface(
-                &boundary_surface_sentences[prefix_len - 1],
-                sentence_effects,
-            );
+        let sentence_effects = crate::effect_sentences::preserve_coordinated_effect_chain_surface(
+            &boundary_surface_sentences[prefix_len - 1],
+            sentence_effects,
+        );
         let leading_then = token_word_refs(&boundary_surface_sentences[prefix_len - 1])
             .first()
             .is_some_and(|word| word.eq_ignore_ascii_case("then"));

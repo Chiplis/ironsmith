@@ -92,7 +92,7 @@ fn rewrite_grant_play_tagged_effect_scaffolding(text: &str) -> String {
         for marker in markers {
             if let Some(rel) = text[cursor..].find(marker) {
                 let idx = cursor + rel;
-                if next_match.map_or(true, |(best_idx, _)| idx < best_idx) {
+                if next_match.is_none_or(|(best_idx, _)| idx < best_idx) {
                     next_match = Some((idx, marker));
                 }
             }
@@ -1551,8 +1551,8 @@ fn strip_compiled_ability_cost_prefix(clause: &str) -> &str {
     if !consumed_cost {
         return clause;
     }
-    if rest.starts_with(':') {
-        return rest[1..].trim_start();
+    if let Some(stripped) = rest.strip_prefix(':') {
+        return stripped.trim_start();
     }
 
     clause
@@ -5727,18 +5727,15 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     if normalized_lower.starts_with(
         "whenever this creature deals combat damage to a player, if this creature isn't renowned, put ",
     ) && normalized_lower.contains(" +1/+1 counter on it and it becomes renowned")
-    {
-        if let Some(rest) = normalized.strip_prefix(
+        && let Some(rest) = normalized.strip_prefix(
             "Whenever this creature deals combat damage to a player, if this creature isn't renowned, put ",
-        ) {
-            if let Some(amount) = rest
+        )
+            && let Some(amount) = rest
                 .split(" +1/+1 counter on it and it becomes renowned")
                 .next()
             {
                 normalized = format!("Renown {}", amount.trim());
             }
-        }
-    }
     for (from, to) in [
         (
             "Exile all cards from target player's graveyard",
@@ -5973,11 +5970,11 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     for prefix in ["Each player ", "Each opponent "] {
         if let Some(rest) = normalized.strip_prefix(prefix) {
             let mut chars = rest.chars();
-            if let Some(first) = chars.next() {
-                if first.is_ascii_alphabetic() && first.is_ascii_uppercase() {
-                    normalized =
-                        format!("{prefix}{}{}", first.to_ascii_lowercase(), chars.as_str());
-                }
+            if let Some(first) = chars.next()
+                && first.is_ascii_alphabetic()
+                && first.is_ascii_uppercase()
+            {
+                normalized = format!("{prefix}{}{}", first.to_ascii_lowercase(), chars.as_str());
             }
         }
     }
@@ -7468,10 +7465,11 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     let normalized_lower = normalized_trimmed.to_ascii_lowercase();
     let echo_guard_prefix =
         "at the beginning of your upkeep, if this object is on the battlefield, ";
-    let echo_normalized_trimmed = normalized_lower
-        .starts_with(echo_guard_prefix)
-        .then(|| normalized_trimmed[echo_guard_prefix.len()..].trim())
-        .unwrap_or(normalized_trimmed);
+    let echo_normalized_trimmed = if normalized_lower.starts_with(echo_guard_prefix) {
+        normalized_trimmed[echo_guard_prefix.len()..].trim()
+    } else {
+        normalized_trimmed
+    };
     let echo_normalized_lower = echo_normalized_trimmed.to_ascii_lowercase();
     if normalized_lower == "this creature enters with an echo counter on it"
         || normalized_lower == "this artifact enters with an echo counter on it"
@@ -7481,20 +7479,19 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     } else if echo_normalized_lower
         .starts_with("at the beginning of your upkeep, remove an echo counter from this ")
         && echo_normalized_lower.contains(" unless you ")
+        && let Some(idx) = echo_normalized_lower.find(" unless you ")
     {
-        if let Some(idx) = echo_normalized_lower.find(" unless you ") {
-            let cost = echo_normalized_trimmed[idx + " unless you ".len()..]
-                .trim()
-                .trim_end_matches('.');
-            if let Some(mana_cost) = cost
-                .strip_prefix("pay ")
-                .or_else(|| cost.strip_prefix("Pay "))
-                .filter(|cost| cost.starts_with('{'))
-            {
-                normalized = format!("Echo {mana_cost}");
-            } else {
-                normalized = format!("Echo—{cost}");
-            }
+        let cost = echo_normalized_trimmed[idx + " unless you ".len()..]
+            .trim()
+            .trim_end_matches('.');
+        if let Some(mana_cost) = cost
+            .strip_prefix("pay ")
+            .or_else(|| cost.strip_prefix("Pay "))
+            .filter(|cost| cost.starts_with('{'))
+        {
+            normalized = format!("Echo {mana_cost}");
+        } else {
+            normalized = format!("Echo—{cost}");
         }
     }
 
@@ -8219,7 +8216,7 @@ fn semantic_clauses(text: &str) -> Vec<String> {
             .contains("creature type of your choice")
     });
     if has_creature_type_choice_clause {
-        clauses.retain(|clause| clause.to_ascii_lowercase() != "choose a creature type");
+        clauses.retain(|clause| !clause.eq_ignore_ascii_case("choose a creature type"));
     }
     merge_still_land_clauses(clauses)
 }

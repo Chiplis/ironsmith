@@ -84,7 +84,7 @@ fn structure_token_kind_rindex(tokens: &[OwnedLexToken], kind: TokenKind) -> Opt
 }
 
 fn structure_word_is_any(word: &str, candidates: &[&str]) -> bool {
-    candidates.iter().any(|candidate| word == *candidate)
+    candidates.contains(&word)
 }
 
 fn phrase_occurs(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
@@ -666,10 +666,9 @@ pub(crate) fn classify_static_line_family_lexed(
         if !head.is_empty()
             && !contains_token_kind(head, TokenKind::Period)
             && quoted_grant_head_looks_like_object_filter(head)
+            && (primitives::contains_word(head, "has") || primitives::contains_word(head, "have"))
         {
-            if primitives::contains_word(head, "has") || primitives::contains_word(head, "have") {
-                return Some(StaticLineFamily::GrantedQuotedAbility);
-            }
+            return Some(StaticLineFamily::GrantedQuotedAbility);
         }
     }
 
@@ -701,10 +700,7 @@ fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     fn life_relation_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         use crate::grammar::conditions::PlayerLifeRelationAst;
 
-        let relation =
-            crate::grammar::conditions::parse_player_life_relation_condition(
-                tokens,
-            )?;
+        let relation = crate::grammar::conditions::parse_player_life_relation_condition(tokens)?;
         let player = match relation.player {
             PlayerFilter::You => PlayerAst::You,
             PlayerFilter::Opponent => PlayerAst::Opponent,
@@ -763,7 +759,7 @@ fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         {
             part = trim_lexed_commas(&part[1..]);
         }
-        let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(&part) else {
+        let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(part) else {
             return parse_predicate_with_grammar_entrypoint_lexed(tokens)
                 .ok()
                 .or_else(|| life_relation_predicate(tokens));
@@ -837,7 +833,7 @@ fn parse_sentence_segment_len<'a>(
     Ok(initial_len - input.len())
 }
 
-pub(crate) fn split_lexed_sentences<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a [OwnedLexToken]> {
+pub(crate) fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     let mut segments = Vec::new();
     let mut remaining = tokens;
 
@@ -1032,36 +1028,9 @@ pub(crate) fn split_leading_result_prefix_lexed<'a>(
     })
 }
 
-#[cfg(test)]
-mod leading_result_prefix_regressions {
-    use super::*;
-
-    #[test]
-    fn ordinary_control_condition_is_not_a_prior_result_prefix() {
-        let ordinary = crate::runtime_backend::lexer::lex_line(
-            "If you don't control a Human, you lose life equal to that creature's toughness.",
-            0,
-        )
-        .expect("lex ordinary state condition");
-        assert!(split_leading_result_prefix_lexed(&ordinary).is_none());
-
-        let prior_result =
-            crate::runtime_backend::lexer::lex_line("If you don't, you lose 3 life.", 0)
-                .expect("lex prior-result condition");
-        assert!(matches!(
-            split_leading_result_prefix_lexed(&prior_result),
-            Some(LeadingResultPrefixSpec {
-                kind: LeadingResultPrefixKind::If,
-                predicate: IfResultPredicate::DidNot,
-                ..
-            })
-        ));
-    }
-}
-
-fn split_leading_numeric_result_prefix_lexed<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(IfResultPredicate, &'a [OwnedLexToken])> {
+fn split_leading_numeric_result_prefix_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<(IfResultPredicate, &[OwnedLexToken])> {
     let first = tokens.first()?;
     let pipe_idx = structure_token_kind_index(tokens, TokenKind::Pipe)?;
     if pipe_idx != 1 && pipe_idx < 3 {
@@ -1757,8 +1726,8 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
         // you cast it from your graveyard") scopes the trigger event itself;
         // leave it for the trigger parser instead of modeling it as an
         // intervening-if predicate.
-        if crate::families::activation_and_restrictions::trigger_clause_core::clause_words_are_moved_or_cast_origin_condition(
-            &crate::token_word_refs(predicate_tokens),
+        if crate::activation_and_restrictions::trigger_clause_core::clause_words_are_moved_or_cast_origin_condition(
+            &crate::lexer::token_word_refs(predicate_tokens),
         ) {
             continue;
         }
@@ -1950,4 +1919,30 @@ pub(crate) fn parse_modal_header_choose_spec<'a>(
             "modal header line",
         )))
         .parse_next(input)
+}
+
+#[cfg(test)]
+mod leading_result_prefix_regressions {
+    use super::*;
+
+    #[test]
+    fn ordinary_control_condition_is_not_a_prior_result_prefix() {
+        let ordinary = crate::lexer::lex_line(
+            "If you don't control a Human, you lose life equal to that creature's toughness.",
+            0,
+        )
+        .expect("lex ordinary state condition");
+        assert!(split_leading_result_prefix_lexed(&ordinary).is_none());
+
+        let prior_result = crate::lexer::lex_line("If you don't, you lose 3 life.", 0)
+            .expect("lex prior-result condition");
+        assert!(matches!(
+            split_leading_result_prefix_lexed(&prior_result),
+            Some(LeadingResultPrefixSpec {
+                kind: LeadingResultPrefixKind::If,
+                predicate: IfResultPredicate::DidNot,
+                ..
+            })
+        ));
+    }
 }

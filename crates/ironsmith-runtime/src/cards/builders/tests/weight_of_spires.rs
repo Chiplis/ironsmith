@@ -67,7 +67,7 @@ fn exact_text_and_target_controller_count_are_preserved_end_to_end() {
         .as_ref()
         .expect("Weight of Spires should be an instant spell")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(nested_damage)
         .expect("Weight of Spires should keep its typed damage instruction");
     let Value::Count(counted) = damage.amount.unhinted() else {

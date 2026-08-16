@@ -1082,10 +1082,10 @@ pub(super) fn attack_target_from_input(input: &AttackTargetInput) -> AttackTarge
 pub(super) fn colors_for_context(
     ctx: &ironsmith::decisions::context::ColorsContext,
 ) -> Vec<ironsmith::color::Color> {
-    if let Some(available) = &ctx.available_colors {
-        if !available.is_empty() {
-            return available.clone();
-        }
+    if let Some(available) = &ctx.available_colors
+        && !available.is_empty()
+    {
+        return available.clone();
     }
     ironsmith::color::Color::ALL.to_vec()
 }
@@ -1374,31 +1374,31 @@ fn hidden_ref_matches_object(game: &GameState, id: ObjectId, hidden_ref: &Hidden
     {
         return false;
     }
-    if let Some(expected_slot) = hidden_ref.slot {
-        if hidden.is_none_or(|info| info.slot != expected_slot) {
-            return false;
-        }
+    if let Some(expected_slot) = hidden_ref.slot
+        && hidden.is_none_or(|info| info.slot != expected_slot)
+    {
+        return false;
     }
-    if let Some(expected_slot) = hidden_ref.public_slot {
-        if hidden.is_none_or(|info| info.public_slot != Some(expected_slot)) {
-            return false;
-        }
+    if let Some(expected_slot) = hidden_ref.public_slot
+        && hidden.is_none_or(|info| info.public_slot != Some(expected_slot))
+    {
+        return false;
     }
-    if let Some(expected_commitment) = hidden_ref.commitment.as_deref() {
-        if hidden.is_none_or(|info| {
+    if let Some(expected_commitment) = hidden_ref.commitment.as_deref()
+        && hidden.is_none_or(|info| {
             info.commitment != expected_commitment
                 && info.public_commitment.as_deref() != Some(expected_commitment)
-        }) {
-            return false;
-        }
+        })
+    {
+        return false;
     }
-    if let Some(expected_commitment) = hidden_ref.public_commitment.as_deref() {
-        if hidden.is_none_or(|info| {
+    if let Some(expected_commitment) = hidden_ref.public_commitment.as_deref()
+        && hidden.is_none_or(|info| {
             info.commitment != expected_commitment
                 && info.public_commitment.as_deref() != Some(expected_commitment)
-        }) {
-            return false;
-        }
+        })
+    {
+        return false;
     }
     true
 }

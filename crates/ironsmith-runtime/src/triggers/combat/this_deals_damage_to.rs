@@ -105,10 +105,23 @@ fn damage_target_description(filter: &ObjectFilter) -> String {
     if one_or_more {
         return format!("one or more {}", pluralize_damage_recipient(&description));
     }
-    match description.as_str() {
-        "artifact" | "enchantment" => format!("an {description}"),
-        "creature" | "land" | "permanent" | "planeswalker" | "battle" => format!("a {description}"),
-        description => description.to_string(),
+    const DETERMINED: &[&str] = &[
+        "a ", "an ", "the ", "each ", "all ", "any ", "target ", "another ", "that ", "this ",
+        "one ", "two ", "three ", "up to ", "x ",
+    ];
+    let lower = description.to_ascii_lowercase();
+    if DETERMINED.iter().any(|prefix| lower.starts_with(prefix)) {
+        description
+    } else {
+        let article =
+            if description.chars().next().is_some_and(|first| {
+                matches!(first.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u')
+            }) {
+                "an"
+            } else {
+                "a"
+            };
+        format!("{article} {description}")
     }
 }
 

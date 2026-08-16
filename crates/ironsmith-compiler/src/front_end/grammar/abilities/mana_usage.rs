@@ -780,16 +780,13 @@ fn classify_spec(tokens: &[OwnedLexToken]) -> ManaUsageSpecShape {
     let words = TokenWordView::new(tokens).word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
     while let Ok(word) = take_word(&mut input) {
-        if UNSUPPORTED_SPEC_WORDS
-            .iter()
-            .any(|candidate| *candidate == word)
-        {
+        if UNSUPPORTED_SPEC_WORDS.contains(&word) {
             return ManaUsageSpecShape::Unsupported;
         }
     }
     let mut input: primitives::WordSliceInput<'_> = &words;
     while let Ok(word) = take_word(&mut input) {
-        if !PLAIN_SPELL_WORDS.iter().any(|candidate| *candidate == word) {
+        if !PLAIN_SPELL_WORDS.contains(&word) {
             return ManaUsageSpecShape::Other;
         }
     }
@@ -822,11 +819,14 @@ fn parse_ability_source_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter>
     let tokens = strip_article(trim_lexed_commas(tokens));
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
-    let semantic_end = words
+    let semantic_end = if words
         .last()
         .is_some_and(|word| matches!(*word, "source" | "sources"))
-        .then(|| words.len().saturating_sub(1))
-        .unwrap_or(words.len());
+    {
+        words.len().saturating_sub(1)
+    } else {
+        words.len()
+    };
     if semantic_end == 0 {
         return None;
     }

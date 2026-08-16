@@ -248,7 +248,7 @@ pub(super) fn sphinx_ambassador_keeps_search_name_choice_condition() {
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Sphinx])
         .power_toughness(PowerToughness::fixed(5, 5))
-        .parse_text(&format!("Flying\n{triggered}"))
+        .parse_text(format!("Flying\n{triggered}"))
         .expect("Sphinx Ambassador search/name sequence should parse");
 
     let debug = format!("{:?}", def.abilities);
@@ -273,7 +273,7 @@ pub(super) fn emet_selch_keeps_graveyard_cost_and_life_loss_may_cast_trigger() {
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Elder, Subtype::Wizard])
         .power_toughness(PowerToughness::fixed(3, 4))
-        .parse_text(&format!(
+        .parse_text(format!(
             "Spells you cast from your graveyard cost {{2}} less to cast.\n{triggered} Do this only once each turn."
         ))
         .expect("Emet-Selch graveyard cast trigger should parse");
@@ -453,7 +453,7 @@ pub(super) fn eye_of_doom_keeps_doom_counter_choice_and_destroy_filter() {
     ];
     let def = CardDefinitionBuilder::new(CardId::new(), "Eye of Doom Variant")
         .card_types(vec![CardType::Artifact])
-        .parse_text(&lines.join("\n"))
+        .parse_text(lines.join("\n"))
         .expect("Eye of Doom counter choice/destroy text should parse");
 
     let debug = format!("{:?}", def.abilities);
@@ -480,7 +480,7 @@ pub(super) fn dream_thiefs_bandana_keeps_look_exile_and_while_exiled_permission(
     let def = CardDefinitionBuilder::new(CardId::new(), "Dream-Thief's Bandana Variant")
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Equipment])
-        .parse_text(&format!("{trigger}\nEquip {{1}}"))
+        .parse_text(format!("{trigger}\nEquip {{1}}"))
         .expect("Dream-Thief's Bandana text should parse");
 
     let debug = format!("{:#?}", def.abilities);
@@ -724,7 +724,7 @@ pub(super) fn happily_ever_after_keeps_life_draw_and_win_gate() {
     ];
     let def = CardDefinitionBuilder::new(CardId::new(), "Happily Ever After Variant")
         .card_types(vec![CardType::Enchantment])
-        .parse_text(&lines.join("\n"))
+        .parse_text(lines.join("\n"))
         .expect("Happily Ever After text should parse");
 
     let debug = format!("{:?}", def.abilities);
@@ -2242,7 +2242,7 @@ pub(super) fn add_blood_scrivener_library_cards(
         game.create_object_from_card(
             &crate::card::CardBuilder::new(
                 CardId::from_raw(20_000 + index),
-                &format!("Blood Scrivener Library Card {index}"),
+                format!("Blood Scrivener Library Card {index}"),
             )
             .card_types(vec![CardType::Creature])
             .build(),

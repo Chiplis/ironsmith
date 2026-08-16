@@ -260,9 +260,7 @@ fn parse_counter_ability_target_lexed<'a>(
             )
             .parse_next(&mut targets_probe)?;
             if let Ok((target_player, target_object, targets_any_of)) =
-                crate::families::keyword_static::parse_cost_modifier_target_spec(
-                    &rest,
-                )
+                crate::keyword_static::parse_cost_modifier_target_spec(&rest)
             {
                 *input = targets_probe;
                 targets_relation = Some((only, target_player, target_object, targets_any_of));
@@ -327,7 +325,7 @@ pub(crate) fn parse_counter_ability_target_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_counted_activated_or_triggered_ability_target() {

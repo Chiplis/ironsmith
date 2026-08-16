@@ -4793,12 +4793,9 @@ pub(super) fn describe_for_players_simple_iterated_action(
         )
         && matches!(damage.amount, Value::Fixed(_))
     {
-        let mut text = describe_effect(effect)
+        let text = describe_effect(effect)
             .replace(" to that player", &format!(" to {}", subject_lower))
             .replace(" to That player", &format!(" to {subject_lower}"));
-        if subject != "You" {
-            text = text.replace(" to each player", " to each player");
-        }
         return Some(text);
     }
     if let Some(exile_top) = effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
@@ -4867,20 +4864,18 @@ pub(super) fn describe_for_players_simple_iterated_action(
                 )
             ]
         )
+        && let crate::continuous::EffectTarget::Filter(filter) = &apply.target
+        && filter.owner == Some(PlayerFilter::IteratedPlayer)
+        && filter.controller == Some(PlayerFilter::You)
     {
-        if let crate::continuous::EffectTarget::Filter(filter) = &apply.target
-            && filter.owner == Some(PlayerFilter::IteratedPlayer)
-            && filter.controller == Some(PlayerFilter::You)
-        {
-            let mut object_filter = filter.clone();
-            object_filter.owner = None;
-            object_filter.controller = None;
-            let object = strip_indefinite_article(&object_filter.description()).to_string();
-            return Some(format!(
-                "{subject} {} control of each {object} they own that you control",
-                verb("gain", "gains")
-            ));
-        }
+        let mut object_filter = filter.clone();
+        object_filter.owner = None;
+        object_filter.controller = None;
+        let object = strip_indefinite_article(&object_filter.description()).to_string();
+        return Some(format!(
+            "{subject} {} control of each {object} they own that you control",
+            verb("gain", "gains")
+        ));
     }
 
     if let Some(create) =
@@ -5130,7 +5125,7 @@ mod simple_create_token_bundle_tests {
     fn looked_face_down_partition_preserves_chooser_order_surface() {
         let looked_tag = TagKey::from("looked");
         let chosen_tag = TagKey::from("chosen");
-        let effects = vec![
+        let effects = [
             Effect::look_at_top_cards(PlayerFilter::You, 4, looked_tag.clone()),
             Effect::choose_objects(
                 ObjectFilter::tagged(looked_tag.clone()).in_zone(Zone::Library),

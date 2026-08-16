@@ -443,16 +443,16 @@ impl EffectExecutor for ExploreEffect {
                             &mut *ctx.decision_maker,
                         );
                     } else {
-                        if game.object(instruction.object_id).is_some() {
-                            if let Some(event) = game.add_counters_with_source(
+                        if game.object(instruction.object_id).is_some()
+                            && let Some(event) = game.add_counters_with_source(
                                 instruction.object_id,
                                 CounterType::PlusOnePlusOne,
                                 1,
                                 Some(ctx.source),
                                 Some(ctx.controller),
-                            ) {
-                                events.push(event);
-                            }
+                            )
+                        {
+                            events.push(event);
                         }
 
                         let choice_ctx = crate::decisions::context::BooleanContext::new(
@@ -476,16 +476,16 @@ impl EffectExecutor for ExploreEffect {
                             );
                         }
                     }
-                } else if game.object(instruction.object_id).is_some() {
-                    if let Some(event) = game.add_counters_with_source(
+                } else if game.object(instruction.object_id).is_some()
+                    && let Some(event) = game.add_counters_with_source(
                         instruction.object_id,
                         CounterType::PlusOnePlusOne,
                         1,
                         Some(ctx.source),
                         Some(ctx.controller),
-                    ) {
-                        events.push(event);
-                    }
+                    )
+                {
+                    events.push(event);
                 }
 
                 let action_snapshot = game
@@ -531,6 +531,12 @@ impl EffectExecutor for ExploreEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OpenAttractionEffect {
     pub reminder: bool,
+}
+
+impl Default for OpenAttractionEffect {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OpenAttractionEffect {
@@ -626,9 +632,21 @@ impl ManifestTopCardOfLibraryEffect {
     }
 }
 
+impl Default for ManifestDreadEffect {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ManifestDreadEffect {
     pub fn new() -> Self {
         Self
+    }
+}
+
+impl Default for ManifestCardFromHandEffect {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1222,7 +1240,7 @@ impl EffectExecutor for BolsterEffect {
 
 impl EffectExecutor for CipherEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
     fn execute(
@@ -1826,6 +1844,12 @@ impl EffectExecutor for AdaptEffect {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CounterAbilityEffect;
+
+impl Default for CounterAbilityEffect {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl CounterAbilityEffect {
     pub fn new() -> Self {

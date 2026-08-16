@@ -101,7 +101,7 @@ pub(crate) fn parse_voted_against_you_effects_shape(
     )?;
     let (_, effect_tokens) =
         primitives::parse_prefix(rest, primitives::phrase(&["vote", "for"]).void())?;
-    let effect_tokens = crate::front_end::lexer::trim_lexed_commas(effect_tokens);
+    let effect_tokens = crate::lexer::trim_lexed_commas(effect_tokens);
     (!effect_tokens.is_empty()).then_some(VotedAgainstYouEffectsShape { effect_tokens })
 }
 

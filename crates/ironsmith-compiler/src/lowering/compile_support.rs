@@ -1,5 +1,4 @@
 use super::grammar::token_definitions as token_grammar;
-use super::token_definition::{ConstructArtifactScalingShape, TokenDefinitionSpec};
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming, TriggeredAbility};
 use crate::card::PowerToughness;
 use crate::cards::CardDefinition;
@@ -24,13 +23,13 @@ use crate::filter::{
 };
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::model::token_definition::{ConstructArtifactScalingShape, TokenDefinitionSpec};
 use crate::static_abilities::{CopyTriggeredAbilities, StaticAbility};
 use crate::target::ChooseSpec;
 use crate::triggers::{DamagedBySource, Trigger};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
-use super::ast::{EmblemAbilityAst, EmblemDescriptionAst};
 use super::effect_ast_traversal::{
     TerminalResultProducer, assert_effect_ast_variant_coverage, for_each_nested_effects,
     for_each_nested_effects_mut, terminal_result_producer,
@@ -52,10 +51,6 @@ use super::reference_helpers::{
     resolve_total_cost_it_tags, resolve_unless_player_filter, resolve_value_it_tag,
     watch_tag_from_filter, with_target_reference_surface_hint,
 };
-use super::reference_model::{
-    AnnotatedEffect, AnnotatedEffectSequence, LoweredEffects, ReferenceEnv, ReferenceExports,
-    ReferenceImports,
-};
 use super::reference_resolution::{
     EffectReferenceResolutionConfig, annotate_effect_sequence,
     effect_references_prior_prevention_amount, effect_references_typed_removed_counter_metric,
@@ -65,6 +60,11 @@ use super::static_ability_helpers::{
     lower_granted_abilities_ast, lower_granted_abilities_ast_to_object_abilities,
 };
 use super::util::map_span_to_original;
+use crate::model::ast::{EmblemAbilityAst, EmblemDescriptionAst};
+use crate::model::reference_state::{
+    AnnotatedEffect, AnnotatedEffectSequence, LoweredEffects, ReferenceEnv, ReferenceExports,
+    ReferenceImports,
+};
 
 #[path = "compile_support/choose_effect_helpers.rs"]
 mod choose_effect_helpers;
@@ -123,7 +123,8 @@ pub(crate) use player_effect_helpers::{
 pub(crate) use prepared_effects::{
     compile_condition_from_predicate_ast_with_env,
     materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
-    materialize_prepared_triggered_effects, rebind_returned_attachment_history_to_triggering_object,
+    materialize_prepared_triggered_effects,
+    rebind_returned_attachment_history_to_triggering_object,
 };
 #[cfg(test)]
 pub(crate) use prepared_effects::{
@@ -1085,15 +1086,15 @@ pub(crate) fn compile_annotated_effects_with_context(
         );
         let (mut effect_list, effect_choices) = compile_effect(&current.effect, ctx)?;
         ctx.reserve_object_result_tag(None);
-        if let Some(id) = current.assigned_effect_id {
-            if !effect_list.is_empty() {
-                control_flow_handlers::assign_effect_result_id_for_ast(
-                    &mut effect_list,
-                    &current.effect,
-                    id,
-                    "missing final effect while assigning event id (annotated effect)",
-                )?;
-            }
+        if let Some(id) = current.assigned_effect_id
+            && !effect_list.is_empty()
+        {
+            control_flow_handlers::assign_effect_result_id_for_ast(
+                &mut effect_list,
+                &current.effect,
+                id,
+                "missing final effect while assigning event id (annotated effect)",
+            )?;
         }
         let effect_list_is_empty = effect_list.is_empty();
         merge_compiled_choices(&mut choices, &effect_list, effect_choices);
@@ -2372,11 +2373,11 @@ fn compile_exchange_values_effect(
 }
 
 fn current_reference_env(ctx: &EffectLoweringContext) -> ReferenceEnv {
-    ctx.reference_env().into()
+    ctx.reference_env()
 }
 
 fn apply_local_reference_env(ctx: &mut EffectLoweringContext, env: &ReferenceEnv) {
-    let reference_env: crate::cards::builders::ReferenceEnv = env.clone().into();
+    let reference_env: crate::cards::builders::ReferenceEnv = env.clone();
     ctx.apply_reference_env(&reference_env);
 }
 
@@ -2541,7 +2542,7 @@ pub(crate) fn waterbend_optional_total_cost(generic: u32) -> TotalCost {
     for taps in 0..=generic {
         if taps == 0 {
             branches.push(TotalCost::mana(
-                generic_mana_cost(generic).unwrap_or_else(ManaCost::new),
+                generic_mana_cost(generic).unwrap_or_default(),
             ));
             continue;
         }
@@ -3502,12 +3503,11 @@ fn build_artifact_token_definition(
             ObjectFilter::source(),
         )));
     }
-    if let Some(rules) = shape.equipment_rules.as_ref() {
-        if let Some(def) =
+    if let Some(rules) = shape.equipment_rules.as_ref()
+        && let Some(def) =
             build_equipment_token_from_rules_shape(builder.clone(), rules, &shape.name)
-        {
-            return Some(def);
-        }
+    {
+        return Some(def);
     }
     builder = apply_embedded_token_rules(builder, &shape.token_rules);
     if let Some(amount) = shape.leaves_damage_any_target {

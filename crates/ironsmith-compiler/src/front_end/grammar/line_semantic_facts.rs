@@ -96,18 +96,17 @@ fn parse_as_transforms_effect_program_facts(
     }
     let parsed_destination =
         super::super::lexer::render_token_slice(&tokens[transforms_idx + 2..comma_idx]);
-    let destination =
-        crate::util::current_source_reference_name()
-            .and_then(|source_name| {
-                if source_name.eq_ignore_ascii_case(&parsed_destination) {
-                    return Some(source_name);
-                }
-                let short_name = source_name.split(',').next()?.trim();
-                short_name
-                    .eq_ignore_ascii_case(&parsed_destination)
-                    .then(|| short_name.to_string())
-            })
-            .unwrap_or(parsed_destination);
+    let destination = crate::util::current_source_reference_name()
+        .and_then(|source_name| {
+            if source_name.eq_ignore_ascii_case(&parsed_destination) {
+                return Some(source_name);
+            }
+            let short_name = source_name.split(',').next()?.trim();
+            short_name
+                .eq_ignore_ascii_case(&parsed_destination)
+                .then(|| short_name.to_string())
+        })
+        .unwrap_or(parsed_destination);
     Some(AsTransformsEffectProgramFacts {
         subject: super::super::lexer::render_token_slice(&tokens[1..transforms_idx]),
         destination,
@@ -211,8 +210,8 @@ pub(crate) fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> Line
 mod tests {
     use super::*;
     use crate::cards::builders::InsteadSemantics;
-    use crate::runtime_backend::front_end::lexer::lex_line;
-    use crate::runtime_backend::shared_types::StatementReplacementSurfaceKind;
+    use crate::lexer::lex_line;
+    use crate::model::facts::StatementReplacementSurfaceKind;
     use crate::zone::Zone;
 
     fn facts(text: &str) -> LineSemanticFacts {
@@ -328,10 +327,9 @@ mod tests {
         assert!(parsed.statement.as_enters_effect_program.is_none());
 
         let normalized =
-            crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-                "Shinryu, Transcendent Rival",
-                || facts("As this creature transforms into shinryu, choose an opponent."),
-            );
+            crate::util::with_source_reference_context("Shinryu, Transcendent Rival", || {
+                facts("As this creature transforms into shinryu, choose an opponent.")
+            });
         assert_eq!(
             normalized
                 .statement

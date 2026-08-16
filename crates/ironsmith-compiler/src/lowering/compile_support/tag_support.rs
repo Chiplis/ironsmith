@@ -17,7 +17,7 @@ const SENTENCE_HELPER_EXILED_TAG_PREFIX: &str = "__sentence_helper_exiled";
 const SENTENCE_HELPER_CONSULT_MATCH_TAG_PREFIX: &str = "__sentence_helper_consult_match";
 
 fn tag_str_has_prefix(tag: &str, prefix: &str) -> bool {
-    tag.starts_with(prefix)
+    tag.strip_prefix(prefix).is_some()
 }
 
 pub(crate) fn is_revealed_collection_tag(tag: &str) -> bool {
@@ -168,8 +168,8 @@ pub(crate) fn effects_reference_tag_in_object_position(effects: &[EffectAst], ta
 
 fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetAst)) {
     assert_effect_ast_variant_coverage(effect);
-    match effect {
-        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+    if let EffectAst::SubjectVerb(subject_verb) = effect {
+        match &subject_verb.action {
             SubjectVerbActionAst::DealDistributedDamage { target, source, .. } => {
                 visit(target);
                 visit(source);
@@ -341,8 +341,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 visit(source);
             }
             _ => {}
-        },
-        _ => {}
+        }
     }
 }
 
@@ -543,13 +542,10 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
             | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
             | SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. }
             | SubjectVerbActionAst::GrantAbilitiesChoiceAll { filter, .. }
-            | SubjectVerbActionAst::GrantBySpec {
-                spec: crate::grant::GrantSpec { filter, .. },
-                ..
-            }
             | SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. }
             | SubjectVerbActionAst::SearchLibrary { filter, .. }
             | SubjectVerbActionAst::SacrificeAll { filter } => Some(filter),
+            SubjectVerbActionAst::GrantBySpec { spec, .. } => Some(&spec.filter),
             SubjectVerbActionAst::Enchant {
                 filter: crate::object::AuraAttachmentFilter::Object(filter),
             } => Some(filter),

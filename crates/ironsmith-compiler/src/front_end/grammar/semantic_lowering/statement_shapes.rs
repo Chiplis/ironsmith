@@ -246,8 +246,7 @@ pub(crate) fn parse_returned_object_followup_tokens(
         if let Some(color) = Color::from_name(word) {
             colors = colors.union(ColorSet::from_color(color));
         }
-        if let Some(subtype) =
-            crate::util::parse_subtype_flexible(word)
+        if let Some(subtype) = crate::util::parse_subtype_flexible(word)
             && !subtypes.iter().any(|existing| existing == &subtype)
         {
             subtypes.push(subtype);
@@ -615,10 +614,7 @@ pub(crate) fn parse_snow_mana_counter_entry_tokens(
     {
         return None;
     }
-    let counter_type =
-        crate::util::parse_counter_type_from_tokens(
-            entry_tokens,
-        )?;
+    let counter_type = crate::util::parse_counter_type_from_tokens(entry_tokens)?;
     Some(SnowManaCounterEntrySpec {
         condition,
         entry_tokens,

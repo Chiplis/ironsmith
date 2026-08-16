@@ -7,8 +7,23 @@ use crate::cost::TotalCost;
 pub use crate::diagnostics::{CardTextError, ParseAnnotations, TextSpan};
 pub(crate) use crate::effect::EffectPredicate;
 pub use crate::effect::{ChoiceCount, EventValueSpec, Value};
+pub(crate) use crate::effect_sentences::{CarryContext, TokenCopyFollowup, Verb};
+#[cfg(test)]
+pub(crate) use crate::effect_sentences::{
+    find_verb, parse_effect_sentence_lexed, parse_shared_color_target_fanout_sentence,
+};
 use crate::mana::ManaCost;
+pub(crate) use crate::model::compiler_semantic::{
+    ConditionalModeSelection, GiftTimingAst, LineAst, ParsedAbility, ParsedCardItem,
+    ParsedConditionalModeChange, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst,
+    ParsedLevelActivatedAbilityAst, ParsedLineAst, ParsedModalActivatedHeader, ParsedModalAst,
+    ParsedModalGate, ParsedModalHeader, ParsedModalModeAst, ParsedRestrictions,
+};
+pub(crate) use crate::model::facts::{
+    EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine, NormalizedLine,
+};
 pub use crate::model::reference::RefState;
+pub(crate) use crate::model::reference_state::{ReferenceEnv, ReferenceImports};
 pub use crate::model::{
     AdditionalCostChoiceOptionAst, ClashOpponentAst, ControlDurationAst, DamageBySpec,
     ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst,
@@ -20,35 +35,19 @@ pub use crate::model::{
 };
 use crate::object::AuraAttachmentFilter;
 pub use crate::payload::{IfResultPredicate, KeywordAction};
+pub(crate) use crate::permission_helpers::{PermissionClauseSpec, PermissionLifetime};
 use crate::resolution::ResolutionProgram;
-pub(crate) use crate::model::compiler_semantic::{
-    ConditionalModeSelection, GiftTimingAst, LineAst, ParsedAbility, ParsedCardItem, ParsedConditionalModeChange, ParsedLevelAbilityAst,
-    ParsedLevelAbilityItemAst, ParsedLevelActivatedAbilityAst, ParsedLineAst,
-    ParsedModalActivatedHeader, ParsedModalAst, ParsedModalGate, ParsedModalHeader,
-    ParsedModalModeAst, ParsedRestrictions,
-};
-pub(crate) use crate::util::SubjectAst;
-pub(crate) use crate::{
-    CarryContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine,
-    NormalizedLine, TokenCopyFollowup, Verb,
-};
-pub(crate) use crate::{
-    PermissionClauseSpec, PermissionLifetime, ReferenceEnv, ReferenceImports,
-};
-#[cfg(test)]
-pub(crate) use crate::runtime_backend::{
-    find_verb, parse_effect_sentence_lexed, parse_shared_color_target_fanout_sentence,
-};
 use crate::static_abilities::StaticAbility;
 pub(crate) use crate::tag::TagKey;
 pub use crate::target::{ObjectFilter, PlayerFilter};
 pub use crate::types::CardType;
 use crate::types::{Subtype, Supertype};
+pub(crate) use crate::util::SubjectAst;
 pub use ironsmith_core::CardId;
 
 #[cfg(test)]
 pub(crate) mod document_parser {
-    pub(crate) use crate::runtime_backend::cst::KeywordLineKindCst;
+    pub(crate) use crate::cst::KeywordLineKindCst;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -442,12 +441,10 @@ impl CardDefinitionBuilder {
             other if other.lowers_to_static_ability() => {
                 let text = other.display_text();
                 let static_ability =
-                    crate::static_ability_helpers::static_ability_for_keyword_action(
-                        other,
-                    )
-                    .unwrap_or_else(|| {
-                        crate::static_abilities::StaticAbility::keyword_marker(text.clone())
-                    });
+                    crate::static_ability_helpers::static_ability_for_keyword_action(other)
+                        .unwrap_or_else(|| {
+                            crate::static_abilities::StaticAbility::keyword_marker(text.clone())
+                        });
                 self.with_ability(crate::ability::Ability::static_ability(static_ability))
             }
             other => self.with_ability(crate::ability::Ability::triggered(
@@ -464,14 +461,14 @@ impl CardDefinitionBuilder {
         let meta = meta.into();
         match meta {
             crate::front_end::MetadataLine::ManaCost(raw) => {
-                let cost = crate::parse_scryfall_mana_cost(&raw)?;
+                let cost = crate::util::parse_scryfall_mana_cost(&raw)?;
                 if !cost.is_empty() {
                     self.card_builder = self.card_builder.mana_cost(cost);
                 }
             }
             crate::front_end::MetadataLine::TypeLine(raw) => {
                 let (supertypes, card_types, subtypes) =
-                    crate::parse_type_line(&raw)?;
+                    crate::effect_sentences::parse_type_line(&raw)?;
                 if !supertypes.is_empty() {
                     self.card_builder = self.card_builder.supertypes(supertypes);
                 }
@@ -512,7 +509,7 @@ impl CardDefinitionBuilder {
                 self.card_builder = self.card_builder.attraction_lights(lights);
             }
             crate::front_end::MetadataLine::PowerToughness(raw) => {
-                if let Some(pt) = crate::parse_power_toughness(&raw) {
+                if let Some(pt) = crate::util::parse_power_toughness(&raw) {
                     self.card_builder = self.card_builder.power_toughness(pt);
                 }
             }

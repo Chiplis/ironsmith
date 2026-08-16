@@ -684,12 +684,12 @@ impl GameState {
 
     pub(crate) fn handle_conspiracy_player_departure(&mut self, player: PlayerId) {
         self.reveal_conspiracies_for_player(player);
-        if let Some(state) = self.conspiracy.as_mut() {
-            if let Some(cards) = state.cards.remove(&player) {
-                for object in cards {
-                    state.face_down.remove(&object);
-                    state.agenda_names.remove(&object);
-                }
+        if let Some(state) = self.conspiracy.as_mut()
+            && let Some(cards) = state.cards.remove(&player)
+        {
+            for object in cards {
+                state.face_down.remove(&object);
+                state.agenda_names.remove(&object);
             }
         }
     }

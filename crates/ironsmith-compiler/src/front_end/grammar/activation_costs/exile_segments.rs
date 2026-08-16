@@ -138,11 +138,7 @@ fn parse_source_and_chosen_exile(
     };
     let source_tokens = &body[..and_idx];
     let source_words = primitives::TokenWordView::new(source_tokens).word_refs();
-    let Some(source_surface) =
-        crate::util::this_source_surface_for_words(
-            &source_words,
-        )
-    else {
+    let Some(source_surface) = crate::util::this_source_surface_for_words(&source_words) else {
         return Ok(None);
     };
     let chosen_tokens = &body[and_idx + 1..];

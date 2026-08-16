@@ -5,8 +5,8 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::mana::ManaCost;
 use crate::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView};
+use crate::mana::ManaCost;
 
 use super::super::{leaf, primitives};
 
@@ -341,7 +341,7 @@ pub(crate) fn parse_keyword_damage_subject_split_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

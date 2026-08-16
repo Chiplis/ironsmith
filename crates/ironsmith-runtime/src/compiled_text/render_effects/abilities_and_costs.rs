@@ -182,10 +182,10 @@ pub(in crate::compiled_text) fn describe_annihilator_keyword(
     if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
         return None;
     }
-    if !triggered
+    if triggered
         .trigger
         .downcast_ref::<crate::triggers::combat::ThisAttacksTrigger>()
-        .is_some()
+        .is_none()
     {
         return None;
     }
@@ -1379,25 +1379,23 @@ pub(crate) fn describe_ability(
                     line.push(' ');
                     line.push_str(add);
                 }
-            } else {
-                if let (Some(cost), Some(add)) = (&cost_text, &add_text) {
-                    if !line.is_empty() {
-                        line.push_str(": ");
-                    }
-                    line.push_str(cost);
+            } else if let (Some(cost), Some(add)) = (&cost_text, &add_text) {
+                if !line.is_empty() {
                     line.push_str(": ");
-                    line.push_str(add);
-                } else if let Some(cost) = &cost_text {
-                    if !line.is_empty() {
-                        line.push_str(": ");
-                    }
-                    line.push_str(cost);
-                } else if let Some(add) = &add_text {
-                    if !line.is_empty() {
-                        line.push_str(": ");
-                    }
-                    line.push_str(add);
                 }
+                line.push_str(cost);
+                line.push_str(": ");
+                line.push_str(add);
+            } else if let Some(cost) = &cost_text {
+                if !line.is_empty() {
+                    line.push_str(": ");
+                }
+                line.push_str(cost);
+            } else if let Some(add) = &add_text {
+                if !line.is_empty() {
+                    line.push_str(": ");
+                }
+                line.push_str(add);
             }
             if !activated.effects.is_empty() {
                 if is_loyalty_ability && add_text.is_none() {
@@ -2352,6 +2350,31 @@ pub(crate) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
         Some(describe_value(&put_counters.amount))
     }
 
+    if costs.len() == 2
+        && let Some(choose_type) = costs[0]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseCreatureTypeEffect>())
+        && let Some(behold) = costs[1]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        && choose_type.chooser == PlayerFilter::You
+        && choose_type.family == crate::types::SubtypeFamily::Creature
+        && choose_type.excluded_subtypes.is_empty()
+        && behold.chooser == PlayerFilter::You
+        && behold.count == crate::effect::ChoiceCount::exactly(2)
+        && behold.zone == Some(Zone::Battlefield)
+        && behold.additional_zones.as_slice() == [Zone::Hand]
+        && behold.reveal
+        && behold.filter.any_of.len() == 2
+        && behold.filter.any_of.iter().all(|filter| {
+            filter.card_types.as_slice() == [CardType::Creature]
+                && filter.chosen_creature_type
+                && matches!(filter.zone, Some(Zone::Battlefield | Zone::Hand))
+        })
+    {
+        return "you may choose a creature type and behold two creatures of that type".to_string();
+    }
+
     if costs.len() == 1
         && let Some(may) = costs[0]
             .effect_ref()
@@ -2594,6 +2617,15 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
 
     if let Some(line) = optional_additional_source_line(cost) {
         return line;
+    }
+
+    if cost.kind == OptionalCostKind::Additional
+        && let Some(costs) = cost.cost.as_all()
+        && describe_additional_costs(costs)
+            == "you may choose a creature type and behold two creatures of that type"
+    {
+        return "As an additional cost to cast this spell, you may choose a creature type and behold two creatures of that type"
+            .to_string();
     }
 
     let cost_text = cost

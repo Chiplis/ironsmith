@@ -94,7 +94,7 @@ pub(crate) fn parse_gain_x_plus_life_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, render_token_slice};
+    use crate::lexer::{lex_line, render_token_slice};
 
     #[test]
     fn parses_equal_power_life_shape() {

@@ -1741,7 +1741,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                     .join(" and ");
                 return format!("as long as {joined}");
             }
-            return described.join(" and ");
+            described.join(" and ")
         }
         crate::ConditionExpr::ThisSpellWasKicked => "as long as this spell was kicked".to_string(),
         crate::ConditionExpr::XValueAtLeast(amount) => {
@@ -1755,7 +1755,12 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             "during turns other than yours".to_string()
         }
         crate::ConditionExpr::SourceMatches(filter) => describe_source_keyword_condition(filter)
-            .unwrap_or_else(|| format!("as long as {condition:?}")),
+            .unwrap_or_else(|| {
+                format!(
+                    "as long as {}",
+                    crate::compiled_text::describe_condition(condition)
+                )
+            }),
         crate::ConditionExpr::AttachmentCount { display, .. } => {
             format!("as long as {display}")
         }
@@ -1910,9 +1915,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         }
         crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let subject = describe_static_player(player);
-            let count_text = u32::try_from(*count)
-                .ok()
-                .and_then(number_word_u32)
+            let count_text = number_word_u32(*count)
                 .unwrap_or_else(|| count.to_string());
             let verb = if matches!(player, crate::target::PlayerFilter::You) {
                 "have"
@@ -2043,6 +2046,18 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(4),
         } => "as long as you have max speed".to_string(),
+        crate::ConditionExpr::ValueComparison {
+            left:
+                Value::SpellsCastThisTurnMatching {
+                    exclude_source: false,
+                    ..
+                },
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count),
+        } if *count >= 1 => format!(
+            "as long as {}",
+            crate::compiled_text::describe_condition(condition)
+        ),
         crate::ConditionExpr::ValueComparison {
             left: Value::PlayerCounters(player, counter_type),
             operator,
@@ -2354,7 +2369,10 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             (_, None) => "as long as that player completed a dungeon".to_string(),
             (_, Some(name)) => format!("as long as that player completed {name}"),
         },
-        _ => format!("as long as {condition:?}"),
+        _ => format!(
+            "as long as {}",
+            crate::compiled_text::describe_condition(condition)
+        ),
     }
 }
 
@@ -2685,7 +2703,7 @@ pub(crate) fn resolve_anthem_count_expression(
                             | Subtype::Mountain
                             | Subtype::Forest
                     ) {
-                        seen.insert(subtype.clone());
+                        seen.insert(*subtype);
                     }
                 }
             }

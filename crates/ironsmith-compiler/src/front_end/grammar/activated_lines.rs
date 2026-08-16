@@ -156,7 +156,7 @@ fn word_phrase<'a>(
 ) -> impl Parser<WordSliceInput<'a>, (), ErrMode<ContextError>> {
     move |input: &mut WordSliceInput<'a>| {
         for word in expected {
-            primitives::word_slice_exact(*word)
+            primitives::word_slice_exact(word)
                 .void()
                 .parse_next(input)?;
         }
@@ -408,7 +408,7 @@ fn parse_activated_abilities_cost_head<'a>(
 pub(crate) fn parse_cost_reduction_line_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CostReductionLineHead<'_>> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let head = LexStream::new(tokens);
 
     let mut this_cost = head.clone();
@@ -425,10 +425,10 @@ pub(crate) fn parse_cost_reduction_line_head_tokens(
         });
     }
 
-    if let Ok(parsed) = parse_activated_abilities_cost_head.parse_next(&mut head.clone()) {
-        if !parsed_subject_is_empty(&parsed) {
-            return Some(parsed);
-        }
+    if let Ok(parsed) = parse_activated_abilities_cost_head.parse_next(&mut head.clone())
+        && !parsed_subject_is_empty(&parsed)
+    {
+        return Some(parsed);
     }
 
     let mut this_ability = head.clone();
@@ -682,7 +682,7 @@ fn remove_once_per_turn_tail(words: &mut Vec<String>) {
 pub(crate) fn parse_once_per_turn_restriction_normalization_tokens(
     tokens: &[OwnedLexToken],
 ) -> OncePerTurnRestrictionNormalization {
-    let mut words = crate::token_word_refs(tokens)
+    let mut words = crate::lexer::token_word_refs(tokens)
         .into_iter()
         .map(str::to_ascii_lowercase)
         .collect::<Vec<_>>();
@@ -709,7 +709,7 @@ pub(crate) fn parse_once_per_turn_restriction_normalization_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::{TokenKind, lex_line};
+    use crate::lexer::{TokenKind, lex_line};
 
     #[test]
     fn splits_activated_line_and_classifies_primary_mana_shape() {

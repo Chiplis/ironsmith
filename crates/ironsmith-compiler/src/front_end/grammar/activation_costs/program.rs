@@ -516,22 +516,19 @@ mod tests {
 
     #[test]
     fn named_source_sacrifice_keeps_exact_short_name_surface() {
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "ED-E",
-            || {
-                let parsed = parse("{2}, Sacrifice ED-E");
-                let [
-                    ActivationCostSegmentCst::Mana(_),
-                    ActivationCostSegmentCst::SacrificeSelf {
-                        surface: Some(surface),
-                    },
-                ] = parsed.segments.as_slice()
-                else {
-                    panic!("expected mana plus named-source sacrifice, got {parsed:?}");
-                };
-                assert_eq!(surface.display_text(), "ED-E");
-            },
-        );
+        crate::util::with_source_reference_context("ED-E", || {
+            let parsed = parse("{2}, Sacrifice ED-E");
+            let [
+                ActivationCostSegmentCst::Mana(_),
+                ActivationCostSegmentCst::SacrificeSelf {
+                    surface: Some(surface),
+                },
+            ] = parsed.segments.as_slice()
+            else {
+                panic!("expected mana plus named-source sacrifice, got {parsed:?}");
+            };
+            assert_eq!(surface.display_text(), "ED-E");
+        });
     }
 
     #[test]

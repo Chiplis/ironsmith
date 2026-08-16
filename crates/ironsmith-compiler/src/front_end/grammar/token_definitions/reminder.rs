@@ -1,6 +1,6 @@
 use crate::cards::builders::{IT_TAG, TagKey};
 use crate::effect::Value;
-use crate::front_end::lexer::{LexStream, OwnedLexToken, parser_token_word_refs};
+use crate::lexer::{LexStream, OwnedLexToken, parser_token_word_refs};
 use crate::model::token_definition::{CreatureTokenRulesShape, TokenKeywordShape};
 use crate::target::{ChooseSpec, PlayerFilter};
 use winnow::combinator::alt;
@@ -139,8 +139,7 @@ impl TokenReminderFacts {
 pub(super) struct TokenDefinitionReminderFacts {
     pub(super) keywords: Vec<TokenKeywordShape>,
     pub(super) creature_rules: CreatureTokenRulesShape,
-    pub(super) equipment_rules:
-        Option<crate::model::token_definition::EquipmentRulesShape>,
+    pub(super) equipment_rules: Option<crate::model::token_definition::EquipmentRulesShape>,
     pub(super) artifact_leaves_damage_any_target: Option<i32>,
     pub(super) vehicle_flying: bool,
     pub(super) vehicle_crew_amount: Option<u32>,

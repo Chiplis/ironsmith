@@ -3639,8 +3639,7 @@ pub(super) fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
     assert!(
         requirements[0]
             .legal_targets
-            .iter()
-            .any(|target| *target == Target::Object(host_id)),
+            .contains(&Target::Object(host_id)),
         "disturbed Aura should target the host land from its back face"
     );
 }

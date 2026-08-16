@@ -155,7 +155,7 @@ fn mirror_room_adds_reflection_without_replacing_existing_creature_types() {
             AbilityKind::Triggered(triggered) => triggered
                 .effects
                 .flattened_default_effects()
-                .into_iter()
+                .iter()
                 .find_map(nested_token_copy),
             _ => None,
         })

@@ -1,13 +1,11 @@
+use crate::lexer::{OwnedLexToken, TokenKind, parser_token_word_refs, render_token_slice};
 use crate::mana::ManaSymbol;
-use crate::object::CounterType;
-use crate::front_end::lexer::{
-    OwnedLexToken, TokenKind, parser_token_word_refs, render_token_slice,
-};
 use crate::model::token_definition::{
     BuiltinTokenShape, InlineNoncreatureSpellDamageShape, TokenCrewShape, TokenEmbeddedRuleShape,
     TokenEquipShape, TokenPowerAsThoughGreaterShape, TokenRulesSurfaces, TokenSacrificeReturnShape,
     TokenTapManaAbilityShape, TokenTapSacrificeManaLifeShape,
 };
+use crate::object::CounterType;
 use crate::{effect::Value, filter::ObjectFilter};
 use winnow::combinator::{alt, opt, peek, repeat_till, separated};
 use winnow::error::ModalResult as WResult;
@@ -82,7 +80,7 @@ pub(crate) fn parse_token_power_as_though_greater_shape_words(
 }
 
 fn parse_token_power_as_though_greater_shape_lexed<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<TokenPowerAsThoughGreaterShape> {
     primitives::kw("this").parse_next(input)?;
     alt((primitives::kw("creature"), primitives::kw("token"))).parse_next(input)?;
@@ -185,9 +183,7 @@ pub(super) fn first_double_quoted_tokens(tokens: &[OwnedLexToken]) -> Option<&[O
     (!quoted.is_empty()).then_some(quoted)
 }
 
-fn parse_tap_symbol<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
-) -> WResult<()> {
+fn parse_tap_symbol<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<()> {
     any.verify(|token: &&OwnedLexToken| {
         token.kind == TokenKind::ManaGroup
             && token
@@ -199,7 +195,7 @@ fn parse_tap_symbol<'a>(
 }
 
 fn parse_tap_add_mana_head<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<Vec<ManaSymbol>> {
     parse_tap_symbol.parse_next(input)?;
     primitives::colon().parse_next(input)?;
@@ -230,8 +226,7 @@ pub(crate) fn parse_token_tap_mana_ability_tokens(
     let rule_tokens = first_double_quoted_tokens(tokens).or_else(|| inline_rules_tokens(tokens))?;
     let (mana, restriction_tokens) =
         primitives::parse_prefix(rule_tokens, parse_tap_add_mana_head)?;
-    let restriction_tokens =
-        crate::front_end::lexer::trim_lexed_commas(restriction_tokens);
+    let restriction_tokens = crate::lexer::trim_lexed_commas(restriction_tokens);
     let restrictions = if restriction_tokens.is_empty() {
         Vec::new()
     } else {

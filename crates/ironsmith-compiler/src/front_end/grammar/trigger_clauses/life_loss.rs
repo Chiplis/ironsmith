@@ -41,7 +41,7 @@ pub(crate) fn parse_players_lose_life_one_or_more_clause(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

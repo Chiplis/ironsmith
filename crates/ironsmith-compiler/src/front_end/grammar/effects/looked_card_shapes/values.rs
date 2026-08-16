@@ -3,10 +3,10 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::effect::Value;
-use crate::front_end::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use crate::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, parse_where_x_greatest_commander_mana_value,
 };
+use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use ironsmith_core::{EffectMetric, EffectMetricSource, EventValueSpec, ValueSurfaceHint};
 
 use super::super::super::{permission_shapes, primitives};
@@ -137,9 +137,8 @@ pub(crate) fn parse_top_cards_view_shape(tokens: &[OwnedLexToken]) -> Option<Top
     let (_, value_tokens) =
         primitives::parse_prefix(remainder, primitives::phrase(&["where", "x", "is"]).void())?;
     let where_x_value = parse_where_x_value(trim_lexed_commas(value_tokens));
-    let typed_binding =
-        crate::keyword_static::parse_value_binding_clause(remainder)
-            .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs));
+    let typed_binding = crate::keyword_static::parse_value_binding_clause(remainder)
+        .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs));
     Some(TopCardsViewShape {
         revealed,
         count: where_x_value.or(typed_binding)?,
@@ -149,7 +148,7 @@ pub(crate) fn parse_top_cards_view_shape(tokens: &[OwnedLexToken]) -> Option<Top
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_typed_top_card_view_counts() {

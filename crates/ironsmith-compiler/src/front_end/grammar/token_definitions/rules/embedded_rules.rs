@@ -1,7 +1,7 @@
 use super::*;
 
 fn parse_builtin_token_kind<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<BuiltinTokenShape> {
     alt((
         alt((
@@ -37,7 +37,7 @@ fn parse_builtin_token_kind<'a>(
 }
 
 fn parse_dies_create_builtin_token_rule<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<TokenEmbeddedRuleShape> {
     primitives::phrase(&["when", "this", "token", "dies"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
@@ -53,9 +53,7 @@ fn parse_dies_create_builtin_token_rule<'a>(
     Ok(TokenEmbeddedRuleShape::DiesCreateBuiltinToken { token, count })
 }
 
-fn parse_embedded_rule_subject<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
-) -> WResult<()> {
+fn parse_embedded_rule_subject<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<()> {
     alt((
         primitives::phrase(&["this", "token"]),
         primitives::phrase(&["this", "creature"]),
@@ -65,7 +63,7 @@ fn parse_embedded_rule_subject<'a>(
 }
 
 fn parse_reciprocal_non_subtype_blocking_rule<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<TokenEmbeddedRuleShape> {
     parse_embedded_rule_subject.parse_next(input)?;
     alt((primitives::kw("cant"), primitives::kw("can't"))).parse_next(input)?;
@@ -80,7 +78,7 @@ fn parse_reciprocal_non_subtype_blocking_rule<'a>(
 }
 
 fn parse_damage_triggered_rule<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<TokenEmbeddedRuleShape> {
     primitives::kw("whenever").parse_next(input)?;
     parse_embedded_rule_subject.parse_next(input)?;
@@ -133,7 +131,7 @@ fn parse_damage_triggered_rule<'a>(
 }
 
 fn parse_upkeep_sacrifice_else_damage_rule<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<TokenEmbeddedRuleShape> {
     primitives::phrase(&["at", "the", "beginning", "of", "your", "upkeep"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
@@ -158,7 +156,7 @@ fn parse_upkeep_sacrifice_else_damage_rule<'a>(
 }
 
 fn parse_single_colored_mana_option<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<ManaSymbol> {
     leaf::parse_leaf_mana_group_token
         .verify(|symbols: &Vec<ManaSymbol>| {
@@ -177,7 +175,7 @@ fn parse_single_colored_mana_option<'a>(
 }
 
 fn parse_tap_sacrifice_mana_life_rule<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<TokenEmbeddedRuleShape> {
     parse_tap_symbol.parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
@@ -196,7 +194,7 @@ fn parse_tap_sacrifice_mana_life_rule<'a>(
 }
 
 fn parse_tap_sacrifice_any_color_rule<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<TokenEmbeddedRuleShape> {
     parse_tap_symbol.parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
@@ -207,7 +205,7 @@ fn parse_tap_sacrifice_any_color_rule<'a>(
 }
 
 fn parse_land_enters_counter_rule<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<LandEntersCounterRuleShape<'a>> {
     alt((
         primitives::phrase(&["whenever", "a", "land", "you", "control", "enters"]),
@@ -300,7 +298,7 @@ pub(crate) fn parse_embedded_token_rule_tokens(
 pub(crate) fn parse_inline_noncreature_spell_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<InlineNoncreatureSpellDamageShape> {
-    let words = parser_token_word_refs(&tokens);
+    let words = parser_token_word_refs(tokens);
     let has_cast_trigger =
         common::phrase_present(
             &words,
@@ -330,7 +328,7 @@ pub(crate) fn parse_inline_noncreature_spell_damage_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
     use crate::types::Subtype;
 
     #[test]

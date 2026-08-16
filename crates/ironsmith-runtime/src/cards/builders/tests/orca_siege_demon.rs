@@ -23,7 +23,7 @@ fn distributed_trigger(
             let distributed = triggered
                 .effects
                 .flattened_default_effects()
-                .into_iter()
+                .iter()
                 .find_map(|effect| {
                     effect
                         .downcast_ref::<TaggedEffect>()

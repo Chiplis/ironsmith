@@ -1597,10 +1597,10 @@ fn evaluate_value_comparison(
     if !source_exiled.is_empty() {
         ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
     }
-    let Ok(left_value) = resolve_value(game, left, &mut ctx) else {
+    let Ok(left_value) = resolve_value(game, left, &ctx) else {
         return false;
     };
-    let Ok(right_value) = resolve_value(game, right, &mut ctx) else {
+    let Ok(right_value) = resolve_value(game, right, &ctx) else {
         return false;
     };
     operator.evaluate(left_value, right_value)
@@ -1735,7 +1735,7 @@ fn triggering_event_object_matches_with_filter_context(
     event
         .object_id()
         .and_then(|id| game.object(id))
-        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+        .is_some_and(|object| filter.matches(object, filter_ctx, game))
 }
 
 fn triggering_event_object_matched_last_known(

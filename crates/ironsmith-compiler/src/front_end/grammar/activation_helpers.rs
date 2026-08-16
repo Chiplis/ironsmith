@@ -489,12 +489,12 @@ fn parse_phrase<'a>(input: &mut primitives::WordSliceInput<'a>, expected: &[&str
     Ok(())
 }
 
-fn take_word<'slice, 'word>(input: &mut &'slice [&'word str]) -> WResult<&'word str> {
+fn take_word<'word>(input: &mut &[&'word str]) -> WResult<&'word str> {
     any.parse_next(input)
 }
 
 fn word_is_any(word: &str, expected: &[&str]) -> bool {
-    expected.iter().any(|candidate| word == *candidate)
+    expected.contains(&word)
 }
 
 fn token_matches_any_word(token: &OwnedLexToken, expected: &[&str]) -> bool {
@@ -513,7 +513,7 @@ fn mana_symbol_color(symbol: ManaSymbol) -> Option<Color> {
 }
 
 fn push_unique_color(colors: &mut Vec<Color>, color: Color) {
-    if !colors.iter().any(|existing| *existing == color) {
+    if !colors.contains(&color) {
         colors.push(color);
     }
 }

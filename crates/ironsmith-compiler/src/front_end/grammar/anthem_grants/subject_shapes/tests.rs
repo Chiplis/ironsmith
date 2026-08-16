@@ -1,6 +1,6 @@
 use super::*;
 use crate::filter::StackObjectKind;
-use crate::runtime_backend::lexer::lex_line;
+use crate::lexer::lex_line;
 use crate::{CardType, Color, Subtype, Supertype, Zone};
 
 #[test]

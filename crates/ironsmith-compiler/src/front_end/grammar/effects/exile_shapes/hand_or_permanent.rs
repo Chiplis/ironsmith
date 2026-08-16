@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct EachOpponentExileChoiceShape {
@@ -156,7 +156,7 @@ pub(crate) fn parse_each_player_exile_counted_hand_permanent_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

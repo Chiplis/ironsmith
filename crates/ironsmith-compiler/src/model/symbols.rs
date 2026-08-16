@@ -15,6 +15,7 @@ pub enum ReferenceRole {
     Chosen,
     Affected,
     Revealed,
+    Milled,
     Searched,
     Exiled,
     Discarded,

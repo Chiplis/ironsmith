@@ -22,7 +22,7 @@ pub(crate) fn parse_each_opponent_may_sacrifice_or_discard_then_damage_nonpartic
         return Ok(None);
     };
     if !matches!(
-        crate::token_word_refs(first.lowered()).as_slice(),
+        crate::lexer::token_word_refs(first.lowered()).as_slice(),
         [
             "each",
             "opponent",
@@ -40,7 +40,7 @@ pub(crate) fn parse_each_opponent_may_sacrifice_or_discard_then_damage_nonpartic
             "card"
         ]
     ) || !matches!(
-        crate::token_word_refs(second.lowered()).as_slice(),
+        crate::lexer::token_word_refs(second.lowered()).as_slice(),
         [
             "then",
             "this",
@@ -112,7 +112,7 @@ pub(crate) fn parse_each_opponent_may_sacrifice_or_discard_then_damage_nonpartic
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse_pair(first: &str, second: &str) -> Option<Vec<EffectAst>> {
         let first = lex_line(first, 0).expect("first sentence should lex");
@@ -138,7 +138,7 @@ mod tests {
         assert!(debug.contains("DidNot"), "{debug}");
         assert!(debug.contains("DealDamageEqualToPower"), "{debug}");
 
-        let lowered = crate::runtime_backend::compile_support::compile_statement_effects(&effects)
+        let lowered = crate::compile_support::compile_statement_effects(&effects)
             .expect("correlated opponent choice should lower");
         let lowered_debug = format!("{lowered:#?}");
         assert!(

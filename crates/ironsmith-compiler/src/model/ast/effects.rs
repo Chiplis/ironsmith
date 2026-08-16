@@ -13,7 +13,7 @@ pub(crate) struct ChooseOneModeAst {
 pub(crate) enum EffectAst {
     /// A new-style effect assembled from the common semantic clause
     /// vocabulary. Lowering owns the only conversion into runtime actions.
-    Clause(CompilerClauseAst),
+    Clause(Box<CompilerClauseAst>),
     /// A grammar-resolved effect program with explicit conjunction,
     /// disjunction, ordering, dependency, and carry semantics.
     Coordination(CoordinationAst),
@@ -23,7 +23,7 @@ pub(crate) enum EffectAst {
     /// One typed repeated program with a scope-owned iterator symbol.
     Iteration(Box<CompilerIterationAst>),
     /// One typed vote whose individual choices and aggregate tally are bound.
-    Vote(CompilerVoteAst),
+    Vote(Box<CompilerVoteAst>),
     /// A document sequence of typed statements with explicit reference edges.
     DocumentProgram(Box<CompilerDocumentProgramAst>),
     SubjectVerb(SubjectVerbEffectAst),
@@ -481,7 +481,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { filter, ability },
+            SubjectVerbActionAst::GrantNextSpellAbilityThisTurn {
+                filter,
+                ability: Box::new(ability),
+            },
         )
     }
 
@@ -2832,7 +2835,7 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::GrantToTarget {
                 target,
-                grantable,
+                grantable: Box::new(grantable),
                 duration,
             },
         )
@@ -2847,7 +2850,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             player,
             SubjectVerbActionAst::GrantBySpec {
-                spec,
+                spec: Box::new(spec),
                 player,
                 duration,
             },
@@ -3250,7 +3253,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::GrantAbilityToSource { ability, duration },
+            SubjectVerbActionAst::GrantAbilityToSource {
+                ability: Box::new(ability),
+                duration,
+            },
         )
     }
 

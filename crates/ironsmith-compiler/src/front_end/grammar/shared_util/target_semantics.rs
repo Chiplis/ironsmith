@@ -13,16 +13,16 @@ use crate::grammar::targets::{
 };
 use crate::lexer::{OwnedLexToken, TokenWordView};
 use crate::object_filters::parse_object_filter;
+use crate::target::{
+    ObjectFilter, PlayerFilter, SacrificedObjectKind, SourceReferenceSurface, TaggedOpbjectRelation,
+};
+use crate::types::CardType;
 use crate::util::{
     is_article, is_demonstrative_object_head, parse_for_each_count_value_words,
     record_sacrificed_object_kind, record_source_reference_surface,
     source_reference_surface_for_possessive_words, source_reference_surface_for_words,
     strip_possessive_suffix, this_source_surface_for_words,
 };
-use crate::target::{
-    ObjectFilter, PlayerFilter, SacrificedObjectKind, SourceReferenceSurface, TaggedOpbjectRelation,
-};
-use crate::types::CardType;
 use crate::zone::Zone;
 use crate::{ChoiceCount, TagKey};
 
@@ -251,7 +251,7 @@ pub(crate) fn parse_target_phrase_inner(
     let span = target_head.prefix.phrase_span;
     let target_count: Option<ChoiceCount> = None;
 
-    let all_words = crate::token_word_refs(tokens);
+    let all_words = crate::lexer::token_word_refs(tokens);
     if matches_surface(&all_words, ANY_TARGET_PATTERN) {
         return Ok(TargetAst::AnyTarget(span));
     }
@@ -321,11 +321,11 @@ pub(crate) fn parse_target_phrase_inner(
         .collect();
     if let Some(chosen) = parse_chosen_object_target(tokens) {
         let filter_tokens = chosen.filter_tokens;
-        let filter_words = crate::token_word_refs(&filter_tokens);
+        let filter_words = crate::lexer::token_word_refs(filter_tokens);
         let mut filter = if matches_surface(&filter_words, CARDS_TARGET_SHORTHAND_PATTERN) {
             ObjectFilter::default()
         } else {
-            parse_object_filter(&filter_tokens, false)?
+            parse_object_filter(filter_tokens, false)?
         };
         filter = filter.match_tagged(
             TagKey::from(CHOSEN_OBJECTS_TAG),
@@ -378,7 +378,7 @@ pub(crate) fn parse_target_phrase_inner(
     let explicit_target = target_head.prefix.explicit_target_span.is_some();
     let saw_top_prefix = target_head.prefix.top.is_some();
 
-    let words_all = crate::token_word_refs(&tokens[idx..]);
+    let words_all = crate::lexer::token_word_refs(&tokens[idx..]);
     if matches_surface(&words_all, ANY_TARGET_PATTERN) {
         return Ok(wrap_target_count(TargetAst::AnyTarget(span), target_count));
     }
@@ -390,7 +390,7 @@ pub(crate) fn parse_target_phrase_inner(
     }
 
     let remaining = &tokens[idx..];
-    let remaining_words: Vec<&str> = crate::token_word_refs(remaining)
+    let remaining_words: Vec<&str> = crate::lexer::token_word_refs(remaining)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -1064,7 +1064,7 @@ mod tests {
     use super::*;
     use crate::color::ColorSet;
     use crate::events::KeywordActionKind;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(raw: &str) -> TargetAst {
         let tokens = lex_line(raw, 0).expect("lex target");
@@ -1310,7 +1310,7 @@ mod tests {
             panic!("expected typed demonstrative object target with reference span");
         };
         assert_eq!(
-            crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
+            crate::util::source_reference_surface_for_span(Some(span)),
             Some(SourceReferenceSurface::ThisPermanentType(
                 "that creature".to_string()
             ))
@@ -1329,7 +1329,7 @@ mod tests {
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
         assert_eq!(
-            crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
+            crate::util::source_reference_surface_for_span(Some(span)),
             Some(SourceReferenceSurface::ThisPermanentType(
                 "that non-wall creature".to_string()
             ))
@@ -1343,11 +1343,32 @@ mod tests {
         };
         assert_eq!(tag.as_str(), IT_TAG);
         assert_eq!(
-            crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
+            crate::util::source_reference_surface_for_span(Some(span)),
             Some(SourceReferenceSurface::ThisPermanentType(
                 "the card".to_string()
             ))
         );
+    }
+
+    #[test]
+    fn bare_anaphoric_and_attachment_targets_reach_typed_semantics() {
+        let TargetAst::Tagged(it, _) = parse("it") else {
+            panic!("expected bare it to resolve as a tagged reference");
+        };
+        assert_eq!(it.as_str(), IT_TAG);
+
+        let TargetAst::Object(enchanted, _, _) = parse("enchanted creature") else {
+            panic!("expected enchanted creature to resolve as an attachment reference");
+        };
+        assert!(enchanted.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "enchanted"
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+
+        assert!(matches!(
+            parse("you"),
+            TargetAst::Player(PlayerFilter::You, _)
+        ));
     }
 
     #[test]
@@ -1357,42 +1378,36 @@ mod tests {
         };
         assert_eq!(tag.as_str(), IT_TAG);
         assert_eq!(
-            crate::runtime_backend::util::sacrificed_object_kind_for_span(Some(span)),
+            crate::util::sacrificed_object_kind_for_span(Some(span)),
             Some(SacrificedObjectKind::Creature)
         );
     }
 
     #[test]
     fn named_possessive_source_target_preserves_short_name_surface() {
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Casey Jones, Asphalt Hooligan",
-            || {
-                let TargetAst::Source(Some(span)) = parse("Casey Jones's") else {
-                    panic!("expected named possessive to resolve to the source");
-                };
-                assert_eq!(
-                    crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
-                    Some(SourceReferenceSurface::ShortName("Casey Jones".to_string()))
-                );
-            },
-        );
+        crate::util::with_source_reference_context("Casey Jones, Asphalt Hooligan", || {
+            let TargetAst::Source(Some(span)) = parse("Casey Jones's") else {
+                panic!("expected named possessive to resolve to the source");
+            };
+            assert_eq!(
+                crate::util::source_reference_surface_for_span(Some(span)),
+                Some(SourceReferenceSurface::ShortName("Casey Jones".to_string()))
+            );
+        });
     }
 
     #[test]
     fn full_name_possessive_source_target_preserves_full_name_surface() {
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Tifa Lockhart",
-            || {
-                let TargetAst::Source(Some(span)) = parse("Tifa Lockhart's") else {
-                    panic!("expected named possessive to resolve to the source");
-                };
-                assert_eq!(
-                    crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
-                    Some(SourceReferenceSurface::FullName(
-                        "Tifa Lockhart".to_string()
-                    ))
-                );
-            },
-        );
+        crate::util::with_source_reference_context("Tifa Lockhart", || {
+            let TargetAst::Source(Some(span)) = parse("Tifa Lockhart's") else {
+                panic!("expected named possessive to resolve to the source");
+            };
+            assert_eq!(
+                crate::util::source_reference_surface_for_span(Some(span)),
+                Some(SourceReferenceSurface::FullName(
+                    "Tifa Lockhart".to_string()
+                ))
+            );
+        });
     }
 }

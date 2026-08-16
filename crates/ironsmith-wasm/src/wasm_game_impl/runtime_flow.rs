@@ -1387,7 +1387,6 @@ impl WasmGame {
                 let mut selected: Vec<ironsmith::color::Color> = option_indices
                     .iter()
                     .copied()
-                    .into_iter()
                     .filter_map(|index| choices.get(index).copied())
                     .collect();
                 if selected.is_empty() {

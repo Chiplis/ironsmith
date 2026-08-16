@@ -87,9 +87,48 @@ impl std::error::Error for CardTextError {}
 type ParsedAbility = ();
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ParseCacheKey {
+    builder_context: String,
+    text: String,
+    allow_unsupported: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl ParseCacheKey {
+    fn new(builder: &CardDefinitionBuilder, text: &str, allow_unsupported: bool) -> Self {
+        Self {
+            builder_context: format!("{builder:?}"),
+            text: text.to_string(),
+            allow_unsupported,
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+type CachedParseResult = Result<CardDefinition, CardTextError>;
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[allow(dead_code)]
 #[path = "../../../ironsmith-registry/src/compiler_runtime.rs"]
 mod compiler_runtime_for_tests;
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn parse_result_cache() -> &'static std::sync::Mutex<HashMap<ParseCacheKey, CachedParseResult>> {
+    static PARSE_RESULT_CACHE: std::sync::OnceLock<
+        std::sync::Mutex<HashMap<ParseCacheKey, CachedParseResult>>,
+    > = std::sync::OnceLock::new();
+    PARSE_RESULT_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn store_cached_parse(key: ParseCacheKey, result: CachedParseResult) -> CachedParseResult {
+    parse_result_cache()
+        .lock()
+        .expect("parse result cache mutex poisoned")
+        .insert(key, result.clone());
+    result
+}
 
 #[cfg(ironsmith_runtime_parser_tests)]
 fn finalize_definition(
@@ -384,6 +423,15 @@ fn finalize_cipher_effects(definition: CardDefinition) -> CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn lookup_cached_parse(key: &ParseCacheKey) -> Option<CachedParseResult> {
+    parse_result_cache()
+        .lock()
+        .expect("parse result cache mutex poisoned")
+        .get(key)
+        .cloned()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 pub fn parse_card_text(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
@@ -405,7 +453,15 @@ fn parse_card_text_with_policy(
     text: impl Into<String>,
     allow_unsupported: bool,
 ) -> Result<CardDefinition, CardTextError> {
-    compile_to_runtime_definition(&builder, text.into(), allow_unsupported)
+    let text = text.into();
+    let cache_key = ParseCacheKey::new(&builder, &text, allow_unsupported);
+    if let Some(cached) = lookup_cached_parse(&cache_key) {
+        return cached;
+    }
+    let result = stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        compile_to_runtime_definition(&builder, text, allow_unsupported)
+    });
+    store_cached_parse(cache_key, result)
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -430,13 +486,17 @@ fn parse_card_text_with_annotations_policy(
     text: impl Into<String>,
     allow_unsupported: bool,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    let compiled =
+    let text = text.into();
+    let cache_key = ParseCacheKey::new(&builder, &text, allow_unsupported);
+    let compiled = stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         compiler_runtime_for_tests::compile_runtime_builder_snapshot_to_runtime_compiled_card_text(
             runtime_builder_snapshot(&builder),
-            text.into(),
+            text,
             allow_unsupported,
         )
-        .map_err(compiler_runtime_error_to_card_text_error)?;
+    })
+    .map_err(compiler_runtime_error_to_card_text_error)?;
+    let _ = store_cached_parse(cache_key, Ok(compiled.definition.clone()));
     Ok((
         compiled.definition,
         parse_annotations_from_compiler(compiled.annotations),
@@ -1490,6 +1550,11 @@ fn parse_annotations_from_compiler(
 }
 
 impl CardDefinitionBuilder {
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn parse_cache_key(&self, text: &str, allow_unsupported: bool) -> ParseCacheKey {
+        ParseCacheKey::new(self, text, allow_unsupported)
+    }
+
     #[cfg(any(test, ironsmith_runtime_parser_tests))]
     fn pt_value_text(value: PtValue) -> String {
         match value {

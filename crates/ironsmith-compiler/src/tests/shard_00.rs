@@ -14,22 +14,22 @@ pub(super) fn parser_sentence_helpers_do_not_use_retired_fixed_helper_tags() {
         .and_then(Path::parent)
         .expect("workspace root");
     let helper_paths = [
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_entry.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/mod.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/sentence_shape_predicates.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/labeled_prefixes.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/copy_and_next_spell_shapes.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/unsupported_shape_diagnostics.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/search_library.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/mod.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/choice_damage_family.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/registry.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/counter_marker_family.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/token_copy_control_family.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/combat_and_damage_family.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/delayed_step_family.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/mechanic_marker_family.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/dispatch_entry.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/mod.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/sentence_shape_predicates.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/labeled_prefixes.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/copy_and_next_spell_shapes.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/unsupported_shape_diagnostics.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/search_library.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/mod.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/choice_damage_family.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/registry.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/counter_marker_family.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/token_copy_control_family.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/combat_and_damage_family.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/delayed_step_family.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/mechanic_marker_family.rs",
     ];
 
     for relative_path in helper_paths {
@@ -57,26 +57,14 @@ pub(super) fn parser_mod_non_test_reexports_stay_minimal() {
         .parent()
         .and_then(Path::parent)
         .expect("workspace root");
-    let mod_rs_path = workspace_root.join("crates/ironsmith-compiler/src/runtime_backend/mod.rs");
+    let mod_rs_path = workspace_root.join("crates/ironsmith-compiler/src/front_end/mod.rs");
     let mod_rs = fs::read_to_string(&mod_rs_path).unwrap_or_else(|err| {
         panic!(
             "parser mod.rs should be readable at {}: {err}",
             mod_rs_path.display()
         )
     });
-    let allowed = [
-        "pub(crate) use super::*;",
-        "pub(crate) use crate::cards::builders::GrantedAbilityAst;",
-        "pub(crate) use effect_sentences::{CarryContext, TokenCopyFollowup, Verb, parse_type_line};",
-        "pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;",
-        "pub(crate) use ir::RewriteSemanticDocument as LegacySemanticDocument;",
-        "pub(crate) use lexer::{OwnedLexToken, token_word_refs};",
-        "pub(crate) use permission_helpers::{PermissionClauseSpec, PermissionLifetime};",
-        "pub(crate) use reference_model::{ReferenceEnv, ReferenceExports, ReferenceImports};",
-        "pub(crate) use shared_types::{ CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine, NormalizedLine, };",
-        "pub(crate) use util::{ SubjectAst, parse_counter_type_from_tokens, parse_power_toughness, parse_scryfall_mana_cost, span_from_tokens, };",
-        "pub(crate) use facade::{CardTextCompiler, CompilePolicy, CompiledCardText};",
-    ];
+    let allowed = ["pub(crate) use crate::grammar;"];
 
     let mut non_test_reexports = Vec::new();
     let mut prev_cfg_test = false;
@@ -719,7 +707,7 @@ pub(super) fn rewrite_winnow_span_helper_tracks_token_subslice_offsets() {
     let (head, rest) = super::super::grammar::primitives::split_lexed_once_on_comma(&tokens)
         .expect("expected grammar split helper to find comma separator");
     let span =
-        super::super::span_from_tokens(head).expect("expected span helper to cover token slice");
+        crate::util::span_from_tokens(head).expect("expected span helper to cover token slice");
 
     assert_eq!(render_token_slice(head), "Draw a card");
     assert_eq!(
@@ -996,7 +984,7 @@ pub(super) fn rewrite_effect_sentence_parser_handles_broken_visage_sequence() {
     let Some(EffectAst::SubjectVerb(subject_verb)) = effects.last() else {
         panic!("expected final token creation effect, got {effects:#?}");
     };
-    let super::super::ast::SubjectVerbActionAst::CreateTokenWithMods {
+    let crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods {
         dynamic_power_toughness,
         sacrifice_at_next_end_step,
         ..
@@ -1024,12 +1012,12 @@ pub(super) fn rewrite_effect_sentence_parser_merges_quoted_token_rule_reminder()
     let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
         panic!("expected one token creation effect, got {effects:#?}");
     };
-    let super::super::ast::SubjectVerbActionAst::CreateTokenWithMods { definition, .. } =
+    let crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods { definition, .. } =
         &subject_verb.action
     else {
         panic!("expected typed token creation action, got {subject_verb:#?}");
     };
-    let super::super::token_definition::TokenDefinitionSpec::Creature(creature) = definition else {
+    let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition else {
         panic!("expected a typed creature token definition, got {definition:#?}");
     };
     assert_eq!(creature.rules.dies_damage_any_target, Some(1));
@@ -1048,7 +1036,7 @@ pub(super) fn rewrite_effect_sentence_parser_keeps_create_around_quoted_token_tr
     let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
         panic!("expected one token creation effect, got {effects:#?}");
     };
-    let super::super::ast::SubjectVerbActionAst::CreateTokenWithMods {
+    let crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods {
         count,
         granted_abilities,
         ..
@@ -1380,8 +1368,9 @@ pub(super) fn rewrite_structure_predicate_parse_entrypoint_matches_parser_root_o
     let grammar =
         super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
             .expect("grammar predicate entrypoint should parse");
-    let parser_root = super::super::parse_predicate_lexed(&lexed)
-        .expect("parser-root predicate entrypoint should parse");
+    let parser_root =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("parser-root predicate entrypoint should parse");
 
     assert_eq!(grammar, parser_root);
 }
@@ -1394,8 +1383,9 @@ pub(super) fn rewrite_structure_predicate_parse_entrypoint_parses_not_your_turn(
     let grammar =
         super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
             .expect("grammar predicate entrypoint should parse");
-    let parser_root = super::super::parse_predicate_lexed(&lexed)
-        .expect("parser-root predicate entrypoint should parse");
+    let parser_root =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("parser-root predicate entrypoint should parse");
     let debug = format!("{grammar:?}");
 
     assert_eq!(grammar, parser_root);
@@ -1414,8 +1404,9 @@ pub(super) fn rewrite_structure_predicate_parse_entrypoint_matches_parser_root_o
     let grammar =
         super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
             .expect("grammar predicate entrypoint should parse");
-    let parser_root = super::super::parse_predicate_lexed(&lexed)
-        .expect("parser-root predicate entrypoint should parse");
+    let parser_root =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("parser-root predicate entrypoint should parse");
     let debug = format!("{grammar:?}");
 
     assert_eq!(grammar, parser_root);
@@ -1430,8 +1421,9 @@ pub(super) fn rewrite_structure_predicate_parses_you_have_one_or_fewer_cards_in_
     let text = "you have one or fewer cards in hand";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify predicate text");
 
-    let predicate = super::super::parse_predicate_lexed(&lexed)
-        .expect("predicate should parse for you-have subject");
+    let predicate =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+            .expect("predicate should parse for you-have subject");
     let debug = format!("{predicate:?}");
 
     assert!(
@@ -1445,8 +1437,9 @@ pub(super) fn rewrite_structure_if_tail_parser_extracts_predicate() {
     let tokens = lex_line("if it's white", 0).expect("rewrite lexer should classify if tail");
     let predicate = super::super::grammar::structure::parse_trailing_if_predicate_lexed(&tokens)
         .expect("structure helper should parse if tail predicate");
-    let expected = super::super::parse_predicate_lexed(&tokens[1..])
-        .expect("tail predicate should still parse");
+    let expected =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens[1..])
+            .expect("tail predicate should still parse");
 
     assert_eq!(predicate, expected);
 }
@@ -1467,8 +1460,9 @@ pub(super) fn rewrite_structure_trailing_unless_clause_parser_splits_gain_contro
     );
     let expected_tokens =
         lex_line("you control an artifact", 0).expect("expected predicate should lex");
-    let expected = super::super::parse_predicate_lexed(&expected_tokens)
-        .expect("expected predicate should parse");
+    let expected =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&expected_tokens)
+            .expect("expected predicate should parse");
 
     assert_eq!(spec.predicate, expected);
 }
@@ -1481,8 +1475,9 @@ pub(super) fn rewrite_structure_who_player_predicate_parser_extracts_prefixed_pl
         .expect("structure helper should parse who-player predicate");
     let expected_tokens =
         lex_line("that player controls an artifact", 0).expect("expected predicate should lex");
-    let expected = super::super::parse_predicate_lexed(&expected_tokens)
-        .expect("expected predicate should parse");
+    let expected =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&expected_tokens)
+            .expect("expected predicate should parse");
 
     assert_eq!(predicate, expected);
 }
@@ -1497,8 +1492,9 @@ pub(super) fn rewrite_structure_instead_if_tail_parser_extracts_predicate() {
     let predicate =
         super::super::grammar::structure::parse_trailing_instead_if_predicate_lexed(&tokens)
             .expect("structure helper should parse instead-if tail predicate");
-    let expected = super::super::parse_predicate_lexed(&tokens[2..])
-        .expect("tail predicate should still parse");
+    let expected =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens[2..])
+            .expect("tail predicate should still parse");
 
     assert_eq!(predicate, expected);
 }
@@ -1512,10 +1508,14 @@ pub(super) fn rewrite_structure_conditional_predicate_tail_parser_splits_instead
     let expected_base_tokens = lex_line("it's white", 0).expect("base predicate should lex");
     let expected_outer_tokens =
         lex_line("you control an artifact", 0).expect("outer predicate should lex");
-    let expected_base = super::super::parse_predicate_lexed(&expected_base_tokens)
-        .expect("base predicate should parse");
-    let expected_outer = super::super::parse_predicate_lexed(&expected_outer_tokens)
-        .expect("outer predicate should parse");
+    let expected_base = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
+        &expected_base_tokens,
+    )
+    .expect("base predicate should parse");
+    let expected_outer = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
+        &expected_outer_tokens,
+    )
+    .expect("outer predicate should parse");
 
     assert_eq!(
         spec,
@@ -1557,27 +1557,23 @@ pub(super) fn rewrite_structure_triggered_conditional_clause_parser_splits_inter
 #[test]
 pub(super) fn rewrite_structure_attack_while_most_life_keeps_typed_condition() {
     let tokens = lex_line(
-        "Whenever this creature attacks while you have the most life or are tied for most life, you draw a card and you lose 1 life.",
+        "this creature attacks while you have the most life or are tied for most life",
         0,
     )
     .expect("most-life attack condition should lex");
-    let spec =
-        super::super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
-            .expect("the authored while condition must be preserved");
-
-    assert_eq!(
-        spec.predicate,
-        super::super::model::ast::PredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
-            player: crate::PlayerAst::You,
-        }
-    );
-    assert_eq!(
-        spec.trigger_tokens
-            .iter()
-            .filter_map(|token| token.as_word())
-            .collect::<Vec<_>>(),
-        ["this", "creature", "attacks"]
-    );
+    let spec = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+        .expect("the authored while condition must be preserved at event time");
+    assert!(matches!(
+        spec,
+        super::super::model::ast::TriggerSpec::ConditionQualified {
+            trigger,
+            condition:
+                super::super::model::ast::PredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
+                    player: crate::PlayerAst::You,
+                },
+            ..
+        } if matches!(*trigger, super::super::model::ast::TriggerSpec::ThisAttacks)
+    ));
 }
 
 #[test]
@@ -2052,8 +2048,9 @@ pub(super) fn rewrite_modal_header_parser_keeps_choose_one_when_later_choose_bot
 }
 
 #[test]
-pub(super) fn refreshed_instead_modal_header_parses_typed_conditional_selection_ranges_and_labels() {
-    use crate::runtime_backend::semantic::ConditionalModeSelection;
+pub(super) fn refreshed_instead_modal_header_parses_typed_conditional_selection_ranges_and_labels()
+{
+    use crate::model::compiler_semantic::ConditionalModeSelection;
 
     for (text, expected, label) in [
         (
@@ -2076,12 +2073,19 @@ pub(super) fn refreshed_instead_modal_header_parses_typed_conditional_selection_
             .expect("modal header should parse")
             .expect("modal header should be recognized");
         assert_eq!(
-            header.conditional_mode_change.as_ref().map(|change| change.selection),
+            header
+                .conditional_mode_change
+                .as_ref()
+                .map(|change| change.selection),
             Some(expected),
             "{text}: {header:#?}"
         );
         assert_eq!(
-            header.presentation_label.as_ref().and_then(|label| label.display_prefix()).as_deref(),
+            header
+                .presentation_label
+                .as_ref()
+                .and_then(|label| label.display_prefix())
+                .as_deref(),
             label,
             "{text}: {header:#?}"
         );
@@ -2098,12 +2102,16 @@ pub(super) fn refreshed_instead_modal_header_near_misses_do_not_invent_condition
         let header = parse_modal_header_for_test(text)
             .expect("modal header should parse")
             .expect("modal header should be recognized");
-        assert!(header.conditional_mode_change.is_none(), "{text}: {header:#?}");
+        assert!(
+            header.conditional_mode_change.is_none(),
+            "{text}: {header:#?}"
+        );
     }
 }
 
 #[test]
-pub(super) fn refreshed_instead_mastery_alternative_cost_conditions_correlate_without_unsupported_predicates() {
+pub(super) fn refreshed_instead_mastery_alternative_cost_conditions_correlate_without_unsupported_predicates()
+ {
     for (name, text, condition_surface) in [
         (
             "Ingenious Mastery",
@@ -2140,7 +2148,8 @@ pub(super) fn refreshed_instead_mastery_alternative_cost_conditions_correlate_wi
 }
 
 #[test]
-pub(super) fn refreshed_instead_conditional_token_entry_followup_branches_the_typed_token_producer_only() {
+pub(super) fn refreshed_instead_conditional_token_entry_followup_branches_the_typed_token_producer_only()
+ {
     let tokens = lex_line(
         "Create three 1/1 white Ninja Turtle Spirit creature tokens. If this spell's sneak cost was paid, they enter tapped and attacking.",
         0,
@@ -2148,11 +2157,11 @@ pub(super) fn refreshed_instead_conditional_token_entry_followup_branches_the_ty
     .expect("conditional token-entry fixture should lex");
     let effects = super::super::clause_support::parse_effect_sentences_lexed(&tokens)
         .expect("conditional token-entry fixture should parse");
-    let [EffectAst::Conditional {
-        if_true,
-        if_false,
-        ..
-    }] = effects.as_slice()
+    let [
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        },
+    ] = effects.as_slice()
     else {
         panic!("expected one executable conditional token creation: {effects:#?}");
     };
@@ -2161,10 +2170,8 @@ pub(super) fn refreshed_instead_conditional_token_entry_followup_branches_the_ty
         let [EffectAst::SubjectVerb(subject_verb)] = branch else {
             panic!("expected one token creation branch: {branch:#?}");
         };
-        let super::super::ast::SubjectVerbActionAst::CreateTokenWithMods {
-            tapped,
-            attacking,
-            ..
+        let crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods {
+            tapped, attacking, ..
         } = &subject_verb.action
         else {
             panic!("expected a typed token producer: {subject_verb:#?}");
@@ -2188,7 +2195,8 @@ pub(super) fn refreshed_instead_conditional_token_entry_followup_branches_the_ty
 }
 
 #[test]
-pub(super) fn refreshed_instead_opponent_choice_then_return_preserves_chooser_filter_and_chosen_set() {
+pub(super) fn refreshed_instead_opponent_choice_then_return_preserves_chooser_filter_and_chosen_set()
+ {
     let tokens = lex_line(
         "An opponent chooses up to two nonland permanents they control and returns them to their owner's hand.",
         0,
@@ -2676,7 +2684,8 @@ pub(super) fn rewrite_static_lowering_reuses_token_sentences_for_multi_sentence_
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify multi-sentence static line");
 
-    let parsed = super::super::parse_static_line(rewrite_line_info(text), &tokens, None)?;
+    let parsed =
+        crate::semantic_line_parsing::parse_static_line(rewrite_line_info(text), &tokens, None)?;
 
     match parsed {
         crate::cards::builders::LineAst::StaticAbilities(abilities) => {
@@ -2695,7 +2704,8 @@ pub(super) fn rewrite_static_lowering_reuses_token_split_for_compound_unblockabl
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify compound buff static line");
 
-    let parsed = super::super::parse_static_line(rewrite_line_info(text), &tokens, None)?;
+    let parsed =
+        crate::semantic_line_parsing::parse_static_line(rewrite_line_info(text), &tokens, None)?;
 
     match parsed {
         crate::cards::builders::LineAst::StaticAbilities(abilities) => {
@@ -2714,7 +2724,7 @@ pub(super) fn rewrite_keyword_lowering_reuses_token_sentences_for_optional_cost_
     let tokens = lex_line(text, 0)
         .expect("rewrite lexer should classify additional-cost cast-trigger keyword line");
 
-    let parsed = super::super::parse_keyword_line_for_test(
+    let parsed = crate::semantic_line_parsing::parse_keyword_line_for_test(
         rewrite_line_info(text),
         text,
         &tokens,
@@ -2736,6 +2746,34 @@ pub(super) fn rewrite_keyword_lowering_reuses_token_sentences_for_optional_cost_
         other => panic!("expected optional-cost cast trigger line, got {other:?}"),
     }
 
+    Ok(())
+}
+
+#[test]
+pub(super) fn chosen_type_behold_cost_preempts_generic_behold_exile_shape()
+-> Result<(), CardTextError> {
+    let text = "As an additional cost to cast this spell, you may choose a creature type and behold two creatures of that type.";
+    let tokens = lex_line(text, 0).expect("chosen-type behold cost should lex");
+
+    let parsed = crate::semantic_line_parsing::parse_keyword_line_for_test(
+        rewrite_line_info(text),
+        text,
+        &tokens,
+        RewriteKeywordLineKind::AdditionalCost,
+    )?;
+
+    let crate::cards::builders::LineAst::OptionalCost(optional) = parsed else {
+        panic!("expected a typed optional additional cost, got {parsed:?}");
+    };
+    let optional = optional.into_runtime();
+    let costs = optional
+        .cost
+        .as_all()
+        .expect("chosen-type behold cost should be a cost sequence");
+    assert_eq!(costs.len(), 2);
+    assert!(format!("{costs:#?}").contains("ChooseCreatureType"));
+    assert!(format!("{costs:#?}").contains("beheld_chosen_type"));
+    assert!(!format!("{costs:#?}").contains("MoveToZone"));
     Ok(())
 }
 
@@ -2767,7 +2805,7 @@ pub(super) fn rewrite_keyword_lowering_uses_carried_surge_tokens_after_cst_rewri
         0,
     )?;
     let full_parse_tokens = lex_line(raw, 0)?;
-    let parsed = super::super::parse_keyword_line_with_full_tokens_for_test(
+    let parsed = crate::semantic_line_parsing::parse_keyword_line_with_full_tokens_for_test(
         rewrite_line_info(raw),
         raw,
         &parse_tokens,
@@ -2788,7 +2826,7 @@ pub(super) fn rewrite_keyword_lowering_uses_carried_freerunning_tokens_after_cst
         0,
     )?;
     let full_parse_tokens = lex_line(raw, 0)?;
-    let parsed = super::super::parse_keyword_line_with_full_tokens_for_test(
+    let parsed = crate::semantic_line_parsing::parse_keyword_line_with_full_tokens_for_test(
         rewrite_line_info(raw),
         raw,
         &parse_tokens,
@@ -2806,7 +2844,7 @@ pub(super) fn rewrite_keyword_lowering_uses_normalized_sneak_cost_and_full_form_
     let raw = "Sneak {1}{B} (You may cast this spell for {1}{B} if you also return an unblocked attacker you control to hand during the declare blockers step.)";
     let parse_tokens = lex_line("Sneak {1}{B}", 0)?;
     let full_parse_tokens = lex_line(raw, 0)?;
-    let parsed = super::super::parse_keyword_line_with_full_tokens_for_test(
+    let parsed = crate::semantic_line_parsing::parse_keyword_line_with_full_tokens_for_test(
         rewrite_line_info(raw),
         raw,
         &parse_tokens,
@@ -2823,7 +2861,7 @@ pub(super) fn rewrite_keyword_lowering_does_not_relex_stale_text_for_cost()
 -> Result<(), CardTextError> {
     let raw = "Freerunning {2}{R}";
     let tokens = lex_line(raw, 0)?;
-    let parsed = super::super::parse_keyword_line_for_test(
+    let parsed = crate::semantic_line_parsing::parse_keyword_line_for_test(
         rewrite_line_info(raw),
         "Freerunning {9}{U}",
         &tokens,
@@ -2840,7 +2878,7 @@ pub(super) fn rewrite_statement_lowering_reuses_full_token_slice_for_pact_line()
     let text = "search your library for a green creature card, reveal it, put it into your hand, then shuffle. at the beginning of your next upkeep, pay {2}{G}{G}. if you don't, you lose the game.";
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify pact statement line");
 
-    let parsed_chunks = super::super::parse_statement_token_groups_to_chunks(
+    let parsed_chunks = crate::semantic_line_parsing::parse_statement_token_groups_to_chunks(
         rewrite_line_info(text),
         &tokens,
         &[],
@@ -2865,7 +2903,7 @@ pub(super) fn rewrite_statement_keeps_graveyard_card_copy_cast_as_one_typed_sequ
     let text = "Exile target instant or sorcery card from a graveyard and copy it. You may cast the copy without paying its mana cost.";
     let tokens = lex_line(text, 0).expect("graveyard card-copy statement should lex");
 
-    let parsed_chunks = super::super::parse_statement_token_groups_to_chunks(
+    let parsed_chunks = crate::semantic_line_parsing::parse_statement_token_groups_to_chunks(
         rewrite_line_info(text),
         &tokens,
         &[],
@@ -2887,7 +2925,7 @@ pub(super) fn rewrite_statement_lowering_uses_parse_tokens_when_groups_are_missi
     let tokens =
         lex_line(token_text, 0).expect("rewrite lexer should classify statement token fallback");
 
-    let parsed_chunks = super::super::parse_statement_token_groups_to_chunks(
+    let parsed_chunks = crate::semantic_line_parsing::parse_statement_token_groups_to_chunks(
         rewrite_line_info("placeholder statement text"),
         &tokens,
         &[],
@@ -2912,7 +2950,7 @@ pub(super) fn rewrite_statement_lowering_parses_soul_partition_via_parser_path()
     let text = "Exile target nonland permanent. For as long as that card remains exiled, its owner may play it. A spell cast by an opponent this way costs {2} more to cast.";
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify Soul Partition text");
 
-    let parsed_chunks = super::super::parse_statement_token_groups_to_chunks(
+    let parsed_chunks = crate::semantic_line_parsing::parse_statement_token_groups_to_chunks(
         rewrite_line_info(text),
         &tokens,
         &[],
@@ -2937,7 +2975,7 @@ pub(super) fn rewrite_statement_lowering_parses_empty_laboratory_via_parser_path
     let text = "Sacrifice X Zombies, then reveal cards from the top of your library until you reveal a number of Zombie creature cards equal to the number of Zombies sacrificed this way. Put those cards onto the battlefield and the rest on the bottom of your library in a random order.";
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify Empty Laboratory text");
 
-    let parsed_chunks = super::super::parse_statement_token_groups_to_chunks(
+    let parsed_chunks = crate::semantic_line_parsing::parse_statement_token_groups_to_chunks(
         rewrite_line_info(text),
         &tokens,
         &[],
@@ -2965,7 +3003,7 @@ pub(super) fn rewrite_statement_lowering_parses_shape_anew_via_parser_path()
     let text = "The controller of target artifact sacrifices it, then reveals cards from the top of their library until they reveal an artifact card. That player puts that card onto the battlefield, then shuffles all other cards revealed this way into their library.";
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify Shape Anew text");
 
-    let parsed_chunks = super::super::parse_statement_token_groups_to_chunks(
+    let parsed_chunks = crate::semantic_line_parsing::parse_statement_token_groups_to_chunks(
         rewrite_line_info(text),
         &tokens,
         &[],
@@ -3011,7 +3049,7 @@ pub(super) fn rewrite_statement_lowering_parses_nissas_encouragement_via_parser_
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify Nissa's Encouragement text");
 
-    let parsed_chunks = super::super::parse_statement_token_groups_to_chunks(
+    let parsed_chunks = crate::semantic_line_parsing::parse_statement_token_groups_to_chunks(
         rewrite_line_info(text),
         &tokens,
         &[],
@@ -3058,7 +3096,7 @@ pub(super) fn rewrite_triggered_lowering_uses_parse_tokens_when_text_fields_are_
     let effect_tokens =
         lex_line(effect_text, 0).expect("rewrite lexer should classify triggered effect");
 
-    let parsed = super::super::parse_triggered_line(
+    let parsed = crate::semantic_line_parsing::parse_triggered_line(
         rewrite_line_info("placeholder triggered text"),
         "placeholder triggered text",
         &full_tokens,
@@ -3087,7 +3125,7 @@ pub(super) fn rewrite_triggered_keeps_linked_exile_permission_tax_in_resolution(
     let trigger_tokens = lex_line(trigger_text, 0).expect("enter trigger should lex");
     let effect_tokens = lex_line(effect_text, 0).expect("linked exile-tax effects should lex");
 
-    let parsed = super::super::parse_triggered_line(
+    let parsed = crate::semantic_line_parsing::parse_triggered_line(
         rewrite_line_info(full_text),
         full_text,
         &full_tokens,
@@ -3134,7 +3172,7 @@ pub(super) fn rewrite_combat_death_blocked_damage_special_case_uses_parse_tokens
     let effect_tokens =
         lex_line(effect_text, 0).expect("rewrite lexer should classify blocked-damage effect");
 
-    let parsed = super::super::parse_triggered_line(
+    let parsed = crate::semantic_line_parsing::parse_triggered_line(
         rewrite_line_info("placeholder triggered text"),
         "placeholder triggered text",
         &full_tokens,
@@ -3176,7 +3214,7 @@ pub(super) fn rewrite_gift_keyword_lowering_builds_closed_form_followup_effects(
 
     for (text, expected_followup, expected_timing) in cases {
         let tokens = lex_line(text, 0).expect("rewrite lexer should classify gift keyword line");
-        let parsed = super::super::parse_keyword_line_for_test(
+        let parsed = crate::semantic_line_parsing::parse_keyword_line_for_test(
             rewrite_line_info(text),
             text,
             &tokens,
@@ -3358,7 +3396,7 @@ pub(super) fn rewrite_rule_engine_lex_clause_view_normalizes_parser_word_shapes(
         0,
     )
     .expect("rewrite lexer should classify rule-engine clause");
-    let view = super::super::LexClauseView::from_tokens(&tokens);
+    let view = crate::rule_engine::LexClauseView::from_tokens(&tokens);
 
     assert_eq!(view.head(), "whenever");
     assert_eq!(
@@ -3369,7 +3407,7 @@ pub(super) fn rewrite_rule_engine_lex_clause_view_normalizes_parser_word_shapes(
     );
     assert_eq!(
         view.shape,
-        super::super::RULE_SHAPE_STARTS_WHENEVER | super::super::RULE_SHAPE_HAS_COMMA
+        crate::rule_engine::RULE_SHAPE_STARTS_WHENEVER | crate::rule_engine::RULE_SHAPE_HAS_COMMA
     );
     assert_eq!(
         view.display_text(),
@@ -3751,7 +3789,7 @@ pub(super) fn rewrite_activation_line_attaches_special_mana_restriction_filters(
     )
     .expect("rewrite lexer should classify Jeweled Lotus-style activated line");
 
-    let parsed = super::super::parse_activated_line(&tokens)
+    let parsed = crate::activation_and_restrictions::parse_activated_line(&tokens)
         .expect("activated line should parse")
         .expect("activated line should produce an ability");
 
@@ -3875,7 +3913,7 @@ pub(super) fn rewrite_zone_counter_helpers_parse_put_or_remove_counter_modes() {
     )
     .expect("rewrite lexer should classify put-or-remove counter clause");
 
-    let parsed = super::super::parse_effect_sentence_lexed(&tokens)
+    let parsed = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
         .expect("put-or-remove counter clause should parse");
     let debug = format!("{parsed:?}");
 
@@ -3905,7 +3943,7 @@ pub(super) fn rewrite_zone_counter_helpers_parse_multiple_counter_sentence() {
     )
     .expect("rewrite lexer should classify multi-counter clause");
 
-    let parsed = super::super::parse_sentence_put_multiple_counters_on_target(&tokens)
+    let parsed = crate::effect_sentences::parse_sentence_put_multiple_counters_on_target(&tokens)
         .expect("multi-counter clause should parse");
 
     assert_eq!(parsed.as_ref().map(Vec::len), Some(2), "{parsed:?}");

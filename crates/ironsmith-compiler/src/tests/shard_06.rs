@@ -257,7 +257,7 @@ pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
         .iter()
         .find_map(|item| rewrite_direct_triggered_chunk(item).map(|(_, effects, _)| effects))
         .expect("expected one typed triggered ability");
-    fn source_sentence_effects<'a>(effect: &'a EffectAst) -> &'a [EffectAst] {
+    fn source_sentence_effects(effect: &EffectAst) -> &[EffectAst] {
         match effect {
             EffectAst::SourceSentence { effects, .. } => effects.as_slice(),
             other => std::slice::from_ref(other),

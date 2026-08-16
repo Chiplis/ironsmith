@@ -10,7 +10,7 @@ fn historical_block_reanimation_round_trips_exact_controller_provenance() {
         "Historical block reanimation",
     )
     .card_types(vec![CardType::Instant])
-    .parse_text(&format!("{HISTORICAL_BLOCK_REANIMATION}."))
+    .parse_text(format!("{HISTORICAL_BLOCK_REANIMATION}."))
     .expect("historical block reanimation should parse");
 
     assert_eq!(

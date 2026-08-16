@@ -179,7 +179,7 @@ pub(crate) fn parse_attach_object_phrase(
     }
 }
 pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    let clause = crate::token_word_refs(tokens).join(" ");
+    let clause = crate::lexer::token_word_refs(tokens).join(" ");
     let shape =
         combat_grammar::parse_combat_attach_clause_shape_lexed(tokens).map_err(|error| {
             let message = match error {
@@ -221,7 +221,7 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             if let Some(host_tokens) =
                 grammar::match_word_prefix(object_tokens, &["all", "auras", "enchanting"])
             {
-                let destination_words = crate::token_word_refs(target_tokens);
+                let destination_words = crate::lexer::token_word_refs(target_tokens);
                 if matches!(
                     destination_words.as_slice(),
                     ["another", "permanent", "with", "same", "controller"]
@@ -267,7 +267,7 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 target_tokens,
             )
                 && let Some(filter) =
-                crate::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(
+                crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(
                     &mut target,
                 )
             {
@@ -356,7 +356,7 @@ pub(crate) fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, Card
 }
 
 pub(crate) fn damage_clause_has_terminal_unpreventable_rider(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     const RIDERS: &[&[&str]] = &[
         &["and", "the", "damage", "cant", "be", "prevented"],
         &["and", "the", "damage", "can't", "be", "prevented"],
@@ -404,7 +404,7 @@ fn parse_damage_each_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
     let mut filter = parse_object_filter(filter_tokens, false)?;
-    let words = crate::token_word_refs(filter_tokens);
+    let words = crate::lexer::token_word_refs(filter_tokens);
     if words.first() == Some(&"those") || words.starts_with(&["of", "those"]) {
         filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those));
     }
@@ -414,7 +414,7 @@ fn parse_damage_each_filter(
 fn parse_deal_damage_inner(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let shape = combat_grammar::parse_combat_damage_head_shape_lexed(tokens);
     let tokens = shape.body_tokens;
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     if shape.direct_hand_size_each_opponent {
         return Ok(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
@@ -475,7 +475,7 @@ fn parse_divided_damage_equal_to_amount(
     let Some(shape) = combat_grammar::parse_combat_divided_equal_shape_lexed(tokens) else {
         return Ok(None);
     };
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let Some((amount, used)) = parse_value(shape.amount_tokens) else {
         return Err(CardTextError::ParseError(format!(
             "missing divided-damage amount (clause: '{}')",
@@ -489,7 +489,7 @@ fn parse_divided_damage_equal_to_amount(
         )));
     }
     let target = parse_divided_damage_target(shape.target_tokens)?;
-    let chooser = if crate::token_word_refs(shape.target_tokens)
+    let chooser = if crate::lexer::token_word_refs(shape.target_tokens)
         .windows(4)
         .any(|window| window == ["as", "its", "controller", "chooses"])
     {
@@ -523,7 +523,7 @@ fn preserve_optional_single_damage_target(
     target: TargetAst,
     target_tokens: &[OwnedLexToken],
 ) -> TargetAst {
-    let words = crate::token_word_refs(target_tokens);
+    let words = crate::lexer::token_word_refs(target_tokens);
     if !words.starts_with(&["up", "to", "one", "target"]) {
         return target;
     }
@@ -547,7 +547,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
     else {
         return Ok(None);
     };
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     // A relative-controller count must preempt the tolerant generic value
     // parser, which otherwise absorbs the antecedent noun into the counted
     // object filter (for example, Land + Creature).
@@ -599,8 +599,8 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
     let Some(shape) = combat_grammar::parse_combat_damage_equal_shape_lexed(tokens) else {
         return Ok(None);
     };
-    let clause_words = crate::token_word_refs(tokens);
-    let authored_difference = crate::token_word_refs(shape.amount_tokens)
+    let clause_words = crate::lexer::token_word_refs(tokens);
+    let authored_difference = crate::lexer::token_word_refs(shape.amount_tokens)
         .windows(2)
         .any(|window| window == ["difference", "between"])
         .then(|| parse_add_mana_equal_amount_value(shape.amount_tokens))
@@ -667,7 +667,7 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
 fn parse_divided_damage_target(
     target_tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
-    let clause = crate::token_word_refs(target_tokens).join(" ");
+    let clause = crate::lexer::token_word_refs(target_tokens).join(" ");
     let shape = combat_grammar::parse_combat_divided_target_shape_lexed(target_tokens).map_err(
         |error| {
             let message = match error {
@@ -723,7 +723,7 @@ fn parse_divided_damage_with_amount(
         combat_grammar::parse_combat_divided_amount_shape_lexed(tokens, used).map_err(|_| {
             CardTextError::ParseError(format!(
                 "missing damage keyword in divided-damage clause (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
+                crate::lexer::token_word_refs(tokens).join(" ")
             ))
         })?;
     match shape {
@@ -751,7 +751,7 @@ pub(crate) fn parse_deal_damage_with_amount(
     amount: Value,
     used: usize,
 ) -> Result<EffectAst, CardTextError> {
-    let clause = crate::token_word_refs(tokens).join(" ");
+    let clause = crate::lexer::token_word_refs(tokens).join(" ");
     let shape =
         combat_grammar::parse_combat_damage_target_shape_lexed(tokens, used).map_err(|error| {
             let message = match error {
@@ -831,7 +831,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             target_tokens,
         } => {
             let amount = if shape == combat_grammar::CombatSimpleDamageTargetShape::IteratedPlayer
-                && crate::token_word_refs(target_tokens) == ["them"]
+                && crate::lexer::token_word_refs(target_tokens) == ["them"]
             {
                 amount.with_surface_hint(ironsmith_core::ValueSurfaceHint::DamageRecipientPronoun)
             } else {
@@ -1012,7 +1012,7 @@ pub(crate) fn parse_instead_if_control_predicate(
 #[cfg(test)]
 mod equal_to_damage_surface_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn historical_mixed_damage_recipients_keep_both_typed_filters() {

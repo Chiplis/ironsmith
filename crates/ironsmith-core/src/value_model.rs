@@ -13,6 +13,10 @@ use crate::{
 /// Selects the object whose attachments are counted by an attachment
 /// relationship condition.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "attachment conditions preserve typed object filters inline"
+)]
 pub enum AttachmentConditionHost {
     /// Count attachments on the ability's source object.
     Source,
@@ -225,6 +229,10 @@ pub enum ValueSurfaceHint {
     /// Preserve an authored full or short card-name subject on a static
     /// enters-with-counters clause. The counter value remains unchanged.
     SourceNameSubject,
+    /// Preserve the authored indefinite commander reference in history
+    /// counts ("cast a commander from the command zone") as distinct from
+    /// the equally executable "your commander" surface.
+    IndefiniteCommanderReference,
     ForEach,
     /// Preserve a power/toughness modifier whose duration precedes its
     /// per-object scaling clause: "until end of turn for each ...".
@@ -1321,6 +1329,10 @@ pub enum PermanentLeftBattlefieldControlSurface {
 /// origin-zone, source-reference, and grouped-event semantics without falling
 /// back to untyped text.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "turn-history conditions preserve typed object filters inline"
+)]
 pub enum TurnHistoryCondition {
     SpellsCastLastTurnAtLeast(u32),
     SourceCrewedByAtLeast {

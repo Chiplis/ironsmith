@@ -211,7 +211,7 @@ pub(crate) fn parse_activated_functional_zones_tokens(
                     "or",
                     "from",
                 ]
-                && words.iter().any(|word| *word == "exile")
+                && words.contains(&"exile")
         })
     });
 
@@ -254,7 +254,7 @@ fn has_any_phrase(tokens: &[OwnedLexToken], phrases: &'static [&'static [&'stati
 fn parse_trigger_zone_hint_tokens(tokens: &[OwnedLexToken]) -> Option<Zone> {
     for (phrase, zone) in TRIGGER_ZONE_HINT_PHRASES {
         if has_phrase(tokens, phrase) {
-            return Some(zone.clone());
+            return Some(*zone);
         }
     }
     None
@@ -291,7 +291,7 @@ pub(crate) fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> 
     let zones = STATIC_ZONE_HINT_PHRASES
         .iter()
         .filter(|(phrase, _)| has_phrase(tokens, phrase))
-        .map(|(_, zone)| zone.clone())
+        .map(|(_, zone)| *zone)
         .collect::<Vec<_>>();
     (!zones.is_empty()).then_some(zones)
 }

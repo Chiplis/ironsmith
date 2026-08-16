@@ -9,7 +9,7 @@ use super::super::leaf::{
 };
 use super::super::primitives;
 use super::clause_facts::{exact, exact_any, prefix};
-use crate::front_end::lexer::{LexStream, OwnedLexToken, TokenWordView};
+use crate::lexer::{LexStream, OwnedLexToken, TokenWordView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ActivatedAbilityOwnerScope {

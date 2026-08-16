@@ -28,9 +28,6 @@ use super::super::permission_helpers::{
     parse_unsupported_play_cast_permission_clause_lexed,
 };
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleHandler, LexRuleIndex};
-use super::super::span_from_tokens;
-use crate::recognition::RuleId;
-use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
 #[cfg(test)]
 use super::super::token_primitives::str_contains as string_contains;
 use super::super::util::{
@@ -63,6 +60,9 @@ use super::{
 use crate::grammar::shared_util::value_semantics::{
     parse_number_prefix_lexed, parse_value_prefix_lexed,
 };
+use crate::recognition::RuleId;
+use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
+use crate::util::span_from_tokens;
 
 const ENCHANTED_TAG_NAME: &str = "enchanted";
 const SENTENCE_HELPER_REVEALED_TAG_PREFIX: &str = "__sentence_helper_revealed";
@@ -405,9 +405,9 @@ pub(crate) fn parse_effect_chain_lexed(
     // entrypoint is also used directly by compiler tests and lower-level
     // callers, so it needs the same stack growth protection as the sentence
     // entrypoint.
-    {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_effect_chain_lexed_inner(tokens)
-    }
+    })
 }
 
 fn parse_independent_explicit_may_coordination(
@@ -889,13 +889,12 @@ fn parse_for_each_object_effect_chain_shape(
     };
 
     let mut count_words = vec!["for", "each"];
-    count_words.extend(crate::token_word_refs(shape.filter_tokens));
-    let effect_words = crate::token_word_refs(shape.effect_tokens);
+    count_words.extend(crate::lexer::token_word_refs(shape.filter_tokens));
+    let effect_words = crate::lexer::token_word_refs(shape.effect_tokens);
     let has_that_player_payload = effect_words
         .windows(2)
         .any(|window| window == ["that", "player"]);
-    if let Some((count, used)) =
-        crate::util::parse_for_each_count_value_words(&count_words)
+    if let Some((count, used)) = crate::util::parse_for_each_count_value_words(&count_words)
         && used == count_words.len()
         && !matches!(count.unhinted(), Value::Count(_))
         && !(has_that_player_payload
@@ -1402,7 +1401,10 @@ pub(crate) fn preserve_leading_result_coordination_lexed(
 pub(crate) fn parse_destroy_then_temporary_cant_attack_block_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    for split in chain_grammar::parse_destroy_restriction_splits_tokens(tokens) {
+    if let Some(split) = chain_grammar::parse_destroy_restriction_splits_tokens(tokens)
+        .into_iter()
+        .next()
+    {
         let mut effects = vec![parse_effect_clause_lexed(split.destroy_tokens)?];
         let Some(tail_effects) = parse_cant_effect_sentence_lexed(split.restriction_tokens)? else {
             return Err(CardTextError::ParseError(format!(
@@ -1510,9 +1512,9 @@ mod tests;
 pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(tokens)
-    }
+    })
 }
 
 fn parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(
@@ -1528,7 +1530,7 @@ fn parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(
         return Ok(effects);
     }
 
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     if starts_with_until_end_of_turn_trigger_clause(tokens) {
         return Err(CardTextError::ParseError(format!(
             "unsupported until-end-of-turn permission clause (clause: '{}')",
@@ -1649,7 +1651,7 @@ pub(crate) fn leading_condition_is_paid_label(tokens: &[OwnedLexToken]) -> bool 
     let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) else {
         return false;
     };
-    if crate::token_word_refs(&tokens[..if_idx])
+    if crate::lexer::token_word_refs(&tokens[..if_idx])
         .iter()
         .any(|word| !matches!(*word, "then"))
     {
@@ -1709,9 +1711,9 @@ pub(crate) fn append_missing_coordinated_return_discard_tail(
 pub(crate) fn parse_effect_chain_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_effect_chain_inner_lexed_unstacked(tokens, true)
-    }
+    })
 }
 
 fn parse_effect_chain_inner_lexed_unstacked(
@@ -1850,11 +1852,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
                 .any(|window| window == ["in", "a", "random"])
     };
     if source_exiled_bottom_random {
-        let action_tokens = tokens
-            .first()
-            .is_some_and(|token| token.is_word("then"))
-            .then_some(&tokens[1..])
-            .unwrap_or(tokens);
+        let action_tokens = if tokens.first().is_some_and(|token| token.is_word("then")) {
+            &tokens[1..]
+        } else {
+            tokens
+        };
         if super::verb_handlers::parse_exiled_with_source_move_surface(action_tokens).is_some() {
             return Ok(vec![super::verb_handlers::parse_put_into_hand(
                 action_tokens,
@@ -2362,10 +2364,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
         &mut effects,
         coordination_reference_facts.implicit_draw_discard_actor,
     );
-    bind_adjacent_life_stat_pronouns(
-        &mut effects,
-        coordination_reference_facts.life_stat_pronoun,
-    );
+    bind_adjacent_life_stat_pronouns(&mut effects, coordination_reference_facts.life_stat_pronoun);
     bind_each_prior_affected_object_controller_life_gain(
         &mut effects,
         coordination_reference_facts.affected_object_controller_reward,
@@ -2423,7 +2422,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
 /// represent "the controller of each of those artifacts" when the destroyed
 /// set can have several different controllers.
 fn bind_each_prior_affected_object_controller_life_gain(
-    effects: &mut Vec<EffectAst>,
+    effects: &mut [EffectAst],
     recognized_reference: bool,
 ) {
     if !recognized_reference || effects.len() < 2 {
@@ -2664,10 +2663,7 @@ fn bind_adjacent_implicit_draw_discard_subjects(
     }
 }
 
-fn bind_adjacent_life_stat_pronouns(
-    effects: &mut [EffectAst],
-    recognized_reference: bool,
-) {
+fn bind_adjacent_life_stat_pronouns(effects: &mut [EffectAst], recognized_reference: bool) {
     if !recognized_reference {
         return;
     }
@@ -2823,7 +2819,7 @@ pub(crate) fn bind_adjacent_shared_x_life_stat_values(
 
     bind_in_list(effects);
     for effect in effects {
-        for_each_nested_effects_mut(effect, true, |nested| bind_in_list(nested));
+        for_each_nested_effects_mut(effect, true, bind_in_list);
     }
 }
 
@@ -3462,16 +3458,14 @@ pub(crate) fn parse_effect_clause_with_trailing_if_lexed(
 
     let base_effect = if let Ok(effect) = parse_effect_clause_lexed(trailing_if.leading_tokens) {
         effect
+    } else if let Some(effect) = parse_simple_lose_ability_clause_lexed(trailing_if.leading_tokens)?
+    {
+        effect
+    } else if let Some(effect) = parse_simple_gain_ability_clause_lexed(trailing_if.leading_tokens)?
+    {
+        effect
     } else {
-        if let Some(effect) = parse_simple_lose_ability_clause_lexed(trailing_if.leading_tokens)? {
-            effect
-        } else if let Some(effect) =
-            parse_simple_gain_ability_clause_lexed(trailing_if.leading_tokens)?
-        {
-            effect
-        } else {
-            return parse_effect_clause_lexed(tokens);
-        }
+        return parse_effect_clause_lexed(tokens);
     };
 
     let predicate = bind_trailing_it_predicate_to_explicit_effect_target(predicate, &base_effect);
@@ -3501,15 +3495,16 @@ fn explicit_tagged_target(target: &TargetAst) -> Option<TagKey> {
 
 fn explicit_effect_object_tag(effect: &EffectAst) -> Option<TagKey> {
     match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
-            SubjectVerbActionAst::MoveToZone { target, .. }
-            | SubjectVerbActionAst::MayMoveToZone { target, .. }
-            | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
-            | SubjectVerbActionAst::PutOntoBattlefield { target, .. }
-            | SubjectVerbActionAst::TurnFaceUp { target }
-            | SubjectVerbActionAst::ReturnToHand { target, .. } => explicit_tagged_target(target),
-            _ => None,
-        },
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::MoveToZone { target, .. }
+                | SubjectVerbActionAst::MayMoveToZone { target, .. }
+                | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
+                | SubjectVerbActionAst::PutOntoBattlefield { target, .. }
+                | SubjectVerbActionAst::TurnFaceUp { target }
+                | SubjectVerbActionAst::ReturnToHand { target, .. },
+            ..
+        }) => explicit_tagged_target(target),
         EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. }
             if effects.len() == 1 =>
         {
@@ -3537,17 +3532,16 @@ fn explicit_target_choose_spec(target: &TargetAst) -> Option<ChooseSpec> {
 
 fn explicit_effect_object_target(effect: &EffectAst) -> Option<ChooseSpec> {
     match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
-            SubjectVerbActionAst::MoveToZone { target, .. }
-            | SubjectVerbActionAst::MayMoveToZone { target, .. }
-            | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
-            | SubjectVerbActionAst::PutOntoBattlefield { target, .. }
-            | SubjectVerbActionAst::TurnFaceUp { target }
-            | SubjectVerbActionAst::ReturnToHand { target, .. } => {
-                explicit_target_choose_spec(target)
-            }
-            _ => None,
-        },
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::MoveToZone { target, .. }
+                | SubjectVerbActionAst::MayMoveToZone { target, .. }
+                | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
+                | SubjectVerbActionAst::PutOntoBattlefield { target, .. }
+                | SubjectVerbActionAst::TurnFaceUp { target }
+                | SubjectVerbActionAst::ReturnToHand { target, .. },
+            ..
+        }) => explicit_target_choose_spec(target),
         EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. }
             if effects.len() == 1 =>
         {
@@ -3665,6 +3659,7 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
             | PredicateAst::PlayerHasMoreCardsInHandThanYou { .. }
             | PredicateAst::PlayerHasCardTypesInGraveyardOrMore { .. }
             | PredicateAst::YouControlMoreCreaturesThanTargetSpellController
+            | PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
             | PredicateAst::ValueComparison { .. }
     ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == ENCHANTED_TAG_NAME)
 }
@@ -3729,29 +3724,27 @@ pub(crate) fn collapse_token_copy_next_end_step_exile_followup_lexed(
             continue;
         }
 
-        match &mut effects[idx] {
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::CreateTokenCopy {
-                        exile_at_next_end_step,
-                        exile_at_next_end_step_reference_surface,
-                        next_end_step_player: effect_next_end_step_player,
-                        ..
-                    }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource {
-                        exile_at_next_end_step,
-                        exile_at_next_end_step_reference_surface,
-                        next_end_step_player: effect_next_end_step_player,
-                        ..
-                    },
-                ..
-            }) => {
-                *exile_at_next_end_step = true;
-                *exile_at_next_end_step_reference_surface =
-                    token_copy_action_reference_surface(tokens, "exile");
-                *effect_next_end_step_player = next_end_step_player.clone();
-            }
-            _ => {}
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CreateTokenCopy {
+                    exile_at_next_end_step,
+                    exile_at_next_end_step_reference_surface,
+                    next_end_step_player: effect_next_end_step_player,
+                    ..
+                }
+                | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    exile_at_next_end_step,
+                    exile_at_next_end_step_reference_surface,
+                    next_end_step_player: effect_next_end_step_player,
+                    ..
+                },
+            ..
+        }) = &mut effects[idx]
+        {
+            *exile_at_next_end_step = true;
+            *exile_at_next_end_step_reference_surface =
+                token_copy_action_reference_surface(tokens, "exile");
+            *effect_next_end_step_player = next_end_step_player.clone();
         }
         effects.remove(idx + 1);
     }
@@ -3821,29 +3814,27 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
             continue;
         }
 
-        match &mut effects[idx] {
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::CreateTokenCopy {
-                        sacrifice_at_next_end_step,
-                        sacrifice_at_next_end_step_reference_surface,
-                        next_end_step_player: effect_next_end_step_player,
-                        ..
-                    }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource {
-                        sacrifice_at_next_end_step,
-                        sacrifice_at_next_end_step_reference_surface,
-                        next_end_step_player: effect_next_end_step_player,
-                        ..
-                    },
-                ..
-            }) => {
-                *sacrifice_at_next_end_step = true;
-                *sacrifice_at_next_end_step_reference_surface =
-                    token_copy_action_reference_surface(tokens, "sacrifice");
-                *effect_next_end_step_player = next_end_step_player.clone();
-            }
-            _ => {}
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CreateTokenCopy {
+                    sacrifice_at_next_end_step,
+                    sacrifice_at_next_end_step_reference_surface,
+                    next_end_step_player: effect_next_end_step_player,
+                    ..
+                }
+                | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    sacrifice_at_next_end_step,
+                    sacrifice_at_next_end_step_reference_surface,
+                    next_end_step_player: effect_next_end_step_player,
+                    ..
+                },
+            ..
+        }) = &mut effects[idx]
+        {
+            *sacrifice_at_next_end_step = true;
+            *sacrifice_at_next_end_step_reference_surface =
+                token_copy_action_reference_surface(tokens, "sacrifice");
+            *effect_next_end_step_player = next_end_step_player.clone();
         }
         effects.remove(idx + 1);
     }
@@ -4407,6 +4398,8 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::RollDiceChooseResult { .. }
                 | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
                 | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
+                | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
+                | SubjectVerbActionAst::ExileTopOfLibrary { .. }
                 | SubjectVerbActionAst::ReorderGraveyard
                 | SubjectVerbActionAst::ChooseColor
                 | SubjectVerbActionAst::ChooseCardType { .. }
@@ -4493,6 +4486,8 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::RollDiceChooseResult { .. }
                 | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
                 | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
+                | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
+                | SubjectVerbActionAst::ExileTopOfLibrary { .. }
                 | SubjectVerbActionAst::ReorderGraveyard
                 | SubjectVerbActionAst::ChooseColor
                 | SubjectVerbActionAst::ChooseCardType { .. }
@@ -4609,6 +4604,27 @@ fn maybe_apply_carried_player_with_clause_facts(
     carried_context: CarryContext,
     facts: super::super::grammar::effects::coordination::CoordinationClauseFacts,
 ) {
+    // The library-owner grammar deliberately represents a bare `their
+    // library` as `ItsController` until an outer clause supplies the
+    // antecedent. In a shared-subject chain that antecedent is the carried
+    // player itself (`The owner of target ... shuffles it, then exiles the
+    // top card of their library`). Rebind only that grammar-proven anaphoric
+    // surface; an explicit `its controller's library` does not set this fact
+    // and remains controller-relative.
+    if facts.anaphoric_library_owner
+        && let CarryContext::Player(carried_player) = carried_context
+        && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action: SubjectVerbActionAst::ExileTopOfLibrary { .. } | SubjectVerbActionAst::RevealTop,
+        }) = effect
+        && subject.player == PlayerAst::ItsController
+    {
+        subject.player = match carried_player {
+            PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
+            player => player,
+        };
+    }
+
     let imperative_collection_move = facts.imperative_collection_move
         && matches!(
             effect,

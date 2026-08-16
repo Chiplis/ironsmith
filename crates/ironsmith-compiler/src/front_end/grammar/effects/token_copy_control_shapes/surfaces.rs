@@ -203,7 +203,7 @@ pub(crate) fn parse_comma_then_special_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_each_player_reveal_surface() {

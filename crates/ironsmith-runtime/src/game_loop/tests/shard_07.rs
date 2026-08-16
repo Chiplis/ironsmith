@@ -1605,7 +1605,7 @@ pub(super) fn test_root_greevil_activation_reaches_stack_and_resolves_with_color
         "the activated ability should be waiting on the stack"
     );
 
-    let mut dm = ChooseBlueModeDecisionMaker::default();
+    let mut dm = ChooseBlueModeDecisionMaker;
     resolve_stack_entry_with(&mut game, &mut dm).expect("Root Greevil ability should resolve");
     assert!(
         game.stack.is_empty(),

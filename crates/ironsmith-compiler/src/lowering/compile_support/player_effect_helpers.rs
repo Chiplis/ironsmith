@@ -329,6 +329,10 @@ impl LoweredSubject {
             .collect()
     }
 
+    pub(crate) fn resolution_prelude(&self) -> Vec<Effect> {
+        self.resolution_prelude.clone()
+    }
+
     pub(crate) fn prepend_target_prelude_if_needed(&self, effect: Effect) -> Vec<Effect> {
         let mut effects = self.resolution_prelude.clone();
         if effect.target_spec().is_none() {

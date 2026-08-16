@@ -88,7 +88,7 @@ fn fireball_keeps_even_rounded_down_distribution_and_source_line_order() {
         .as_ref()
         .expect("Fireball should retain a spell-resolution program")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::DealDistributedDamageEffect>())
         .expect("Fireball should lower to typed distributed damage");
     assert_eq!(

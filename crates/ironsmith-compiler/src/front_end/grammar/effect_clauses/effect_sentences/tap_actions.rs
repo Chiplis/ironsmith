@@ -44,24 +44,18 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
             continue;
         }
         let Some(choice) =
-            crate::grammar::choices::parse_possessive_object_choice_tokens(
-                &tokens[index + 1..],
-            )
+            crate::grammar::choices::parse_possessive_object_choice_tokens(&tokens[index + 1..])
         else {
             continue;
         };
-        if choice.actor
-            != crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
-        {
+        if choice.actor != crate::grammar::choices::PossessiveObjectChoiceActor::Opponent {
             continue;
         }
         let first_tokens = trim_commas(&tokens[..index]);
         let first = parse_target_phrase(&first_tokens)?;
         let second = parse_target_phrase(&choice.object_tokens)?;
-        let target_tag = crate::util::helper_tag_for_tokens(
-            &tokens[index + 1..],
-            "opponent_chosen_target",
-        );
+        let target_tag =
+            crate::util::helper_tag_for_tokens(&tokens[index + 1..], "opponent_chosen_target");
         return Ok(EffectAst::Coordinated {
             effects: vec![
                 EffectAst::subject_verb_tap(first),
@@ -112,7 +106,11 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
         let target = parse_target_phrase(target_tokens)?;
         return Ok(EffectAst::subject_verb_tap_or_untap(target.clone()));
     }
-    let target = parse_target_phrase(tokens)?;
+    let target = if crate::lexer::parser_token_word_refs(tokens).as_slice() == ["it"] {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens))
+    } else {
+        parse_target_phrase(tokens)?
+    };
     Ok(EffectAst::subject_verb_tap(target))
 }
 

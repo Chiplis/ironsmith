@@ -21,7 +21,7 @@ fn ziffle_from_hex<T: CanonicalDeserialize>(hex: &str, label: &str) -> Result<T,
 
 fn hex_to_vec(hex: &str) -> Result<Vec<u8>, String> {
     let normalized = hex.trim();
-    if normalized.len() % 2 != 0 {
+    if !normalized.len().is_multiple_of(2) {
         return Err("hex string has odd length".to_string());
     }
     let mut out = Vec::with_capacity(normalized.len() / 2);

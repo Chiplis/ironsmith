@@ -313,10 +313,9 @@ impl GameScript {
             // Run a full turn
             if let Some(result) =
                 run_scripted_turn(&mut game, &mut combat, &mut trigger_queue, &mut dm)?
+                && result == ScriptResult::Exhausted
             {
-                if result == ScriptResult::Exhausted {
-                    break;
-                }
+                break;
             }
 
             // Switch active player for next turn
@@ -476,10 +475,10 @@ impl DecisionMaker for ScriptedGameDecisionMaker {
         _game: &GameState,
         _ctx: &crate::decisions::context::AttackersContext,
     ) -> Vec<crate::decisions::spec::AttackerDeclaration> {
-        if let Some(action) = self.next_action() {
-            if let Action::Pass = action {
-                return vec![];
-            }
+        if let Some(action) = self.next_action()
+            && let Action::Pass = action
+        {
+            return vec![];
         }
         // Default: no attackers
         vec![]
@@ -490,10 +489,10 @@ impl DecisionMaker for ScriptedGameDecisionMaker {
         _game: &GameState,
         _ctx: &crate::decisions::context::BlockersContext,
     ) -> Vec<crate::decisions::spec::BlockerDeclaration> {
-        if let Some(action) = self.next_action() {
-            if let Action::Pass = action {
-                return vec![];
-            }
+        if let Some(action) = self.next_action()
+            && let Action::Pass = action
+        {
+            return vec![];
         }
         // Default: no blockers
         vec![]
@@ -761,12 +760,12 @@ fn read_inputs_from_file(path: &str) -> Vec<String> {
     use std::fs::File;
     use std::io::{BufRead, BufReader};
 
-    let file = File::open(path).expect(&format!("Failed to open input file: {}", path));
+    let file = File::open(path).unwrap_or_else(|_| panic!("Failed to open input file: {}", path));
     let reader = BufReader::new(file);
 
     reader
         .lines()
-        .filter_map(|l| l.ok())
+        .map_while(Result::ok)
         .filter(|l| !l.trim().starts_with('#'))
         .collect()
 }
@@ -809,7 +808,7 @@ fn replay_config_card_names(config: &ReplayTestConfig) -> Vec<&'static str> {
 ///
 /// # Arguments
 /// * `input` - Either a file path or inline inputs. Use `ReplayInput::File("path")` or
-///             `ReplayInput::Inline(vec!["1", "0", ""])` or pass a `&'static str` / `Vec<&'static str>` directly.
+///   `ReplayInput::Inline(vec!["1", "0", ""])` or pass a `&'static str` / `Vec<&'static str>` directly.
 /// * `config` - The test configuration (hands, battlefields, etc.)
 ///
 /// # Example with inline inputs

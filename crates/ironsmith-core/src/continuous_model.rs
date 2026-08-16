@@ -3,6 +3,10 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "continuous targets preserve the shared object-filter value model"
+)]
 pub enum CompiledContinuousEffectTarget {
     Source,
     Filter(ObjectFilter),
@@ -24,6 +28,10 @@ pub enum CompiledPtSublayer {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "compiled modifications are shared generic values whose payload sizes vary"
+)]
 pub enum CompiledContinuousModification<StaticAbility, Ability> {
     AddAbility(StaticAbility),
     AddAbilityGeneric(Ability),

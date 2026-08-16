@@ -16,7 +16,7 @@ pub(crate) fn compound_filter_subtype_prefix_word_len(words: &[&str]) -> Option<
     if words.get(..2) == Some(&["time", "lord"]) {
         return Some(2);
     }
-    if parse_subtype_flexible(*words.first()?).is_some() {
+    if parse_subtype_flexible(words.first()?).is_some() {
         return Some(1);
     }
     if let Some(next) = words.get(1) {
@@ -25,7 +25,7 @@ pub(crate) fn compound_filter_subtype_prefix_word_len(words: &[&str]) -> Option<
             return Some(2);
         }
     }
-    super::super::leaf::classify_token_definition_subtype(*words.first()?)?;
+    super::super::leaf::classify_token_definition_subtype(words.first()?)?;
     words
         .get(1)
         .and_then(|next| parse_subtype_flexible(next))
@@ -36,13 +36,13 @@ fn parse_compound_filter_subtype(words: &[&str], idx: usize) -> Option<Subtype> 
     if words.get(idx..idx + 2) == Some(&["time", "lord"]) {
         return Some(Subtype::TimeLord);
     }
-    parse_subtype_flexible(*words.get(idx)?)
+    parse_subtype_flexible(words.get(idx)?)
         .or_else(|| {
             let compound = format!("{}-{}", words.get(idx)?, words.get(idx + 1)?);
             parse_subtype_flexible(&compound)
         })
         .or_else(|| {
-            let subtype = super::super::leaf::classify_token_definition_subtype(*words.get(idx)?)?;
+            let subtype = super::super::leaf::classify_token_definition_subtype(words.get(idx)?)?;
             words
                 .get(idx + 1)
                 .and_then(|next| parse_subtype_flexible(next))
@@ -990,9 +990,9 @@ fn strip_be_put_on_reference_prefix(all_words: &mut Vec<&str>, segment_tokens: &
 
     let be_words = non_article_parser_word_refs(&segment_tokens[..1]);
     let put_on_words = non_article_parser_word_refs(&segment_tokens[1..4]);
-    if !be_words
+    if be_words
         .first()
-        .is_some_and(|word| parse_word_choice(word, BE_VERB_WORDS).is_some())
+        .is_none_or(|word| parse_word_choice(word, BE_VERB_WORDS).is_none())
         || parse_phrase_at_head(&put_on_words, PUT_ON_PREFIX).is_none()
         || parse_word_choice_anywhere(&put_on_words, PUT_ON_REFERENCE_WORDS).is_none()
     {
@@ -1161,7 +1161,7 @@ pub(super) fn parse_object_filter_inner(
     } else {
         tokens
     };
-    let chosen_type_reference = parse_chosen_type_reference_tokens(&tokens);
+    let chosen_type_reference = parse_chosen_type_reference_tokens(tokens);
     let mut filter = ObjectFilter::default();
     filter.could_have_attacked_this_turn = trailing_couldnt_attack_exception;
     if other {
@@ -1178,15 +1178,13 @@ pub(super) fn parse_object_filter_inner(
         if token
             .as_word()
             .is_some_and(|word| parse_word_choice(word, TARGET_OR_TARGETS_WORDS).is_some())
+            && idx > 0
+            && tokens[idx - 1]
+                .as_word()
+                .is_some_and(|word| word == THAT_WORD)
         {
-            if idx > 0
-                && tokens[idx - 1]
-                    .as_word()
-                    .is_some_and(|word| word == THAT_WORD)
-            {
-                targets_idx = Some(idx);
-                break;
-            }
+            targets_idx = Some(idx);
+            break;
         }
     }
     if let Some(targets_idx) = targets_idx {
@@ -3231,10 +3229,8 @@ pub(super) fn parse_object_filter_inner(
             filter.card_types = permanent_type_defaults.clone();
         }
         filter.zone = Some(Zone::Stack);
-    } else {
-        if saw_permanent && filter.card_types.is_empty() && filter.all_card_types.is_empty() {
-            filter.card_types = permanent_type_defaults.clone();
-        }
+    } else if saw_permanent && filter.card_types.is_empty() && filter.all_card_types.is_empty() {
+        filter.card_types = permanent_type_defaults.clone();
     }
 
     if filter.any_of.is_empty() {
@@ -4505,7 +4501,7 @@ fn try_apply_shared_creature_type_with_source_clause(
 #[cfg(test)]
 mod shared_characteristic_relation_tests {
     use super::*;
-    use crate::runtime_backend::lex_line;
+    use crate::lexer::lex_line;
     use crate::static_abilities::StaticAbilityId;
     use crate::target::ObjectCharacteristicRelationKind;
 

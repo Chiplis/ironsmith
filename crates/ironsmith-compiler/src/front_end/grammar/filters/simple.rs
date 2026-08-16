@@ -160,7 +160,6 @@ pub(crate) fn preserve_branch_scoped_card_type_union(
     let branches = segments
         .iter()
         .copied()
-        .into_iter()
         .map(parse_card_type_union_branch)
         .collect::<Option<Vec<_>>>()
         .or_else(|| infer_card_type_union_branches(filter, &segments));
@@ -1255,7 +1254,7 @@ fn word_phrase<'a>(
     move |input: &mut WordInput<'a>| {
         let checkpoint = *input;
         for word in expected {
-            if let Err(err) = primitives::word_slice_exact(*word).void().parse_next(input) {
+            if let Err(err) = primitives::word_slice_exact(word).void().parse_next(input) {
                 *input = checkpoint;
                 return Err(err);
             }

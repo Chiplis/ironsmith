@@ -122,6 +122,10 @@ impl DynamicManaCost {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "costs retain typed object-filter and effect values inline across crate boundaries"
+)]
 pub enum Cost<E> {
     Mana(ManaCost),
     DynamicMana(DynamicManaCost),
@@ -1019,7 +1023,7 @@ impl OptionalCostRef {
         let discriminator = discriminator.into();
         Self {
             kind,
-            discriminator: (!discriminator.trim().is_empty()).then(|| discriminator),
+            discriminator: (!discriminator.trim().is_empty()).then_some(discriminator),
         }
     }
 
@@ -1080,9 +1084,7 @@ impl OptionalCostRef {
                     .mana_cost_text()
                     .unwrap_or("alternative")
                     .to_string(),
-                AlternativeCostReferenceSurface::NamedCost => {
-                    reference.method_name().to_string()
-                }
+                AlternativeCostReferenceSurface::NamedCost => reference.method_name().to_string(),
                 AlternativeCostReferenceSurface::ThatCost => "That".to_string(),
             };
         }
@@ -1376,10 +1378,7 @@ mod alternative_cost_reference_tests {
     use crate::ManaSymbol;
 
     fn mastery_cost() -> ManaCost {
-        ManaCost::from_symbols(vec![
-            ManaSymbol::Generic(2),
-            ManaSymbol::Blue,
-        ])
+        ManaCost::from_symbols(vec![ManaSymbol::Generic(2), ManaSymbol::Blue])
     }
 
     #[test]
@@ -1396,9 +1395,11 @@ mod alternative_cost_reference_tests {
             AlternativeCostReference::by_mana_cost("Parsed alternative cost", &cost),
             AlternativeCostReference::as_that_cost("Sneak", Some(&cost)),
         ] {
-            assert!(paid.was_paid_label(OptionalCostRef::new(
-                OptionalCostKind::AlternativeCast(query)
-            )));
+            assert!(
+                paid.was_paid_label(OptionalCostRef::new(OptionalCostKind::AlternativeCast(
+                    query
+                )))
+            );
         }
     }
 
@@ -1411,17 +1412,15 @@ mod alternative_cost_reference_tests {
             AlternativeCostReference::paid_marker("Sneak", Some(&cost)),
         )));
 
-        assert!(!paid.was_paid_label(OptionalCostRef::new(
-            OptionalCostKind::AlternativeCast(AlternativeCostReference::by_name(
-                "Mastery",
-                Some(&cost),
-            )),
-        )));
-        assert!(!paid.was_paid_label(OptionalCostRef::new(
-            OptionalCostKind::AlternativeCast(AlternativeCostReference::by_mana_cost(
-                "Sneak",
-                &other_cost,
-            )),
-        )));
+        assert!(
+            !paid.was_paid_label(OptionalCostRef::new(OptionalCostKind::AlternativeCast(
+                AlternativeCostReference::by_name("Mastery", Some(&cost),)
+            ),))
+        );
+        assert!(
+            !paid.was_paid_label(OptionalCostRef::new(OptionalCostKind::AlternativeCast(
+                AlternativeCostReference::by_mana_cost("Sneak", &other_cost,)
+            ),))
+        );
     }
 }

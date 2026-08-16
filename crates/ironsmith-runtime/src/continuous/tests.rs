@@ -91,8 +91,9 @@ fn dynamic_pt_uses_greatest_mana_value_from_matching_spell_cast_history() {
         let mut snapshot = ObjectSnapshot::for_testing(id, caster, "Historical Spell")
             .with_card_types(vec![card_type]);
         snapshot.zone = Zone::Stack;
-        snapshot.mana_cost =
-            Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]).into());
+        snapshot.mana_cost = Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]));
         let event = TriggerEvent::new_with_provenance(
             SpellCastEvent::new_with_snapshot(id, caster, Zone::Hand, snapshot),
             ProvNodeId::default(),

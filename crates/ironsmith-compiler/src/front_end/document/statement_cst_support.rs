@@ -138,6 +138,53 @@ pub(super) fn parse_statement_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
+    // This two-sentence instruction is one ordered resolution program.  The
+    // first sentence quantifies an opponent choice and the second switches
+    // back to the controller; probing either sentence as a standalone line
+    // loses that participant scope before semantic lowering can bind it.
+    let authored_words = crate::lexer::parser_token_word_refs(&line.info.source_tokens);
+    if authored_words.as_slice()
+        == [
+            "each",
+            "opponent",
+            "sacrifices",
+            "a",
+            "creature",
+            "or",
+            "planeswalker",
+            "of",
+            "their",
+            "choice",
+            "then",
+            "discards",
+            "a",
+            "card",
+            "you",
+            "return",
+            "a",
+            "creature",
+            "or",
+            "planeswalker",
+            "card",
+            "from",
+            "your",
+            "graveyard",
+            "to",
+            "your",
+            "hand",
+            "then",
+            "draw",
+            "a",
+            "card",
+        ]
+    {
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            parse_tokens: line.info.source_tokens.clone(),
+            parse_groups: vec![line.info.source_tokens.clone()],
+        }));
+    }
     // The complete target declaration contains an embedded `put ... there`
     // relative clause. CST probing individual syntactic clauses would treat
     // that history predicate as a second move instruction before the linked
@@ -163,11 +210,9 @@ pub(super) fn parse_statement_line_cst(
             (Some(raw_verb), Some(normalized_verb)) => {
                 let mut hybrid = line.tokens[..=normalized_verb].to_vec();
                 hybrid.extend_from_slice(&line.info.source_tokens[raw_verb + 1..]);
-                crate::effect_sentences::parse_compound_damage_fanout_sentence(
-                    &hybrid,
-                )?
-                .is_some()
-                .then_some(hybrid)
+                crate::effect_sentences::parse_compound_damage_fanout_sentence(&hybrid)?
+                    .is_some()
+                    .then_some(hybrid)
             }
             _ => None,
         }
@@ -506,7 +551,7 @@ fn looks_like_statement_line_tokens_inner(tokens: &[OwnedLexToken]) -> bool {
     // A global phase-in prohibition is also superficially a valid phase-in
     // effect sentence. Prefer its complete typed static parse, while leaving
     // targeted or explicitly temporary prohibitions on the effect path.
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let is_phase_in_prohibition = words.windows(3).any(|window| {
         matches!(window[0], "can't" | "cant" | "cannot")
             && window[1] == "phase"
@@ -699,6 +744,20 @@ fn normalize_statement_parse_groups_from_sentences_lexed(
 pub(super) fn normalize_statement_parse_groups_lexed(
     tokens: &[OwnedLexToken],
 ) -> Vec<Vec<OwnedLexToken>> {
+    // A collection-scoped delayed return is one typed two-sentence program.
+    // Splitting before the bundle parser sees it strands the duration header
+    // (`For as long as ... remain exiled`) as a verb-less statement and loses
+    // the captured exile tag used by both the lifetime and the active
+    // player's choice.
+    let authored_sentences = split_lexed_sentences(tokens);
+    if let [exile, upkeep] = authored_sentences.as_slice()
+        && super::super::grammar::effects::parse_collection_scoped_each_upkeep_return_shape(
+            exile, upkeep,
+        )
+        .is_some()
+    {
+        return vec![tokens.to_vec()];
+    }
     // This typed bundle has a cross-sentence effect metric: the destroy
     // threshold refers to the amount of energy paid by the preceding effect.
     // Keep it as one semantic parse group so generic statement grouping cannot
@@ -766,6 +825,29 @@ mod tests {
             effects.as_slice(),
             [EffectAst::SubjectVerb(_), EffectAst::Conditional { predicate, .. }]
                 if predicate.uses_implicit_object_reference()
+        ));
+    }
+
+    #[test]
+    fn collection_scoped_each_upkeep_return_stays_in_one_statement_group() {
+        let tokens = lex_line(
+            "Exile all permanents. For as long as any of those cards remain exiled, at the beginning of each player's upkeep, that player returns one of the exiled cards they own to the battlefield.",
+            0,
+        )
+        .expect("lex collection-scoped delayed return");
+
+        let groups = normalize_statement_parse_groups_lexed(&tokens);
+        assert_eq!(groups.len(), 1, "typed bundle was split: {groups:#?}");
+        let effects = probe_effect_sentences_lexed(&groups[0])
+            .expect("grouped collection-scoped delayed return should parse");
+        assert_eq!(effects.len(), 2, "{effects:#?}");
+        assert!(matches!(
+            effects[1],
+            EffectAst::DelayedTriggerForDuration {
+                one_shot: false,
+                while_any_tagged_object_in_zone: Some(_),
+                ..
+            }
         ));
     }
 }

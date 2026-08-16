@@ -57,7 +57,7 @@ fn exact_text_and_all_authored_exile_domains_are_typed() {
         .expect("Decree should have a spell-resolution program");
     let exile = program
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ExileEffect>())
         .expect("Decree should retain one typed bulk-exile action");
     let ChooseSpec::All(filter) = &exile.spec else {

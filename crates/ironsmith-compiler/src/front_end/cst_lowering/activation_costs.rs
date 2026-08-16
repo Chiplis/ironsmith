@@ -2,9 +2,7 @@ use crate::cards::builders::CardTextError;
 use crate::effect::ChoiceCount;
 use crate::model::{CompilerCost, CompilerTotalCost, CostRelationship};
 
-use crate::grammar::activation_costs::{
-    ActivationCostCst, ActivationCostSegmentCst,
-};
+use crate::grammar::activation_costs::{ActivationCostCst, ActivationCostSegmentCst};
 
 /// Semantic boundary for activation costs. Grammar CST is consumed here and
 /// the returned tree contains no runtime `Cost` or effect payload objects.
@@ -271,10 +269,9 @@ mod tests {
 
     #[test]
     fn direct_sacrifice_cost_exports_the_paid_object_snapshot() {
-        let cst = crate::runtime_backend::grammar::activation_costs::parse_activation_cost_rewrite(
-            "Sacrifice a creature",
-        )
-        .expect("activation cost should parse");
+        let cst =
+            crate::grammar::activation_costs::parse_activation_cost_rewrite("Sacrifice a creature")
+                .expect("activation cost should parse");
         let cost = lower_activation_cost_cst(&cst).expect("activation cost should lower");
         let [component] = cost.costs() else {
             panic!("expected one sacrifice cost component: {cost:#?}");
@@ -292,10 +289,7 @@ mod tests {
             "the tag must wrap the executable sacrifice: {tagged:#?}"
         );
 
-        let imports =
-            crate::runtime_backend::front_end::shared::util::activation_cost_reference_imports(
-                &cost,
-            );
+        let imports = crate::util::activation_cost_reference_imports(&cost);
         assert_eq!(
             imports.last_object_tag.as_ref().map(|tag| tag.as_str()),
             Some("sacrifice_cost_0")

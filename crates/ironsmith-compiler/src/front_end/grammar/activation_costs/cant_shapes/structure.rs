@@ -9,7 +9,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::grammar::{activation_restrictions, primitives};
-use crate::front_end::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct MultiSentenceCantDecline<'a> {
@@ -213,19 +213,13 @@ pub(crate) fn parse_cant_conjunction_expansion_tokens(
         let trimmed = trim_lexed_commas(segment);
         let pure_type_nouns = !trimmed.is_empty()
             && trimmed.iter().all(|token| {
-                token.kind == crate::front_end::lexer::TokenKind::Comma
-                || token.as_word().is_some_and(|word| {
-                    let singular = word.strip_suffix('s').unwrap_or(word);
-                    crate::util::parse_card_type(word).is_some()
-                        || crate::util::parse_card_type(
-                            singular,
-                        )
-                        .is_some()
-                        || crate::util::parse_subtype_flexible(
-                            word,
-                        )
-                        .is_some()
-                })
+                token.kind == crate::lexer::TokenKind::Comma
+                    || token.as_word().is_some_and(|word| {
+                        let singular = word.strip_suffix('s').unwrap_or(word);
+                        crate::util::parse_card_type(word).is_some()
+                            || crate::util::parse_card_type(singular).is_some()
+                            || crate::util::parse_subtype_flexible(word).is_some()
+                    })
             });
         if pure_type_nouns {
             return None;
@@ -256,22 +250,17 @@ pub(crate) fn parse_cant_conjunction_expansion_tokens(
             // decline the expansion so the clause parses whole. Verb-phrase
             // tails keep the legacy behavior.
             None => {
-                let noun_continuation = !segment.is_empty() && segment.iter().all(|token| {
-                    let Some(word) = token.as_word() else {
-                        // Punctuation inside or ending the list arm.
-                        return true;
-                    };
-                    let singular = word.strip_suffix('s').unwrap_or(word);
-                    crate::util::parse_card_type(word).is_some()
-                        || crate::util::parse_card_type(
-                            singular,
-                        )
-                        .is_some()
-                        || crate::util::parse_subtype_flexible(
-                            word,
-                        )
-                        .is_some()
-                });
+                let noun_continuation = !segment.is_empty()
+                    && segment.iter().all(|token| {
+                        let Some(word) = token.as_word() else {
+                            // Punctuation inside or ending the list arm.
+                            return true;
+                        };
+                        let singular = word.strip_suffix('s').unwrap_or(word);
+                        crate::util::parse_card_type(word).is_some()
+                            || crate::util::parse_card_type(singular).is_some()
+                            || crate::util::parse_subtype_flexible(word).is_some()
+                    });
                 if noun_continuation {
                     return None;
                 }
@@ -617,7 +606,7 @@ fn parse_untap_tail_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ParsedUntapT
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, parser_token_word_refs};
+    use crate::lexer::{lex_line, parser_token_word_refs};
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).expect("lex cant structure fixture")

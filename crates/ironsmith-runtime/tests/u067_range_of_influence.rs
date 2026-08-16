@@ -271,8 +271,10 @@ fn damage_after_prevention(protected: PreventionTarget, damage_filter: DamageFil
 
 #[test]
 fn u067_prevention_range_depends_on_whether_source_or_recipient_is_specified() {
-    let mut source_filter = DamageFilter::default();
-    source_filter.from_card_types = Some(vec![CardType::Creature]);
+    let source_filter = DamageFilter {
+        from_card_types: Some(vec![CardType::Creature]),
+        ..Default::default()
+    };
     assert_eq!(
         damage_after_prevention(PreventionTarget::All, source_filter),
         3,

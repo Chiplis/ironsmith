@@ -1,9 +1,9 @@
 use super::helpers_00::*;
 use super::*;
 
-pub(crate) fn downcast_destroy_no_regeneration<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::DestroyNoRegenerationEffect> {
+pub(crate) fn downcast_destroy_no_regeneration(
+    effect: &Effect,
+) -> Option<&crate::effects::DestroyNoRegenerationEffect> {
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>() {
         return Some(destroy);
     }
@@ -18,9 +18,9 @@ pub(crate) fn downcast_destroy_no_regeneration<'a>(
         .downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
 }
 
-pub(crate) fn downcast_return_to_hand<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::ReturnToHandEffect> {
+pub(crate) fn downcast_return_to_hand(
+    effect: &Effect,
+) -> Option<&crate::effects::ReturnToHandEffect> {
     unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::ReturnToHandEffect>()
 }
 
@@ -158,9 +158,9 @@ pub(crate) fn describe_targeted_conditional_destroy(effects: &[&Effect]) -> Opti
     None
 }
 
-pub(crate) fn downcast_return_all_to_battlefield<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::ReturnAllToBattlefieldEffect> {
+pub(crate) fn downcast_return_all_to_battlefield(
+    effect: &Effect,
+) -> Option<&crate::effects::ReturnAllToBattlefieldEffect> {
     if let Some(return_all) = effect.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
     {
         return Some(return_all);
@@ -282,9 +282,9 @@ pub(crate) fn describe_mass_creature_change_graveyard_exile_future_replacement_b
     ))
 }
 
-pub(crate) fn downcast_return_from_graveyard_to_battlefield<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::ReturnFromGraveyardToBattlefieldEffect> {
+pub(crate) fn downcast_return_from_graveyard_to_battlefield(
+    effect: &Effect,
+) -> Option<&crate::effects::ReturnFromGraveyardToBattlefieldEffect> {
     if let Some(return_effect) =
         effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
     {
@@ -299,7 +299,7 @@ pub(crate) fn downcast_return_from_graveyard_to_battlefield<'a>(
     None
 }
 
-pub(crate) fn downcast_mill<'a>(effect: &'a Effect) -> Option<&'a crate::effects::MillEffect> {
+pub(crate) fn downcast_mill(effect: &Effect) -> Option<&crate::effects::MillEffect> {
     unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::MillEffect>()
 }
 
@@ -308,8 +308,7 @@ pub(crate) fn apply_removes_all_abilities(apply: &crate::effects::ApplyContinuou
         *modification == crate::continuous::Modification::RemoveAllAbilities
     }) || apply
         .additional_modifications
-        .iter()
-        .any(|modification| *modification == crate::continuous::Modification::RemoveAllAbilities)
+        .contains(&crate::continuous::Modification::RemoveAllAbilities)
         || apply.runtime_modifications.iter().any(|modification| {
             matches!(
                 modification,
@@ -2204,13 +2203,13 @@ pub(crate) fn describe_exchange_control_bundle(filtered: &[&Effect]) -> Option<S
     {
         return None;
     }
-    if let (Some(player_one), Some(player_two)) = (choose_player_one, choose_player_two) {
-        if choose_one.filter.controller != Some(PlayerFilter::TaggedPlayer(player_one.tag.clone()))
+    if let (Some(player_one), Some(player_two)) = (choose_player_one, choose_player_two)
+        && (choose_one.filter.controller
+            != Some(PlayerFilter::TaggedPlayer(player_one.tag.clone()))
             || choose_two.filter.controller
-                != Some(PlayerFilter::TaggedPlayer(player_two.tag.clone()))
-        {
-            return None;
-        }
+                != Some(PlayerFilter::TaggedPlayer(player_two.tag.clone())))
+    {
+        return None;
     }
     let first = describe_effect(swap_one).to_ascii_lowercase();
     let second = describe_effect(swap_two).to_ascii_lowercase();

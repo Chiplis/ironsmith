@@ -1749,7 +1749,8 @@ impl CantEffectTracker {
                     .allowed_source_controller
                     .is_none_or(|allowed| allowed == source_controller)
                 && permission.objects.as_ref().is_some_and(|filter| {
-                    let ctx = game.filter_context_for(permission.controller, Some(permission.source));
+                    let ctx =
+                        game.filter_context_for(permission.controller, Some(permission.source));
                     filter.matches(target_object, &ctx, game)
                 })
         })
@@ -1768,7 +1769,8 @@ impl CantEffectTracker {
                     .allowed_source_controller
                     .is_none_or(|allowed| allowed == source_controller)
                 && permission.players.as_ref().is_some_and(|filter| {
-                    let ctx = game.filter_context_for(permission.controller, Some(permission.source));
+                    let ctx =
+                        game.filter_context_for(permission.controller, Some(permission.source));
                     filter.matches_player(target, &ctx)
                 })
         })
@@ -5343,12 +5345,14 @@ impl GameState {
         let Some(current) = self.player(player).map(|candidate| candidate.life) else {
             return 0;
         };
-        self.write_shared_life(
+        if self.write_shared_life(
             player,
             current.saturating_sub(i32::try_from(amount).unwrap_or(i32::MAX)),
-        )
-        .then_some(amount)
-        .unwrap_or(0)
+        ) {
+            amount
+        } else {
+            0
+        }
     }
 
     /// Makes the affected player gain life while updating a CR 810 team pool.
@@ -5359,12 +5363,14 @@ impl GameState {
         let Some(current) = self.player(player).map(|candidate| candidate.life) else {
             return 0;
         };
-        self.write_shared_life(
+        if self.write_shared_life(
             player,
             current.saturating_add(i32::try_from(amount).unwrap_or(i32::MAX)),
-        )
-        .then_some(amount)
-        .unwrap_or(0)
+        ) {
+            amount
+        } else {
+            0
+        }
     }
 
     /// Apply a previously validated absolute life value to a player or shared team pool.

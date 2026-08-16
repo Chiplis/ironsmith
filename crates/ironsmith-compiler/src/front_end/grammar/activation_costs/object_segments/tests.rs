@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::front_end::lexer::lex_line;
+use crate::lexer::lex_line;
 
 #[test]
 fn sacrifice_segments_preserve_source_and_choice_shapes() {

@@ -2032,6 +2032,34 @@ export function GameProvider({ children }) {
     ]
   );
 
+  // Background decision refinements run in the existing WASM worker without
+  // occupying the foreground interaction gate. The worker still serializes
+  // game mutations, so a foreground action submitted during refinement is
+  // applied immediately afterward in a deterministic order.
+  const dispatchInBackground = useCallback(
+    async (command) => {
+      if (!game) return undefined;
+      if (multiplayer.matchStarted) {
+        return dispatch(command);
+      }
+      const currentDecision = stateRef.current?.decision || null;
+      if (!isDecisionCommandCompatible(currentDecision, command)) {
+        return undefined;
+      }
+      try {
+        const nextState = await game.dispatch(command);
+        const visibleState = applyStickyViewedCards(nextState);
+        setState(visibleState);
+        stateRef.current = visibleState;
+        return visibleState;
+      } catch (err) {
+        console.warn("Background decision refinement failed:", err);
+        return undefined;
+      }
+    },
+    [applyStickyViewedCards, dispatch, game, multiplayer.matchStarted]
+  );
+
   const cancelDecision = useCallback(
     async () => {
       if (!game) return;
@@ -2564,6 +2592,7 @@ export function GameProvider({ children }) {
       setStatus,
       runWasmInteraction,
       dispatch,
+      dispatchInBackground,
       cancelDecision,
       refresh,
       autoPassEnabled,
@@ -2616,7 +2645,7 @@ export function GameProvider({ children }) {
       status,
       setStatus,
       runWasmInteraction,
-      dispatch, cancelDecision, refresh, autoPassEnabled, holdRule, uiFont,
+      dispatch, dispatchInBackground, cancelDecision, refresh, autoPassEnabled, holdRule, uiFont,
       playerAccentOverrides, setPlayerAccentOverride, inspectorDebug,
       activeTriggerOrderingState, moveTriggerOrderingItem,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,

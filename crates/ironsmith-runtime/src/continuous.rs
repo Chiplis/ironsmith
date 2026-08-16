@@ -2715,7 +2715,7 @@ fn calculate_with_layers_direct_internal(
                         .expect("baseline should exist when dependency sorting needs it");
                     sort_layer_effects_with_baseline_and_started_groups(
                         layer_effects,
-                        &baseline,
+                        baseline,
                         objects,
                         game,
                         &started_groups,
@@ -3494,9 +3494,9 @@ pub(crate) fn filter_matches_with_characteristics(
         None => {
             let mut adjusted_object = object.clone();
             adjusted_object.name = chars.name.to_string().into();
-            adjusted_object.card_types = chars.card_types.clone().into();
-            adjusted_object.subtypes = chars.subtypes.clone().into();
-            adjusted_object.supertypes = chars.supertypes.clone().into();
+            adjusted_object.card_types = chars.card_types.clone();
+            adjusted_object.subtypes = chars.subtypes.clone();
+            adjusted_object.supertypes = chars.supertypes.clone();
             adjusted_object.color_override = Some(chars.colors);
             // Ability-dependent filter fields must see layered abilities here
             // too, or this fallback diverges from the layered fast path.

@@ -1,6 +1,10 @@
 use crate::{ChooseSpec, ObjectFilter, PlayerFilter};
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "attachment filters preserve the shared object-filter value model"
+)]
 pub enum AuraAttachmentFilter {
     Object(ObjectFilter),
     Player(PlayerFilter),

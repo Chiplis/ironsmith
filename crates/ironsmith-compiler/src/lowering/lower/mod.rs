@@ -33,7 +33,10 @@ pub(crate) use normalization_support::rewrite_document_to_normalized_card_ast;
 pub(crate) use damage_and_cost_rewrites::*;
 pub(crate) use modal_and_level_lowering::*;
 pub(crate) use rewrite_support::infer_triggered_ability_functional_zones_from_facts;
-use rewrite_support::{rewrite_finalize_lowered_card, runtime_effects_to_costs};
+use rewrite_support::{
+    rewrite_finalize_lowered_card, rewrite_normalize_selected_sacrifice_tags,
+    runtime_effects_to_costs,
+};
 pub(crate) use rewrite_text_helpers::*;
 
 use super::compile_support::{
@@ -49,6 +52,8 @@ use super::effect_pipeline::{
     NormalizedPreparedAbility,
 };
 use super::lowering_support::{
+    rewrite_apply_delayed_trigger_followup_statement_to_last_ability,
+    rewrite_apply_instead_followup_statement_to_last_ability,
     rewrite_lower_keyword_action_to_object_abilities, rewrite_lower_prepared_ability,
     rewrite_lower_prepared_additional_cost_choice_modes_with_exports,
     rewrite_lower_prepared_statement_effects, rewrite_lower_static_abilities_ast,
@@ -59,6 +64,6 @@ use super::lowering_support::{
     rewrite_static_ability_for_keyword_action,
     rewrite_validate_iterated_player_bindings_in_lowered_effects,
 };
-use super::reference_model::LoweredEffects;
-use super::reference_model::ReferenceExports;
 use super::restriction_support::{apply_pending_restrictions_to_ability, is_restrictable_ability};
+use crate::model::reference_state::LoweredEffects;
+use crate::model::reference_state::ReferenceExports;

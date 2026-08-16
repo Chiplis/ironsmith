@@ -492,7 +492,7 @@ fn level_band_prefix(
 
 fn delimiter_body(text: &str, header_end: usize) -> Option<std::ops::Range<usize>> {
     let remainder = &text[header_end..];
-    let delimiter = remainder.find(|ch| matches!(ch, ':' | '—' | '–'))?;
+    let delimiter = remainder.find([':', '—', '–'])?;
     let delimiter_byte = header_end + delimiter;
     let delimiter_len = text[delimiter_byte..].chars().next()?.len_utf8();
     let body_start = skip_whitespace(text, delimiter_byte + delimiter_len);
@@ -555,7 +555,10 @@ fn roman_numeral(text: &str) -> Option<u32> {
             _ => 0,
         })
         .collect::<Vec<_>>();
-    let mut total = 0;
+    // Subtractive forms such as IV and IX necessarily dip below zero before
+    // the following numeral is added. Keep the accumulator signed, then
+    // convert only a positive final value back to the public representation.
+    let mut total: i32 = 0;
     for (index, value) in values.iter().copied().enumerate() {
         if values.get(index + 1).is_some_and(|next| *next > value) {
             total -= value;
@@ -563,7 +566,7 @@ fn roman_numeral(text: &str) -> Option<u32> {
             total += value;
         }
     }
-    (total > 0).then_some(total)
+    (total > 0).then(|| u32::try_from(total).ok()).flatten()
 }
 
 fn capture_delimited(
@@ -714,5 +717,23 @@ fn reminder_text_decision(text: &str) -> ReminderTextDecision {
         ReminderTextDecision::Preserved
     } else {
         ReminderTextDecision::ExcludedFromSemantics
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::roman_numeral;
+
+    #[test]
+    fn roman_numerals_accept_subtractive_forms_without_unsigned_underflow() {
+        assert_eq!(roman_numeral("IV"), Some(4));
+        assert_eq!(roman_numeral("IX"), Some(9));
+        assert_eq!(roman_numeral("XIV"), Some(14));
+    }
+
+    #[test]
+    fn roman_numerals_reject_empty_and_non_roman_text() {
+        assert_eq!(roman_numeral(""), None);
+        assert_eq!(roman_numeral("XIY"), None);
     }
 }

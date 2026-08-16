@@ -908,7 +908,7 @@ fn test_graveyard_filter_uses_current_subtypes() {
     use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::CardDefinitionBuilder;
-    use crate::effect::Value;
+
     use crate::ids::CardId;
     use crate::static_abilities::StaticAbility;
     use crate::zone::Zone;

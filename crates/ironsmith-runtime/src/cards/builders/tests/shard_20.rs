@@ -1026,8 +1026,7 @@ pub(super) fn parse_oracle_stubborn_denial_ferocious_still_requires_target_choic
         requirements.iter().any(|requirement| {
             requirement
                 .legal_targets
-                .iter()
-                .any(|target| *target == crate::game_state::Target::Object(target_id))
+                .contains(&crate::game_state::Target::Object(target_id))
         }),
         "ferocious self-replacement should preserve Stubborn Denial's original target choice"
     );
@@ -1108,8 +1107,7 @@ pub(super) fn parse_oracle_stubborn_denial_ferocious_free_cast_prompts_for_targe
         ctx.requirements.iter().any(|requirement| {
             requirement
                 .legal_targets
-                .iter()
-                .any(|target| *target == crate::game_state::Target::Object(target_id))
+                .contains(&crate::game_state::Target::Object(target_id))
         }),
         "free-cast ferocious Stubborn Denial should expose the stack spell target"
     );
@@ -1188,8 +1186,7 @@ pub(super) fn generated_registry_stubborn_denial_ferocious_free_cast_prompts_for
         ctx.requirements.iter().any(|requirement| {
             requirement
                 .legal_targets
-                .iter()
-                .any(|target| *target == crate::game_state::Target::Object(target_id))
+                .contains(&crate::game_state::Target::Object(target_id))
         }),
         "generated free-cast ferocious Stubborn Denial should expose the stack spell target"
     );
@@ -1999,7 +1996,7 @@ pub(super) fn filtered_zone_play_permission_cards_render_structurally() {
     let draugr_permission = "You may cast spells from among cards in exile your opponents own with ice counters on them, and you may spend mana from snow sources as though it were mana of any color to cast those spells";
     let draugr = CardDefinitionBuilder::new(CardId::new(), "Draugr Necromancer Variant")
         .card_types(vec![CardType::Creature])
-        .parse_text(&format!(
+        .parse_text(format!(
             "If a nontoken creature an opponent controls would die, exile that card with an ice counter on it instead.\n{draugr_permission}."
         ))
         .expect("countered-exile snow permission should parse");
@@ -2014,7 +2011,7 @@ pub(super) fn filtered_zone_play_permission_cards_render_structurally() {
     let haldan_permission = "You may play lands and cast noncreature spells from among cards you exiled that have fetch counters on them, and you may spend mana as though it were mana of any color to cast those spells";
     let haldan = CardDefinitionBuilder::new(CardId::new(), "Haldan Variant")
         .card_types(vec![CardType::Creature])
-        .parse_text(&format!("{haldan_permission}."))
+        .parse_text(format!("{haldan_permission}."))
         .expect("source-linked countered-exile permission should parse");
     let haldan_rendered = unprocessed_compiled_lines(&haldan).join("\n");
     assert!(
@@ -3413,7 +3410,7 @@ pub(super) fn parse_oracle_necromentia_uses_shared_subject_role_lowering() {
                 stack.push(path);
                 continue;
             }
-            if !path.extension().is_some_and(|ext| ext == "rs") {
+            if path.extension().is_none_or(|ext| ext != "rs") {
                 continue;
             }
             let source = std::fs::read_to_string(&path).expect("read compiler file");

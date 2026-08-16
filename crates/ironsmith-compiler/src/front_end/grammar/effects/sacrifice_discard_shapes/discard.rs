@@ -1,6 +1,6 @@
 use crate::color::ColorSet;
 use crate::effect::Value;
-use crate::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
+use crate::lexer::{OwnedLexToken, parser_token_word_refs};
 use ironsmith_core::ValueSurfaceHint;
 use winnow::combinator::alt;
 use winnow::prelude::*;
@@ -331,8 +331,7 @@ pub(crate) fn parse_discard_alternative_shape(
         primitives::find_prefix(search_tokens, || primitives::kw("or").void())
     {
         let marker_offset = search_offset + relative_offset;
-        let alternative_tokens =
-            crate::util::trim_edge_punctuation_tokens(after_or);
+        let alternative_tokens = crate::util::trim_edge_punctuation_tokens(after_or);
         let starts_new_action = chain_splitting::find_chain_verb_tokens(alternative_tokens)
             .is_some_and(|found| found.word_index == 0)
             || chain_splitting::has_extended_effect_head_tokens(alternative_tokens);
@@ -350,17 +349,13 @@ pub(crate) fn parse_discard_alternative_shape(
 }
 
 pub(crate) fn parse_discard_unless_shape(tokens: &[OwnedLexToken]) -> DiscardUnlessShape<'_> {
-    let tokens =
-        crate::util::trim_edge_punctuation_tokens(tokens);
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let Some((_, predicate_tokens)) =
         primitives::parse_prefix(tokens, primitives::kw("unless").void())
     else {
         return DiscardUnlessShape::None;
     };
-    let predicate_tokens =
-        crate::util::trim_edge_punctuation_tokens(
-            predicate_tokens,
-        );
+    let predicate_tokens = crate::util::trim_edge_punctuation_tokens(predicate_tokens);
     if predicate_tokens.is_empty() {
         DiscardUnlessShape::MissingPredicate
     } else {
@@ -370,9 +365,7 @@ pub(crate) fn parse_discard_unless_shape(tokens: &[OwnedLexToken]) -> DiscardUnl
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::{
-        lex_line, parser_token_word_refs, render_token_slice,
-    };
+    use crate::lexer::{lex_line, parser_token_word_refs, render_token_slice};
 
     use super::*;
 

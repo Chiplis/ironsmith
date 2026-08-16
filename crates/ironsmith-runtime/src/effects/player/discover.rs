@@ -123,10 +123,9 @@ impl EffectExecutor for DiscoverEffect {
                 Zone::Hand,
                 ctx.cause.clone(),
                 &mut *ctx.decision_maker,
-            ) {
-                if final_zone == Zone::Hand {
-                    selected_object = Some(new_id);
-                }
+            ) && final_zone == Zone::Hand
+            {
+                selected_object = Some(new_id);
             }
         }
         let keep_tagged = selected_object.as_ref().map(|_| match_tag.clone());

@@ -773,7 +773,7 @@ fn parse_complete_any_phrase(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("lex fixture")

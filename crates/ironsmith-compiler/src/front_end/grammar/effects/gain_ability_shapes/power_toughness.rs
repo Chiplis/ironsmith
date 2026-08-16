@@ -5,7 +5,7 @@ use winnow::token::any;
 
 use crate::effect::Value;
 use crate::grammar::{leaf, primitives};
-use crate::front_end::lexer::OwnedLexToken;
+use crate::lexer::OwnedLexToken;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GainBasePtShapeError {
@@ -37,7 +37,7 @@ pub(crate) struct GainPumpHeadShape {
 }
 
 fn parse_gain_pump_head_lexed<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<GainPumpHeadShape> {
     let modifier_token_offset = opt(alt((
         primitives::phrase(&["an", "additional"]).value(2usize),
@@ -178,7 +178,7 @@ pub(crate) fn parse_gain_pump_head_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_base_pt_and_pump_heads() {

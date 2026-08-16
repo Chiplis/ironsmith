@@ -3,14 +3,14 @@ use crate::effect::{EventValueSpec, Value};
 use crate::grammar::{filters::parse_counter_type_words, leaf};
 use crate::lexer::{OwnedLexToken, TokenWordView, synthetic_word_tokens};
 use crate::object_filters::parse_object_filter_words;
+use crate::target::{
+    ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SacrificedObjectKind,
+    SourceReferenceSurface,
+};
 use crate::util::{
     possessive_normalized_word_refs, source_choose_spec_for_surface,
     source_reference_surface_for_possessive_words, source_reference_surface_for_words,
     this_source_surface_for_words,
-};
-use crate::target::{
-    ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SacrificedObjectKind,
-    SourceReferenceSurface,
 };
 use crate::{Color, TagKey};
 use ironsmith_core::ValueSurfaceHint;
@@ -1280,8 +1280,8 @@ fn is_tagged_counter_reference(words: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lexer::lex_line;
     use crate::object::CounterType;
-    use crate::runtime_backend::lexer::lex_line;
     use crate::target::SourceReferenceSurface;
 
     #[test]

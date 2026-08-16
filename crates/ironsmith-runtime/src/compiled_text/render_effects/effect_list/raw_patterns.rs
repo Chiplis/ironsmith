@@ -62,6 +62,9 @@
     if let Some(compact) = describe_attach_all_enchanting_target_to_same_controller(effects) {
         return compact;
     }
+    if let Some(compact) = describe_targeted_attachment_with_followup(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_targeted_attachment_instruction(effects) {
         return compact;
     }

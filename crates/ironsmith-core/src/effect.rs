@@ -190,6 +190,10 @@ impl ContinuousDurationPredicate {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "continuous durations preserve typed predicates inline"
+)]
 pub enum Until {
     #[default]
     Forever,
@@ -217,6 +221,10 @@ pub enum Until {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "effect predicates preserve typed object filters inline"
+)]
 pub enum EffectPredicate {
     Succeeded,
     Failed,
@@ -427,6 +435,10 @@ pub enum PreventNextTimeDamageSource {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "damage-target constraints preserve typed choices inline"
+)]
 pub enum PreventNextTimeDamageTarget {
     AnyTarget,
     Omitted,
@@ -450,6 +462,10 @@ pub enum RedirectNextTimeDamageDestination {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "retarget modes preserve typed choice specifications inline"
+)]
 pub enum RetargetMode {
     All,
     OneToFixed(crate::target_model::ChooseSpec),
@@ -984,6 +1000,10 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "retarget restrictions preserve typed object filters inline"
+)]
 pub enum NewTargetRestriction {
     Player(PlayerFilter),
     Object(ObjectFilter),
@@ -2032,7 +2052,7 @@ pub enum RevealSourceFromHandDuration {
     UntilUpkeepEndsOrLeavesHand,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RevealSourceFromHandEffect {
     pub duration: RevealSourceFromHandDuration,
 }
@@ -2228,7 +2248,7 @@ impl CrewCostEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct BecomeSaddledUntilEotEffect;
 
 impl BecomeSaddledUntilEotEffect {
@@ -3002,11 +3022,20 @@ impl MeldEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReorderLibraryTopEffect {
     pub tag: crate::tag::TagKey,
+    pub chooser: PlayerFilter,
 }
 
 impl ReorderLibraryTopEffect {
     pub fn new(tag: impl Into<crate::tag::TagKey>) -> Self {
-        Self { tag: tag.into() }
+        Self {
+            tag: tag.into(),
+            chooser: PlayerFilter::You,
+        }
+    }
+
+    pub fn chosen_by(mut self, chooser: PlayerFilter) -> Self {
+        self.chooser = chooser;
+        self
     }
 }
 
@@ -3613,7 +3642,7 @@ impl ExploreEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ManifestDreadEffect;
 
 impl ManifestDreadEffect {
@@ -3684,7 +3713,7 @@ impl ManifestTopCardOfLibraryEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ManifestCardFromHandEffect;
 
 impl ManifestCardFromHandEffect {
@@ -3800,7 +3829,7 @@ impl ClearSuspectedEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct OpenAttractionEffect {
     pub reminder: bool,
 }
@@ -5092,6 +5121,10 @@ impl<E> VoteOption<E> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "vote choices preserve typed object filters inline"
+)]
 pub enum VoteChoice<E> {
     NamedOptions(Vec<VoteOption<E>>),
     Objects {

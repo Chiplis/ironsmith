@@ -37,7 +37,7 @@ fn fight_the_blank_fight_targets_the_aura_and_counts_only_long_name_stickers() {
         .effects
         .flattened_default_effects()
         .iter()
-        .find_map(|effect| find_nested::<crate::effects::PutStickerEffect>(effect))
+        .find_map(find_nested::<crate::effects::PutStickerEffect>)
         .expect("enters trigger should contain a sticker action");
     assert_eq!(sticker.target, ChooseSpec::Source);
     assert_eq!(

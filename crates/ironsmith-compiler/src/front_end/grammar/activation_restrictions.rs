@@ -257,9 +257,7 @@ pub(crate) fn parse_cant_restriction_or_split_tokens(
     }
     let or_offset = find_restriction_or_lexed(remainder)?;
     let tail = trim_commas(&remainder[or_offset + 1..]);
-    if primitives::parse_prefix(tail, parse_restriction_verb_lexed).is_none() {
-        return None;
-    }
+    primitives::parse_prefix(tail, parse_restriction_verb_lexed)?;
 
     let negation_tokens = tokens[negation.first..negation.end].to_vec();
     let mut first = subject.to_vec();
@@ -550,7 +548,7 @@ fn parse_compound_non_term_text<'a>(input: &mut &'a str) -> WResult<&'a str> {
     Ok(term)
 }
 
-fn take_word_slice_any<'slice, 'word>(input: &mut &'slice [&'word str]) -> WResult<&'word str> {
+fn take_word_slice_any<'word>(input: &mut &[&'word str]) -> WResult<&'word str> {
     any.parse_next(input)
 }
 

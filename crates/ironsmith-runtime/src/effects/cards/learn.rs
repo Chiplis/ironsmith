@@ -5,11 +5,11 @@ use crate::effects::{
     ChooseObjectsEffect, EffectExecutor, ExecutionContext, ExecutionError, MayEffect,
     SequenceEffect, execute_effect,
 };
-use crate::game_state::GameState;
 use crate::events::processing::{
     TraitEventResult, process_trait_event_with_dm_and_applied_effects,
 };
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
+use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::Subtype;
 use crate::zone::Zone;
@@ -67,12 +67,19 @@ impl EffectExecutor for LearnEffect {
         )?;
         if discard_outcome.count_or_zero() > 0 {
             let draw_outcome = execute_effect(game, &Effect::draw(1), ctx)?;
-            return Ok(EffectOutcome::aggregate([discard_outcome, draw_outcome]).with_event(
-                crate::triggers::TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(KeywordActionKind::Learn, ctx.controller, ctx.source, 1),
-                    ctx.provenance,
+            return Ok(
+                EffectOutcome::aggregate([discard_outcome, draw_outcome]).with_event(
+                    crate::triggers::TriggerEvent::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Learn,
+                            ctx.controller,
+                            ctx.source,
+                            1,
+                        ),
+                        ctx.provenance,
+                    ),
                 ),
-            ));
+            );
         }
 
         let lesson_filter = ObjectFilter::default()
@@ -95,19 +102,33 @@ impl EffectExecutor for LearnEffect {
                 Effect::move_to_zone(ChooseSpec::tagged(LEARN_LESSON_TAG), Zone::Hand, false),
             ]);
             let lesson_outcome = execute_effect(game, &Effect::new(reveal_and_put), ctx)?;
-            return Ok(EffectOutcome::aggregate([discard_outcome, choose_outcome, lesson_outcome])
-                .with_event(crate::triggers::TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(KeywordActionKind::Learn, ctx.controller, ctx.source, 1),
-                    ctx.provenance,
-                )));
+            return Ok(
+                EffectOutcome::aggregate([discard_outcome, choose_outcome, lesson_outcome])
+                    .with_event(crate::triggers::TriggerEvent::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Learn,
+                            ctx.controller,
+                            ctx.source,
+                            1,
+                        ),
+                        ctx.provenance,
+                    )),
+            );
         }
 
-        Ok(EffectOutcome::aggregate([discard_outcome, choose_outcome]).with_event(
-            crate::triggers::TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(KeywordActionKind::Learn, ctx.controller, ctx.source, 1),
-                ctx.provenance,
+        Ok(
+            EffectOutcome::aggregate([discard_outcome, choose_outcome]).with_event(
+                crate::triggers::TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Learn,
+                        ctx.controller,
+                        ctx.source,
+                        1,
+                    ),
+                    ctx.provenance,
+                ),
             ),
-        ))
+        )
     }
 }
 
@@ -290,7 +311,11 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("learn replacement should resolve");
 
-        assert!(has_named_object_in_zone(&game, Zone::Battlefield, "Retriever"));
+        assert!(has_named_object_in_zone(
+            &game,
+            Zone::Battlefield,
+            "Retriever"
+        ));
         assert!(game.player(alice).unwrap().hand.is_empty());
     }
 }

@@ -409,13 +409,13 @@ fn graveyard_threshold_anthem_counts_graveyards_and_preserves_surface() {
         .build();
     let source = game.create_object_from_card(&source, alice, Zone::Battlefield);
     for index in 0..7 {
-        let card = CardBuilder::new(CardId::new(), &format!("Alice Graveyard {index}"))
+        let card = CardBuilder::new(CardId::new(), format!("Alice Graveyard {index}"))
             .card_types(vec![CardType::Sorcery])
             .build();
         game.create_object_from_card(&card, alice, Zone::Graveyard);
     }
     for index in 0..6 {
-        let card = CardBuilder::new(CardId::new(), &format!("Bob Graveyard {index}"))
+        let card = CardBuilder::new(CardId::new(), format!("Bob Graveyard {index}"))
             .card_types(vec![CardType::Sorcery])
             .build();
         game.create_object_from_card(&card, bob, Zone::Graveyard);
@@ -1259,6 +1259,74 @@ fn object_unblockable_grant_renders_as_a_restriction() {
         .with_condition(crate::ConditionExpr::SourceIsEnchanted)
         .display(),
         "this creature can't be blocked as long as it's enchanted"
+    );
+}
+
+#[test]
+fn object_unblockable_grant_uses_typed_cast_history_condition_surface() {
+    let mut noncreature_spell = ObjectFilter::spell();
+    noncreature_spell
+        .excluded_card_types
+        .push(CardType::Creature);
+    let condition = crate::ConditionExpr::ValueComparison {
+        left: Value::SpellsCastThisTurnMatching {
+            player: PlayerFilter::You,
+            filter: noncreature_spell,
+            exclude_source: false,
+        },
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    };
+
+    assert_eq!(
+        GrantObjectAbilityForFilter::new(
+            ObjectFilter::source(),
+            Ability::static_ability(StaticAbility::unblockable()),
+            "This can't be blocked".to_string(),
+        )
+        .with_condition(condition)
+        .display(),
+        "as long as you've cast a noncreature spell this turn, this creature can't be blocked"
+    );
+}
+
+#[test]
+fn iterated_controller_grant_keeps_the_authored_trailing_condition() {
+    let affected = ObjectFilter::default()
+        .in_zone(Zone::Battlefield)
+        .with_type(CardType::Land)
+        .with_supertype(Supertype::Basic);
+    let counted = ObjectFilter::default()
+        .in_zone(Zone::Battlefield)
+        .with_type(CardType::Land)
+        .controlled_by(PlayerFilter::IteratedPlayer);
+    let condition = crate::ConditionExpr::CountComparison {
+        count: AnthemCountExpression::MatchingFilter(counted),
+        comparison: Comparison::LessThanOrEqual(3),
+        display: Some("that player controls three or fewer lands".to_string()),
+    };
+
+    assert_eq!(
+        GrantObjectAbilityForFilter::new(
+            affected.clone(),
+            Ability::static_ability(StaticAbility::shroud()),
+            "Shroud".to_string(),
+        )
+        .with_condition(condition.clone())
+        .display(),
+        "basic lands each player controls have shroud as long as that player controls three or fewer lands"
+    );
+
+    let your_lands = affected.controlled_by(PlayerFilter::You);
+    assert_ne!(
+        GrantObjectAbilityForFilter::new(
+            your_lands,
+            Ability::static_ability(StaticAbility::shroud()),
+            "Shroud".to_string(),
+        )
+        .with_condition(condition)
+        .display(),
+        "basic lands each player controls have shroud as long as that player controls three or fewer lands"
     );
 }
 

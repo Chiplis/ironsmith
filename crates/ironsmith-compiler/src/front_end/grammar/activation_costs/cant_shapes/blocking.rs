@@ -269,7 +269,7 @@ fn parse_wall_noun<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(raw: &str) -> Option<BlockingCantFact> {
         let tokens = lex_line(raw, 0).expect("lex blocking cant fixture");

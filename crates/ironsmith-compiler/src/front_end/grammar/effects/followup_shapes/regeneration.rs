@@ -135,7 +135,7 @@ pub(crate) fn parse_damage_regeneration_exile_followup(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_pronoun_and_destroyed_this_way_regeneration_followups() {

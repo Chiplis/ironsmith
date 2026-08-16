@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use crate::cards::builders::PlayerAst;
 use crate::effect::ChoiceCount;
 use crate::grammar::{leaf, permission_shapes, primitives};
-use crate::front_end::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -243,7 +243,7 @@ pub(crate) fn parse_delayed_hand_tail(tokens: &[OwnedLexToken]) -> Option<&[Owne
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_controller_and_counted_target_prefixes() {

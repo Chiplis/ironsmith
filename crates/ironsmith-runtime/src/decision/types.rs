@@ -601,16 +601,15 @@ pub(crate) fn mana_cost_is_obviously_unpayable(
         return true;
     }
 
-    if !allow_any_color {
-        if potential.white < required_white
+    if !allow_any_color
+        && (potential.white < required_white
             || potential.blue < required_blue
             || potential.black < required_black
             || potential.red < required_red
             || potential.green < required_green
-            || potential.colorless < required_colorless
-        {
-            return true;
-        }
+            || potential.colorless < required_colorless)
+    {
+        return true;
     }
 
     false

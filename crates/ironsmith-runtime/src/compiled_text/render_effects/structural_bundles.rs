@@ -102,8 +102,7 @@ pub(super) fn describe_source_exiled_retyped_keyword_token_copy(
         .collect::<Vec<_>>()
         .join(" ");
     Some(format!(
-        "Create a token that's a copy of target creature card exiled with this artifact, except it's {} with {}",
-        format!("a {identity}"),
+        "Create a token that's a copy of target creature card exiled with this artifact, except it's a {identity} with {}",
         keyword_model.label.to_ascii_lowercase()
     ))
 }
@@ -6512,7 +6511,7 @@ pub(super) fn describe_counted_reflexive_sacrifice_condition(
     if predicate == &EffectPredicate::Happened
         && choose.chooser == PlayerFilter::You
         && sacrifice.player == &PlayerFilter::You
-        && (choose.count.dynamic_x || choose.count.max.map_or(true, |max| max > 1))
+        && (choose.count.dynamic_x || choose.count.max.is_none_or(|max| max > 1))
     {
         let sacrificed = pluralize_noun_phrase(&describe_sacrifice_choice_kind(choose));
         return Some(format!(
@@ -6596,12 +6595,7 @@ pub(super) fn describe_add_mana_then_conditional_consult_hand_bottom(
     let [mana_effect, conditional_effect] = effects else {
         return None;
     };
-    if mana_effect
-        .downcast_ref::<crate::effects::AddManaOfAnyColorEffect>()
-        .is_none()
-    {
-        return None;
-    }
+    mana_effect.downcast_ref::<crate::effects::AddManaOfAnyColorEffect>()?;
 
     let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
     if !conditional.if_false.is_empty() || conditional.if_true.len() != 3 {
@@ -7844,7 +7838,7 @@ fn describe_consult_then_move_matched_collection(effects: &[Effect]) -> Option<S
 
     Some(format!(
         "{}. Put {moved_reference}{move_tail}",
-        capitalize_first(&consult_text)
+        capitalize_first(consult_text)
     ))
 }
 
@@ -9498,10 +9492,157 @@ fn describe_multi_target_restriction_then_destroy_typed_subset(
     ))
 }
 
+fn describe_reveal_hand_then_put_same_name_as_permanent(effects: &[Effect]) -> Option<String> {
+    let [
+        choose_effect,
+        reveal_effect,
+        comparison_effect,
+        conditional_effect,
+    ] = effects
+    else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    let comparison =
+        comparison_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+
+    let mut selected_filter = choose.filter.clone();
+    let selected_zone = choose.zone.or(selected_filter.zone.take());
+    if selected_zone != Some(Zone::Hand)
+        || choose.chooser != PlayerFilter::You
+        || choose.count != ChoiceCount::exactly(1)
+        || choose.count_value.is_some()
+        || choose.aggregate_constraint.is_some()
+        || !choose.additional_zones.is_empty()
+        || choose.is_search
+        || selected_filter.owner != Some(PlayerFilter::You)
+    {
+        return None;
+    }
+    selected_filter.owner = None;
+    if selected_filter != ObjectFilter::default() || reveal.tag != choose.tag {
+        return None;
+    }
+
+    let mut permanent_filter = comparison.filter.clone();
+    let comparison_zone = comparison.zone.or(permanent_filter.zone.take());
+    let mut expected_permanent = ObjectFilter::permanent();
+    expected_permanent.zone = None;
+    if comparison_zone != Some(Zone::Battlefield)
+        || !comparison.additional_zones.is_empty()
+        || !comparison.source_tags.is_empty()
+        || permanent_filter != expected_permanent
+    {
+        return None;
+    }
+
+    let Condition::TaggedObjectMatches(condition_tag, condition_filter) = &conditional.condition
+    else {
+        return None;
+    };
+    let mut predicate = condition_filter.clone();
+    let [same_name] = predicate.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if condition_tag != &choose.tag
+        || same_name.tag != comparison.tag
+        || same_name.relation != crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+        || !conditional.if_false.is_empty()
+        || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+    {
+        return None;
+    }
+    predicate.tagged_constraints.clear();
+    if predicate != ObjectFilter::default() {
+        return None;
+    }
+    let [move_loop] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let move_loop = move_loop.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [move_effect] = move_loop.effects.as_slice() else {
+        return None;
+    };
+    let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_loop.tag != choose.tag
+        || move_loop.controller_at_last_blocked_by.is_some()
+        || move_to_zone.zone != Zone::Battlefield
+        || !matches!(move_to_zone.target.unhinted(), ChooseSpec::Iterated)
+        || move_to_zone.to_top
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+        || move_to_zone.enters_transformed
+    {
+        return None;
+    }
+
+    Some(
+        "Reveal a card in your hand, then put that card onto the battlefield if it has the same name as a permanent"
+            .to_string(),
+    )
+}
+
+fn describe_created_token_then_source_scaled_counters(effects: &[Effect]) -> Option<String> {
+    let [create_effect, scaled_counter_effect, source_counter_effect] = effects else {
+        return None;
+    };
+    let created_tag =
+        if let Some(tagged) = create_effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            &tagged.tag
+        } else if let Some(tagged) = create_effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            &tagged.tag
+        } else {
+            return None;
+        };
+    let create = unwrap_tag_wrapped_effect(create_effect)
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    let scaled = unwrap_tag_wrapped_effect(scaled_counter_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    let source_counter = unwrap_tag_wrapped_effect(source_counter_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    let Value::CountersOn(source, Some(counted_counter_type)) = scaled.amount.unhinted() else {
+        return None;
+    };
+    if create.count.unhinted() != &Value::Fixed(1)
+        || create.controller != PlayerFilter::You
+        || scaled.counter_type != CounterType::PlusOnePlusOne
+        || !matches!(scaled.target.unhinted(), ChooseSpec::Tagged(tag) if tag == created_tag)
+        || !matches!(source.unhinted(), ChooseSpec::Source)
+        || source_counter.counter_type != *counted_counter_type
+        || source_counter.amount.unhinted() != &Value::Fixed(1)
+        || !matches!(source_counter.target.unhinted(), ChooseSpec::Source)
+        || scaled.target_count.is_some()
+        || source_counter.target_count.is_some()
+        || scaled.distributed
+        || source_counter.distributed
+    {
+        return None;
+    }
+
+    let creation = describe_effect(create_effect)
+        .trim_end_matches('.')
+        .to_string();
+    let scaled = describe_effect(scaled_counter_effect)
+        .trim_end_matches('.')
+        .to_string();
+    let source_counter =
+        lowercase_first(describe_effect(source_counter_effect).trim_end_matches('.'));
+    Some(format!("{creation}. {scaled}, then {source_counter}"))
+}
+
 pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
     effects: &[Effect],
 ) -> Option<String> {
     let refs = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_reveal_hand_then_put_same_name_as_permanent(effects) {
+        return Some(compact);
+    }
+    if let Some(compact) = describe_created_token_then_source_scaled_counters(effects) {
+        return Some(compact);
+    }
     if let Some(compact) = describe_participant_loot_greatest_mana_value_followup(effects) {
         return Some(compact);
     }
@@ -10011,15 +10152,15 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
 
     fn early_prior_count_subject(effect: &Effect) -> Option<(String, &'static str)> {
         let effect = unwrap_basic_tag_wrappers(effect);
-        if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>() {
-            if let ChooseSpec::All(filter) | ChooseSpec::Object(filter) = destroy.spec.base() {
-                return Some((early_clean_count_subject(filter), "destroyed"));
-            }
+        if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>()
+            && let ChooseSpec::All(filter) | ChooseSpec::Object(filter) = destroy.spec.base()
+        {
+            return Some((early_clean_count_subject(filter), "destroyed"));
         }
-        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
-            if let ChooseSpec::All(filter) | ChooseSpec::Object(filter) = exile.spec.base() {
-                return Some((early_clean_count_subject(filter), "exiled"));
-            }
+        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>()
+            && let ChooseSpec::All(filter) | ChooseSpec::Object(filter) = exile.spec.base()
+        {
+            return Some((early_clean_count_subject(filter), "exiled"));
         }
         None
     }
@@ -10998,9 +11139,11 @@ pub(super) fn describe_put_counters_then_grant_same_filter(effects: &[Effect]) -
     };
     let ability_text = keyword_label_from_static_ability_id(ability.id())?;
     let until = describe_until(&grant.until);
-    let duration = (!until.is_empty())
-        .then(|| format!(" {until}"))
-        .unwrap_or_default();
+    let duration = if until.is_empty() {
+        String::new()
+    } else {
+        format!(" {until}")
+    };
 
     if let Some((put_text, put_filter, put_tag)) = put_counters_each_filter_view(put_effect) {
         let grant_matches_countered_group = if let Some(put_tag) = put_tag {
@@ -11084,9 +11227,11 @@ pub(super) fn describe_coordinated_put_counters_then_grant_same_filter(
     };
     let ability_text = keyword_label_from_static_ability_id(ability.id())?;
     let until = describe_until(&grant.until);
-    let duration = (!until.is_empty())
-        .then(|| format!(" {until}"))
-        .unwrap_or_default();
+    let duration = if until.is_empty() {
+        String::new()
+    } else {
+        format!(" {until}")
+    };
 
     if let Some((put_text, _, put_tag)) = put_counters_each_filter_view(put_effect) {
         let put_tag = put_tag?;

@@ -2,8 +2,8 @@ use super::*;
 use crate::cards::TextSpan;
 use crate::effect::Value;
 use crate::ids::CardId;
-use crate::runtime_backend::RefState;
-use crate::runtime_backend::lexer::lex_line;
+use crate::lexer::lex_line;
+use crate::model::reference_state::RefState;
 use crate::target::ChooseSpec;
 use crate::types::{CardType, Subtype};
 use std::path::Path;
@@ -42,6 +42,68 @@ fn quantified_damage_binds_that_players_life_total_to_each_recipient() {
         inner.as_ref(),
         &Value::LifeTotal(crate::target::PlayerFilter::IteratedPlayer),
         "the amount must use the same participant as the recipient"
+    );
+}
+
+#[test]
+fn triggered_unless_effect_cost_keeps_the_choice_payer_relative() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Landfall Unless-Cost Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever a player puts a Swamp onto the battlefield, this enchantment deals 3 damage to that player unless the player puts a -1/-1 counter on a creature they control.",
+        )
+        .expect("a trigger participant should be able to pay a typed effect cost");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("land-entry trigger");
+    fn find_unless(effect: &Effect) -> Option<crate::effects::UnlessPaysEffect<Effect>> {
+        if let Some(unless) = effect.downcast_ref::<crate::effects::UnlessPaysEffect<Effect>>() {
+            return Some(unless.clone());
+        }
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = find_unless(child);
+            }
+        });
+        found
+    }
+    let unless = triggered
+        .effects
+        .segments
+        .iter()
+        .flat_map(|segment| &segment.default_effects)
+        .find_map(find_unless)
+        .unwrap_or_else(|| panic!("damage should retain its typed unless-payment: {triggered:#?}"));
+    let [crate::costs::Cost::Effect(cost_effect)] = unless
+        .cost
+        .as_all()
+        .expect("the counter placement should be one effect cost")
+    else {
+        panic!("expected one effect cost: {unless:#?}");
+    };
+    let put = cost_effect
+        .downcast_ref::<crate::effects::PutCountersEffect>()
+        .expect("the player pays by putting a -1/-1 counter");
+    let ChooseSpec::WithCount(target, _) = &put.target else {
+        panic!("expected an exact-one creature choice: {put:#?}");
+    };
+    let ChooseSpec::Object(filter) = target.as_ref() else {
+        panic!("expected a creature object filter: {put:#?}");
+    };
+    assert_eq!(
+        filter.controller,
+        Some(crate::target::PlayerFilter::You),
+        "cost execution rebases `You` to the player selected by UnlessPays"
+    );
+    assert!(
+        !format!("{:#?}", unless.cost).contains("IteratedPlayer"),
+        "the payer must not require a second unbound iteration context: {unless:#?}"
     );
 }
 
@@ -271,7 +333,7 @@ fn lowering_handlers_do_not_reach_into_lowered_subject_fields() {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if !path.extension().is_some_and(|ext| ext == "rs") {
+        if path.extension().is_none_or(|ext| ext != "rs") {
             continue;
         }
         if name == "player_effect_helpers.rs" || name == "choose_effect_helpers.rs" {
@@ -1520,6 +1582,14 @@ fn full_alien_invasion_keeps_nested_token_attack_requirement() {
         debug.contains("CreateTokenEffect") && debug.contains("MustAttack"),
         "full-card production dispatch must retain the Alien attack requirement: {debug}"
     );
+    assert!(
+        debug.matches("PutCountersEffect").count() >= 2
+            && debug.contains("PlusOnePlusOne")
+            && debug.contains("CountersOn")
+            && debug.contains("\"invasion\"")
+            && debug.contains("created_token"),
+        "full-card production dispatch must retain both linked counter clauses: {debug}"
+    );
 }
 
 #[test]
@@ -1634,7 +1704,7 @@ fn builtin_food_blood_and_powerstone_tokens_keep_their_intrinsic_abilities() {
     ] {
         let def = CardDefinitionBuilder::new(CardId::new(), format!("{name} Token Probe"))
             .card_types(vec![CardType::Sorcery])
-            .parse_text(&format!("Create a {name} token."))
+            .parse_text(format!("Create a {name} token."))
             .unwrap_or_else(|error| panic!("{name} token text should parse: {error}"));
         let create = def
             .spell_effect
@@ -3090,15 +3160,11 @@ fn nonexplicit_damage_recipient_preserves_outer_iterated_player_value() {
 fn serial_keyword_filters_survive_trigger_and_effect_comma_boundaries() {
     use crate::static_abilities::StaticAbilityId::{DoubleStrike, FirstStrike, Haste, Vigilance};
 
-    let filter_tokens = crate::runtime_backend::util::tokenize_line(
+    let filter_tokens = crate::util::tokenize_line(
         "creatures that have first strike, double strike, vigilance, and/or haste",
         0,
     );
-    let parsed_filter =
-        crate::runtime_backend::families::object_filters::parse_object_filter_lexed(
-            &filter_tokens,
-            false,
-        )
+    let parsed_filter = crate::object_filters::parse_object_filter_lexed(&filter_tokens, false)
         .expect("serial keyword object filter should parse");
     assert_eq!(parsed_filter.any_of.len(), 4, "{parsed_filter:#?}");
 
@@ -3118,11 +3184,23 @@ fn serial_keyword_filters_survive_trigger_and_effect_comma_boundaries() {
         })
         .flat_map(|triggered| triggered.effects.flattened_default_effects())
         .find_map(|effect| {
-            effect
-                .downcast_ref::<crate::effects::ForEachObject>()
-                .map(|for_each| &for_each.filter)
+            let damage = effect
+                .downcast_ref::<crate::effects::DealDamageEffect>()
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+                        .and_then(|execute| {
+                            execute
+                                .effect
+                                .downcast_ref::<crate::effects::DealDamageEffect>()
+                        })
+                })?;
+            match damage.target.unhinted() {
+                ChooseSpec::Object(filter) => Some(filter),
+                _ => None,
+            }
         })
-        .expect("entry damage should lower through one filtered object loop");
+        .expect("entry damage should retain its filtered object domain");
     assert_eq!(
         damage_filter.excluded_static_abilities,
         vec![FirstStrike, DoubleStrike, Vigilance, Haste]

@@ -2534,13 +2534,9 @@ pub(crate) fn describe_clash_win_optional_top_replacement(effects: &[&Effect]) -
         return None;
     };
     let clash_with_id = wrapped_with_id(clash_effect)?;
-    if clash_with_id
+    clash_with_id
         .effect
-        .downcast_ref::<crate::effects::ClashEffect>()
-        .is_none()
-    {
-        return None;
-    }
+        .downcast_ref::<crate::effects::ClashEffect>()?;
     let conditional = conditional_effect.downcast_ref::<crate::effects::IfEffect>()?;
     if conditional.condition != clash_with_id.id
         || conditional.predicate
@@ -3351,9 +3347,9 @@ pub(crate) fn describe_reveal_hand_then_discard(effects: &[&Effect]) -> Option<S
     ))
 }
 
-pub(crate) fn downcast_move_to_library_nth<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::MoveToLibraryNthFromTopEffect> {
+pub(crate) fn downcast_move_to_library_nth(
+    effect: &Effect,
+) -> Option<&crate::effects::MoveToLibraryNthFromTopEffect> {
     if let Some(move_to_library) =
         effect.downcast_ref::<crate::effects::MoveToLibraryNthFromTopEffect>()
     {
@@ -3385,9 +3381,7 @@ pub(crate) fn look_hand_choose_then_move_to_library(effects: &[&Effect]) -> Opti
     let looked_player = describe_choose_spec(&look.target);
     let choose_owner_matches_looked_player = choose.filter.owner.as_ref().is_none_or(|owner| {
         let owner_text = describe_player_filter(owner);
-        owner_text == looked_player
-            || owner_text == format!("target {looked_player}")
-            || (looked_player.starts_with("target ") && owner_text == looked_player)
+        owner_text == looked_player || owner_text == format!("target {looked_player}")
     });
     if !choose_owner_matches_looked_player {
         return None;
@@ -4156,6 +4150,27 @@ pub(crate) fn describe_target_players_each_effects(effects: &[&Effect]) -> Optio
     Some(format!("{subject} each {joined}"))
 }
 
+pub(crate) fn describe_destroy_all_then_target_players_each(effects: &[&Effect]) -> Option<String> {
+    let [destroy_effect, target_effect, for_players_effect] = effects else {
+        return None;
+    };
+    let destroy = unwrap_basic_tag_wrappers(destroy_effect)
+        .downcast_ref::<crate::effects::DestroyEffect>()?;
+    let ChooseSpec::All(filter) = &destroy.spec else {
+        return None;
+    };
+    if filter.zone != Some(Zone::Battlefield) {
+        return None;
+    }
+    let fanout = describe_target_players_each_effects(&[*target_effect, *for_players_effect])?;
+    let destroy = describe_effect(destroy_effect);
+    Some(format!(
+        "{}, then {}",
+        destroy.trim_end_matches('.'),
+        lowercase_first(&fanout)
+    ))
+}
+
 pub(crate) fn target_only_two_creatures(effect: &Effect) -> Option<(Option<&crate::TagKey>, bool)> {
     let (tag, target_only) =
         if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
@@ -4524,7 +4539,7 @@ pub(crate) fn apply_continuous_for_compaction(
     None
 }
 
-pub(crate) fn unwrap_tag_wrappers<'a>(effect: &'a Effect) -> &'a Effect {
+pub(crate) fn unwrap_tag_wrappers(effect: &Effect) -> &Effect {
     if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
         return unwrap_tag_wrappers(&tag_all.effect);
     }
@@ -4534,7 +4549,7 @@ pub(crate) fn unwrap_tag_wrappers<'a>(effect: &'a Effect) -> &'a Effect {
     effect
 }
 
-pub(crate) fn unwrap_render_wrappers<'a>(effect: &'a Effect) -> &'a Effect {
+pub(crate) fn unwrap_render_wrappers(effect: &Effect) -> &Effect {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         return unwrap_render_wrappers(&with_id.effect);
     }
@@ -5555,7 +5570,7 @@ pub(crate) fn describe_target_only_then_damage_that_player(
     ))
 }
 
-pub(crate) fn downcast_exile<'a>(effect: &'a Effect) -> Option<&'a crate::effects::ExileEffect> {
+pub(crate) fn downcast_exile(effect: &Effect) -> Option<&crate::effects::ExileEffect> {
     if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
         return Some(exile);
     }
@@ -5565,9 +5580,7 @@ pub(crate) fn downcast_exile<'a>(effect: &'a Effect) -> Option<&'a crate::effect
         .downcast_ref::<crate::effects::ExileEffect>()
 }
 
-pub(crate) fn downcast_move_to_zone<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::MoveToZoneEffect> {
+pub(crate) fn downcast_move_to_zone(effect: &Effect) -> Option<&crate::effects::MoveToZoneEffect> {
     if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         return Some(move_to_zone);
     }
@@ -5869,15 +5882,13 @@ pub(crate) fn describe_exile_graveyard_then_same_name_library_exile_bundle(
     ))
 }
 
-pub(crate) fn downcast_create_token<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::CreateTokenEffect> {
+pub(crate) fn downcast_create_token(effect: &Effect) -> Option<&crate::effects::CreateTokenEffect> {
     unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::CreateTokenEffect>()
 }
 
-pub(crate) fn downcast_set_base_power_toughness<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::SetBasePowerToughnessEffect> {
+pub(crate) fn downcast_set_base_power_toughness(
+    effect: &Effect,
+) -> Option<&crate::effects::SetBasePowerToughnessEffect> {
     unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()
 }
 
@@ -6005,14 +6016,15 @@ pub(in crate::compiled_text) fn describe_animation_then_counters_on_result(
     if !types.contains(&CardType::Creature) {
         return None;
     }
-    let animated_filter = animation
-        .target_spec
-        .as_ref()
-        .and_then(object_filter)
-        .or_else(|| match &animation.target {
-            crate::continuous::EffectTarget::Filter(filter) => Some(filter),
-            _ => None,
-        })?;
+    let animated_filter =
+        animation
+            .target_spec
+            .as_ref()
+            .and_then(object_filter)
+            .or(match &animation.target {
+                crate::continuous::EffectTarget::Filter(filter) => Some(filter),
+                _ => None,
+            })?;
 
     let for_each =
         unwrap_tag_wrappers(consumer_effect).downcast_ref::<crate::effects::ForEachObject>()?;
@@ -6356,9 +6368,7 @@ pub(in crate::compiled_text) fn describe_result_producer_then_for_each_tagged(
     ))
 }
 
-pub(crate) fn downcast_target_only<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::TargetOnlyEffect> {
+pub(crate) fn downcast_target_only(effect: &Effect) -> Option<&crate::effects::TargetOnlyEffect> {
     unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::TargetOnlyEffect>()
 }
 
@@ -6370,9 +6380,7 @@ pub(crate) fn target_only_tag(effect: &Effect) -> Option<&str> {
     }
 }
 
-pub(crate) fn downcast_destroy<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::DestroyEffect> {
+pub(crate) fn downcast_destroy(effect: &Effect) -> Option<&crate::effects::DestroyEffect> {
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>() {
         return Some(destroy);
     }

@@ -1437,7 +1437,7 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     let owner_suffix = if keep_owner_in_subject {
         None
     } else {
-        target_owner_suffix.as_deref().or_else(|| match owner {
+        target_owner_suffix.as_deref().or(match owner {
             Some(PlayerFilter::You) => Some("you own"),
             Some(PlayerFilter::NotYou) => Some("you don't own"),
             Some(PlayerFilter::Opponent) => Some("your opponents own"),
@@ -2308,147 +2308,133 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             };
             if count.is_single() {
                 format!("{inner_text}{random_suffix}")
+            } else if let ChooseSpec::Target(target_inner) = inner.as_ref() {
+                let target_desc = describe_choose_spec(target_inner);
+                let base = strip_leading_article(&target_desc);
+                let mut plural = pluralize_relative_object_phrase(base);
+                if let ChooseSpec::Object(filter) = target_inner.base()
+                    && filter.zone == Some(Zone::Graveyard)
+                    && filter.owner.is_none()
+                    && !filter.single_graveyard
+                {
+                    plural = plural
+                        .replace(" in a graveyard", " in graveyards")
+                        .replace(" from a graveyard", " from graveyards");
+                }
+                let plural_target = ["another target ", "other target ", "another ", "other "]
+                    .iter()
+                    .find_map(|prefix| base.strip_prefix(prefix))
+                    .map(|rest| format!("other target {}", pluralize_relative_object_phrase(rest)))
+                    .unwrap_or_else(|| format!("target {plural}"));
+                let count_text = |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
+                if count.is_up_to_dynamic_x() {
+                    return format!("up to X {plural_target}{controller_suffix}{random_suffix}");
+                }
+                if count.is_dynamic_x() {
+                    return format!("X {plural_target}{controller_suffix}{random_suffix}");
+                }
+                match (count.min, count.max) {
+                    (0, None) => {
+                        format!("any number of {plural_target}{controller_suffix}{random_suffix}")
+                    }
+                    (1, None) => {
+                        format!("one or more {plural_target}{controller_suffix}{random_suffix}")
+                    }
+                    (min, None) => {
+                        format!("at least {min} {plural_target}{controller_suffix}{random_suffix}")
+                    }
+                    (0, Some(max)) => {
+                        if max == 1 {
+                            if let Some(rest) = inner_text
+                                .strip_prefix("another target ")
+                                .or_else(|| inner_text.strip_prefix("other target "))
+                            {
+                                format!(
+                                    "up to one other target {rest}{controller_suffix}{random_suffix}"
+                                )
+                            } else {
+                                format!("up to one target {base}{controller_suffix}{random_suffix}")
+                            }
+                        } else {
+                            format!(
+                                "up to {} {plural_target}{controller_suffix}{random_suffix}",
+                                count_text(max)
+                            )
+                        }
+                    }
+                    (min, Some(max)) if min == max => {
+                        if min == 1 {
+                            format!("target {base}{controller_suffix}{random_suffix}")
+                        } else {
+                            format!(
+                                "{} {plural_target}{controller_suffix}{random_suffix}",
+                                count_text(min)
+                            )
+                        }
+                    }
+                    (1, Some(2)) => {
+                        format!("one or two {plural_target}{controller_suffix}{random_suffix}")
+                    }
+                    (1, Some(3)) => {
+                        format!(
+                            "one, two, or three {plural_target}{controller_suffix}{random_suffix}"
+                        )
+                    }
+                    (min, Some(max)) => {
+                        format!(
+                            "{} to {} {plural_target}{controller_suffix}{random_suffix}",
+                            count_text(min),
+                            count_text(max)
+                        )
+                    }
+                }
             } else {
-                if let ChooseSpec::Target(target_inner) = inner.as_ref() {
-                    let target_desc = describe_choose_spec(target_inner);
-                    let base = strip_leading_article(&target_desc);
-                    let mut plural = pluralize_relative_object_phrase(base);
-                    if let ChooseSpec::Object(filter) = target_inner.base()
-                        && filter.zone == Some(Zone::Graveyard)
-                        && filter.owner.is_none()
-                        && !filter.single_graveyard
-                    {
-                        plural = plural
-                            .replace(" in a graveyard", " in graveyards")
-                            .replace(" from a graveyard", " from graveyards");
+                let base = strip_leading_article(&inner_text);
+                let plural = pluralize_relative_object_phrase(base);
+                let count_text = |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
+                if count.is_up_to_dynamic_x() {
+                    return format!("up to X {plural}{controller_suffix}{random_suffix}");
+                }
+                if count.is_dynamic_x() {
+                    return format!("X {plural}{controller_suffix}{random_suffix}");
+                }
+                match (count.min, count.max) {
+                    (0, None) => {
+                        format!("any number of {plural}{controller_suffix}{random_suffix}")
                     }
-                    let plural_target = ["another target ", "other target ", "another ", "other "]
-                        .iter()
-                        .find_map(|prefix| base.strip_prefix(prefix))
-                        .map(|rest| {
-                            format!("other target {}", pluralize_relative_object_phrase(rest))
-                        })
-                        .unwrap_or_else(|| format!("target {plural}"));
-                    let count_text =
-                        |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
-                    if count.is_up_to_dynamic_x() {
-                        return format!(
-                            "up to X {plural_target}{controller_suffix}{random_suffix}"
-                        );
+                    (1, None) => {
+                        format!("one or more {plural}{controller_suffix}{random_suffix}")
                     }
-                    if count.is_dynamic_x() {
-                        return format!("X {plural_target}{controller_suffix}{random_suffix}");
-                    }
-                    match (count.min, count.max) {
-                        (0, None) => {
+                    (min, None) => format!(
+                        "at least {} {plural}{controller_suffix}{random_suffix}",
+                        count_text(min)
+                    ),
+                    (0, Some(max)) => {
+                        if max == 1 {
+                            format!("up to one {base}{controller_suffix}{random_suffix}")
+                        } else {
                             format!(
-                                "any number of {plural_target}{controller_suffix}{random_suffix}"
-                            )
-                        }
-                        (1, None) => {
-                            format!("one or more {plural_target}{controller_suffix}{random_suffix}")
-                        }
-                        (min, None) => {
-                            format!(
-                                "at least {min} {plural_target}{controller_suffix}{random_suffix}"
-                            )
-                        }
-                        (0, Some(max)) => {
-                            if max == 1 {
-                                if let Some(rest) = inner_text
-                                    .strip_prefix("another target ")
-                                    .or_else(|| inner_text.strip_prefix("other target "))
-                                {
-                                    format!(
-                                        "up to one other target {rest}{controller_suffix}{random_suffix}"
-                                    )
-                                } else {
-                                    format!(
-                                        "up to one target {base}{controller_suffix}{random_suffix}"
-                                    )
-                                }
-                            } else {
-                                format!(
-                                    "up to {} {plural_target}{controller_suffix}{random_suffix}",
-                                    count_text(max)
-                                )
-                            }
-                        }
-                        (min, Some(max)) if min == max => {
-                            if min == 1 {
-                                format!("target {base}{controller_suffix}{random_suffix}")
-                            } else {
-                                format!(
-                                    "{} {plural_target}{controller_suffix}{random_suffix}",
-                                    count_text(min)
-                                )
-                            }
-                        }
-                        (1, Some(2)) => {
-                            format!("one or two {plural_target}{controller_suffix}{random_suffix}")
-                        }
-                        (1, Some(3)) => {
-                            format!(
-                                "one, two, or three {plural_target}{controller_suffix}{random_suffix}"
-                            )
-                        }
-                        (min, Some(max)) => {
-                            format!(
-                                "{} to {} {plural_target}{controller_suffix}{random_suffix}",
-                                count_text(min),
+                                "up to {} {plural}{controller_suffix}{random_suffix}",
                                 count_text(max)
                             )
                         }
                     }
-                } else {
-                    let base = strip_leading_article(&inner_text);
-                    let plural = pluralize_relative_object_phrase(base);
-                    let count_text =
-                        |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
-                    if count.is_up_to_dynamic_x() {
-                        return format!("up to X {plural}{controller_suffix}{random_suffix}");
-                    }
-                    if count.is_dynamic_x() {
-                        return format!("X {plural}{controller_suffix}{random_suffix}");
-                    }
-                    match (count.min, count.max) {
-                        (0, None) => {
-                            format!("any number of {plural}{controller_suffix}{random_suffix}")
-                        }
-                        (1, None) => {
-                            format!("one or more {plural}{controller_suffix}{random_suffix}")
-                        }
-                        (min, None) => format!(
-                            "at least {} {plural}{controller_suffix}{random_suffix}",
-                            count_text(min)
-                        ),
-                        (0, Some(max)) => {
-                            if max == 1 {
-                                format!("up to one {base}{controller_suffix}{random_suffix}")
-                            } else {
-                                format!(
-                                    "up to {} {plural}{controller_suffix}{random_suffix}",
-                                    count_text(max)
-                                )
-                            }
-                        }
-                        (min, Some(max)) if min == max => {
-                            if min == 1 {
-                                format!("one {base}{controller_suffix}{random_suffix}")
-                            } else {
-                                format!(
-                                    "{} {plural}{controller_suffix}{random_suffix}",
-                                    count_text(min)
-                                )
-                            }
-                        }
-                        (min, Some(max)) => {
+                    (min, Some(max)) if min == max => {
+                        if min == 1 {
+                            format!("one {base}{controller_suffix}{random_suffix}")
+                        } else {
                             format!(
-                                "{} to {} {plural}{controller_suffix}{random_suffix}",
-                                count_text(min),
-                                count_text(max)
+                                "{} {plural}{controller_suffix}{random_suffix}",
+                                count_text(min)
                             )
                         }
+                    }
+                    (min, Some(max)) => {
+                        format!(
+                            "{} to {} {plural}{controller_suffix}{random_suffix}",
+                            count_text(min),
+                            count_text(max)
+                        )
                     }
                 }
             }
@@ -2972,99 +2958,96 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
             let random_suffix = if count.is_random() { " at random" } else { "" };
             if count.is_single() {
                 format!("{inner_text}{random_suffix}")
+            } else if let ChooseSpec::Target(target_inner) = inner.as_ref() {
+                let target_desc = describe_choose_spec_without_graveyard_zone(target_inner);
+                let base = strip_leading_article(&target_desc);
+                let plural = render_counted_artifact_non_aura_enchantment_text(
+                    target_inner,
+                    &pluralize_noun_phrase(base),
+                );
+                let count_text = |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
+                if count.is_up_to_dynamic_x() {
+                    return format!("up to X target {plural}{random_suffix}");
+                }
+                if count.is_dynamic_x() {
+                    return format!("X target {plural}{random_suffix}");
+                }
+                match (count.min, count.max) {
+                    (0, None) => {
+                        format!("any number of target {plural}{random_suffix}")
+                    }
+                    (1, None) => format!("one or more target {plural}{random_suffix}"),
+                    (min, None) => {
+                        format!("at least {min} target {plural}{random_suffix}")
+                    }
+                    (0, Some(max)) => {
+                        if max == 1 {
+                            format!("up to one target {base}{random_suffix}")
+                        } else {
+                            format!("up to {} target {plural}{random_suffix}", count_text(max))
+                        }
+                    }
+                    (min, Some(max)) if min == max => {
+                        if min == 1 {
+                            format!("target {base}{random_suffix}")
+                        } else {
+                            format!("{} target {plural}{random_suffix}", count_text(min))
+                        }
+                    }
+                    (1, Some(2)) => {
+                        format!("one or two target {plural}{random_suffix}")
+                    }
+                    (1, Some(3)) => {
+                        format!("one, two, or three target {plural}{random_suffix}")
+                    }
+                    (min, Some(max)) => {
+                        format!(
+                            "{} to {} target {plural}{random_suffix}",
+                            count_text(min),
+                            count_text(max)
+                        )
+                    }
+                }
             } else {
-                if let ChooseSpec::Target(target_inner) = inner.as_ref() {
-                    let target_desc = describe_choose_spec_without_graveyard_zone(target_inner);
-                    let base = strip_leading_article(&target_desc);
-                    let plural = render_counted_artifact_non_aura_enchantment_text(
-                        target_inner,
-                        &pluralize_noun_phrase(base),
-                    );
-                    let count_text =
-                        |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
-                    if count.is_up_to_dynamic_x() {
-                        return format!("up to X target {plural}{random_suffix}");
+                let base = strip_leading_article(&inner_text);
+                let plural = pluralize_noun_phrase(base);
+                let count_text = |n: usize| {
+                    small_number_word(n as u32)
+                        .or_else(|| number_word(n as i32))
+                        .unwrap_or_else(|| n.to_string())
+                };
+                if count.is_up_to_dynamic_x() {
+                    return format!("up to X {plural}{random_suffix}");
+                }
+                if count.is_dynamic_x() {
+                    return format!("X {plural}{random_suffix}");
+                }
+                match (count.min, count.max) {
+                    (0, None) => format!("any number of {plural}{random_suffix}"),
+                    (1, None) => format!("one or more {plural}{random_suffix}"),
+                    (min, None) => {
+                        format!("at least {} {plural}{random_suffix}", count_text(min))
                     }
-                    if count.is_dynamic_x() {
-                        return format!("X target {plural}{random_suffix}");
-                    }
-                    match (count.min, count.max) {
-                        (0, None) => {
-                            format!("any number of target {plural}{random_suffix}")
-                        }
-                        (1, None) => format!("one or more target {plural}{random_suffix}"),
-                        (min, None) => {
-                            format!("at least {min} target {plural}{random_suffix}")
-                        }
-                        (0, Some(max)) => {
-                            if max == 1 {
-                                format!("up to one target {base}{random_suffix}")
-                            } else {
-                                format!("up to {} target {plural}{random_suffix}", count_text(max))
-                            }
-                        }
-                        (min, Some(max)) if min == max => {
-                            if min == 1 {
-                                format!("target {base}{random_suffix}")
-                            } else {
-                                format!("{} target {plural}{random_suffix}", count_text(min))
-                            }
-                        }
-                        (1, Some(2)) => {
-                            format!("one or two target {plural}{random_suffix}")
-                        }
-                        (1, Some(3)) => {
-                            format!("one, two, or three target {plural}{random_suffix}")
-                        }
-                        (min, Some(max)) => {
-                            format!(
-                                "{} to {} target {plural}{random_suffix}",
-                                count_text(min),
-                                count_text(max)
-                            )
+                    (0, Some(max)) => {
+                        if max == 1 {
+                            format!("up to one {base}{random_suffix}")
+                        } else {
+                            format!("up to {} {plural}{random_suffix}", count_text(max))
                         }
                     }
-                } else {
-                    let base = strip_leading_article(&inner_text);
-                    let plural = pluralize_noun_phrase(base);
-                    let count_text = |n: usize| {
-                        small_number_word(n as u32)
-                            .or_else(|| number_word(n as i32))
-                            .unwrap_or_else(|| n.to_string())
-                    };
-                    if count.is_up_to_dynamic_x() {
-                        return format!("up to X {plural}{random_suffix}");
+                    (min, Some(max)) if min == max => {
+                        if min == 1 {
+                            format!("one {base}{random_suffix}")
+                        } else {
+                            format!("{} {plural}{random_suffix}", count_text(min))
+                        }
                     }
-                    if count.is_dynamic_x() {
-                        return format!("X {plural}{random_suffix}");
-                    }
-                    match (count.min, count.max) {
-                        (0, None) => format!("any number of {plural}{random_suffix}"),
-                        (1, None) => format!("one or more {plural}{random_suffix}"),
-                        (min, None) => {
-                            format!("at least {} {plural}{random_suffix}", count_text(min))
-                        }
-                        (0, Some(max)) => {
-                            if max == 1 {
-                                format!("up to one {base}{random_suffix}")
-                            } else {
-                                format!("up to {} {plural}{random_suffix}", count_text(max))
-                            }
-                        }
-                        (min, Some(max)) if min == max => {
-                            if min == 1 {
-                                format!("one {base}{random_suffix}")
-                            } else {
-                                format!("{} {plural}{random_suffix}", count_text(min))
-                            }
-                        }
-                        (min, Some(max)) => {
-                            format!(
-                                "{} to {} {plural}{random_suffix}",
-                                count_text(min),
-                                count_text(max)
-                            )
-                        }
+                    (min, Some(max)) => {
+                        format!(
+                            "{} to {} {plural}{random_suffix}",
+                            count_text(min),
+                            count_text(max)
+                        )
                     }
                 }
             }
@@ -5244,6 +5227,13 @@ pub(crate) fn describe_value(value: &Value) -> String {
             if hints.contains(&ironsmith_core::ValueSurfaceHint::PriorEffectResult) {
                 return "the result".to_string();
             }
+            if hints.contains(
+                &ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference,
+            ) && matches!(value.unhinted(), Value::CommanderCastCount(PlayerFilter::You))
+            {
+                return "the number of times you've cast a commander from the command zone this game"
+                    .to_string();
+            }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::DiedThisWay)
                 && let Value::PriorEffectMetric { query, .. }
                     | Value::PendingPriorEffectMetric(query) = value.unhinted()
@@ -6030,7 +6020,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::Devotion { player, color } => format!(
             "{} devotion to {}",
             describe_possessive_player_filter(player),
-            color.name().to_string()
+            color.name()
         ),
         Value::ColorsOfManaSpentToCastThisSpell => {
             "the number of colors of mana spent to cast this spell".to_string()

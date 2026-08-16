@@ -112,8 +112,8 @@ use super::static_ability_helpers::{
     static_ability_for_keyword_action,
 };
 use super::token_primitives::{
-    is_core_keyword_marker_text, is_ticket_sticker_marker_text, lexed_head_words,
-    split_em_dash_label_prefix, split_em_dash_label_prefix_tokens,
+    is_core_keyword_marker_text, is_ticket_sticker_marker_text, split_em_dash_label_prefix,
+    split_em_dash_label_prefix_tokens,
 };
 use super::util::{
     comparison_to_at_least_threshold, is_source_reference_words, mana_pips_from_token,
@@ -135,14 +135,14 @@ use crate::cards::builders::{
 use crate::color::{Color, ColorSet};
 use crate::cost::TotalCost;
 use crate::effect::{Condition, Effect, EventValueSpec, Value};
+use crate::grammar::shared_util::value_semantics::{
+    parse_aggregate_scope_value_lexed, parse_commander_cast_count_player,
+};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
 use crate::recognition::{ParseOutcome, RuleId};
 use crate::registry::{
     HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
-};
-use crate::grammar::shared_util::value_semantics::{
-    parse_aggregate_scope_value_lexed, parse_commander_cast_count_player,
 };
 use crate::static_abilities::{
     Anthem, AnthemCountExpression, AnthemValue, GrantAbility, PowerToughnessChoiceOption,
@@ -381,7 +381,7 @@ fn run_static_ability_ast_line_rule(
     rule: StaticAbilityLineRuleAst,
     tokens: &[OwnedLexToken],
 ) -> ParseOutcome<Vec<StaticAbilityAst>> {
-    let span = crate::span_from_tokens(tokens);
+    let span = crate::util::span_from_tokens(tokens);
     match rule {
         StaticAbilityLineRuleAst::Single(parse) => {
             ParseOutcome::from_legacy_result_option(rule_id, span, parse(tokens))
@@ -522,6 +522,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("untap"),
             StaticAbilityLineHeadHint::Pair("untap", "all"),
         ],
+        "parse_may_choose_not_to_untap_during_untap_step_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+        ],
         "parse_you_may_static_grant_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -621,6 +625,43 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_lose_game_replacement_line" => {
             vec![StaticAbilityLineHeadHint::Single("if")]
         }
+        // These source-ETB rule names describe the predicate rather than the
+        // lexical subject. Their typed grammars accept source references (and
+        // the counter family also accepts a leading condition), so indexing
+        // them only under the derived word `enters` makes them unreachable.
+        "parse_enters_tapped_line" | "parse_enters_tapped_with_choose_color_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Single("it"),
+        ],
+        "parse_enters_tapped_with_counters_line" | "parse_enters_with_counters_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Single("it"),
+            StaticAbilityLineHeadHint::Single("if"),
+            StaticAbilityLineHeadHint::Single("as"),
+            StaticAbilityLineHeadHint::Single("converge"),
+            StaticAbilityLineHeadHint::Single("morbid"),
+            StaticAbilityLineHeadHint::Single("revolt"),
+            StaticAbilityLineHeadHint::Single("undergrowth"),
+        ],
+        "parse_enters_tapped_for_filter_line"
+        | "parse_enters_untapped_for_filter_line"
+        | "parse_enters_with_additional_counter_for_filter_line" => vec![
+            StaticAbilityLineHeadHint::Single("artifact"),
+            StaticAbilityLineHeadHint::Single("artifacts"),
+            StaticAbilityLineHeadHint::Single("creature"),
+            StaticAbilityLineHeadHint::Single("creatures"),
+            StaticAbilityLineHeadHint::Single("each"),
+            StaticAbilityLineHeadHint::Single("land"),
+            StaticAbilityLineHeadHint::Single("lands"),
+            StaticAbilityLineHeadHint::Single("nonbasic"),
+            StaticAbilityLineHeadHint::Single("nontoken"),
+            StaticAbilityLineHeadHint::Single("other"),
+            StaticAbilityLineHeadHint::Single("permanent"),
+            StaticAbilityLineHeadHint::Single("permanents"),
+            StaticAbilityLineHeadHint::Single("snow"),
+            StaticAbilityLineHeadHint::Single("token"),
+            StaticAbilityLineHeadHint::Single("tokens"),
+        ],
         _ => match static_keyword_shapes::parse_rule_id_head(rule_id.as_str()) {
             Some("ward") => vec![StaticAbilityLineHeadHint::Single("ward")],
             Some("skulk") => vec![StaticAbilityLineHeadHint::Single("skulk")],
@@ -665,14 +706,84 @@ enum StaticAbilityLineHeadDiscriminator {
     WholeLine,
 }
 
-fn static_ability_rule_head_discriminator(
-    rule_id: RuleId,
-) -> StaticAbilityLineHeadDiscriminator {
+fn static_ability_rule_head_discriminator(rule_id: RuleId) -> StaticAbilityLineHeadDiscriminator {
     let hints = static_ability_rule_head_hints(rule_id);
     if hints.is_empty() {
         StaticAbilityLineHeadDiscriminator::WholeLine
     } else {
         StaticAbilityLineHeadDiscriminator::Lexical(hints)
+    }
+}
+
+#[cfg(test)]
+mod registry_head_hint_tests {
+    use super::*;
+
+    #[test]
+    fn source_enters_tapped_rule_is_reachable_from_its_subject_head() {
+        let tokens = crate::lexer::lex_line("This land enters tapped.", 0)
+            .expect("source ETB line should lex");
+        let parsed = recognize_static_ability_ast_line_registry(&tokens)
+            .into_legacy_result_option()
+            .expect("source ETB registry parse should not error")
+            .expect("source ETB registry should claim the line");
+
+        assert!(parsed.iter().any(|ability| {
+            matches!(
+                ability,
+                StaticAbilityAst::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::EntersTapped
+            )
+        }));
+    }
+
+    #[test]
+    fn optional_untap_rule_is_reachable_from_you_may_head() {
+        let tokens = crate::lexer::lex_line(
+            "You may choose not to untap this artifact during your untap step.",
+            0,
+        )
+        .expect("optional untap line should lex");
+        assert!(
+            parse_may_choose_not_to_untap_during_untap_step_line(&tokens)
+                .expect("direct optional untap parse should not error")
+                .is_some(),
+            "direct optional untap parser should claim the line"
+        );
+        let rule_idx = static_ability_ast_line_rules()
+            .iter()
+            .position(|rule| {
+                rule.id.as_str() == "parse_may_choose_not_to_untap_during_untap_step_line"
+            })
+            .expect("optional untap rule should be registered");
+        assert!(
+            STATIC_ABILITY_AST_LINE_RULE_INDEX
+                .candidate_indices("you", Some("may"))
+                .contains(&rule_idx),
+            "optional untap rule should be indexed under `you may`"
+        );
+        assert!(matches!(
+            run_static_ability_ast_line_rule(
+                static_ability_ast_line_rules()[rule_idx].id,
+                static_ability_ast_line_rules()[rule_idx].rule,
+                &tokens,
+            ),
+            ParseOutcome::Match(_)
+        ));
+        let parsed = recognize_static_ability_ast_line_registry(&tokens)
+            .into_legacy_result_option()
+            .expect("optional untap registry parse should not error")
+            .expect("optional untap registry should claim the line");
+
+        assert!(parsed.iter().any(|ability| {
+            matches!(
+                ability,
+                StaticAbilityAst::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::MayChooseNotToUntapDuringUntapStep
+            )
+        }));
     }
 }
 
@@ -845,12 +956,21 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             id: RuleId::new(stringify!(parse_anthem_and_keyword_line)),
             rule: StaticAbilityLineRuleAst::Multi(parse_anthem_and_keyword_line),
         },
+        // The comparison tail contains the words `have defender`; let the
+        // exact conditional attack-permission grammar own it before the broad
+        // granted-ability parser can reinterpret those words as a defender
+        // grant to the condition's spell filter.
+        single_static_ability_ast_passthrough_rule!(
+            parse_as_long_as_condition_can_attack_as_though_no_defender_line
+        ),
         StaticAbilityLineRuleDef {
             id: RuleId::new(stringify!(parse_filter_has_granted_ability_line)),
             rule: StaticAbilityLineRuleAst::Multi(parse_filter_has_granted_ability_line),
         },
         StaticAbilityLineRuleDef {
-            id: RuleId::new(stringify!(parse_equipped_gets_and_has_activated_ability_line)),
+            id: RuleId::new(stringify!(
+                parse_equipped_gets_and_has_activated_ability_line
+            )),
             rule: StaticAbilityLineRuleAst::Multi(
                 parse_equipped_gets_and_has_activated_ability_line,
             ),
@@ -995,7 +1115,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_attached_prevent_all_damage_dealt_to_attached_line
         ),
         StaticAbilityLineRuleDef {
-            id: RuleId::new(stringify!(parse_attached_has_keywords_and_triggered_ability_line)),
+            id: RuleId::new(stringify!(
+                parse_attached_has_keywords_and_triggered_ability_line
+            )),
             rule: StaticAbilityLineRuleAst::Multi(
                 parse_attached_has_keywords_and_triggered_ability_line,
             ),
@@ -1011,9 +1133,6 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_passthrough_rule!(parse_gets_and_attacks_each_combat_if_able_line),
         single_static_ability_ast_passthrough_rule!(
             parse_conditional_all_creatures_able_to_block_line
-        ),
-        single_static_ability_ast_passthrough_rule!(
-            parse_as_long_as_condition_can_attack_as_though_no_defender_line
         ),
         single_static_ability_ast_passthrough_rule!(
             parse_source_can_attack_as_though_no_defender_as_long_as_line
@@ -1156,7 +1275,9 @@ fn recognize_static_ability_ast_line_registry(
     tokens: &[OwnedLexToken],
 ) -> ParseOutcome<Vec<StaticAbilityAst>> {
     let rules = static_ability_ast_line_rules();
-    let (head, second) = lexed_head_words(tokens).unwrap_or(("", None));
+    let words = parser_token_word_refs(tokens);
+    let head = words.first().copied().unwrap_or("");
+    let second = words.get(1).copied();
     let candidate_indices = STATIC_ABILITY_AST_LINE_RULE_INDEX.candidate_indices(head, second);
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
@@ -1179,6 +1300,197 @@ fn recognize_static_ability_ast_line_registry(
             }
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
+        }
+    }
+
+    // A handful of the older, deliberately broad static-line families are
+    // semantic supersets of newer typed compound grammars.  The registry is
+    // intentionally ambiguity-strict, so make those ownership relationships
+    // explicit instead of relying on the historical rule order.
+    const TYPED_OWNERSHIP: &[(&str, &str)] = &[
+        (
+            "parse_as_long_as_condition_can_attack_as_though_no_defender_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_source_can_attack_as_though_no_defender_as_long_as_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_plain_can_attack_as_though_no_defender_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_attached_can_attack_as_though_no_defender_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_attacked_player_can_attack_as_though_no_defender_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_source_can_block_shadow_as_though_no_shadow_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_targeting_as_though_no_ability_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_landwalk_as_though_block_override_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_enchanted_creature_has_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_equipped_creature_has_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_equipment_you_control_have_equip_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_has_base_power_toughness_and_granted_keywords_static_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_has_base_power_toughness_and_type_color_addition_static_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_filter_is_pt_creature_in_addition_and_has_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_subject_has_keywords_and_cant_be_blocked_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_granted_keyword_static_line",
+            "parse_filter_has_granted_ability_line",
+        ),
+        (
+            "parse_ward_static_ability_line",
+            "parse_static_text_marker_line",
+        ),
+        (
+            "parse_filter_has_granted_ability_line",
+            "parse_cant_clauses",
+        ),
+        (
+            "parse_filter_dont_untap_during_controllers_untap_steps_line",
+            "parse_doesnt_untap_during_untap_step_line",
+        ),
+        (
+            "parse_filter_dont_untap_during_controllers_untap_steps_line",
+            "parse_cant_clauses",
+        ),
+        ("parse_static_text_marker_line", "parse_cant_clauses"),
+        ("parse_flying_restriction_line", "parse_cant_clauses"),
+        (
+            "parse_each_creature_cant_be_blocked_by_more_than_line",
+            "parse_cant_clauses",
+        ),
+        ("parse_subject_cant_be_blocked_line", "parse_cant_clauses"),
+        (
+            "parse_subject_cant_be_blocked_and_has_keywords_line",
+            "parse_cant_clauses",
+        ),
+        (
+            "parse_subject_has_keywords_and_cant_be_blocked_line",
+            "parse_cant_clauses",
+        ),
+        (
+            "parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line",
+            "parse_cant_clauses",
+        ),
+        ("parse_creatures_cant_block_line", "parse_cant_clauses"),
+        (
+            "parse_anthem_and_no_defender_line",
+            "parse_anthem_and_keyword_line",
+        ),
+        (
+            "parse_anthem_and_keyword_line",
+            "parse_anthem_with_trailing_segments_line",
+        ),
+        ("parse_anthem_and_keyword_line", "parse_anthem_line"),
+        ("parse_anthem_and_keyword_line", "parse_cant_clauses"),
+        (
+            "parse_multi_subject_anthem_line",
+            "parse_composed_anthem_effects_line",
+        ),
+        ("parse_multi_subject_anthem_line", "parse_anthem_line"),
+        ("parse_composed_anthem_effects_line", "parse_anthem_line"),
+        (
+            "parse_gets_and_attacks_each_combat_if_able_line",
+            "parse_anthem_with_trailing_segments_line",
+        ),
+        (
+            "parse_anthem_and_type_color_addition_line",
+            "parse_anthem_with_trailing_segments_line",
+        ),
+        (
+            "parse_anthem_and_type_color_addition_line",
+            "parse_anthem_line",
+        ),
+        (
+            "parse_anthem_and_granted_ability_line",
+            "parse_anthem_with_trailing_segments_line",
+        ),
+        (
+            "parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line",
+            "parse_anthem_with_trailing_segments_line",
+        ),
+        (
+            "parse_source_is_chosen_type_in_addition_line",
+            "parse_subject_are_card_types_in_addition_to_their_other_types_line",
+        ),
+        (
+            "parse_prevent_all_noncombat_damage_to_other_creatures_you_control_line",
+            "parse_prevent_all_noncombat_damage_to_matching_permanents_line",
+        ),
+        (
+            "parse_trigger_suppression_line_ast",
+            "parse_creatures_entering_dont_cause_abilities_to_trigger_line",
+        ),
+        (
+            "parse_all_creatures_lose_flying_line",
+            "parse_subject_loses_keywords_line",
+        ),
+        (
+            "parse_grant_flash_to_noncreature_spells_line",
+            "parse_you_may_static_grant_line",
+        ),
+        (
+            "parse_cast_spells_from_hand_without_paying_mana_costs_line",
+            "parse_you_may_static_grant_line",
+        ),
+        (
+            "parse_as_enters_becomes_characteristics_for_filter_line",
+            "parse_granted_keyword_static_line",
+        ),
+        (
+            "parse_all_have_indestructible_line",
+            "parse_granted_keyword_static_line",
+        ),
+        (
+            "parse_all_are_pt_color_type_addition_line",
+            "parse_granted_keyword_static_line",
+        ),
+        (
+            "parse_subject_cant_be_blocked_while_defending_player_controls_most_creatures_line",
+            "parse_subject_cant_be_blocked_as_long_as_defending_player_controls_card_type_line",
+        ),
+    ];
+    for &(owner, broad_fallback) in TYPED_OWNERSHIP {
+        let owner_claimed = candidates
+            .iter()
+            .any(|candidate| candidate.metadata.id.as_str() == owner);
+        if owner_claimed {
+            candidates.retain(|candidate| candidate.metadata.id.as_str() != broad_fallback);
         }
     }
 
@@ -1440,7 +1752,7 @@ fn parse_static_ability_ast_line_early_lexed(
     if let Some(spec) = split_untap_each_other_players_untap_step_line_lexed(tokens) {
         let subject_tokens = trim_commas(spec.subject_tokens);
         let filter = parse_object_filter(&subject_tokens, false)?;
-        let subject_text = crate::token_word_refs(&subject_tokens).join(" ");
+        let subject_text = crate::lexer::token_word_refs(&subject_tokens).join(" ");
         let display = if spec.untap_all {
             format!("Untap all {subject_text} during each other player's untap step")
         } else {
@@ -1484,9 +1796,9 @@ pub(crate) fn parse_damage_doubling_mana_value_marker_line(
 pub(crate) fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_static_ability_ast_line_lexed_unstacked(tokens)
-    }
+    })
 }
 
 fn parse_static_ability_ast_line_lexed_unstacked(
@@ -1733,10 +2045,7 @@ pub(crate) fn parse_removed_draft_leading_conditional_static_sentence_chain(
     for sentence in sentences {
         let mut terminated = sentence.to_vec();
         terminated.push(OwnedLexToken::period(TextSpan::synthetic()));
-        let Some(spec) =
-            crate::grammar::static_line_support::parse_leading_if_clause(
-                &terminated,
-            )
+        let Some(spec) = crate::grammar::static_line_support::parse_leading_if_clause(&terminated)
         else {
             return Ok(None);
         };
@@ -1881,14 +2190,12 @@ fn parse_static_ability_ast_line_lexed_single(
         ]));
     }
     let condition_prefix_tokens =
-        crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(
-            tokens,
-        )
-        .filter(|shape| {
-            shape.kind
+        crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(tokens)
+            .filter(|shape| {
+                shape.kind
                 == crate::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::Conditional
-        })
-        .map_or(tokens, |shape| shape.body_tokens);
+            })
+            .map_or(tokens, |shape| shape.body_tokens);
 
     if let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
         tokens,
@@ -1913,7 +2220,7 @@ fn parse_static_ability_ast_line_lexed_single(
     }
 
     if let Some(spec) = split_as_long_as_condition_prefix_lexed(condition_prefix_tokens)
-        && crate::token_word_refs(spec.remainder_tokens)
+        && crate::lexer::token_word_refs(spec.remainder_tokens)
             == ["it", "must", "be", "blocked", "if", "able"]
         && let Ok(condition) = parse_static_condition_clause(spec.condition_tokens)
         && matches!(
@@ -1931,8 +2238,7 @@ fn parse_static_ability_ast_line_lexed_single(
             condition,
         }]));
     }
-    if let Some(spec) =
-        crate::grammar::static_line_support::parse_leading_if_clause(tokens)
+    if let Some(spec) = crate::grammar::static_line_support::parse_leading_if_clause(tokens)
         && let Ok(condition) = parse_static_condition_clause(spec.condition_tokens)
         && let Some(abilities) =
             parse_static_ability_ast_line_lexed_single_without_leading_condition(
@@ -2059,7 +2365,7 @@ mod conditional_flash_permission_tests {
     use super::*;
 
     fn parse_line(text: &str) -> Vec<StaticAbilityAst> {
-        let tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("line should lex");
+        let tokens = crate::lexer::lex_line(text, 0).expect("line should lex");
         parse_static_ability_ast_line_lexed(&tokens)
             .expect("line should parse")
             .expect("line should be claimed")
@@ -2109,12 +2415,12 @@ mod conditioned_source_block_requirement_tests {
 
     #[test]
     fn removed_from_draft_named_source_grant_keeps_its_leading_condition() {
-        let parsed = crate::runtime_backend::util::with_card_source_reference_context(
+        let parsed = crate::util::with_card_source_reference_context(
             "Animus of Predation",
             &[crate::CardType::Creature],
             &[crate::Subtype::Avatar],
             || {
-                let tokens = crate::runtime_backend::lexer::lex_line(
+                let tokens = crate::lexer::lex_line(
                     "If you removed a creature card with flying from the draft with cards named Animus of Predation, this creature has flying.",
                     0,
                 )
@@ -2134,12 +2440,12 @@ mod conditioned_source_block_requirement_tests {
 
     #[test]
     fn expanded_removed_draft_chain_preempts_broad_compound_grants() {
-        let parsed = crate::runtime_backend::util::with_card_source_reference_context(
+        let parsed = crate::util::with_card_source_reference_context(
             "Draft Avatar",
             &[crate::CardType::Creature],
             &[crate::Subtype::Avatar],
             || {
-                let tokens = crate::runtime_backend::lexer::lex_line(
+                let tokens = crate::lexer::lex_line(
                     "If you removed a creature card with flying from the draft with cards named Draft Avatar, this creature has flying. If you removed a creature card with haste from the draft with cards named Draft Avatar, this creature has haste.",
                     0,
                 )
@@ -2161,7 +2467,7 @@ mod conditioned_source_block_requirement_tests {
 
     #[test]
     fn removed_draft_chain_preemption_rejects_a_mixed_condition_family() {
-        let tokens = crate::runtime_backend::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "If you removed a creature card with flying from the draft with cards named Draft Avatar, this creature has flying. If you control an artifact, this creature has haste.",
             0,
         )
@@ -2177,7 +2483,7 @@ mod conditioned_source_block_requirement_tests {
 
     #[test]
     fn quoted_animation_bundle_wins_before_the_broad_quoted_grant_route() {
-        let tokens = crate::runtime_backend::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "During your turn, each non-Equipment artifact and non-Aura enchantment you control \
              with mana value 4 or greater is a 4/4 Elemental creature in addition to its other \
              types and has indestructible, haste, and \"Whenever this creature deals combat \
@@ -2201,7 +2507,7 @@ mod conditioned_source_block_requirement_tests {
 
     #[test]
     fn soulbond_shared_quoted_trigger_wins_before_generic_conditional_grant() {
-        let tokens = crate::runtime_backend::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "As long as this creature is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
             0,
         )
@@ -2221,12 +2527,12 @@ mod conditioned_source_block_requirement_tests {
 
     #[test]
     fn named_source_soulbond_shared_trigger_keeps_paired_two_creature_scope() {
-        let parsed = crate::runtime_backend::util::with_card_source_reference_context(
+        let parsed = crate::util::with_card_source_reference_context(
             "Doom Weaver",
             &[crate::CardType::Creature],
             &[crate::Subtype::Spider, crate::Subtype::Horror],
             || {
-                let tokens = crate::runtime_backend::lexer::lex_line(
+                let tokens = crate::lexer::lex_line(
                     "As long as Doom Weaver is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
                     0,
                 )
@@ -2248,12 +2554,12 @@ mod conditioned_source_block_requirement_tests {
 
     #[test]
     fn equipped_named_source_must_be_blocked_is_a_conditioned_static_rule() {
-        let tokens = crate::runtime_backend::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "As long as Probe is equipped, it must be blocked if able.",
             0,
         )
         .expect("conditioned block requirement should lex");
-        let parsed = crate::runtime_backend::util::with_source_reference_context("Probe", || {
+        let parsed = crate::util::with_source_reference_context("Probe", || {
             parse_static_ability_ast_line_lexed(&tokens)
         })
         .expect("conditioned block requirement should parse")
@@ -2301,7 +2607,7 @@ fn parse_counters_remain_across_zone_changes_line(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticAbility> {
     let visible = trim_edge_punctuation_tokens(tokens);
-    let words = parser_token_word_refs(&visible);
+    let words = parser_token_word_refs(visible);
     if words.len() < 12 || words[..3] != ["counters", "remain", "on"] {
         return None;
     }
@@ -2343,7 +2649,7 @@ fn parse_counters_remain_across_zone_changes_line(
 
     Some(StaticAbility::counters_remain_across_zone_changes(
         excluded_destinations,
-        render_token_slice(&visible),
+        render_token_slice(visible),
     ))
 }
 
@@ -2353,8 +2659,8 @@ mod counters_remain_across_zone_changes_tests {
 
     #[test]
     fn parses_named_source_and_typed_excluded_destinations() {
-        let parsed = crate::runtime_backend::util::with_source_reference_context("Test Relic", || {
-            let tokens = crate::runtime_backend::lexer::lex_line(
+        let parsed = crate::util::with_source_reference_context("Test Relic", || {
+            let tokens = crate::lexer::lex_line(
                 "Counters remain on Test Relic as it moves to any zone other than a player's hand or library.",
                 0,
             )
@@ -2382,12 +2688,10 @@ mod counters_remain_across_zone_changes_tests {
             "Counters remain on another permanent as it moves to any zone other than a player's hand or library.",
             "Counters remain on Test Relic as it moves to any zone other than.",
         ] {
-            let parsed =
-                crate::runtime_backend::util::with_source_reference_context("Test Relic", || {
-                    let tokens = crate::runtime_backend::lexer::lex_line(text, 0)
-                        .expect("near-miss should lex");
-                    parse_counters_remain_across_zone_changes_line(&tokens)
-                });
+            let parsed = crate::util::with_source_reference_context("Test Relic", || {
+                let tokens = crate::lexer::lex_line(text, 0).expect("near-miss should lex");
+                parse_counters_remain_across_zone_changes_line(&tokens)
+            });
             assert!(parsed.is_none(), "near-miss was claimed: {text}");
         }
     }
@@ -2500,8 +2804,7 @@ fn looks_like_player_counter_gain_effect_tokens(tokens: &[OwnedLexToken]) -> boo
     tail.iter()
         .find_map(OwnedLexToken::as_word)
         .is_some_and(|word| {
-            word == "another"
-                || crate::grammar::leaf::parse_number_complete(word).is_ok()
+            word == "another" || crate::grammar::leaf::parse_number_complete(word).is_ok()
         })
 }
 
@@ -2522,7 +2825,7 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line(
     // "Activated abilities of artifacts and creatures ..." should be a union of types.
     // Our general object filter parser treats type lists joined by "and" as intersection,
     // which is correct for many adjective chains, but incorrect for this rules pattern.
-    let subject_words = crate::util::non_article_token_word_refs(&subject_tokens);
+    let subject_words = crate::util::non_article_token_word_refs(subject_tokens);
 
     let filter = if let Some(filter) = activated_ability_subject_special_filter(subject_tokens) {
         filter
@@ -2827,16 +3130,16 @@ pub(crate) fn parse_ward_static_ability_line(
 fn parse_compact_sacrifice_ward_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TotalCost>, CardTextError> {
-    let cst = match crate::grammar::activation_costs::parse_activation_cost_tokens(
-        tokens,
-    ) {
+    let cst = match crate::grammar::activation_costs::parse_activation_cost_tokens(tokens) {
         Ok(cst) => cst,
         Err(_) => return Ok(None),
     };
-    let [crate::grammar::activation_costs::ActivationCostSegmentCst::SacrificeChosen {
-        count,
-        filter,
-    }] = cst.segments.as_slice()
+    let [
+        crate::grammar::activation_costs::ActivationCostSegmentCst::SacrificeChosen {
+            count,
+            filter,
+        },
+    ] = cst.segments.as_slice()
     else {
         return Ok(None);
     };
@@ -2856,9 +3159,8 @@ fn parse_compact_sacrifice_ward_cost(
 #[rustfmt::skip]
 pub(crate) fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Option<TotalCost> {
     let words = LexedClause::new(tokens).words();
-    if !words
-        .first()
-        .is_some_and(|word| word == "discard")
+    if words
+        .first().is_none_or(|word| word != "discard")
     {
         return None;
     }
@@ -2879,7 +3181,7 @@ pub(crate) fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Opt
 
     while words
         .get(idx)
-        .is_some_and(|word| is_article(word))
+        .is_some_and(is_article)
     {
         idx += 1;
     }
@@ -2895,7 +3197,7 @@ pub(crate) fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Opt
             continue;
         }
         let parsed = parse_card_type(word)?;
-        if !card_types.iter().any(|existing| *existing == parsed) {
+        if !card_types.contains(&parsed) {
             card_types.push(parsed);
         }
         idx += 1;
@@ -3023,8 +3325,8 @@ fn comma_separated_anthem_subject_is_not_split_into_sibling_abilities() {
         "Other Pests, Bats, Insects, Snakes, and Spiders you control get +1/+1.",
         "Other Spiders, Boars, Bats, Bears, Birds, Cats, Dogs, Frogs, Jackals, Lizards, Mice, Otters, Rabbits, Raccoons, Rats, Squirrels, Turtles, and Wolves you control get +1/+1.",
     ] {
-        let tokens = crate::lexer::lex_line(text, 0)
-            .expect("comma-separated anthem subject should lex");
+        let tokens =
+            crate::lexer::lex_line(text, 0).expect("comma-separated anthem subject should lex");
         let abilities = parse_composed_anthem_effects_line(&tokens)
             .expect("comma-separated anthem should parse")
             .expect("the composed family should delegate one complete anthem");
@@ -3382,12 +3684,12 @@ pub(crate) fn parse_choose_basic_land_type_as_enters_line(
         return Ok(None);
     };
     let tail_words = LexedClause::new(tail_tokens).word_refs();
-    if let Some(consumed) = parse_choose_basic_land_type_phrase_words(&tail_words) {
-        if consumed == tail_words.len() {
-            return Ok(Some(StaticAbility::choose_basic_land_type_as_enters(
-                format!("As {display_subject} enters, choose a basic land type."),
-            )));
-        }
+    if let Some(consumed) = parse_choose_basic_land_type_phrase_words(&tail_words)
+        && consumed == tail_words.len()
+    {
+        return Ok(Some(StaticAbility::choose_basic_land_type_as_enters(
+            format!("As {display_subject} enters, choose a basic land type."),
+        )));
     }
     let Some(consumed) = parse_choose_land_type_phrase_words(&tail_words) else {
         return Ok(None);
@@ -3860,7 +4162,7 @@ fn parse_trigger_duplication_core(
             Some(source_filter),
             event_matcher,
             1,
-            crate::token_word_refs(&tokens).join(" "),
+            crate::lexer::token_word_refs(&tokens).join(" "),
         ),
         condition,
     )))
@@ -3909,7 +4211,7 @@ pub(crate) fn parse_trigger_suppression_line_ast(
         None => None,
     };
     let event_matcher = parse_trigger_duplication_event_matcher(spec.cause_tokens)?;
-    let display = crate::token_word_refs(&tokens).join(" ");
+    let display = crate::lexer::token_word_refs(&tokens).join(" ");
 
     Ok(Some(StaticAbilityAst::from(
         StaticAbility::suppress_matching_triggered_abilities(
@@ -4019,7 +4321,7 @@ fn damage_source_filter_from_shape(
         // source you control with an odd mana value"). A bare qualifier has
         // no head noun for the filter grammar, so recognize the parity shape
         // directly and fold anything else into a combined parse.
-        let trailing_words = crate::token_word_refs(shape.trailing_filter_tokens);
+        let trailing_words = crate::lexer::token_word_refs(shape.trailing_filter_tokens);
         let parity = match trailing_words.as_slice() {
             ["with", "an", "odd", "mana", "value"] => Some(ironsmith_core::ParityRequirement::Odd),
             ["with", "an", "even", "mana", "value"] => {
@@ -4197,7 +4499,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     shape.exile_count, shape.copy_count, shape.counter_value
                 )));
             }
-            return Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
+            Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
                 crate::static_abilities::EnterAsCopyAsEntersSpec {
                     filter: shape.filter,
                     affected_filter: None,
@@ -4221,7 +4523,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     set_base_power_toughness_from_self: false,
                 },
                 render_token_slice(tokens).trim().to_string(),
-            )));
+            )))
         }
         keyword_static_lines::EnterAsCopyShape::Direct {
             affected_tokens,
@@ -4242,7 +4544,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     false,
                 ),
             };
-            return Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
+            Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
                 crate::static_abilities::EnterAsCopyAsEntersSpec {
                     filter,
                     affected_filter: Some(affected_filter),
@@ -4262,7 +4564,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     set_base_power_toughness_from_self: false,
                 },
                 display,
-            )));
+            )))
         }
         keyword_static_lines::EnterAsCopyShape::May {
             named_subject_tokens,
@@ -4468,7 +4770,7 @@ pub(crate) fn parse_choose_color_as_enters_line(
     let display = match excluded {
         Some(color) => format!(
             "As {display_subject} enters, choose a color other than {}.",
-            color.name().to_string()
+            color.name()
         ),
         None => format!("As {display_subject} enters, choose a color."),
     };
@@ -4485,8 +4787,7 @@ mod enter_as_copy_added_color_tests {
     #[test]
     fn copy_exception_adds_a_color_alongside_types_subtypes_and_fixed_pt() {
         let text = "You may have this creature enter as a copy of any creature card in a graveyard except it's a 4/4 black Zombie in addition to its other colors and types.";
-        let tokens =
-            crate::runtime_backend::lexer::lex_line(text, 0).expect("copy exception should lex");
+        let tokens = crate::lexer::lex_line(text, 0).expect("copy exception should lex");
         let ability = parse_enter_as_copy_as_enters_line(&tokens)
             .expect("copy exception should parse")
             .expect("copy exception should be claimed");
@@ -4677,20 +4978,19 @@ pub(crate) fn parse_characteristic_defining_pt_line(
 
     if let Some(tail_tokens) =
         keyword_static_lines::parse_characteristic_shared_value_tail_tokens(tokens)
+        && !tail_tokens.is_empty()
     {
-        if !tail_tokens.is_empty() {
-            let value = parse_characteristic_defining_stat_value(tail_tokens).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported characteristic defining P/T value (value: '{}')",
-                    crate::token_word_refs(tail_tokens).join(" ")
-                ))
-            })?;
-            let value = preserve_subject(value);
-            return Ok(Some(StaticAbility::characteristic_defining_pt(
-                value.clone(),
-                value,
-            )));
-        }
+        let value = parse_characteristic_defining_stat_value(tail_tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported characteristic defining P/T value (value: '{}')",
+                crate::lexer::token_word_refs(tail_tokens).join(" ")
+            ))
+        })?;
+        let value = preserve_subject(value);
+        return Ok(Some(StaticAbility::characteristic_defining_pt(
+            value.clone(),
+            value,
+        )));
     }
 
     let line_words = LexedClause::new(tokens).words();
@@ -4752,7 +5052,7 @@ pub(crate) fn parse_characteristic_defining_pt_line(
                 CardTextError::ParseError(format!(
                     "unsupported characteristic defining {} value (value: '{}')",
                     axis,
-                    crate::token_word_refs(&value_tokens).join(" ")
+                    crate::lexer::token_word_refs(&value_tokens).join(" ")
                 ))
             })?;
 
@@ -4899,9 +5199,8 @@ fn bind_characteristic_count_to_affected_controller(
     mut value: Value,
     tokens: &[OwnedLexToken],
 ) -> Value {
-    let count_words = crate::util::possessive_normalized_word_refs(
-        &crate::token_word_refs(tokens),
-    );
+    let count_words =
+        crate::util::possessive_normalized_word_refs(&crate::lexer::token_word_refs(tokens));
     if !count_words
         .windows(2)
         .any(|words| words == ["its", "controller"])
@@ -4966,10 +5265,10 @@ pub(crate) fn parse_characteristic_defining_pt_term(tokens: &[OwnedLexToken]) ->
         return None;
     }
 
-    if let Some((number, used)) = parse_number(tokens) {
-        if tokens.len() == used {
-            return Some(Value::Fixed(number as i32));
-        }
+    if let Some((number, used)) = parse_number(tokens)
+        && tokens.len() == used
+    {
+        return Some(Value::Fixed(number as i32));
     }
 
     let start = keyword_static_lines::strip_characteristic_number_of_prefix_tokens(tokens);
@@ -5154,7 +5453,7 @@ pub(crate) fn parse_spell_cost_increase_per_target_beyond_first_line(
 pub(crate) fn parse_spell_additional_life_cost_per_target_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if words.len() != 11
         || !words[0].eq_ignore_ascii_case("this")
         || !words[1].eq_ignore_ascii_case("spell")
@@ -5187,7 +5486,7 @@ pub(crate) fn parse_if_this_spell_costs_less_to_cast_line_lexed(
     let condition = parse_this_spell_cost_condition(spec.condition_tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported this-spell cost condition (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
 
@@ -5196,9 +5495,7 @@ pub(crate) fn parse_if_this_spell_costs_less_to_cast_line_lexed(
         .ok_or_else(|| CardTextError::ParseError("missing costs keyword".to_string()))?;
     let amount_tokens = spec.tail_tokens.get(costs_idx + 1..).unwrap_or_default();
     let (parsed_amount, parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
-    let (amount_value, used) = parsed_amount
-        .clone()
-        .unwrap_or_else(|| (Value::Fixed(0), 0));
+    let (amount_value, used) = parsed_amount.clone().unwrap_or((Value::Fixed(0), 0));
     let used = if used > 0 {
         used
     } else if let Some((_, used)) = parsed_mana_cost {
@@ -5458,7 +5755,7 @@ mod target_controller_graveyard_cost_condition_tests {
 
     #[test]
     fn parses_target_object_and_its_controllers_graveyard_threshold_as_one_condition() {
-        let tokens = crate::runtime_backend::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "it targets a creature whose controller has eight or more cards in their graveyard",
             0,
         )
@@ -5483,7 +5780,7 @@ mod target_controller_graveyard_cost_condition_tests {
             "it targets a creature whose controller has eight or more creature cards in their graveyard",
             "it targets a creature whose controller has eight or more cards in your graveyard",
         ] {
-            let tokens = crate::runtime_backend::lexer::lex_line(text, 0)
+            let tokens = crate::lexer::lex_line(text, 0)
                 .expect("near-miss target-controller condition should lex");
             assert!(
                 !matches!(
@@ -5499,7 +5796,7 @@ mod target_controller_graveyard_cost_condition_tests {
 fn parse_conjoined_this_spell_cost_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ConditionExpr> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let and_positions = words
         .iter()
         .enumerate()
@@ -5528,7 +5825,7 @@ pub(crate) fn parse_trailing_this_spell_cost_condition(
     remaining_tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<crate::static_abilities::ThisSpellCostCondition>, CardTextError> {
-    let remaining_words = crate::token_word_refs(remaining_tokens);
+    let remaining_words = crate::lexer::token_word_refs(remaining_tokens);
     if let Some(as_long_as_idx) = remaining_words
         .windows(3)
         .position(|window| window == ["as", "long", "as"])

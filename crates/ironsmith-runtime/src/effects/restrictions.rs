@@ -53,8 +53,8 @@ fn collapse_tagged_filter_to_specific_objects(
         })
         .collect::<Vec<_>>();
 
-    if object_ids.is_empty() {
-        if let Some(source) = ctx
+    if object_ids.is_empty()
+        && let Some(source) = ctx
             .source_snapshot
             .as_ref()
             .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
@@ -63,9 +63,8 @@ fn collapse_tagged_filter_to_specific_objects(
                     .filter(|object| object.zone == crate::zone::Zone::Battlefield)
                     .map(|_| ctx.source)
             })
-        {
-            object_ids.push(source);
-        }
+    {
+        object_ids.push(source);
     }
 
     if object_ids.is_empty() {

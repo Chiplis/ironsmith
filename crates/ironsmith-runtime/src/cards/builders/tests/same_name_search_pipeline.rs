@@ -37,7 +37,7 @@ fn target_antecedent_same_name_searches_render_inline() {
             .join(" ")
             .to_ascii_lowercase();
         assert!(
-            rendered.contains(&format!("same name as that creature"))
+            rendered.contains(&"same name as that creature".to_string())
                 || rendered.contains(&format!("same name as {reference}")),
             "{name}: {rendered}"
         );

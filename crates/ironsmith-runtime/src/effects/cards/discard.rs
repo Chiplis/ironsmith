@@ -200,7 +200,7 @@ impl EffectExecutor for DiscardEffect {
 
         let mut hand_cards: Vec<_> = game
             .player(player_id)
-            .map(|p| p.hand.iter().copied().collect())
+            .map(|p| p.hand.to_vec())
             .unwrap_or_default();
         if let Some(filter) = &self.card_filter {
             let filter_ctx = ctx.filter_context(game);
@@ -462,7 +462,7 @@ impl CostExecutableEffect for DiscardEffect {
 
         let mut hand_cards: Vec<_> = game
             .player(player_id)
-            .map(|p| p.hand.iter().copied().collect())
+            .map(|p| p.hand.to_vec())
             .unwrap_or_default();
 
         if let Some(filter) = &self.card_filter {

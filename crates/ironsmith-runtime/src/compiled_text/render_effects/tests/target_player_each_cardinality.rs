@@ -56,6 +56,38 @@ fn any_number_target_players_each_mill_their_own_half_library() {
 }
 
 #[test]
+fn destroy_all_then_target_player_fanout_keeps_the_authored_then_surface() {
+    let mut creatures = ObjectFilter::default().in_zone(Zone::Battlefield);
+    creatures.card_types = vec![CardType::Creature];
+    let target = ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any))
+        .with_count(ChoiceCount::any_number());
+    let effects = vec![
+        Effect::new(crate::effects::DestroyEffect::all(creatures)),
+        Effect::new(crate::effects::TargetOnlyEffect::new(target)),
+        Effect::new(crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+            vec![Effect::new(crate::effects::MillEffect::new(
+                Value::HalfRoundedDown(Box::new(Value::CardsInLibrary(
+                    PlayerFilter::IteratedPlayer,
+                ))),
+                PlayerFilter::IteratedPlayer,
+            ))],
+        )),
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Destroy all creatures, then any number of target players each mill half their library, rounded down"
+    );
+
+    let mut graveyard_creatures = ObjectFilter::default().in_zone(Zone::Graveyard);
+    graveyard_creatures.card_types = vec![CardType::Creature];
+    let mut changed_zone = effects;
+    changed_zone[0] = Effect::new(crate::effects::DestroyEffect::all(graveyard_creatures));
+    assert!(!describe_effect_list(&changed_zone).contains(", then any number of target players"));
+}
+
+#[test]
 fn singular_or_authored_target_declarations_do_not_use_each_compactor() {
     for effects in [
         target_players_each_draw(ChoiceCount::exactly(1), false),

@@ -3473,7 +3473,7 @@ mod sync_checkpoint_tests {
         assert!(
             bob_hand
                 .iter()
-                .all(|id| after_order.iter().any(|raw| *raw == id.0)),
+                .all(|id| after_order.contains(&id.0)),
             "drawn hand cards must be part of the post-shuffle ziffle order"
         );
 

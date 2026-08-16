@@ -1,4 +1,4 @@
-use crate::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
+use crate::lexer::{OwnedLexToken, parser_token_word_refs};
 use winnow::Parser as _;
 use winnow::combinator::alt;
 
@@ -45,10 +45,7 @@ pub(crate) struct AbilityCandidateShape {
 
 fn is_source_reference(words: &[&str]) -> bool {
     leaf::parse_leaf_this_source_reference_words(words).is_some()
-        || crate::util::source_reference_surface_for_words(
-            words,
-        )
-        .is_some()
+        || crate::util::source_reference_surface_for_words(words).is_some()
 }
 
 fn simple_source_gain(words: &[&str]) -> bool {
@@ -209,7 +206,7 @@ pub(crate) fn parse_ability_candidate_shape(tokens: &[OwnedLexToken]) -> Ability
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

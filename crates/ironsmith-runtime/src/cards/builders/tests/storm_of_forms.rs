@@ -42,7 +42,7 @@ fn storm_of_forms_uses_distinct_counter_types_and_keeps_oracle_line_order() {
         .effects
         .flattened_default_effects()
         .iter()
-        .find_map(|effect| find_nested::<crate::effects::CopySpellEffect>(effect))
+        .find_map(find_nested::<crate::effects::CopySpellEffect>)
         .expect("cast trigger should copy the source spell");
     assert!(copy.target_reference_pronoun);
     let Value::DistinctCounterTypesAmong(filter) = &copy.count else {

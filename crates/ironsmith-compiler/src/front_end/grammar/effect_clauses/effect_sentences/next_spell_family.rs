@@ -18,7 +18,7 @@ fn parse_next_spell_grant_ability(
     let NextSpellGrantAbilitySurface::Keyword(tokens) = surface else {
         return None;
     };
-    if crate::token_word_refs(tokens) == ["affinity", "for", "artifacts"] {
+    if crate::lexer::token_word_refs(tokens) == ["affinity", "for", "artifacts"] {
         return Some(GrantedAbilityAst::StaticAbility(
             StaticAbility::affinity_for_artifacts(),
         ));
@@ -69,7 +69,7 @@ fn lower_next_spell_grant(
             .into_iter()
             .map(|filter| {
                 EffectAst::subject_verb_grant_next_spell_ability_this_turn(
-                    shape.player.clone(),
+                    shape.player,
                     filter,
                     ability.clone(),
                 )

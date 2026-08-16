@@ -240,7 +240,7 @@ fn fixed_cost_filter(effect: &MoveToZoneEffect) -> Option<(&ObjectFilter, usize)
     if count.min == 0 || count.max != Some(count.min) {
         return None;
     }
-    Some((filter, count.min as usize))
+    Some((filter, count.min))
 }
 
 fn matching_cost_candidate_count(
@@ -400,14 +400,15 @@ impl EffectExecutor for MoveToZoneEffect {
         // When a tag snapshot carries a stale ObjectId (the tagged object
         // changed zones since the snapshot was taken), resolve through
         // stable_id so the move can find the actual game object.
-        if let ChooseSpec::Tagged(tag) = &self.target {
-            if let Some(tagged) = ctx.get_tagged_all(tag) {
-                for (idx, snapshot) in tagged.iter().enumerate() {
-                    if idx < object_ids.len() && game.object(object_ids[idx]).is_none() {
-                        if let Some(resolved) = resolve_tagged_object_id(game, snapshot) {
-                            object_ids[idx] = resolved;
-                        }
-                    }
+        if let ChooseSpec::Tagged(tag) = &self.target
+            && let Some(tagged) = ctx.get_tagged_all(tag)
+        {
+            for (idx, snapshot) in tagged.iter().enumerate() {
+                if idx < object_ids.len()
+                    && game.object(object_ids[idx]).is_none()
+                    && let Some(resolved) = resolve_tagged_object_id(game, snapshot)
+                {
+                    object_ids[idx] = resolved;
                 }
             }
         }
@@ -812,7 +813,7 @@ mod tests {
             ctx.options
                 .iter()
                 .filter(|option| option.legal)
-                .last()
+                .next_back()
                 .map(|option| vec![option.index])
                 .unwrap_or_default()
         }

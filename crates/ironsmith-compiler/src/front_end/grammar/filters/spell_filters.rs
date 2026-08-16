@@ -25,8 +25,7 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint(
         })
         || words.ends_with(&["with", "a", "single", "target"])
         || words.ends_with(&["with", "a", "single", "targets"]);
-    let has_shared_terminal_noun =
-        crate::families::object_filters::has_shared_terminal_object_noun(tokens);
+    let has_shared_terminal_noun = crate::object_filters::has_shared_terminal_object_noun(tokens);
     let mut filter = if requires_relational_parser {
         parse_object_filter(tokens, other)?
     } else if has_shared_terminal_noun

@@ -1,6 +1,6 @@
 use crate::TagKey;
 use crate::effect::{ChoiceAggregateConstraint, Value};
-use crate::front_end::lexer::OwnedLexToken;
+use crate::lexer::OwnedLexToken;
 use crate::target::{ChooseSpec, ObjectFilter, SourceReferenceSurface};
 
 /// Lift an authored `total mana value ... or less` restriction out of the

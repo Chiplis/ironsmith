@@ -978,10 +978,8 @@ pub(super) fn rewrite_created_token_followup_keeps_tap_mana_ability() {
     let sentences = split_lexed_sentences(&effect_tokens);
     assert_eq!(sentences.len(), 2, "expected creation plus reminder");
     assert!(
-        crate::runtime_backend::grammar::token_definitions::parse_token_tap_mana_ability_tokens(
-            sentences[1]
-        )
-        .is_some(),
+        crate::grammar::token_definitions::parse_token_tap_mana_ability_tokens(sentences[1])
+            .is_some(),
         "typed reminder grammar should preserve the quoted tap-mana ability"
     );
     let effect_ast = super::super::clause_support::parse_effect_sentences_lexed(&effect_tokens)
@@ -993,7 +991,7 @@ pub(super) fn rewrite_created_token_followup_keeps_tap_mana_ability() {
         },
         _ => None,
     });
-    let Some(crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature)) =
+    let Some(crate::model::token_definition::TokenDefinitionSpec::Creature(creature)) =
         token_definition
     else {
         panic!("expected creature token definition, got {effect_ast:#?}");
@@ -1023,8 +1021,8 @@ pub(super) fn rewrite_verb_handlers_parse_look_normalizes_target_player_apostrop
     let tokens = lex_line("Look at target player's hand.", 0)
         .expect("rewrite lexer should classify target player's hand look clause");
 
-    let parsed =
-        super::super::parse_effect_clause_lexed(&tokens).expect("look-at-hand clause should parse");
+    let parsed = crate::effect_sentences::parse_effect_clause_lexed(&tokens)
+        .expect("look-at-hand clause should parse");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("LookAtHand"), "{debug}");
@@ -1036,7 +1034,7 @@ pub(super) fn rewrite_verb_handlers_parse_look_normalizes_owner_apostrophe_shape
     let tokens = lex_line("Look at the top card of its owner's library.", 0)
         .expect("rewrite lexer should classify owner-library look clause");
 
-    let parsed = super::super::parse_effect_clause_lexed(&tokens)
+    let parsed = crate::effect_sentences::parse_effect_clause_lexed(&tokens)
         .expect("owner-library look clause should parse");
     let debug = format!("{parsed:?}");
 
@@ -1054,7 +1052,7 @@ pub(super) fn rewrite_subject_verb_primitives_delayed_next_upkeep_unless_pays_no
     )
     .expect("rewrite lexer should classify delayed next-upkeep unless sentence");
 
-    let parsed = super::super::parse_sentence_delayed_next_step_unless_pays(
+    let parsed = crate::effect_sentences::parse_sentence_delayed_next_step_unless_pays(
         super::super::effect_sentences::SubjectVerbPrimitiveClause::new(&tokens),
     )
     .expect("delayed next-upkeep unless sentence should parse")
@@ -1074,9 +1072,8 @@ pub(super) fn rewrite_token_copy_followup_recognizes_next_upkeep_sacrifice() {
     )
     .expect("rewrite lexer should classify token-copy next-upkeep cleanup");
 
-    let followup =
-        crate::runtime_backend::effect_sentences::parse_token_copy_followup_sentence_lexed(&tokens)
-            .expect("token-copy next-upkeep sacrifice should be recognized");
+    let followup = crate::effect_sentences::parse_token_copy_followup_sentence_lexed(&tokens)
+        .expect("token-copy next-upkeep sacrifice should be recognized");
 
     assert_eq!(
         followup,
@@ -1203,11 +1200,11 @@ pub(super) fn rewrite_grammar_trigger_duplication_as_long_as_prefix_splitter_mat
     let spec = super::super::grammar::abilities::split_as_long_as_condition_prefix_lexed(&tokens)
         .expect("grammar-owned as-long-as prefix splitter should match");
     assert_eq!(
-        crate::runtime_backend::token_word_refs(spec.condition_tokens),
+        crate::lexer::token_word_refs(spec.condition_tokens),
         vec!["you", "control", "an", "artifact"],
     );
     assert_eq!(
-        crate::runtime_backend::token_word_refs(spec.remainder_tokens),
+        crate::lexer::token_word_refs(spec.remainder_tokens),
         vec![
             "if",
             "a",
@@ -1359,7 +1356,7 @@ pub(super) fn rewrite_lexed_cycling_parser_ignores_static_grant_clause_prefixes(
     .expect("rewrite lexer should classify granted cycling clause");
 
     assert!(
-        super::super::parse_cycling_line_lexed(&tokens)
+        crate::activation_and_restrictions::parse_cycling_line_lexed(&tokens)
             .expect("cycling parser should inspect granted clause")
             .is_none()
     );
@@ -1367,9 +1364,7 @@ pub(super) fn rewrite_lexed_cycling_parser_ignores_static_grant_clause_prefixes(
 
 #[test]
 pub(super) fn filter_keyword_constraint_accepts_cycling_variant_words() {
-    use super::super::front_end::shared::util::{
-        FilterKeywordConstraint, parse_filter_keyword_constraint_words,
-    };
+    use crate::util::{FilterKeywordConstraint, parse_filter_keyword_constraint_words};
 
     assert_eq!(
         parse_filter_keyword_constraint_words(&["cycling"]),
@@ -3163,19 +3158,19 @@ pub(super) fn rewrite_search_library_helper_parsers_track_mana_and_same_name_suf
     let mana_tokens = lex_line("artifact card with mana value 2 or 3", 0)
         .expect("rewrite lexer should classify mana-value helper input");
     let (base_filter, constraint) =
-        super::super::extract_search_library_mana_constraint(&mana_tokens)
+        crate::search_library_support::extract_search_library_mana_constraint(&mana_tokens)
             .expect("mana-value helper should split base filter and clause");
     assert_eq!(token_word_refs(&base_filter), vec!["artifact", "card"]);
     assert!(matches!(
         constraint,
-        super::super::SearchLibraryManaConstraint::OneOf(values)
+        crate::search_library_support::SearchLibraryManaConstraint::OneOf(values)
             if values == vec![2, 3]
     ));
 
     let same_name_tokens = lex_line("creature card with the same name as that card", 0)
         .expect("rewrite lexer should classify same-name helper input");
     let (base_filter, reference_tokens) =
-        super::super::split_search_same_name_reference_filter(&same_name_tokens)
+        crate::search_library_support::split_search_same_name_reference_filter(&same_name_tokens)
             .expect("same-name helper should split reference suffix");
     assert_eq!(token_word_refs(&base_filter), vec!["creature", "card"]);
     assert_eq!(token_word_refs(&reference_tokens), vec!["that", "card"]);
@@ -3186,8 +3181,10 @@ pub(super) fn rewrite_search_library_helper_parsers_track_mana_and_same_name_suf
     )
     .expect("rewrite lexer should classify negated same-name helper input");
     let (base_filter, reference_tokens) =
-        super::super::split_search_different_name_reference_filter(&different_name_tokens)
-            .expect("different-name helper should split reference suffix");
+        crate::search_library_support::split_search_different_name_reference_filter(
+            &different_name_tokens,
+        )
+        .expect("different-name helper should split reference suffix");
     assert_eq!(token_word_refs(&base_filter), vec!["Curse", "card"]);
     assert_eq!(
         token_word_refs(&reference_tokens),
@@ -3274,7 +3271,7 @@ pub(super) fn rewrite_object_filter_parser_handles_same_name_as_the_spell_refere
     let tokens = lex_line("cards in all graveyards with the same name as the spell", 0)
         .expect("rewrite lexer should classify same-name spell filter text");
 
-    let filter = super::super::parse_object_filter_lexed(&tokens, false)
+    let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false)
         .expect("object filter parser should bind same-name spell references");
     let debug = format!("{filter:?}");
 
@@ -3482,7 +3479,7 @@ pub(super) fn rewrite_search_library_leading_prelude_and_top_probe_helpers_cover
 
     let unsupported_top = lex_line("Search your library for the third card from the top.", 0)
         .expect("rewrite lexer should classify nth-from-top search text");
-    let unsupported_words = crate::runtime_backend::token_word_refs(&unsupported_top);
+    let unsupported_words = crate::lexer::token_word_refs(&unsupported_top);
     assert!(
         super::super::grammar::effects::search_library_has_unsupported_top_position_probe(
             &unsupported_words
@@ -3495,7 +3492,7 @@ pub(super) fn rewrite_search_library_leading_prelude_and_top_probe_helpers_cover
         0,
     )
     .expect("rewrite lexer should classify on-top-of-library search text");
-    let allowed_words = crate::runtime_backend::token_word_refs(&allowed_top);
+    let allowed_words = crate::lexer::token_word_refs(&allowed_top);
     assert!(
         !super::super::grammar::effects::search_library_has_unsupported_top_position_probe(
             &allowed_words
@@ -3508,7 +3505,7 @@ pub(super) fn rewrite_search_library_leading_prelude_and_top_probe_helpers_cover
         0,
     )
     .expect("rewrite lexer should classify searched-card nth-from-top placement text");
-    let allowed_nth_words = crate::runtime_backend::token_word_refs(&allowed_nth_put);
+    let allowed_nth_words = crate::lexer::token_word_refs(&allowed_nth_put);
     assert!(
         !super::super::grammar::effects::search_library_has_unsupported_top_position_probe(
             &allowed_nth_words
@@ -3756,7 +3753,8 @@ pub(super) fn rewrite_lexed_spell_filter_preserves_comparison_shapes() {
     ] {
         let tokens =
             lex_line(text, 0).expect("rewrite lexer should classify comparison spell filter");
-        let filter = super::super::parse_spell_filter_lexed(&tokens);
+        let filter =
+            crate::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed(&tokens);
         let debug = format!("{filter:?}");
 
         if text.contains("mana value equal to 3") {
@@ -3774,7 +3772,7 @@ pub(super) fn rewrite_lexed_search_library_sentence_parses_shared_mana_value_con
     let text = "Search your library for a creature card with mana value 3 or less, reveal it, put it into your hand, then shuffle.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify search-library text");
 
-    let parsed = super::super::parse_search_library_sentence_lexed(&lexed)
+    let parsed = crate::effect_sentences::parse_search_library_sentence_lexed(&lexed)
         .expect("lexed search-library sentence should parse")
         .expect("search-library sentence should produce effects");
     let debug = format!("{parsed:?}");
@@ -3789,7 +3787,7 @@ pub(super) fn rewrite_lexed_search_library_sentence_parses_disjunction_filter_vi
     let lexed =
         lex_line(text, 0).expect("rewrite lexer should classify search-library disjunction");
 
-    let parsed = super::super::parse_search_library_sentence_lexed(&lexed)
+    let parsed = crate::effect_sentences::parse_search_library_sentence_lexed(&lexed)
         .expect("lexed search-library sentence should parse")
         .expect("search-library sentence should produce effects");
     let debug = format!("{parsed:?}");
@@ -3805,7 +3803,7 @@ pub(super) fn rewrite_gain_ability_keyword_lists_route_through_grammar_separator
     let text = "Target creature gains flying and vigilance until end of turn.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify gain-ability keyword list");
 
-    let parsed = super::super::parse_effect_sentence_lexed(&lexed)
+    let parsed = crate::effect_sentences::parse_effect_sentence_lexed(&lexed)
         .expect("gain-ability sentence should parse");
     let debug = format!("{parsed:?}");
 
@@ -3818,7 +3816,7 @@ pub(super) fn rewrite_gain_ability_choice_list_routes_or_split_through_grammar_s
     let tokens = lex_line("your choice of flying, vigilance, or trample", 0)
         .expect("rewrite lexer should classify gain-ability choice list");
 
-    let parsed = super::super::parse_choice_of_abilities(&tokens)
+    let parsed = crate::effect_sentences::parse_choice_of_abilities(&tokens)
         .expect("choice-of-abilities helper should parse");
     let debug = format!("{parsed:?}");
 
@@ -3832,7 +3830,7 @@ pub(super) fn rewrite_activation_line_routes_period_split_through_grammar_separa
     let tokens = lex_line("{T}: Add {G}. Activate only during your turn.", 0)
         .expect("rewrite lexer should classify activated line with trailing restriction");
 
-    let parsed = super::super::parse_activated_line(&tokens)
+    let parsed = crate::activation_and_restrictions::parse_activated_line(&tokens)
         .expect("activated line should parse")
         .expect("activated line should produce an ability");
     let debug = format!("{parsed:?}");
@@ -3845,7 +3843,7 @@ pub(super) fn rewrite_activation_line_collects_any_player_restriction_from_token
     let tokens = lex_line("{T}: Add {C}. Any player may activate this ability.", 0)
         .expect("rewrite lexer should classify activated line with any-player restriction");
 
-    let parsed = super::super::parse_activated_line(&tokens)
+    let parsed = crate::activation_and_restrictions::parse_activated_line(&tokens)
         .expect("activated line should parse")
         .expect("activated line should produce an ability");
 
@@ -3875,7 +3873,7 @@ pub(super) fn rewrite_activation_line_types_any_player_before_end_step_window() 
     )
     .expect("combined any-player activation window should lex");
 
-    let parsed = super::super::parse_activated_line(&tokens)
+    let parsed = crate::activation_and_restrictions::parse_activated_line(&tokens)
         .expect("combined any-player activation window should parse")
         .expect("activated line should produce an ability");
 
@@ -3900,7 +3898,7 @@ pub(super) fn rewrite_activation_line_collects_sentence_modifiers_via_activated_
     )
     .expect("rewrite lexer should classify activated line with sentence modifiers");
 
-    let parsed = super::super::parse_activated_line(&tokens)
+    let parsed = crate::activation_and_restrictions::parse_activated_line(&tokens)
         .expect("activated line should parse")
         .expect("activated line should produce an ability");
     let debug = format!("{parsed:#?}");
@@ -3950,7 +3948,7 @@ pub(super) fn rewrite_activation_line_parses_biophagus_style_conditional_mana_bo
     )
     .expect("rewrite lexer should classify Biophagus-style mana bonus");
 
-    let parsed = super::super::parse_activated_line(&tokens)
+    let parsed = crate::activation_and_restrictions::parse_activated_line(&tokens)
         .expect("Biophagus-style line should parse")
         .expect("Biophagus-style line should produce an ability");
 
@@ -3983,7 +3981,7 @@ pub(super) fn rewrite_activation_line_parses_spent_on_spell_static_ability_bonus
     )
     .expect("rewrite lexer should classify Arena of Glory-style mana bonus");
 
-    let parsed = super::super::parse_activated_line(&tokens)
+    let parsed = crate::activation_and_restrictions::parse_activated_line(&tokens)
         .expect("Arena of Glory-style line should parse")
         .expect("Arena of Glory-style line should produce an ability");
 
@@ -4016,7 +4014,7 @@ pub(super) fn rewrite_keyword_static_combined_pregame_choose_color_routes_period
     )
     .expect("rewrite lexer should classify combined pregame choose-color line");
 
-    let parsed = super::super::parse_combined_pregame_choose_color_line(&tokens)
+    let parsed = crate::keyword_static::parse_combined_pregame_choose_color_line(&tokens)
         .expect("combined pregame choose-color line should parse")
         .expect("combined pregame choose-color line should produce abilities");
     let debug = format!("{parsed:?}");
@@ -4219,7 +4217,7 @@ pub(super) fn rewrite_grammar_activated_abilities_cant_be_activated_splitter_mat
         .expect("grammar-owned activated-abilities restriction splitter should match");
 
     assert_eq!(
-        crate::runtime_backend::token_word_refs(spec.subject_tokens),
+        crate::lexer::token_word_refs(spec.subject_tokens),
         vec!["artifacts", "and", "creatures"],
     );
     assert!(
@@ -4247,12 +4245,11 @@ pub(super) fn rewrite_grammar_trigger_suppression_splitter_matches_keyword_stati
         .expect("grammar-owned trigger-suppression splitter should match");
 
     assert_eq!(
-        crate::runtime_backend::token_word_refs(spec.cause_tokens),
+        crate::lexer::token_word_refs(spec.cause_tokens),
         vec!["Creatures", "entering", "the", "battlefield"],
     );
     assert_eq!(
-        spec.source_filter_tokens
-            .map(crate::runtime_backend::token_word_refs),
+        spec.source_filter_tokens.map(crate::lexer::token_word_refs),
         Some(vec!["artifacts"]),
     );
 

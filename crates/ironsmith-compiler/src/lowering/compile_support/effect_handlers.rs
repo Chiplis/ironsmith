@@ -739,7 +739,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
-                            watched_tag.clone().into(),
+                            watched_tag.clone(),
                             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(ChooseSpec::Source),
                             delayed_effects,
                             *one_shot,
@@ -770,7 +770,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                     let resolved_filter = resolve_it_tag(source, &current_reference_env(ctx))?;
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
-                            watched_tag.clone().into(),
+                            watched_tag.clone(),
                             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
                                 source: crate::target::ObjectFilter::source(),
                                 player: player.clone(),
@@ -825,7 +825,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                         )?;
                         let delayed_effects = lowered.effects.to_vec();
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
-                            watched_tag.clone().into(),
+                            watched_tag.clone(),
                             ironsmith_core::DelayedTriggerSpec::ThisDies,
                             delayed_effects,
                             *one_shot,
@@ -871,7 +871,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                         )?;
                         let delayed_effects = lowered.effects.to_vec();
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
-                            watched_tag.clone().into(),
+                            watched_tag.clone(),
                             ironsmith_core::DelayedTriggerSpec::ThisDies,
                             delayed_effects,
                             *one_shot,
@@ -912,7 +912,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                         )?;
                         let delayed_effects = lowered.effects.to_vec();
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
-                            watched_tag.clone().into(),
+                            watched_tag.clone(),
                             ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield,
                             delayed_effects,
                             *one_shot,
@@ -991,7 +991,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
-                            watched_tag.clone().into(),
+                            watched_tag.clone(),
                             ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked,
                             delayed_effects,
                             *one_shot,
@@ -1022,7 +1022,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                     let resolved_target = resolve_it_tag(target, &current_reference_env(ctx))?;
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_source) {
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
-                            watched_tag.clone().into(),
+                            watched_tag.clone(),
                             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageTo {
                                 source: crate::target::ObjectFilter::source(),
                                 target: resolved_target,
@@ -1061,7 +1061,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                         };
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_source) {
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
-                            watched_tag.clone().into(),
+                            watched_tag.clone(),
                             trigger,
                             delayed_effects,
                             *one_shot,

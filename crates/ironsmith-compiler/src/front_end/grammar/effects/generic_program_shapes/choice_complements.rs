@@ -136,7 +136,7 @@ pub(crate) fn parse_party_choice_complement_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_aggregate_choice_complement_directly_to_typed_semantics() {

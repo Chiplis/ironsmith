@@ -37,7 +37,7 @@ fn parse_attached_loses_all_abilities_and_has_line(
     tokens: &[OwnedLexToken],
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if !matches!(
         words.get(..5),
         Some(["loses", "all", "abilities", "and", "has"])
@@ -69,7 +69,7 @@ fn parse_attached_combat_restriction_and_loses_all_abilities_line(
     let Some(and_idx) = (0..loss_idx).rev().find(|idx| tokens[*idx].is_word("and")) else {
         return Ok(None);
     };
-    if crate::token_word_refs(&tokens[loss_idx..]) != ["loses", "all", "abilities"]
+    if crate::lexer::token_word_refs(&tokens[loss_idx..]) != ["loses", "all", "abilities"]
     {
         return Ok(None);
     }
@@ -92,13 +92,13 @@ pub(crate) fn parse_attached_conditional_loses_all_abilities_line(
     let Some(comma_idx) = tokens.iter().position(|token| token.kind == TokenKind::Comma) else {
         return Ok(None);
     };
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if !words.starts_with(&["as", "long", "as", "enchanted"])
         && !words.starts_with(&["as", "long", "as", "equipped"])
     {
         return Ok(None);
     }
-    let tail_words = crate::token_word_refs(&tokens[comma_idx + 1..]);
+    let tail_words = crate::lexer::token_word_refs(&tokens[comma_idx + 1..]);
     if tail_words != ["it", "loses", "all", "abilities"] {
         return Ok(None);
     }
@@ -107,7 +107,7 @@ pub(crate) fn parse_attached_conditional_loses_all_abilities_line(
     if !matches!(condition, crate::ConditionExpr::AttachedToSourceMatches(_)) {
         return Ok(None);
     }
-    let subject_words = crate::token_word_refs(&condition_tokens);
+    let subject_words = crate::lexer::token_word_refs(&condition_tokens);
     let subject = subject_words
         .get(..2)
         .map(|words| words.join(" "))
@@ -390,11 +390,9 @@ pub(crate) fn display_text_for_tokens(
                     word,
                     "sacrifice" | "discard" | "exile" | "remove" | "reveal" | "pay"
                 )
-            {
-                if let Some(first) = rendered.get_mut(0..1) {
+                && let Some(first) = rendered.get_mut(0..1) {
                     first.make_ascii_uppercase();
                 }
-            }
             if capitalize_next_effect_word {
                 if let Some(first) = rendered.get_mut(0..1) {
                     first.make_ascii_uppercase();

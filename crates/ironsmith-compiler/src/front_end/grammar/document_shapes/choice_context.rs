@@ -45,7 +45,7 @@ fn chosen_option_context(input: &mut LexStream<'_>) -> WResult<ChosenOptionConte
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_case_labels_and_chosen_options_as_typed_variants() {

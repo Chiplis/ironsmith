@@ -182,7 +182,7 @@ fn first_comma_token(tokens: &[OwnedLexToken]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("lex fixture")
@@ -208,7 +208,7 @@ mod tests {
             AnthemPrefixConditionKind::DuringTurnsOtherThanYours
         );
         assert_eq!(
-            crate::runtime_backend::lexer::render_token_slice(shape.subject_tokens),
+            crate::lexer::render_token_slice(shape.subject_tokens),
             "this Vehicle is an artifact creature."
         );
 
@@ -234,7 +234,7 @@ mod tests {
 
         assert_eq!(maximum, Some(10));
         assert_eq!(
-            crate::runtime_backend::lexer::render_token_slice(body),
+            crate::lexer::render_token_slice(body),
             "for each of its creature types"
         );
     }

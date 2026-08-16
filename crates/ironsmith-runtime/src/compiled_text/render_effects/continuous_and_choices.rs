@@ -252,7 +252,7 @@ pub(super) fn describe_land_or_legendary_permanent_looked_filter(
     Some(format!("land and/or legendary permanent cards{suffix}"))
 }
 
-pub(super) fn unwrap_tag_wrapped_effect<'a>(effect: &'a Effect) -> &'a Effect {
+pub(super) fn unwrap_tag_wrapped_effect(effect: &Effect) -> &Effect {
     if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
         return unwrap_tag_wrapped_effect(&tag_all.effect);
     }
@@ -262,7 +262,7 @@ pub(super) fn unwrap_tag_wrapped_effect<'a>(effect: &'a Effect) -> &'a Effect {
     effect
 }
 
-pub(super) fn tag_all_wrapper_tag_for_effect<'a>(effect: &'a Effect) -> Option<&'a str> {
+pub(super) fn tag_all_wrapper_tag_for_effect(effect: &Effect) -> Option<&str> {
     if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
         return Some(tag_all.tag.as_str());
     }
@@ -280,10 +280,10 @@ pub(super) fn tag_all_wrapper_tag_for_effect<'a>(effect: &'a Effect) -> Option<&
 
 pub(super) fn land_move_from_chosen_effect(effect: &Effect, tag: &str) -> Option<bool> {
     let unwrapped = unwrap_tag_wrapped_effect(effect);
-    if let Some(put) = unwrapped.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>() {
-        if matches!(put.target.base(), ChooseSpec::Tagged(t) if t.as_str() == tag) {
-            return Some(put.tapped);
-        }
+    if let Some(put) = unwrapped.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
+        && matches!(put.target.base(), ChooseSpec::Tagged(t) if t.as_str() == tag)
+    {
+        return Some(put.tapped);
     }
     if let Some(move_to_zone) = unwrapped.downcast_ref::<crate::effects::MoveToZoneEffect>()
         && move_to_battlefield_uses_chosen_tag(move_to_zone, tag)
@@ -1909,10 +1909,10 @@ pub(crate) fn describe_look_at_top_then_reveal_put_matching_into_hand_rest_botto
     if reveal_tagged.tag.as_str() != look_at_top.tag.as_str()
         || tag_matching.tag.as_str() != move_matching.tag.as_str()
         || remainder.tag.as_str() != look_at_top.tag.as_str()
-        || !remainder
+        || remainder
             .keep_tagged
             .as_ref()
-            .is_some_and(|tag| tag.as_str() == tag_matching.tag.as_str())
+            .is_none_or(|tag| tag.as_str() != tag_matching.tag.as_str())
         || !for_each_moves_tag_to_hand(move_matching, tag_matching.tag.as_str())
         || tag_matching.zone != Some(Zone::Library)
     {
@@ -2198,7 +2198,7 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
         ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => {
             format!(
                 "Then {} the rest on the bottom of {owner} library{order_text}",
-                lowercase_first(&remainder_opener)
+                lowercase_first(remainder_opener)
             )
         }
         ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {
@@ -2325,7 +2325,7 @@ pub(super) fn normalize_battlefield_looked_card_description(
     card_desc: &str,
 ) -> String {
     let mut card_desc = card_desc.to_string();
-    if filter.card_types == [CardType::Artifact, CardType::Creature]
+    if (filter.card_types == [CardType::Artifact, CardType::Creature]
         || (filter.any_of.len() == 2
             && filter
                 .any_of
@@ -2334,14 +2334,12 @@ pub(super) fn normalize_battlefield_looked_card_description(
             && filter
                 .any_of
                 .iter()
-                .any(|branch| branch.card_types == [CardType::Creature]))
-    {
-        if let Some(rest) = card_desc
+                .any(|branch| branch.card_types == [CardType::Creature])))
+        && let Some(rest) = card_desc
             .strip_prefix("artifacts or creatures")
             .or_else(|| card_desc.strip_prefix("artifact or creature"))
-        {
-            card_desc = format!("artifact and/or creature card{rest}");
-        }
+    {
+        card_desc = format!("artifact and/or creature card{rest}");
     }
 
     if !card_desc.contains("mana value")
@@ -3352,9 +3350,7 @@ pub(crate) fn describe_tagged_mill_then_payment_if_you_do_put_milled_card_into_h
 pub(crate) fn describe_may_search_library_and_or_nonlibrary(
     may: &crate::effects::MayEffect,
 ) -> Option<String> {
-    fn downcast_search_library<'a>(
-        effect: &'a Effect,
-    ) -> Option<&'a crate::effects::SearchLibraryEffect> {
+    fn downcast_search_library(effect: &Effect) -> Option<&crate::effects::SearchLibraryEffect> {
         if let Some(search) = effect.downcast_ref::<crate::effects::SearchLibraryEffect>() {
             return Some(search);
         }
@@ -3364,9 +3360,7 @@ pub(crate) fn describe_may_search_library_and_or_nonlibrary(
             .downcast_ref::<crate::effects::SearchLibraryEffect>()
     }
 
-    fn downcast_move_to_zone<'a>(
-        effect: &'a Effect,
-    ) -> Option<&'a crate::effects::MoveToZoneEffect> {
+    fn downcast_move_to_zone(effect: &Effect) -> Option<&crate::effects::MoveToZoneEffect> {
         if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
             return Some(move_to_zone);
         }
@@ -3499,9 +3493,7 @@ pub(crate) fn describe_may_search_library_and_or_nonlibrary(
 pub(crate) fn describe_may_search_then_put_onto_battlefield(
     may: &crate::effects::MayEffect,
 ) -> Option<String> {
-    fn downcast_move_to_zone<'a>(
-        effect: &'a Effect,
-    ) -> Option<&'a crate::effects::MoveToZoneEffect> {
+    fn downcast_move_to_zone(effect: &Effect) -> Option<&crate::effects::MoveToZoneEffect> {
         if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
             return Some(move_to_zone);
         }
@@ -3570,9 +3562,7 @@ pub(crate) fn describe_may_search_reveal_shuffle_then_conditional_move(
     may: &crate::effects::MayEffect,
     conditional: &crate::effects::ConditionalEffect,
 ) -> Option<String> {
-    fn downcast_move_to_zone<'a>(
-        effect: &'a Effect,
-    ) -> Option<&'a crate::effects::MoveToZoneEffect> {
+    fn downcast_move_to_zone(effect: &Effect) -> Option<&crate::effects::MoveToZoneEffect> {
         if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
             return Some(move_to_zone);
         }
@@ -4193,9 +4183,7 @@ pub(super) fn describe_conditional_search_move_clause(
 pub(crate) fn describe_may_choose_reveal_and_move_to_hand(
     may: &crate::effects::MayEffect,
 ) -> Option<String> {
-    fn downcast_move_to_zone<'a>(
-        effect: &'a Effect,
-    ) -> Option<&'a crate::effects::MoveToZoneEffect> {
+    fn downcast_move_to_zone(effect: &Effect) -> Option<&crate::effects::MoveToZoneEffect> {
         if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
             return Some(move_to_zone);
         }

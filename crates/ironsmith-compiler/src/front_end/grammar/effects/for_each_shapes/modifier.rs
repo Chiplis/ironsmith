@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use crate::ConditionExpr;
 use crate::effect::Until;
 use crate::grammar::{leaf, permission_shapes, primitives};
-use crate::front_end::lexer::{OwnedLexToken, TokenKind};
+use crate::lexer::{OwnedLexToken, TokenKind};
 use crate::util::trim_edge_punctuation_tokens;
 
 #[derive(Debug, Clone, Copy)]
@@ -181,7 +181,7 @@ pub(crate) fn parse_modifier_tail_shape(tokens: &[OwnedLexToken]) -> ModifierTai
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn classifies_duration_and_dynamic_tails() {

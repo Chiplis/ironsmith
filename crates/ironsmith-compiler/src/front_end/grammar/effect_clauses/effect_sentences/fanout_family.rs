@@ -140,7 +140,7 @@ pub(crate) fn parse_same_name_fanout_filter(
     let reference = fanout_grammar::parse_same_name_reference_span(tokens).map_err(|_| {
         CardTextError::ParseError(format!(
             "missing 'that <object>' in same-name clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
     let Some(reference) = reference else {
@@ -154,7 +154,7 @@ pub(crate) fn parse_same_name_fanout_filter(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object phrase in same-name fanout clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -163,14 +163,14 @@ pub(crate) fn parse_same_name_fanout_filter(
     if cleaned_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing base object filter in same-name fanout clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
     let mut filter = parse_object_filter(&cleaned_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported same-name fanout filter (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -281,7 +281,7 @@ pub(crate) fn parse_shared_color_fanout_filter(
     let reference = fanout_grammar::parse_shares_color_reference_span(tokens).map_err(|_| {
         CardTextError::ParseError(format!(
             "missing 'it' in shares-color clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
     let Some(reference) = reference else {
@@ -295,14 +295,14 @@ pub(crate) fn parse_shared_color_fanout_filter(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object phrase in shared-color fanout clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
     let mut filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported shared-color fanout filter (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -346,7 +346,7 @@ fn split_full_shared_color_target(target: &TargetAst) -> Option<(TargetAst, Obje
 fn parse_explicit_shared_color_gets_or_gains(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words_all = crate::token_word_refs(tokens);
+    let words_all = crate::lexer::token_word_refs(tokens);
     let Some(fanout_grammar::SharedColorFanoutShape::ExplicitGetOrGain {
         verb,
         duration_tokens,
@@ -441,7 +441,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
     if let Some(effects) = parse_explicit_shared_color_gets_or_gains(tokens)? {
         return Ok(Some(effects));
     }
-    let words_all = crate::token_word_refs(tokens);
+    let words_all = crate::lexer::token_word_refs(tokens);
     let Some(shape) = fanout_grammar::parse_shared_color_fanout_shape(tokens) else {
         return Ok(None);
     };
@@ -671,18 +671,12 @@ fn lower_damage_part_shape(
         }
         fanout_grammar::DamagePartShape::TargetTokens { tokens, controller } => {
             if let Some(choice) =
-                crate::grammar::choices::parse_possessive_object_choice_tokens(
-                    &tokens,
-                )
-                && choice.actor
-                    == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
+                crate::grammar::choices::parse_possessive_object_choice_tokens(&tokens)
+                && choice.actor == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
             {
                 return Ok(Some(CompoundDamagePart::OpponentChosenTarget {
                     target: parse_target_phrase(&choice.object_tokens)?,
-                    tag: crate::util::helper_tag_for_tokens(
-                        &tokens,
-                        "opponent_chosen_target",
-                    ),
+                    tag: crate::util::helper_tag_for_tokens(&tokens, "opponent_chosen_target"),
                 }));
             }
             let mut target = parse_target_phrase(&tokens)?;
@@ -723,8 +717,8 @@ fn parse_damage_part(
     let Some(shape) = fanout_grammar::parse_damage_part_shape(tokens, false) else {
         return Ok(None);
     };
-    let result = lower_damage_part_shape(shape, player_context);
-    result
+
+    lower_damage_part_shape(shape, player_context)
 }
 
 fn damage_player_iteration_effect(filter: PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
@@ -1134,13 +1128,13 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing modifier in same-name gets clause (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
+                crate::lexer::token_word_refs(tokens).join(" ")
             ))
         })?;
     let (power, toughness) = parse_pt_modifier(modifier_word).map_err(|_| {
         CardTextError::ParseError(format!(
             "invalid power/toughness modifier in same-name gets clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
     let first_target = parse_target_phrase(&first_target_tokens)?;
@@ -1165,8 +1159,8 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
 #[cfg(test)]
 mod coordinated_target_tests {
     use super::*;
-    use crate::runtime_backend::ast::SubjectVerbRoleAst;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
+    use crate::model::ast::SubjectVerbRoleAst;
 
     #[test]
     fn prefixed_action_is_not_mistaken_for_damage_source() {
@@ -1480,6 +1474,38 @@ mod coordinated_target_tests {
                 ..
             })
         )));
+        assert!(effects.iter().all(|effect| {
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Pump { target, .. },
+                ..
+            }) = effect
+            else {
+                return false;
+            };
+            crate::reference_helpers::choose_spec_for_target(target).is_target()
+        }));
+        let (_, choices) = crate::compile_support::compile_trigger_effects(None, &parsed)
+            .expect("the typed serial targets should lower");
+        assert_eq!(choices.len(), 3, "lowered choices: {choices:#?}");
+        let (_, prepared) =
+            crate::lowering_support::rewrite_prepare_triggered_effects_for_lowering(
+                crate::cards::builders::TriggerSpec::ThisEntersBattlefield {
+                    origin_condition: None,
+                },
+                &parsed,
+                crate::model::reference_state::ReferenceImports::default(),
+            )
+            .expect("the typed serial targets should prepare");
+        let (lowered, _) =
+            crate::compile_support::materialize_prepared_triggered_effects(&prepared)
+                .expect("the prepared serial targets should materialize");
+        assert_eq!(
+            lowered.choices.len(),
+            3,
+            "prepared choices: {:#?}\nprogram: {:#?}",
+            lowered.choices,
+            lowered.effects
+        );
     }
 
     #[test]

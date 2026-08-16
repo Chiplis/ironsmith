@@ -693,8 +693,7 @@ pub(crate) fn granted_keyword_subject_is_rejected(tokens: &[OwnedLexToken]) -> b
     let has_attached_marker = words
         .iter()
         .any(|word| matches!(*word, "equipped" | "enchanted"));
-    let has_bare_mana =
-        words.iter().any(|word| *word == "mana") && !word_phrase_occurs(&words, &["mana", "value"]);
+    let has_bare_mana = words.contains(&"mana") && !word_phrase_occurs(&words, &["mana", "value"]);
     let has_rejected_word = words.iter().any(|word| {
         matches!(
             *word,
@@ -1808,11 +1807,14 @@ fn take_until_phrase<'a>(
 
 fn trim_anthem_clause_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let tokens = trim_lexed_commas(tokens);
-    let end = tokens
+    let end = if tokens
         .last()
         .is_some_and(|token| token.kind == TokenKind::Period)
-        .then_some(tokens.len().saturating_sub(1))
-        .unwrap_or(tokens.len());
+    {
+        tokens.len().saturating_sub(1)
+    } else {
+        tokens.len()
+    };
     trim_lexed_commas(&tokens[..end])
 }
 
@@ -1978,7 +1980,11 @@ fn find_no_defender_phrase(
             "can", "attack", "as", "though", "it", "didn't", "have", "defender", "as", "long", "as",
         ],
     ];
-    let phrases = if with_condition_tail { CONDITIONAL } else { BASE_IT };
+    let phrases = if with_condition_tail {
+        CONDITIONAL
+    } else {
+        BASE_IT
+    };
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
     loop {
@@ -1996,10 +2002,7 @@ fn find_no_defender_phrase(
                 .parse_next(&mut plural_candidate)
                 .is_ok()
             {
-                return Some((
-                    start,
-                    initial_len.saturating_sub(plural_candidate.len()),
-                ));
+                return Some((start, initial_len.saturating_sub(plural_candidate.len())));
             }
         }
         take_token(&mut input).ok()?;

@@ -292,7 +292,7 @@ fn parse_word_phrase(
     expected: &[&'static str],
 ) -> WResult<()> {
     for word in expected {
-        primitives::word_slice_exact(*word)
+        primitives::word_slice_exact(word)
             .void()
             .parse_next(input)?;
     }
@@ -302,7 +302,7 @@ fn parse_word_phrase(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse_tokens(raw: &str, mode: LeafPlayerReferenceMode) -> Option<LeafPlayerReference> {
         let tokens = lex_line(raw, 0).expect("lex player-subject fixture");

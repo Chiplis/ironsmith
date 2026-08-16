@@ -432,7 +432,7 @@ mod tests {
         assert!(assigned_target_ranges(&requirements, &[old_target]).is_none());
         assert_eq!(
             assigned_target_ranges_ignoring_current_legality(&requirements, &[old_target]),
-            Some(vec![0..1])
+            Some(std::iter::once(0..1).collect())
         );
     }
 

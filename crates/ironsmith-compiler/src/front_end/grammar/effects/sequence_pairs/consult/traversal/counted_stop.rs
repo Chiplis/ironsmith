@@ -3,7 +3,7 @@ use winnow::prelude::*;
 use crate::cards::builders::LibraryConsultStopRuleAst;
 use crate::effect::{EventValueSpec, Value};
 use crate::grammar::{permission_shapes, primitives, values};
-use crate::front_end::lexer::{LexStream, OwnedLexToken, TokenWordView};
+use crate::lexer::{LexStream, OwnedLexToken, TokenWordView};
 
 use super::{ConsultTraversalStopKind, ConsultTraversalStopShape, trim_commas};
 
@@ -16,8 +16,9 @@ fn prior_action_count_value(words: &[&str]) -> Option<Value> {
     for_each_words.extend(["for", "each"]);
     for_each_words.extend_from_slice(basis);
     let (value, used) =
-        crate::grammar::shared_util::count_shapes::
-            parse_for_each_count_value_words(&for_each_words)?;
+        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
+            &for_each_words,
+        )?;
     (used == for_each_words.len()).then_some(value)
 }
 

@@ -2448,7 +2448,7 @@ pub(super) fn pious_kitsune_activated_ability_removes_devotion_counter_and_gains
     crate::cost::can_pay_cost(&game, source, alice, &activated.mana_cost).expect(
         "Pious Kitsune activation should be payable with an untapped source and a devotion counter",
     );
-    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    let mut dm = crate::decision::AutoPassDecisionMaker;
     crate::special_actions::pay_total_cost_with_choice(
         &mut game,
         alice,
@@ -3405,7 +3405,7 @@ impl crate::decision::DecisionMaker for OrdealTargetBob {
                     .iter()
                     .find_map(|target| match target {
                         crate::game_state::Target::Player(player) if *player == self.bob => {
-                            Some(target.clone())
+                            Some(*target)
                         }
                         _ => None,
                     })

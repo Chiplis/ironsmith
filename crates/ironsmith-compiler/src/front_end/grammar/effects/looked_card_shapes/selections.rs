@@ -6,7 +6,7 @@ use winnow::prelude::*;
 
 use crate::cards::builders::LibraryBottomOrderAst;
 use crate::effect::ChoiceCount;
-use crate::front_end::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 
 use super::super::super::{leaf, primitives};
 
@@ -370,7 +370,7 @@ pub(crate) fn parse_opponent_revealed_card_selection_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<OpponentRevealedCardSelectionShape> {
     let tokens = trim_lexed_commas(tokens);
-    if !tokens.get(0)?.is_word("an")
+    if !tokens.first()?.is_word("an")
         || !tokens.get(1)?.is_word("opponent")
         || !tokens.get(2)?.is_word("chooses")
     {
@@ -432,7 +432,7 @@ pub(crate) fn parse_chosen_card_partition_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

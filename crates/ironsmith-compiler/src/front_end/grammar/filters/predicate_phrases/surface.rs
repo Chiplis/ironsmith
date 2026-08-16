@@ -97,7 +97,7 @@ fn dynamic_word<'a, 'p>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn recognizes_exact_prefix_and_infix_surfaces_with_winnow() {

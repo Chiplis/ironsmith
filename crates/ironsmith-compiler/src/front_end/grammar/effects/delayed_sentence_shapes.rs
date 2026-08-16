@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, LexedClause, OwnedLexToken};
+use crate::lexer::{LexStream, LexedClause, OwnedLexToken};
 use crate::target::PlayerFilter;
 
 #[path = "delayed_sentence_shapes/schedule.rs"]
@@ -625,7 +625,7 @@ pub(crate) fn parse_delayed_dies_shape(tokens: &[OwnedLexToken]) -> Option<Delay
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn tokens(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()
@@ -690,9 +690,7 @@ mod tests {
             parse_delayed_dies_after_damage_by_previous_creature_shape(shape.trigger_tokens)
                 .expect("damage-history death watcher should retain its victim domain");
         assert_eq!(
-            crate::runtime_backend::front_end::lexer::render_token_slice(
-                damage_history.victim_tokens
-            ),
+            crate::lexer::render_token_slice(damage_history.victim_tokens),
             "a creature"
         );
     }

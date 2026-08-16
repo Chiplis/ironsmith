@@ -1,11 +1,11 @@
 use crate::cards::CardDefinitionBuilder;
-use crate::diagnostics::CardTextError;
-use crate::ids::CardId;
 use crate::cst::{LevelItemKindCst, RewriteLineCst, UnsupportedLineCst};
+use crate::diagnostics::CardTextError;
 use crate::document_parser::parse_document_cst;
+use crate::ids::CardId;
 use crate::ir::ChosenOptionContext;
 use crate::lexer::{OwnedLexToken, render_token_slice};
-use crate::model::LineInfo;
+use crate::model::facts::LineInfo;
 use crate::preprocess::preprocess_document;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,19 +118,19 @@ fn convert_line(line: RewriteLineCst) -> OracleGrammarLine {
     match line {
         RewriteLineCst::Metadata(line) => {
             let (kind, value) = match line.value {
-                crate::model::MetadataLine::ManaCost(value) => ("ManaCost", value),
-                crate::model::MetadataLine::TypeLine(value) => ("TypeLine", value),
-                crate::model::MetadataLine::FirstPrintedSet(value) => {
+                crate::model::facts::MetadataLine::ManaCost(value) => ("ManaCost", value),
+                crate::model::facts::MetadataLine::TypeLine(value) => ("TypeLine", value),
+                crate::model::facts::MetadataLine::FirstPrintedSet(value) => {
                     ("FirstPrintedSet", value)
                 }
-                crate::model::MetadataLine::AttractionLights(value) => {
+                crate::model::facts::MetadataLine::AttractionLights(value) => {
                     ("AttractionLights", value)
                 }
-                crate::model::MetadataLine::PowerToughness(value) => {
+                crate::model::facts::MetadataLine::PowerToughness(value) => {
                     ("PowerToughness", value)
                 }
-                crate::model::MetadataLine::Loyalty(value) => ("Loyalty", value),
-                crate::model::MetadataLine::Defense(value) => ("Defense", value),
+                crate::model::facts::MetadataLine::Loyalty(value) => ("Loyalty", value),
+                crate::model::facts::MetadataLine::Defense(value) => ("Defense", value),
             };
             OracleGrammarLine::Metadata {
                 kind: kind.to_string(),

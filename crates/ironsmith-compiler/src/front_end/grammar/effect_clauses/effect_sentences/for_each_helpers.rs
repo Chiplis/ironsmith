@@ -39,7 +39,7 @@ fn prepend_that_player_subject(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
         TextSpan::synthetic(),
     ));
     rewritten.push(OwnedLexToken::word(
-        "players".to_string(),
+        "player".to_string(),
         TextSpan::synthetic(),
     ));
     rewritten.extend_from_slice(tokens);
@@ -59,7 +59,7 @@ pub(crate) fn parse_for_each_object_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
     let mut filter = parse_object_filter(filter_tokens, false)?;
-    let words = crate::token_word_refs(filter_tokens);
+    let words = crate::lexer::token_word_refs(filter_tokens);
     // Quantified subjects use the older family-level object-filter parser,
     // so they do not pass through the grammar filter finalizer that normally
     // restores this exact coordinated Stack domain. Reassert only the
@@ -235,7 +235,8 @@ pub(crate) fn parse_get_for_each_count_value(
     let Some(shape) = for_each_shapes::parse_for_each_target_subject_shape(tokens) else {
         return Ok(None);
     };
-    if let Some(value) = crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
+    if let Some(value) =
+        crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
     {
         return Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)));
     }
@@ -450,6 +451,36 @@ fn parse_maybe_effects(
     };
     let effects = parse_effect_chain_inner(may_tokens)?;
     Ok(vec![EffectAst::May { effects }])
+}
+
+/// Parse a coordinated action program whose actor is supplied by an outer
+/// quantified-participant clause. The wrapper owns the player subject, so
+/// each materialized member receives that subject exactly once and is parsed
+/// through the inner dispatcher. This prevents a multi-action body from
+/// rediscovering its outer `each player`/`each opponent` sentence.
+fn parse_quantified_participant_actor_program(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let plan = match super::super::grammar::effects::coordination::recognize_coordination(tokens) {
+        crate::recognition::ParseOutcome::Match(matched) => matched.value,
+        crate::recognition::ParseOutcome::NoMatch => return Ok(None),
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_legacy_error());
+        }
+    };
+    let segments = plan
+        .materialized_segments()
+        .unwrap_or_else(|| plan.member_segments());
+    if segments.len() < 2 {
+        return Ok(None);
+    }
+
+    let mut effects = Vec::new();
+    for segment in segments {
+        let normalized = prepend_that_player_subject(&segment);
+        effects.extend(parse_maybe_effects(&normalized, true, true)?);
+    }
+    Ok(Some(effects))
 }
 
 fn find_word_phrase(tokens: &[OwnedLexToken], phrase: &[&str]) -> Option<usize> {
@@ -919,7 +950,7 @@ pub(crate) fn parse_for_each_opponent_clause(
                     PlayerAst::That
                 };
                 for effect in &mut effects {
-                    bind_implicit_player_context(effect, player.clone());
+                    bind_implicit_player_context(effect, player);
                 }
                 return Ok(Some(EffectAst::ForEachOpponentDid {
                     effects,
@@ -936,12 +967,17 @@ pub(crate) fn parse_for_each_opponent_clause(
             .first()
             .is_some_and(|token| token.is_word("may"));
     let participant_chooses = for_each_shapes::starts_choose(outer.inner_tokens);
-    let normalized = if outer.participant_is_actor && !participant_may && !participant_chooses {
-        prepend_that_player_subject(outer.inner_tokens)
+    let mut effects = if outer.participant_is_actor && !participant_may && !participant_chooses {
+        if let Some(effects) = parse_quantified_participant_actor_program(outer.inner_tokens)? {
+            effects
+        } else {
+            let normalized = prepend_that_player_subject(outer.inner_tokens);
+            parse_maybe_effects(&normalized, true, true)?
+        }
     } else {
-        prepend_that_player_life_total_subject(outer.inner_tokens)
+        let normalized = prepend_that_player_life_total_subject(outer.inner_tokens);
+        parse_maybe_effects(&normalized, true, outer.participant_is_actor)?
     };
-    let mut effects = parse_maybe_effects(&normalized, false, outer.participant_is_actor)?;
     if !outer.participant_is_actor {
         // The quantified participant is the iteration key, not the actor, in
         // imperative clauses such as "For each opponent, create a token."
@@ -1168,7 +1204,7 @@ pub(crate) fn parse_for_each_player_clause(
                     PlayerAst::That
                 };
                 for effect in &mut effects {
-                    bind_implicit_player_context(effect, player.clone());
+                    bind_implicit_player_context(effect, player);
                 }
                 return Ok(Some(EffectAst::ForEachPlayerDid {
                     effects,
@@ -1185,12 +1221,17 @@ pub(crate) fn parse_for_each_player_clause(
             .first()
             .is_some_and(|token| token.is_word("may"));
     let participant_chooses = for_each_shapes::starts_choose(outer.inner_tokens);
-    let normalized = if outer.participant_is_actor && !participant_may && !participant_chooses {
-        prepend_that_player_subject(outer.inner_tokens)
+    let mut effects = if outer.participant_is_actor && !participant_may && !participant_chooses {
+        if let Some(effects) = parse_quantified_participant_actor_program(outer.inner_tokens)? {
+            effects
+        } else {
+            let normalized = prepend_that_player_subject(outer.inner_tokens);
+            parse_maybe_effects(&normalized, true, true)?
+        }
     } else {
-        prepend_that_player_life_total_subject(outer.inner_tokens)
+        let normalized = prepend_that_player_life_total_subject(outer.inner_tokens);
+        parse_maybe_effects(&normalized, true, outer.participant_is_actor)?
     };
-    let mut effects = parse_maybe_effects(&normalized, false, outer.participant_is_actor)?;
     if !outer.participant_is_actor {
         force_implicit_token_controller_you(&mut effects);
     }
@@ -1212,7 +1253,7 @@ pub(crate) fn parse_for_each_player_clause(
 #[cfg(test)]
 mod dynamic_modifier_surface_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn resolving_gets_for_each_count_keeps_authored_surface() {
@@ -1224,6 +1265,30 @@ mod dynamic_modifier_surface_tests {
 
         assert!(count.has_surface_hint(ValueSurfaceHint::ForEach));
         assert!(matches!(count.unhinted(), Value::Count(_)));
+    }
+
+    #[test]
+    fn each_player_choice_keeps_comma_separated_negative_modifiers_in_one_filter() {
+        let tokens = lex_line(
+            "Each player chooses two nontoken, non-Vehicle creatures they control.",
+            0,
+        )
+        .expect("participant choice should lex");
+        let effect = parse_for_each_player_clause(&tokens)
+            .expect("participant choice should parse")
+            .expect("participant choice should match");
+        let EffectAst::ForEachPlayer { effects } = effect else {
+            panic!("expected a player loop, got {effect:#?}");
+        };
+        let [EffectAst::ChooseObjects { filter, count, .. }] = effects.as_slice() else {
+            panic!("expected one object choice, got {effects:#?}");
+        };
+
+        assert_eq!(*count, ChoiceCount::exactly(2));
+        assert!(filter.nontoken, "{filter:#?}");
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+        assert_eq!(filter.excluded_subtypes, [crate::types::Subtype::Vehicle]);
+        assert_eq!(filter.controller, Some(PlayerFilter::IteratedPlayer));
     }
 
     #[test]
@@ -1421,7 +1486,7 @@ mod dynamic_modifier_surface_tests {
 #[cfg(test)]
 mod participant_choice_ownership_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parsed_debug(text: &str) -> String {
         let tokens = lex_line(text, 0).expect("participant choice should lex");
@@ -1448,6 +1513,45 @@ mod participant_choice_ownership_tests {
 
         let controller = parsed_debug("For each opponent, choose a creature they control.");
         assert!(controller.contains("player: You"), "{controller}");
+    }
+
+    #[test]
+    fn imperative_for_each_keeps_iterated_player_inside_object_filter() {
+        let tokens = lex_line(
+            "For each opponent, you create a token that's a copy of up to one target creature that player controls.",
+            0,
+        )
+        .expect("quantified token-copy clause should lex");
+        let effect = parse_for_each_opponent_clause(&tokens)
+            .expect("quantified token-copy clause should parse")
+            .expect("quantified token-copy clause should match");
+        let EffectAst::ForEachOpponent { effects } = effect else {
+            panic!("expected opponent iteration, got {effect:#?}");
+        };
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CreateTokenCopyFromSource { source, player, .. },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected one token-copy action, got {effects:#?}");
+        };
+        let TargetAst::WithCount(source, _) = source else {
+            panic!("expected an up-to target, got {source:#?}");
+        };
+        let TargetAst::Object(filter, _, _) = source.as_ref() else {
+            panic!("expected an object-copy target, got {source:#?}");
+        };
+        assert_eq!(filter.controller, Some(PlayerFilter::IteratedPlayer));
+        assert_eq!(*player, PlayerAst::You);
+
+        let parsed = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("public effect parser should keep the quantified program");
+        let [EffectAst::ForEachOpponent { effects }] = parsed.as_slice() else {
+            panic!("public parser split the quantified program: {parsed:#?}");
+        };
+        assert_eq!(effects.len(), 1, "{effects:#?}");
     }
 
     #[test]

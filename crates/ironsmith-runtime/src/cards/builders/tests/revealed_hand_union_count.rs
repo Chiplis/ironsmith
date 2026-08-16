@@ -25,7 +25,7 @@ fn assert_revealed_hand_union_count(card_name: &str, expected_line: &str) {
     let draw = program
         .flattened_default_effects()
         .iter()
-        .find_map(|effect| find_draw_cards(effect))
+        .find_map(find_draw_cards)
         .expect("the second sentence should remain a typed draw action");
     assert_eq!(draw.player, PlayerFilter::You);
 

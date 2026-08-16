@@ -1,4 +1,9 @@
 use crate::diagnostics::TextSpan;
+use crate::grammar::structure::{
+    parse_if_result_predicate, parse_predicate_with_grammar_entrypoint_lexed,
+    split_trailing_if_clause_lexed,
+};
+use crate::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 use crate::model::control_flow::{PermissionRelationshipAst, PreventionRelationshipAst};
 use crate::model::{ClauseActorAst, ClauseVerbAst};
 use crate::model::{
@@ -8,11 +13,6 @@ use crate::model::{
     ReplacementRelationshipAst,
 };
 use crate::recognition::{ParseDiagnostic, ParseExpectation, ParseOutcome, RuleId};
-use crate::grammar::structure::{
-    parse_if_result_predicate, parse_predicate_with_grammar_entrypoint_lexed,
-    split_trailing_if_clause_lexed,
-};
-use crate::front_end::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 
 use super::typed_clause_heads::{
     ClauseActorHeadAst, ClauseHeadFormAst, classify_typed_clause_head,
@@ -332,14 +332,11 @@ fn recognize_leading_condition(
         // delayed-program recognition, not an ordinary state condition.
         return None;
     } else {
-        let Some(condition) = parse_state_condition(
+        parse_state_condition(
             condition_tokens,
             ConditionPositionAst::Precondition,
             negated_surface,
-        ) else {
-            return None;
-        };
-        condition
+        )?
     };
     Some(ParseOutcome::matched(
         ControlFlowPlan {

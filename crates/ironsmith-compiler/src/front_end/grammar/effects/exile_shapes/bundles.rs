@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::grammar::{permission_shapes, primitives};
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,7 +159,7 @@ pub(crate) fn starts_exile_multi_target_shape(tokens: &[OwnedLexToken]) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

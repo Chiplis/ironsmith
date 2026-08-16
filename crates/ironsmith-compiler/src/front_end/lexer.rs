@@ -72,6 +72,7 @@ pub enum TokenKind {
     Tilde,
     #[token("-")]
     #[token("−")]
+    #[token("–")]
     Dash,
     #[token("—")]
     EmDash,
@@ -88,7 +89,7 @@ pub enum TokenKind {
     #[regex(r"[0-9]+", priority = 3)]
     Number,
     #[regex(
-        r"(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:[-−/](?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+)))*"
+        r"(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:(?://)|[-−/])(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+))*"
     )]
     Word,
 }
@@ -148,6 +149,11 @@ fn build_token_word_pieces(
 }
 
 pub type LexToken = OwnedLexToken;
+
+pub(crate) use crate::grammar::lexical::{
+    LexedClause, locate_token_kind, locate_token_word, locate_token_word_choice,
+    token_slice_all_are_kind, token_slice_last_is,
+};
 
 impl PartialEq<TokenKind> for OwnedLexToken {
     fn eq(&self, other: &TokenKind) -> bool {
@@ -224,6 +230,15 @@ impl OwnedLexToken {
 
     pub fn parser_text(&self) -> &str {
         self.parser_text.as_str()
+    }
+
+    pub fn mana_group_inner(&self) -> Option<&str> {
+        if self.kind != TokenKind::ManaGroup {
+            return None;
+        }
+        self.slice
+            .strip_prefix('{')
+            .and_then(|inner| inner.strip_suffix('}'))
     }
 
     pub fn parser_word_pieces(&self) -> &[TokenWordPiece] {
@@ -840,6 +855,14 @@ impl<'a> TokenWordView<'a> {
         word_slice_find_any_word(&self.words, expected)
     }
 
+    pub fn find_any_word_from(&self, expected: &[&str], start: usize) -> Option<usize> {
+        self.words
+            .get(start..)?
+            .iter()
+            .position(|word| expected.contains(word))
+            .map(|idx| start + idx)
+    }
+
     pub fn rfind_word(&self, expected: &str) -> Option<usize> {
         word_slice_rfind_word_where(&self.words, |word| word == expected)
     }
@@ -937,12 +960,20 @@ impl<'a> TokenWordView<'a> {
         self.token_start_indices.get(word_idx).copied()
     }
 
+    pub fn token_boundary_for_word(&self, word_idx: usize) -> Option<usize> {
+        self.token_index_for_word_index(word_idx)
+    }
+
     pub fn token_index_for_word_or_end(&self, word_idx: usize) -> Option<usize> {
         if word_idx == self.len() {
             Some(self.token_len)
         } else {
             self.token_index_for_word_index(word_idx)
         }
+    }
+
+    pub fn token_boundary_for_word_or_end(&self, word_idx: usize) -> Option<usize> {
+        self.token_index_for_word_or_end(word_idx)
     }
 
     pub fn token_start_indices(&self) -> &[usize] {
@@ -988,6 +1019,14 @@ impl<'a> TokenWordView<'a> {
         let end = self.token_index_after_words(end_word)?;
         Some(start..end)
     }
+
+    pub fn token_span_for_words(
+        &self,
+        start_word: usize,
+        end_word: usize,
+    ) -> Option<std::ops::Range<usize>> {
+        self.token_range_for_word_range(start_word, end_word)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1030,7 +1069,18 @@ pub fn token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     tokens.iter().filter_map(OwnedLexToken::as_word).collect()
 }
 
-pub fn parser_token_word_refs<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a str> {
+pub fn synthetic_word_tokens<I, W>(words: I) -> Vec<OwnedLexToken>
+where
+    I: IntoIterator<Item = W>,
+    W: AsRef<str>,
+{
+    words
+        .into_iter()
+        .map(|word| OwnedLexToken::synthetic_word(word.as_ref()))
+        .collect()
+}
+
+pub fn parser_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     let mut words = Vec::new();
     for token in tokens {
         for piece in token.parser_word_pieces() {
@@ -1040,7 +1090,7 @@ pub fn parser_token_word_refs<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a str> {
     words
 }
 
-pub fn parser_token_word_positions<'a>(tokens: &'a [OwnedLexToken]) -> Vec<(usize, &'a str)> {
+pub fn parser_token_word_positions(tokens: &[OwnedLexToken]) -> Vec<(usize, &str)> {
     let mut positions = Vec::new();
     for (token_idx, token) in tokens.iter().enumerate() {
         for piece in token.parser_word_pieces() {

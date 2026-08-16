@@ -79,7 +79,7 @@ pub(crate) fn parse_line_variant_split(line: &str) -> Option<LineVariantSplitSur
             "spell",
         ],
     ) && let Some((period_index, period, _)) =
-        primitives::find_prefix(&tokens, || primitives::period())
+        primitives::find_prefix(&tokens, primitives::period)
     {
         return split_surface(
             &tokens,
@@ -95,7 +95,7 @@ pub(crate) fn parse_line_variant_split(line: &str) -> Option<LineVariantSplitSur
             primitives::phrase(&["when", "you", "spend", "this", "mana", "to", "cast"]),
         )
             .map(|(period, ())| period)
-    }) && primitives::find_prefix(&tokens[..period_index], || primitives::colon()).is_some()
+    }) && primitives::find_prefix(&tokens[..period_index], primitives::colon).is_some()
     {
         return split_surface(
             &tokens,
@@ -194,7 +194,7 @@ pub(crate) fn parse_wrapped_activation_surface(text: &str) -> Option<WrappedActi
     if first.kind != TokenKind::LParen || last.kind != TokenKind::RParen {
         return None;
     }
-    primitives::find_prefix(&tokens, || primitives::colon())?;
+    primitives::find_prefix(&tokens, primitives::colon)?;
     let raw_inner = trimmed.get(first.span.end..last.span.start)?;
     let leading = raw_inner.len().saturating_sub(raw_inner.trim_start().len());
     let inner = raw_inner.trim().to_string();

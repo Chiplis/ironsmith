@@ -111,7 +111,7 @@ fn pump_filter(program: &crate::resolution::ResolutionProgram) -> &ObjectFilter 
 
     program
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(find)
         .expect("the ability should contain one set-based P/T modification")
 }
@@ -331,7 +331,7 @@ fn trailblazers_torch_uses_the_equipped_creature_as_source_and_its_blockers_as_r
     let execute = triggered
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>())
         .expect("recipient enumeration must execute with the equipped creature as source");
     assert!(

@@ -367,7 +367,7 @@ fn normalize_canonical_oracle_line(line: &str) -> String {
 pub fn load_canonical_cards(path: &str) -> Result<BTreeMap<String, CardPayload>, Box<dyn Error>> {
     let raw = fs::read_to_string(path)?;
     let cards: Vec<Value> = serde_json::from_str(&raw)?;
-    Ok(load_registry_cards_from_values(cards.into_iter())
+    Ok(load_registry_cards_from_values(cards)
         .into_iter()
         .map(|(name, record)| (name, record.payload))
         .collect())
@@ -378,7 +378,7 @@ pub fn load_registry_cards(
 ) -> Result<BTreeMap<String, RegistryCardRecord>, Box<dyn Error>> {
     let raw = fs::read_to_string(path)?;
     let cards: Vec<Value> = serde_json::from_str(&raw)?;
-    Ok(load_registry_cards_from_values(cards.into_iter()))
+    Ok(load_registry_cards_from_values(cards))
 }
 
 pub fn load_registry_cards_with_explicit_includes(
@@ -406,7 +406,7 @@ pub fn load_registry_cards_with_explicit_includes_and_cards(
         cards.push(card);
     }
     Ok(load_registry_cards_from_values_with_explicit_includes(
-        cards.into_iter(),
+        cards,
         &included_names,
     ))
 }

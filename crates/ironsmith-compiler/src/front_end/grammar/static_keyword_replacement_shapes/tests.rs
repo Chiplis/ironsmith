@@ -1,6 +1,6 @@
 use super::*;
 use crate::cards::builders::TextSpan;
-use crate::runtime_backend::front_end::lexer::lex_line;
+use crate::lexer::lex_line;
 
 fn tokens(words: &[&str]) -> Vec<OwnedLexToken> {
     words

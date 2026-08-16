@@ -80,15 +80,15 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let moves_source = matches!(self.target.base(), ChooseSpec::Source);
         let mut object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
-        if let ChooseSpec::Tagged(tag) = &self.target {
-            if let Some(tagged) = ctx.get_tagged_all(tag) {
-                for (idx, snapshot) in tagged.iter().enumerate() {
-                    if idx < object_ids.len()
-                        && game.object(object_ids[idx]).is_none()
-                        && let Some(resolved) = resolve_tagged_object_id(game, snapshot)
-                    {
-                        object_ids[idx] = resolved;
-                    }
+        if let ChooseSpec::Tagged(tag) = &self.target
+            && let Some(tagged) = ctx.get_tagged_all(tag)
+        {
+            for (idx, snapshot) in tagged.iter().enumerate() {
+                if idx < object_ids.len()
+                    && game.object(object_ids[idx]).is_none()
+                    && let Some(resolved) = resolve_tagged_object_id(game, snapshot)
+                {
+                    object_ids[idx] = resolved;
                 }
             }
         }

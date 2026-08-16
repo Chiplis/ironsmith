@@ -17,13 +17,13 @@ use crate::cards::builders::{
     TargetAst,
 };
 use crate::effect::{EventValueSpec, Value};
-use crate::object::CounterType;
 use crate::effect_sentences;
 use crate::effect_sentences::dispatch_entry::parse_consult_traversal_sentence;
 use crate::grammar::effects::generic_sequence_shapes as sequence_grammar;
+use crate::object::CounterType;
 use crate::object_filters::parse_object_filter_lexed;
-use crate::util::helper_tag_for_tokens;
 use crate::target::PlayerFilter;
+use crate::util::helper_tag_for_tokens;
 use crate::zone::Zone;
 // The PR-29 recipe-table migration still names these implementations at many
 // call sites. Keep source-compatible aliases without retaining arity as the
@@ -273,10 +273,11 @@ pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
                 PlayerAst::That,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "1/1 black Rat creature".to_string(),
-                    definition: crate::grammar::token_definitions::parse_token_definition_shape_text(
-                        "1/1 black Rat creature",
-                    )
-                    .expect("closed-form Rat token definition must remain parseable"),
+                    definition:
+                        crate::grammar::token_definitions::parse_token_definition_shape_text(
+                            "1/1 black Rat creature",
+                        )
+                        .expect("closed-form Rat token definition must remain parseable"),
                     count: Value::PendingEffectMetric {
                         source: ironsmith_core::EffectMetricSource::Outcome,
                         metric: ironsmith_core::EffectMetric::Count,
@@ -495,7 +496,7 @@ pub(crate) fn parse_damage_prevention_delayed_counter_sequence(
         return Ok(None);
     }
 
-    let words = crate::token_word_refs(sentences[sentence_idx + 1].lowered());
+    let words = crate::lexer::token_word_refs(sentences[sentence_idx + 1].lowered());
     let expected_suffix = [
         "put",
         "a",
@@ -563,8 +564,8 @@ pub(crate) fn parse_destroy_then_no_regeneration_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::token_word_refs(sentences[sentence_idx + 1].lowered());
-    if !words.last().is_some_and(|word| *word == "regenerated")
+    let words = crate::lexer::token_word_refs(sentences[sentence_idx + 1].lowered());
+    if words.last().is_none_or(|word| *word != "regenerated")
         || !matches!(words.first().copied(), Some("it" | "they" | "those"))
         || !words.iter().any(|word| matches!(*word, "cant" | "can't"))
     {
@@ -587,13 +588,16 @@ pub(crate) fn parse_destroy_then_no_regeneration_sequence(
         // clause before this two-sentence rule runs. Keep the normalized tail
         // for ordinary destroy parsing, but prove the negative Aura predicate
         // from the retained authored sentence.
-        let authored_tail = sentences[sentence_idx]
+        let authored_tail = if sentences[sentence_idx]
             .lexed()
             .first()
             .is_some_and(|token| token.is_word("destroy"))
-            .then_some(&sentences[sentence_idx].lexed()[1..])
-            .unwrap_or(first_tail);
-        let words = crate::token_word_refs(authored_tail);
+        {
+            &sentences[sentence_idx].lexed()[1..]
+        } else {
+            first_tail
+        };
+        let words = crate::lexer::token_word_refs(authored_tail);
         words
             .windows(3)
             .any(|window| window == ["that", "aren't", "enchanted"])
@@ -647,8 +651,7 @@ pub(crate) fn parse_reveal_then_exile_noncreature_nonland_hand_graveyard_sequenc
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let second_words =
-        crate::token_word_refs(sentences[sentence_idx + 1].lowered());
+    let second_words = crate::lexer::token_word_refs(sentences[sentence_idx + 1].lowered());
     if !second_words.starts_with(&["exile", "all", "noncreature", "nonland", "cards", "from"])
         || !second_words.contains(&"that")
         || !second_words.contains(&"hand")

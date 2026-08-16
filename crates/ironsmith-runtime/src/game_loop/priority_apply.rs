@@ -684,11 +684,10 @@ pub fn apply_priority_response_with_dm(
                     ));
                     continue;
                 }
-                match cost_component.processing_mode() {
-                    crate::costs::CostProcessingMode::ManaPayment { cost } => {
-                        mana_cost_to_pay = Some(cost);
-                    }
-                    _ => {}
+                if let crate::costs::CostProcessingMode::ManaPayment { cost } =
+                    cost_component.processing_mode()
+                {
+                    mana_cost_to_pay = Some(cost);
                 }
             }
 

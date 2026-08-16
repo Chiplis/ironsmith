@@ -14,8 +14,8 @@ use crate::model::object_action_clauses::{
     CompilerCreationKindAst, CompilerEntryStateAst, CompilerObjectActionClauseAst,
     CompilerObjectOperandAst,
 };
-use crate::model::provenance::SemanticProvenance;
 use crate::model::permission_clauses::CompilerPermissionClauseAst;
+use crate::model::provenance::SemanticProvenance;
 use crate::model::resource_choice_clauses::CompilerResourceChoiceClauseAst;
 use crate::model::selections::{CompilerFilterAst, CompilerSelectionAst, CompilerValueAst};
 use crate::model::symbols::SymbolReference;

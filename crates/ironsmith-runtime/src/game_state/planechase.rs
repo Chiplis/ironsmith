@@ -825,10 +825,11 @@ impl GameState {
         state.decks.remove(&player);
         state.voluntary_rolls_this_turn.remove(&player);
 
-        if !grand_melee && state.planar_controller == player {
-            if let Some(next) = next_planar_controller {
-                state.planar_controller = next;
-            }
+        if !grand_melee
+            && state.planar_controller == player
+            && let Some(next) = next_planar_controller
+        {
+            state.planar_controller = next;
         }
         let next_controller = state.planar_controller;
         if lost_face && !grand_melee {

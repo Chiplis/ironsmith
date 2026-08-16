@@ -640,12 +640,11 @@ pub(super) fn rewrite_grammar_split_labeled_effect_prefix_supports_two_word_labe
     let lexed = lex_line("Spell mastery — Draw a card.", 0)
         .expect("rewrite lexer should classify spell mastery sentence");
 
-    let stripped =
-        crate::runtime_backend::grammar::effects::split_labeled_effect_prefix_lexed(&lexed)
-            .expect("spell mastery label should be stripped by grammar helper");
+    let stripped = crate::grammar::effects::split_labeled_effect_prefix_lexed(&lexed)
+        .expect("spell mastery label should be stripped by grammar helper");
 
     assert_eq!(
-        crate::runtime_backend::token_word_refs(stripped)
+        crate::lexer::token_word_refs(stripped)
             .into_iter()
             .map(|word| word.to_ascii_lowercase())
             .collect::<Vec<_>>(),
@@ -1188,29 +1187,33 @@ pub(super) fn rewrite_activation_cost_parses_energy_and_counter_variants() {
 
     assert!(matches!(
         energy.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Energy(2)]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Energy(2)]
     ));
     assert!(matches!(
         bare_energy.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Energy(2)]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Energy(2)]
     ));
     assert!(matches!(
         counter_add.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::PutCounters {
-            counter_type: CounterType::PlusOnePlusOne,
-            count: 1
-        }]
+        [
+            crate::grammar::activation_costs::ActivationCostSegmentCst::PutCounters {
+                counter_type: CounterType::PlusOnePlusOne,
+                count: 1
+            }
+        ]
     ));
     assert!(matches!(
         counter_remove.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::RemoveCounters {
-            counter_type: CounterType::PlusOnePlusOne,
-            count: 1
-        }]
+        [
+            crate::grammar::activation_costs::ActivationCostSegmentCst::RemoveCounters {
+                counter_type: CounterType::PlusOnePlusOne,
+                count: 1
+            }
+        ]
     ));
     assert!(matches!(
         counter_remove_unspecified.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::RemoveCountersAmong {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::RemoveCountersAmong {
             counter_type: None,
             count: 1,
             filter,
@@ -1221,25 +1224,25 @@ pub(super) fn rewrite_activation_cost_parses_energy_and_counter_variants() {
     ));
     assert!(matches!(
         exile_hand.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::ExileFromHand {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::ExileFromHand {
             count: 1,
             color_filter: Some(colors)
         }] if *colors == crate::color::ColorSet::BLUE
     ));
     assert!(matches!(
         reveal_source.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::RevealSourceFromHand]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::RevealSourceFromHand]
     ));
     assert!(matches!(
         reveal_typed_source.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::RevealSourceFromHand]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::RevealSourceFromHand]
     ));
 
     let reveal_x_green = parse_activation_cost_rewrite("Reveal X green cards from your hand")
         .expect("parser should parse reveal-X-color-from-hand costs");
     assert!(matches!(
         reveal_x_green.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::RevealFromHand {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::RevealFromHand {
             count: Value::X,
             color_filter: Some(colors),
             card_type: None,
@@ -1264,19 +1267,17 @@ pub(super) fn rewrite_activation_cost_parses_pay_mana_life_exert_and_bare_symbol
 
     assert!(matches!(
         pay_life.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Life(Value::Fixed(
-            3
-        ))]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Life(Value::Fixed(3))]
     ));
     match pay_mana.segments.as_slice() {
-        [super::super::ActivationCostSegmentCst::Mana(cost)] => assert_eq!(
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Mana(cost)] => assert_eq!(
             cost.pips(),
             vec![vec![ManaSymbol::White], vec![ManaSymbol::Blue]]
         ),
         other => panic!("expected mana payment, got {other:?}"),
     }
     match bare_mana.segments.as_slice() {
-        [super::super::ActivationCostSegmentCst::Mana(cost)] => assert_eq!(
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Mana(cost)] => assert_eq!(
             cost.pips(),
             vec![vec![ManaSymbol::White], vec![ManaSymbol::Blue]]
         ),
@@ -1284,15 +1285,15 @@ pub(super) fn rewrite_activation_cost_parses_pay_mana_life_exert_and_bare_symbol
     }
     assert!(matches!(
         tap.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Tap]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Tap]
     ));
     assert!(matches!(
         untap.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Untap]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Untap]
     ));
     assert!(matches!(
         exert.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::ExertSelf { display_text }]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::ExertSelf { display_text }]
             if display_text == "Exert this creature"
     ));
 }
@@ -1310,22 +1311,26 @@ pub(super) fn rewrite_activation_cost_parses_loyalty_shorthand_without_fallback_
 
     assert!(matches!(
         plus.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::PutCounters {
-            counter_type: CounterType::Loyalty,
-            count: 1
-        }]
+        [
+            crate::grammar::activation_costs::ActivationCostSegmentCst::PutCounters {
+                counter_type: CounterType::Loyalty,
+                count: 1
+            }
+        ]
     ));
     assert!(matches!(
         minus.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::RemoveCounters {
-            counter_type: CounterType::Loyalty,
-            count: 2
-        }]
+        [
+            crate::grammar::activation_costs::ActivationCostSegmentCst::RemoveCounters {
+                counter_type: CounterType::Loyalty,
+                count: 2
+            }
+        ]
     ));
     assert!(matches!(
         minus_x.segments.as_slice(),
         [
-            super::super::ActivationCostSegmentCst::RemoveCountersDynamic {
+            crate::grammar::activation_costs::ActivationCostSegmentCst::RemoveCountersDynamic {
                 counter_type: Some(CounterType::Loyalty),
                 display_x: true,
                 ..
@@ -1362,8 +1367,8 @@ pub(super) fn rewrite_activation_cost_preserves_shard_style_full_cost_branches()
     {
         match branch.segments.as_slice() {
             [
-                super::super::ActivationCostSegmentCst::Mana(cost),
-                super::super::ActivationCostSegmentCst::Tap,
+                crate::grammar::activation_costs::ActivationCostSegmentCst::Mana(cost),
+                crate::grammar::activation_costs::ActivationCostSegmentCst::Tap,
             ] => assert_eq!(cost.pips(), vec![vec![symbol]]),
             other => panic!("expected mana plus tap alternative branch, got {other:?}"),
         }
@@ -1394,9 +1399,11 @@ pub(super) fn rewrite_activation_cost_preserves_alternative_and_dynamic_life_bra
         .expect("activation-cost grammar should parse dynamic life payments");
     assert!(matches!(
         dynamic.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Life(
-            Value::CardsInHand(crate::target::PlayerFilter::You)
-        )]
+        [
+            crate::grammar::activation_costs::ActivationCostSegmentCst::Life(Value::CardsInHand(
+                crate::target::PlayerFilter::You
+            ))
+        ]
     ));
 }
 
@@ -1408,7 +1415,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_pay_bare_symbol_an
         .expect("token activation-cost parser should parse counted-energy costs");
     assert!(matches!(
         pay_energy_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Energy(2)]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Energy(2)]
     ));
 
     let pay_mana_tokens =
@@ -1416,7 +1423,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_pay_bare_symbol_an
     let pay_mana_cst = parse_activation_cost_tokens_rewrite(&pay_mana_tokens)
         .expect("token activation-cost parser should parse mana-payment costs");
     match pay_mana_cst.segments.as_slice() {
-        [super::super::ActivationCostSegmentCst::Mana(cost)] => assert_eq!(
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Mana(cost)] => assert_eq!(
             cost.pips(),
             vec![vec![ManaSymbol::White], vec![ManaSymbol::Blue]]
         ),
@@ -1428,7 +1435,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_pay_bare_symbol_an
         .expect("token activation-cost parser should parse tap-symbol costs");
     assert!(matches!(
         tap_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Tap]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Tap]
     ));
 
     let untap_tokens =
@@ -1437,7 +1444,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_pay_bare_symbol_an
         .expect("token activation-cost parser should parse untap-symbol costs");
     assert!(matches!(
         untap_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Untap]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Untap]
     ));
 
     let exert_tokens =
@@ -1446,7 +1453,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_pay_bare_symbol_an
         .expect("token activation-cost parser should parse exert costs");
     assert!(matches!(
         exert_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::ExertSelf { display_text }]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::ExertSelf { display_text }]
             if display_text == "Exert this creature"
     ));
 }
@@ -1460,7 +1467,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_preserves_named_card_comm
 
     assert!(matches!(
         cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::DiscardFiltered {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::DiscardFiltered {
             name: Some(name),
             ..
         }] if name == "mishra, lost to phyrexia"
@@ -1488,12 +1495,16 @@ pub(super) fn rewrite_activation_cost_preserves_named_card_and_followup_segments
 
     match cost.segments.as_slice() {
         [
-            super::super::ActivationCostSegmentCst::DiscardFiltered {
+            crate::grammar::activation_costs::ActivationCostSegmentCst::DiscardFiltered {
                 name: Some(name),
                 other,
                 ..
             },
-            super::super::ActivationCostSegmentCst::SacrificeChosen { count, filter, .. },
+            crate::grammar::activation_costs::ActivationCostSegmentCst::SacrificeChosen {
+                count,
+                filter,
+                ..
+            },
         ] => {
             assert_eq!(name, "skoa, embermage");
             assert!(*other, "expected 'another' modifier to be preserved");
@@ -1525,7 +1536,7 @@ pub(super) fn rewrite_activation_cost_preserves_top_only_graveyard_selection_thr
         .expect("activation-cost parser should preserve the ordered source");
     assert!(matches!(
         cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::ExileChosen {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::ExileChosen {
             choice_count,
             filter,
             top_only: true,
@@ -1535,7 +1546,7 @@ pub(super) fn rewrite_activation_cost_preserves_top_only_graveyard_selection_thr
             && filter.card_types == [CardType::Creature]
     ));
 
-    let lowered = super::super::parse_activation_cost(&tokens)
+    let lowered = crate::activation_and_restrictions::parse_activation_cost(&tokens)
         .expect("ordered graveyard activation cost should lower");
     let choose = lowered
         .as_all()
@@ -1589,7 +1600,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
         .expect("token activation-cost parser should parse tap-chosen costs");
     assert!(matches!(
         tap_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::TapChosen {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::TapChosen {
             count: 1,
             filter,
         }] if filter.card_types == [CardType::Creature]
@@ -1604,7 +1615,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
         .expect("token activation-cost parser should parse return-to-hand costs");
     assert!(matches!(
         return_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::ReturnChosenToHand { count: 1, filter }]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::ReturnChosenToHand { count: 1, filter }]
             if filter.card_types == [CardType::Creature]
                 && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
@@ -1615,7 +1626,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
         .expect("token activation-cost parser should parse exile-from-graveyard costs");
     assert!(matches!(
         exile_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::ExileChosen {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::ExileChosen {
             choice_count,
             filter,
             top_only: false,
@@ -1631,7 +1642,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
         .expect("token activation-cost parser should parse single-graveyard exile costs");
     assert!(matches!(
         single_graveyard_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::ExileChosen {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::ExileChosen {
             choice_count,
             filter,
             top_only: false,
@@ -1643,7 +1654,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
 
     let exile_hand_tokens = lex_line("Exile a nonland card from your hand", 0)
         .expect("lexer should classify exile-from-hand activation cost");
-    let lowered = super::super::parse_activation_cost(&exile_hand_tokens)
+    let lowered = crate::activation_and_restrictions::parse_activation_cost(&exile_hand_tokens)
         .expect("activation-cost parser should support exiling a filtered card from hand");
     let hand_choice = lowered
         .as_all()
@@ -1663,7 +1674,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
 
     let exile_spell_tokens = lex_line("Exile an instant or sorcery spell you control", 0)
         .expect("lexer should classify exile-spell activation cost");
-    let lowered = super::super::parse_activation_cost(&exile_spell_tokens)
+    let lowered = crate::activation_and_restrictions::parse_activation_cost(&exile_spell_tokens)
         .expect("activation-cost parser should support exiling a controlled spell");
     let lowered_debug = format!("{lowered:#?}");
     let lowered_debug_compact = lowered_debug.split_whitespace().collect::<String>();
@@ -1686,7 +1697,11 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
         .expect("token activation-cost parser should parse exile-top-library costs");
     assert!(matches!(
         top_library_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::ExileTopLibrary { count: 2 }]
+        [
+            crate::grammar::activation_costs::ActivationCostSegmentCst::ExileTopLibrary {
+                count: 2
+            }
+        ]
     ));
 }
 
@@ -1698,7 +1713,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
         .expect("token activation-cost parser should parse put-counter costs");
     assert!(matches!(
         put_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::PutCountersChosen {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::PutCountersChosen {
             counter_type: CounterType::PlusOnePlusOne,
             count: 1,
             filter,
@@ -1746,7 +1761,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
         .expect("token activation-cost parser should parse processor costs");
     assert!(matches!(
         processor_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard]
     ));
 
     let remove_tokens = lex_line(
@@ -1758,7 +1773,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
         .expect("token activation-cost parser should parse remove-counter costs");
     assert!(matches!(
         remove_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::RemoveCountersAmong {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::RemoveCountersAmong {
             counter_type: Some(CounterType::Charge),
             count: 0,
             filter,
@@ -1778,7 +1793,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
         .expect("token activation-cost parser should parse one-or-more remove-counter costs");
     assert!(matches!(
         one_or_more_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::RemoveCountersAmong {
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::RemoveCountersAmong {
             counter_type: Some(CounterType::PlusOnePlusOne),
             count: 1,
             filter,
@@ -1800,7 +1815,7 @@ pub(super) fn rewrite_activation_cost_parser_keeps_among_list_with_commas_in_one
     let cst = parse_activation_cost_tokens_rewrite(&tokens)
         .expect("activation-cost parser should keep among-list as one segment");
     let [
-        super::super::ActivationCostSegmentCst::RemoveCountersAmong {
+        crate::grammar::activation_costs::ActivationCostSegmentCst::RemoveCountersAmong {
             counter_type: None,
             count: 3,
             filter,
@@ -1830,15 +1845,17 @@ pub(super) fn rewrite_activation_cost_shared_parser_supports_behold_costs() {
         .expect("shared activation-cost parser should support behold costs");
     assert!(matches!(
         cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Behold {
-            subtype: Subtype::Elemental,
-            count: 1
-        }]
+        [
+            crate::grammar::activation_costs::ActivationCostSegmentCst::Behold {
+                subtype: Subtype::Elemental,
+                count: 1
+            }
+        ]
     ));
 
     let tokens =
         lex_line("Behold an Elemental", 0).expect("lexer should classify behold activation cost");
-    let lowered = super::super::parse_activation_cost(&tokens)
+    let lowered = crate::activation_and_restrictions::parse_activation_cost(&tokens)
         .expect("activated ability entrypoint should use shared behold cost parser");
     assert!(
         !lowered.is_free(),
@@ -1852,11 +1869,11 @@ pub(super) fn rewrite_activation_cost_shared_parser_supports_blight_costs() {
         .expect("shared activation-cost parser should support blight costs");
     assert!(matches!(
         cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Blight { count: 1 }]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Blight { count: 1 }]
     ));
 
     let tokens = lex_line("Blight 1", 0).expect("lexer should classify blight activation cost");
-    let lowered = super::super::parse_activation_cost(&tokens)
+    let lowered = crate::activation_and_restrictions::parse_activation_cost(&tokens)
         .expect("activated ability entrypoint should use shared blight cost parser");
     assert!(
         !lowered.is_free(),
@@ -1880,7 +1897,7 @@ pub(super) fn rewrite_activation_cost_shared_parser_supports_mill_costs() {
         .expect("shared activation-cost parser should support mill costs");
     assert!(matches!(
         cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Mill(2)]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Mill(2)]
     ));
 
     let tokens = lex_line("Mill two cards", 0).expect("lexer should classify mill activation cost");
@@ -1888,10 +1905,10 @@ pub(super) fn rewrite_activation_cost_shared_parser_supports_mill_costs() {
         .expect("token activation-cost parser should support mill costs");
     assert!(matches!(
         token_cst.segments.as_slice(),
-        [super::super::ActivationCostSegmentCst::Mill(2)]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Mill(2)]
     ));
 
-    let lowered = super::super::parse_activation_cost(&tokens)
+    let lowered = crate::activation_and_restrictions::parse_activation_cost(&tokens)
         .expect("activated ability entrypoint should use shared mill cost parser");
     assert!(
         !lowered.is_free(),
@@ -2597,7 +2614,7 @@ pub(super) fn rewrite_semantic_parse_keeps_triggered_double_sweep_body() -> Resu
         "At the beginning of each combat, double the power and toughness of each creature you control until end of turn.".to_string(),
         false,
     )?;
-    let parsed = super::super::pipeline::parse_semantic_document(doc)?;
+    let parsed = crate::compiler_pipeline::parse_semantic_document(doc)?;
 
     match parsed.items.as_slice() {
         [crate::cards::builders::ParsedCardItem::Line(line)] => {
@@ -2620,7 +2637,7 @@ pub(super) fn rewrite_semantic_parse_keeps_triggered_triple_sweep_body() -> Resu
         "At the beginning of each combat, triple the power and toughness of each creature you control until end of turn.".to_string(),
         false,
     )?;
-    let parsed = super::super::pipeline::parse_semantic_document(doc)?;
+    let parsed = crate::compiler_pipeline::parse_semantic_document(doc)?;
 
     match parsed.items.as_slice() {
         [crate::cards::builders::ParsedCardItem::Line(line)] => {
@@ -2716,7 +2733,7 @@ pub(super) fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Resu
         "Landfall — Whenever a land you control enters, create a colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.".to_string(),
         false,
     )?;
-    let parsed = super::super::pipeline::parse_semantic_document(doc)?;
+    let parsed = crate::compiler_pipeline::parse_semantic_document(doc)?;
 
     let expect_toggo_token_shape = |effects: &[crate::cards::builders::EffectAst]| match effects {
         [
@@ -2737,7 +2754,7 @@ pub(super) fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Resu
                 lower_name.contains("named rock"),
                 "expected named rock token payload, got {name}"
             );
-            let super::super::token_definition::TokenDefinitionSpec::Artifact(artifact) =
+            let crate::model::token_definition::TokenDefinitionSpec::Artifact(artifact) =
                 definition
             else {
                 panic!("expected typed artifact token definition, got {definition:?}");
@@ -2750,8 +2767,8 @@ pub(super) fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Resu
                 .expect("Toggo should carry typed equipment rules before lowering");
             assert!(equipment.lines.iter().any(|line| matches!(
                 line,
-                super::super::token_definition::EquipmentRuleLineShape::GrantedDamage {
-                    grant: super::super::token_definition::EquipmentDamageGrantShape {
+                crate::model::token_definition::EquipmentRuleLineShape::GrantedDamage {
+                    grant: crate::model::token_definition::EquipmentDamageGrantShape {
                         generic_amount: Some(1),
                         tap_cost: true,
                         sacrifice_equipment: true,
@@ -2762,8 +2779,8 @@ pub(super) fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Resu
             )));
             assert!(equipment.lines.iter().any(|line| matches!(
                 line,
-                super::super::token_definition::EquipmentRuleLineShape::Equip(
-                    super::super::token_definition::TokenEquipShape { amount: 1 }
+                crate::model::token_definition::EquipmentRuleLineShape::Equip(
+                    crate::model::token_definition::TokenEquipShape { amount: 1 }
                 )
             )));
         }
@@ -2773,7 +2790,7 @@ pub(super) fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Resu
     match parsed.items.as_slice() {
         [crate::cards::builders::ParsedCardItem::Line(line)] => match line.chunks.as_slice() {
             [crate::cards::builders::LineAst::Triggered { effects, .. }] => {
-                expect_toggo_token_shape(&effects);
+                expect_toggo_token_shape(effects);
             }
             [crate::cards::builders::LineAst::Ability(parsed)] => {
                 let Some(effects) = parsed.effects_ast.as_ref() else {
@@ -3235,7 +3252,7 @@ pub(super) fn rewrite_preprocess_expands_same_is_true_static_delve_exile_chain()
     for preposition in ["with", "by"] {
         let def = CardDefinitionBuilder::new(CardId::new(), "Soulflayer Variant")
             .card_types(vec![CardType::Creature])
-            .parse_text(&format!(
+            .parse_text(format!(
                 "Delve\nIf a creature card with flying was exiled {preposition} this creature's delve ability, this creature has flying. The same is true for first strike and vigilance.",
             ))
             .expect("same-is-true delve-linked exile chain should parse");
@@ -3262,7 +3279,7 @@ pub(super) fn parse_choose_then_do_same_for_filter_splits_one_of_mana_values() {
     )
     .expect("choose-then-do-the-same sentence should lex");
 
-    let effects = super::super::parse_sentence_choose_then_do_same_for_filter(
+    let effects = crate::effect_sentences::parse_sentence_choose_then_do_same_for_filter(
         super::super::effect_sentences::SubjectVerbPrimitiveClause::new(&tokens),
     )
     .expect("choose-then-do-the-same primitive should not error")
@@ -3289,7 +3306,7 @@ pub(super) fn parse_choose_then_do_same_for_filter_building_blocks_match() {
         0,
     )
     .expect("head clause should lex");
-    let head_parsed = super::super::parse_you_choose_objects_clause(&head)
+    let head_parsed = crate::activation_and_restrictions::parse_you_choose_objects_clause(&head)
         .expect("head choose helper should not error");
     assert!(
         head_parsed.is_some(),
@@ -3299,7 +3316,8 @@ pub(super) fn parse_choose_then_do_same_for_filter_building_blocks_match() {
     let tail =
         lex_line("creature cards with mana value 2 and 3", 0).expect("tail filter should lex");
     let tail_filter =
-        super::super::parse_object_filter(&tail, false).expect("tail filter should parse");
+        crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(&tail, false)
+            .expect("tail filter should parse");
     assert!(
         tail_filter.zone == Some(crate::zone::Zone::Battlefield)
             && tail_filter.owner.is_none()
@@ -3321,7 +3339,8 @@ pub(super) fn rewrite_grammar_unique_hand_leader_predicate_parses() {
         .expect("rewrite lexer should classify unique hand-leader predicate");
 
     assert_eq!(
-        super::super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+            .expect("predicate should parse"),
         crate::cards::builders::PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
             player: crate::cards::builders::PlayerAst::Any,
         }
@@ -3334,7 +3353,8 @@ pub(super) fn rewrite_grammar_unique_life_leader_predicate_parses() {
         .expect("rewrite lexer should classify unique life-leader predicate");
 
     assert_eq!(
-        super::super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+            .expect("predicate should parse"),
         crate::cards::builders::PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
             player: crate::cards::builders::PlayerAst::Any,
         }
@@ -3346,7 +3366,8 @@ pub(super) fn rewrite_grammar_unique_creature_control_leader_predicate_parses() 
     let tokens = lex_line("a player controls more creatures than each other player", 0)
         .expect("rewrite lexer should classify unique creature-control leader predicate");
 
-    let parsed = super::super::parse_predicate_lexed(&tokens).expect("predicate should parse");
+    let parsed = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+        .expect("predicate should parse");
     assert!(
         matches!(
             parsed,
@@ -3365,7 +3386,8 @@ pub(super) fn rewrite_grammar_no_opponent_has_more_life_than_that_player_predica
         .expect("rewrite lexer should classify no-opponent life predicate");
 
     assert_eq!(
-        super::super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+            .expect("predicate should parse"),
         crate::cards::builders::PredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
             player: crate::cards::builders::PlayerAst::That,
         }
@@ -3378,7 +3400,8 @@ pub(super) fn rewrite_grammar_opponent_has_zero_or_less_life_predicate_parses() 
         .expect("rewrite lexer should classify opponent life-threshold predicate");
 
     assert_eq!(
-        super::super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+            .expect("predicate should parse"),
         crate::cards::builders::PredicateAst::ValueComparison {
             left: crate::effect::Value::LifeTotal(crate::filter::PlayerFilter::Opponent),
             operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
@@ -3447,7 +3470,8 @@ pub(super) fn rewrite_grammar_battlefield_count_predicate_parses_other_creatures
 
     let debug = format!(
         "{:?}",
-        super::super::parse_predicate_lexed(&tokens).expect("predicate should parse")
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+            .expect("predicate should parse")
     );
     assert!(debug.contains("ValueComparison"), "{debug}");
     assert!(debug.contains("other: true"), "{debug}");
@@ -3463,7 +3487,8 @@ pub(super) fn rewrite_grammar_permanent_you_controlled_left_battlefield_predicat
     .expect("rewrite lexer should classify revolt-style permanent-left predicate");
 
     assert_eq!(
-        super::super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+            .expect("predicate should parse"),
         crate::cards::builders::PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
             surface: crate::PermanentLeftBattlefieldControlSurface::YouControlledLeft,
         }
@@ -3478,7 +3503,8 @@ pub(super) fn rewrite_grammar_land_you_controlled_put_into_graveyard_predicate_p
     )
     .expect("rewrite lexer should classify land graveyard-history predicate");
 
-    let parsed = super::super::parse_predicate_lexed(&tokens).expect("predicate should parse");
+    let parsed = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+        .expect("predicate should parse");
     let debug = format!("{parsed:?}");
 
     assert!(
@@ -3499,7 +3525,8 @@ pub(super) fn rewrite_grammar_creature_card_put_into_your_graveyard_from_anywher
     .expect("rewrite lexer should classify creature-card graveyard-history predicate");
 
     assert_eq!(
-        super::super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+            .expect("predicate should parse"),
         crate::cards::builders::PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn
     );
 }
@@ -3512,7 +3539,8 @@ pub(super) fn rewrite_grammar_artifact_entered_under_your_control_predicate_pars
     )
     .expect("rewrite lexer should classify artifact-entered predicate");
 
-    let parsed = super::super::parse_predicate_lexed(&tokens).expect("predicate should parse");
+    let parsed = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+        .expect("predicate should parse");
     let debug = format!("{parsed:?}");
 
     assert!(
@@ -3528,7 +3556,8 @@ pub(super) fn rewrite_grammar_you_lost_life_this_turn_threshold_predicate_parses
     let tokens = lex_line("you lost 2 or more life this turn", 0)
         .expect("rewrite lexer should classify life-lost threshold predicate");
 
-    let parsed = super::super::parse_predicate_lexed(&tokens).expect("predicate should parse");
+    let parsed = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+        .expect("predicate should parse");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("ValueComparison"), "{debug}");
@@ -3545,7 +3574,8 @@ pub(super) fn rewrite_grammar_conjoined_named_spells_cast_this_turn_predicate_pa
     )
     .expect("rewrite lexer should classify conjoined named-spell predicate");
 
-    let parsed = super::super::parse_predicate_lexed(&tokens).expect("predicate should parse");
+    let parsed = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+        .expect("predicate should parse");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("And("), "{debug}");
@@ -3560,7 +3590,8 @@ pub(super) fn rewrite_grammar_no_permanents_left_battlefield_this_turn_predicate
         .expect("rewrite lexer should classify the global no-permanents-left predicate");
 
     assert_eq!(
-        super::super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
+            .expect("predicate should parse"),
         crate::cards::builders::PredicateAst::Not(Box::new(
             crate::cards::builders::PredicateAst::PermanentLeftBattlefieldThisTurn,
         ))
@@ -3574,7 +3605,7 @@ pub(super) fn rewrite_parse_subject_player_with_most_cards_in_hand() {
 
     assert_eq!(
         super::super::util::parse_subject(&tokens),
-        super::super::SubjectAst::Player(crate::cards::builders::PlayerAst::MostCardsInHand)
+        crate::util::SubjectAst::Player(crate::cards::builders::PlayerAst::MostCardsInHand)
     );
 }
 
@@ -3585,7 +3616,7 @@ pub(super) fn rewrite_parse_subject_with_most_life() {
 
     assert_eq!(
         super::super::util::parse_subject(&tokens),
-        super::super::SubjectAst::Player(crate::cards::builders::PlayerAst::MostLifeTied)
+        crate::util::SubjectAst::Player(crate::cards::builders::PlayerAst::MostLifeTied)
     );
 }
 
@@ -3675,7 +3706,7 @@ pub(super) fn rewrite_lexed_trigger_clause_accepts_attack_target_tail() {
     let tokens = lex_line("this creature attacks a player", 0)
         .expect("rewrite lexer should classify attack trigger clause");
 
-    let parsed = super::super::parse_trigger_clause_lexed(&tokens)
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("attack trigger clause with player tail should parse");
 
     assert!(matches!(
@@ -3692,7 +3723,7 @@ pub(super) fn rewrite_lexed_trigger_clause_keeps_attacked_player_land_count_gate
     )
     .expect("rewrite lexer should classify attack trigger clause");
 
-    let parsed = super::super::parse_trigger_clause_lexed(&tokens)
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("attack trigger clause with defending-player land count should parse");
 
     match parsed {
@@ -3715,7 +3746,7 @@ pub(super) fn rewrite_lexed_trigger_clause_keeps_attacked_player_relative_life_g
     )
     .expect("rewrite lexer should classify relative-life attack trigger clause");
 
-    let parsed = super::super::parse_trigger_clause_lexed(&tokens)
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("relative-life attack trigger clause should parse");
 
     match parsed {

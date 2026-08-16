@@ -310,7 +310,7 @@ pub(super) fn calculate_with_layers(
                     .expect("baseline should exist when dependency sorting needs it");
                 sort_layer_effects_with_baseline_and_started_groups(
                     layer_effects,
-                    &baseline,
+                    baseline,
                     ctx.objects,
                     ctx.game,
                     &started_groups,
@@ -1620,7 +1620,7 @@ pub(super) fn resolve_value_with_context(
                                 | Subtype::Mountain
                                 | Subtype::Forest
                         ) {
-                            seen.insert(subtype.clone());
+                            seen.insert(*subtype);
                         }
                     }
                 }
@@ -1768,10 +1768,10 @@ pub(super) fn resolve_value_with_context(
 
             let mut seen: HashSet<i32> = HashSet::new();
             for_each_filter_candidate(ctx, filter, |obj| {
-                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
-                    if let Some(power) = ctx.game.calculated_power(obj.id).or_else(|| obj.power()) {
-                        seen.insert(power);
-                    }
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game)
+                    && let Some(power) = ctx.game.calculated_power(obj.id).or_else(|| obj.power())
+                {
+                    seen.insert(power);
                 }
             });
             seen.len() as i32
@@ -2921,18 +2921,18 @@ pub(super) fn ability_counter_timestamps(
     let mut counters: Vec<_> = object
         .counters
         .iter()
-        .filter_map(|(&counter_type, &count)| {
-            (count > 0
+        .filter(|&(&counter_type, &count)| {
+            count > 0
                 && (counter_type == CounterType::Decayed
-                    || counter_type.granted_ability().is_some()))
-            .then(|| {
-                (
-                    manager
-                        .get_counter_timestamp(object.id, counter_type)
-                        .unwrap_or(0),
-                    counter_type,
-                )
-            })
+                    || counter_type.granted_ability().is_some())
+        })
+        .map(|(&counter_type, _)| {
+            (
+                manager
+                    .get_counter_timestamp(object.id, counter_type)
+                    .unwrap_or(0),
+                counter_type,
+            )
         })
         .collect();
     counters.sort_by(

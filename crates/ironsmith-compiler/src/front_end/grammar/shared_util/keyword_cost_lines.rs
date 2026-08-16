@@ -1,12 +1,12 @@
 use crate::ability::{Ability, AbilityKind, ActivationTiming};
+use crate::activation_and_restrictions::activated_line_core::parse_activation_cost;
+use crate::activation_and_restrictions::parse_payment_clause_as_total_cost;
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::builders::{CardTextError, ParsedAbility, ReferenceImports};
 use crate::cost::{OptionalCost, TotalCost};
 use crate::costs::Cost;
 use crate::effect::{Effect, Value};
 use crate::filter::Comparison;
-use crate::activation_and_restrictions::activated_line_core::parse_activation_cost;
-use crate::families::activation_and_restrictions::parse_payment_clause_as_total_cost;
 use crate::grammar::{leaf, permission_shapes};
 use crate::lexer::{OwnedLexToken, TokenKind, TokenWordView, render_token_slice};
 use crate::static_abilities::StaticAbility;
@@ -408,11 +408,11 @@ enum ReminderBoundary {
     MayPayOrPeriod,
 }
 
-fn keyword_cost_clause<'a>(
-    tokens: &'a [OwnedLexToken],
+fn keyword_cost_clause(
+    tokens: &[OwnedLexToken],
     first_cost_token: usize,
     boundary: ReminderBoundary,
-) -> &'a [OwnedLexToken] {
+) -> &[OwnedLexToken] {
     let mut start = first_cost_token.min(tokens.len());
     if tokens
         .get(start)

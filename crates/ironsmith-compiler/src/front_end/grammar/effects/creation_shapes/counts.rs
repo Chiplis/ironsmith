@@ -20,9 +20,7 @@ fn parse_counter_count(tokens: &[OwnedLexToken]) -> Option<Value> {
     let mut idx = usize::from(surface.first_is(CreationWordClass::SourceCounterLeading));
     let counter_type = words
         .get(idx)
-        .and_then(|word| {
-            crate::util::parse_counter_type_word(word)
-        })
+        .and_then(|word| crate::util::parse_counter_type_word(word))
         .or_else(|| {
             if !surface.class_at(idx + 1, CreationWordClass::Counter) {
                 return None;
@@ -45,17 +43,12 @@ fn parse_counter_count(tokens: &[OwnedLexToken]) -> Option<Value> {
             None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
         });
     }
-    crate::util::source_reference_surface_for_words(reference)
-        .map(|reference| {
-            Value::CountersOn(
-                Box::new(
-                    crate::util::source_choose_spec_for_surface(
-                        reference,
-                    ),
-                ),
-                counter_type,
-            )
-        })
+    crate::util::source_reference_surface_for_words(reference).map(|reference| {
+        Value::CountersOn(
+            Box::new(crate::util::source_choose_spec_for_surface(reference)),
+            counter_type,
+        )
+    })
 }
 
 fn parse_static_ability(input: &mut primitives::WordSliceInput<'_>) -> WResult<StaticAbilityId> {
@@ -127,8 +120,7 @@ fn parse_static_abilities_among(tokens: &[OwnedLexToken]) -> Option<Value> {
     if scope_tokens.is_empty() {
         return None;
     }
-    let filter =
-        crate::object_filters::parse_object_filter(scope_tokens, false).ok()?;
+    let filter = crate::object_filters::parse_object_filter(scope_tokens, false).ok()?;
     Some(
         Value::StaticAbilitiesAmong {
             filter,
@@ -167,7 +159,8 @@ pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
     if surface.starts(CreationPhrase::CreatureDiedThisTurn) {
         return Some(Value::CreaturesDiedThisTurn.with_surface_hint(ValueSurfaceHint::ForEach));
     }
-    if let Some(value) = crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
+    if let Some(value) =
+        crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
     {
         return Some(value.with_surface_hint(ValueSurfaceHint::ForEach));
     }
@@ -190,7 +183,8 @@ pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
     {
         return Some(value.with_surface_hint(ValueSurfaceHint::ForEach));
     }
-    if let Some(player) = crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(&words)
+    if let Some(player) =
+        crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(&words)
     {
         return Some(Value::PartySize(player).with_surface_hint(ValueSurfaceHint::ForEach));
     }
@@ -286,9 +280,7 @@ pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
     if surface.starts(CreationPhrase::CardTypesAmong) {
         let scope_start = token_surface.boundary(3)?;
         let scope_tokens = trim_lexed_commas(tokens.get(scope_start..)?);
-        let filter =
-            crate::object_filters::parse_object_filter(scope_tokens, false)
-                .ok()?;
+        let filter = crate::object_filters::parse_object_filter(scope_tokens, false).ok()?;
         return Some(Value::CardTypesAmong(filter).with_surface_hint(ValueSurfaceHint::ForEach));
     }
     None
@@ -366,10 +358,8 @@ pub(crate) fn parse_investigate_for_each_count_tokens(
     }
     reject_lossy_count(tokens, &words)?;
     Ok(
-        Value::Count(crate::object_filters::parse_object_filter(
-            tokens, false,
-        )?)
-        .with_surface_hint(ValueSurfaceHint::ForEach),
+        Value::Count(crate::object_filters::parse_object_filter(tokens, false)?)
+            .with_surface_hint(ValueSurfaceHint::ForEach),
     )
 }
 

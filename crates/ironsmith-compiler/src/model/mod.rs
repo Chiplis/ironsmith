@@ -30,18 +30,9 @@ pub(crate) mod token_definition;
 pub(crate) mod triggered_abilities;
 pub(crate) mod visit;
 
-pub(crate) use activated_abilities::{
-    ActivatedLineBoundaryAst, ActivationRestrictionAst, ActivationTimingAst, ActivationUseLimitAst,
-    ActivationUsePeriodAst, CompilerActivatedAbilityAst, LoyaltyCostAst, ManaAbilityFacts,
-};
+pub(crate) use activated_abilities::CompilerActivatedAbilityAst;
 pub(crate) use card_document::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
-pub(crate) use clauses::{
-    ClauseActionAst, ClauseActorAst, ClauseBindingSourceAst, ClauseComplementAst,
-    ClauseConditionAst, ClauseConditionKindAst, ClauseDestinationAst, ClauseDestinationRelationAst,
-    ClauseDistributionAst, ClauseDurationAst, ClauseObjectAst, ClausePolarityAst,
-    ClausePredicateAst, ClauseQuantityAst, ClauseQuantityUnitAst, ClauseReferenceBindingAst,
-    ClauseSubjectAst, ClauseVerbAst, ClauseZonePlacementAst, CompilerClauseAst, CompilerPlayerAst,
-};
+pub(crate) use clauses::{ClauseActorAst, ClauseVerbAst};
 pub(crate) use control_flow::{
     CompilerControlFlowAst, CompilerDurationAst, ConditionPositionAst, ControlConditionAst,
     ControlFlowNodeAst, ControlFlowSemanticAst, ControlPredicateAst, DelayedScheduleAst,
@@ -53,52 +44,11 @@ pub(crate) use coordination::{
     CoordinationKindAst, CoordinationMemberAst, CoordinationOperatorAst, EffectDependencyAst,
     EffectOrderingAst,
 };
-pub(crate) use document_program::{
-    CompilerDocumentProgramAst, CompilerDocumentStatementAst, CompilerStatementEdgeAst,
-    CompilerStatementEdgeKindAst, CompilerStatementId,
-};
-pub(crate) use interaction_clauses::{
-    CompilerCharacteristicClauseAst, CompilerCharacteristicOperationAst, CompilerCombatClauseAst,
-    CompilerCombatOperationAst, CompilerCombatRoleAst, CompilerCounterAmountAst,
-    CompilerCounterClauseAst, CompilerCounterOperationAst, CompilerDamageClauseAst,
-    CompilerDamageDivisionAst, CompilerInteractionClauseAst, CompilerModificationModeAst,
-    CompilerPreventionClauseAst, CompilerPreventionKindAst,
-};
 pub(crate) use legality::{
     CompilerActivationLegalityAst, CompilerCastingLegalityAst, CompilerPermissionAst,
-    CompilerTriggerLegalityAst, LegalityFrequencyAst, LegalityPeriodAst, LegalityRelationshipAst,
-    ManaUseConstraintAst, PermissionKindAst, PhaseStepAst, TimingWindowAst, TurnOwnerAst,
+    CompilerTriggerLegalityAst,
 };
-pub(crate) use library_clauses::{
-    CompilerLibraryClauseAst, LibraryExposureAst, LibraryOrderAst, LibraryPositionAst,
-    LibraryRemainderAst, LibraryResultBindingAst, LibraryResultKindAst, LibrarySelectionAst,
-    LibrarySelectionModeAst,
-};
-pub(crate) use object_action_clauses::{
-    CompilerAttachmentClauseAst, CompilerControlClauseAst, CompilerControllerAst,
-    CompilerCopyModificationsAst, CompilerCreationClauseAst, CompilerCreationKindAst,
-    CompilerDelayedDispositionAst, CompilerEntryStateAst, CompilerMovementClauseAst,
-    CompilerObjectActionClauseAst, CompilerObjectOperandAst,
-};
-pub(crate) use permission_clauses::{
-    CompilerAlternativeCastAst, CompilerCastingActionAst, CompilerCastingCostAst,
-    CompilerCastingOriginAst, CompilerCastingPaymentAst, CompilerCostAdjustmentAst,
-    CompilerManaFlexibilityAst, CompilerPermissionActorAst, CompilerPermissionClauseAst,
-    CompilerPermissionDispositionAst, CompilerPermissionExpirationAst,
-    CompilerPermissionFrequencyAst, CompilerPermissionStartAst,
-};
-pub(crate) use resource_choice_clauses::{
-    CompilerAggregateConstraintAst, CompilerAggregateMetricAst, CompilerChoiceClauseAst,
-    CompilerChoiceDomainAst, CompilerChoiceVisibilityAst, CompilerIterationAst,
-    CompilerIterationSourceAst, CompilerManaResourceAst, CompilerManaTypeSourceAst,
-    CompilerRepetitionKindAst, CompilerResourceAmountAst, CompilerResourceChoiceClauseAst,
-    CompilerResourceClauseAst, CompilerResourceKindAst, CompilerResourceOperationAst,
-    CompilerVoteAst, CompilerVoteOrderAst,
-};
-pub(crate) use selections::{
-    ArithmeticOperatorAst, CompilerFilterAst, CompilerSelectionAst, CompilerValueAst,
-    SelectionCardinalityAst, SelectionDomainAst, SelectionKindAst, SelectionLegalityAst,
-};
+pub(crate) use selections::CompilerSelectionAst;
 
 pub use ast::{
     CompilerAbility, CompilerAbilityKind, CompilerAbilityPayload, CompilerActivatedAbility,
@@ -109,17 +59,9 @@ pub use costs::{
     CompilerTotalCost, CostRelationship,
 };
 pub(crate) use static_abilities::{
-    CharacteristicChangeAst, CharacteristicValueAst, CompilerGrantedAbilityAst,
-    CompilerStaticAbilityAst, ContinuousLayerAst, StaticOperationAst, StaticRestrictionAst,
-    StaticScopeAst, StaticSubjectAst,
+    CompilerGrantedAbilityAst, CompilerStaticAbilityAst, StaticOperationAst,
 };
-pub(crate) use structured_abilities::{
-    CompilerClassAbilityAst, CompilerClassLevelAst, CompilerKeywordAbilityAst,
-    CompilerKeywordIdentityAst, CompilerKeywordPayloadAst, CompilerLevelAbilityAst,
-    CompilerLevelBandAst, CompilerModalAbilityAst, CompilerModalModeAst, CompilerModalSelectionAst,
-    CompilerSagaAbilityAst, CompilerSagaChapterAst, CompilerStructuredAbilityAst, LevelBandAst,
-    ModalSelectionModifierAst,
-};
+pub(crate) use structured_abilities::{CompilerKeywordAbilityAst, CompilerStructuredAbilityAst};
 pub(crate) use triggered_abilities::{
     CompilerTriggerEventAst, CompilerTriggeredAbilityAst, LinkedTriggerEffectAst,
     TriggerBindingsAst, TriggerFrequencyAst, TriggerKindAst, TriggerReferenceAst,

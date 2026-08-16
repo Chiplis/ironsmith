@@ -11,8 +11,8 @@ use super::super::grammar::restriction_facts::{
 use super::super::ir::RewriteActivatedLine;
 use super::*;
 use crate::effect::Effect;
-use crate::object::CounterType;
 use crate::model::compiler_semantic::ParsedManaRestriction;
+use crate::object::CounterType;
 use crate::util::activation_cost_reference_imports;
 use ironsmith_core::TotalCostKind;
 
@@ -58,8 +58,7 @@ fn parse_choose_color_of_matching_object_mana_effect(
     let Some((filter_tokens, _)) = choose_color_of_matching_object_sentences(tokens) else {
         return Ok(None);
     };
-    let mut filter =
-        crate::object_filters::parse_object_filter(&filter_tokens, false)?;
+    let mut filter = crate::object_filters::parse_object_filter(&filter_tokens, false)?;
     // The generic object-filter grammar expands the bare type word
     // "permanent" into every permanent card type. This exact sentence family
     // is selecting a color of an object already constrained to the
@@ -125,6 +124,123 @@ fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
         }
         _ => false,
     })
+}
+
+fn activation_cost_sets_x_from_counter_removal(cost: &TotalCost) -> bool {
+    fn component_sets_x(component: &Cost) -> bool {
+        match component {
+            Cost::RemoveCounters { .. } | Cost::RemoveAnyCountersFromSource { .. } => true,
+            Cost::Effect(effect) => {
+                effect
+                    .downcast_ref::<crate::effects::RemoveCountersEffect>()
+                    .is_some_and(|effect| {
+                        matches!(effect.target.base(), crate::target::ChooseSpec::Source)
+                    })
+                    || effect
+                        .downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
+                        .is_some()
+                    || effect
+                        .downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
+                        .is_some()
+            }
+            _ => false,
+        }
+    }
+
+    match cost.kind() {
+        TotalCostKind::All(components) => components.iter().any(component_sets_x),
+        TotalCostKind::OneOf(branches) => branches
+            .iter()
+            .any(activation_cost_sets_x_from_counter_removal),
+    }
+}
+
+fn bind_event_amount_to_cost_x(value: &mut crate::effect::Value) {
+    use crate::effect::{EventValueSpec, Value};
+
+    match value {
+        Value::EventValue(EventValueSpec::Amount)
+        | Value::EventValue(EventValueSpec::LifeAmount) => {
+            *value = Value::X;
+        }
+        Value::EventValueOffset(EventValueSpec::Amount, offset)
+        | Value::EventValueOffset(EventValueSpec::LifeAmount, offset) => {
+            *value = Value::Add(Box::new(Value::X), Box::new(Value::Fixed(*offset)));
+        }
+        Value::Add(left, right) | Value::Min(left, right) => {
+            bind_event_amount_to_cost_x(left);
+            bind_event_amount_to_cost_x(right);
+        }
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner) => {
+            bind_event_amount_to_cost_x(inner);
+        }
+        Value::SurfaceHinted { value, .. } => bind_event_amount_to_cost_x(value),
+        _ => {}
+    }
+}
+
+fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::PumpByLastEffect {
+            power,
+            toughness,
+            target,
+            duration,
+            includes_this_way,
+        } = &subject_verb.action
+    {
+        let basis = crate::effect::Value::X.with_surface_hint(if *includes_this_way {
+            ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay
+        } else {
+            ironsmith_core::ValueSurfaceHint::CountersRemoved
+        });
+        let scale = |multiplier: i32| match multiplier {
+            0 => crate::effect::Value::Fixed(0),
+            1 => basis.clone(),
+            _ => crate::effect::Value::Scaled(Box::new(basis.clone()), multiplier),
+        };
+        *effect = EffectAst::subject_verb_pump(
+            scale(*power),
+            scale(*toughness),
+            target.clone(),
+            duration.clone(),
+            None,
+        );
+        return;
+    }
+
+    if let EffectAst::SubjectVerb(subject_verb) = effect {
+        match &mut subject_verb.action {
+            SubjectVerbActionAst::DealDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
+            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEach { amount, .. }
+            | SubjectVerbActionAst::Mill { count: amount }
+            | SubjectVerbActionAst::Draw { count: amount }
+            | SubjectVerbActionAst::AddManaScaled { amount, .. }
+            | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
+            | SubjectVerbActionAst::AddManaAnyOneColor { amount }
+            | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
+            | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
+            | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
+                bind_event_amount_to_cost_x(amount);
+            }
+            _ => {}
+        }
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for inner in nested {
+            bind_event_amounts_to_cost_x_in_effect(inner);
+        }
+    });
+}
+
+fn bind_event_amounts_to_cost_x(effects: &mut [EffectAst]) {
+    for effect in effects {
+        bind_event_amounts_to_cost_x_in_effect(effect);
+    }
 }
 
 fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
@@ -231,6 +347,29 @@ fn activated_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effec
         })
 }
 
+fn bind_activated_x_definition_to_mana_cost(
+    cost: TotalCost,
+    x_value: Option<crate::effect::Value>,
+) -> TotalCost {
+    let Some(x_value) = x_value else {
+        return cost;
+    };
+
+    cost.try_map(|component| {
+        if let Some(mana_cost) = component.mana_cost_ref()
+            && mana_cost.has_x()
+        {
+            Ok(Cost::dynamic_mana(ironsmith_core::DynamicManaCost::from_x(
+                mana_cost.clone(),
+                x_value.clone(),
+            )))
+        } else {
+            Ok(component)
+        }
+    })
+    .unwrap_or_else(|_: std::convert::Infallible| unreachable!())
+}
+
 fn finalize_rewrite_activated_effect_sentences(
     mut restrictions: ParsedRestrictions,
     sentence_tokens: Vec<Vec<OwnedLexToken>>,
@@ -287,6 +426,39 @@ fn split_rewrite_activated_effect_text(
     finalize_rewrite_activated_effect_sentences(restrictions, sentence_tokens)
 }
 
+/// Recognize an authored trailing sorcery-speed sentence only when it is
+/// outside quoted granted/token rules text.
+///
+/// Full-card preprocessing intentionally keeps periods inside quoted ability
+/// text from splitting the outer ability. For a quoted effect followed by an
+/// ordinary activation restriction, that can leave the closing quote and the
+/// trailing sentence in one token group. The raw source line still preserves
+/// the exact quote boundary, so use it solely to recover this already-typed
+/// timing fact. A restriction that belongs inside the quote ends with the
+/// quote and therefore cannot satisfy this predicate.
+fn authored_trailing_sorcery_speed_restriction(raw_line: &str) -> bool {
+    const SUFFIX: &str = "Activate only as a sorcery.";
+    let trimmed = raw_line.trim();
+    let Some(prefix) = trimmed.strip_suffix(SUFFIX) else {
+        return false;
+    };
+
+    let mut in_quote = false;
+    let mut escaped = false;
+    for character in prefix.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+        } else if character == '"' {
+            in_quote = !in_quote;
+        }
+    }
+    !in_quote
+}
+
 /// Keep a hidden looked-card partition and its linked exile permission
 /// together while lowering an activated ability.  The ordinary effect-body
 /// dispatcher supports this shape, but activated parsing has a sentence-wise
@@ -308,8 +480,7 @@ fn parse_hidden_look_partition_activated(
     }
 
     crate::effect_sentences::parse_look_at_top_partition_face_down_then_filtered_permission(
-        &sentences,
-        0,
+        &sentences, 0,
     )
 }
 
@@ -357,29 +528,18 @@ fn parse_named_source_leading_gain_activated(
     let subject_tokens = trim_lexed_commas(&tokens[subject_start..get_token_index]);
     let subject_words = token_word_refs(subject_tokens);
     let authored_subject = subject_words.join(" ");
-    let contextual_surface =
-        crate::util::current_source_reference_name().and_then(
-            |source_name| {
-                if authored_subject.eq_ignore_ascii_case(&source_name) {
-                    return Some(crate::target::SourceReferenceSurface::FullName(source_name));
-                }
-                let short_name = source_name.split(',').next()?.trim().to_string();
-                authored_subject
-                    .eq_ignore_ascii_case(&short_name)
-                    .then_some(crate::target::SourceReferenceSurface::ShortName(short_name))
-            },
-        );
+    let contextual_surface = crate::util::current_source_reference_name().and_then(|source_name| {
+        if authored_subject.eq_ignore_ascii_case(&source_name) {
+            return Some(crate::target::SourceReferenceSurface::FullName(source_name));
+        }
+        let short_name = source_name.split(',').next()?.trim().to_string();
+        authored_subject
+            .eq_ignore_ascii_case(&short_name)
+            .then_some(crate::target::SourceReferenceSurface::ShortName(short_name))
+    });
     let Some(surface) = contextual_surface
-        .or_else(|| {
-            crate::util::source_reference_surface_for_words(
-                &subject_words,
-            )
-        })
-        .or_else(|| {
-            crate::util::this_source_surface_for_words(
-                &subject_words,
-            )
-        })
+        .or_else(|| crate::util::source_reference_surface_for_words(&subject_words))
+        .or_else(|| crate::util::this_source_surface_for_words(&subject_words))
     else {
         return Ok(None);
     };
@@ -403,7 +563,9 @@ fn parse_named_source_leading_gain_activated(
         return Ok(None);
     };
     let modifier_tokens = trim_lexed_commas(&tokens[get_token_index + 1..and_token_index]);
-    let Some(pump_head) = crate::grammar::effects::gain_ability_shapes::parse_gain_pump_head_shape(modifier_tokens) else {
+    let Some(pump_head) =
+        crate::grammar::effects::gain_ability_shapes::parse_gain_pump_head_shape(modifier_tokens)
+    else {
         return Ok(None);
     };
     let (crate::effect::Value::Fixed(power_per), crate::effect::Value::Fixed(toughness_per)) =
@@ -418,15 +580,13 @@ fn parse_named_source_leading_gain_activated(
         return Ok(None);
     };
 
-    let self_tokens = crate::front_end::lexer::lex_line("this creature", 0)?;
+    let self_tokens = crate::lexer::lex_line("this creature", 0)?;
     let mut ability_tokens = Vec::with_capacity(tokens.len());
     ability_tokens.extend_from_slice(&tokens[..subject_start]);
     ability_tokens.extend(self_tokens);
     ability_tokens.extend_from_slice(&tokens[gain_token_index..]);
     let Some(grant) =
-        crate::effect_sentences::parse_simple_gain_ability_clause_lexed(
-            &ability_tokens,
-        )?
+        crate::effect_sentences::parse_simple_gain_ability_clause_lexed(&ability_tokens)?
     else {
         return Ok(None);
     };
@@ -492,9 +652,9 @@ fn parse_activated_effects_lexed(
         return Ok(vec![effect]);
     }
     if activated_effect_is_for_each_color_among_add_mana_lexed(tokens) {
-        return Ok(vec![
-            crate::activation_helpers::parse_add_mana(tokens, None)?,
-        ]);
+        return Ok(vec![crate::activation_helpers::parse_add_mana(
+            tokens, None,
+        )?]);
     }
     if let Some(effects) = parse_each_player_and_their_creatures_damage_sentence(tokens) {
         return Ok(effects);
@@ -509,50 +669,41 @@ fn parse_activated_effects_lexed(
     // program. The broad restriction-oriented source-boundary parser can
     // otherwise claim only the trailing `can't be blocked` arm.
     if let Some(effects) =
-        crate::effect_sentences::parse_source_gets_unblockable_subject_verb(
-            tokens,
-        )?
+        crate::effect_sentences::parse_source_gets_unblockable_subject_verb(tokens)?
     {
         return Ok(effects);
     }
     let words = token_word_refs(tokens);
-    if crate::grammar::effects::gain_ability_shapes::parse_leading_gain_duration_shape(
-        &words,
-    )
-    .is_some()
+    if crate::grammar::effects::gain_ability_shapes::parse_leading_gain_duration_shape(&words)
+        .is_some()
+        && let Some(effects) = crate::effect_sentences::parse_gain_ability_sentence(tokens)?
     {
-        if let Some(effects) =
-            crate::effect_sentences::parse_gain_ability_sentence(tokens)?
-        {
-            fn contains_compound_members(effects: &[EffectAst]) -> bool {
-                let mut pump = false;
-                let mut grant = false;
-                fn inspect(effects: &[EffectAst], pump: &mut bool, grant: &mut bool) {
-                    for effect in effects {
-                        if let EffectAst::SubjectVerb(subject_verb) = effect {
-                            *pump |= matches!(subject_verb.action, SubjectVerbActionAst::Pump { .. });
-                            *grant |= matches!(
-                                subject_verb.action,
-                                SubjectVerbActionAst::GrantAbilitiesToTarget { .. }
-                            );
-                        }
-                        crate::model::effect_ast_traversal::for_each_nested_effects(
-                            effect,
-                            true,
-                            |nested| inspect(nested, pump, grant),
+        fn contains_compound_members(effects: &[EffectAst]) -> bool {
+            let mut pump = false;
+            let mut grant = false;
+            fn inspect(effects: &[EffectAst], pump: &mut bool, grant: &mut bool) {
+                for effect in effects {
+                    if let EffectAst::SubjectVerb(subject_verb) = effect {
+                        *pump |= matches!(subject_verb.action, SubjectVerbActionAst::Pump { .. });
+                        *grant |= matches!(
+                            subject_verb.action,
+                            SubjectVerbActionAst::GrantAbilitiesToTarget { .. }
                         );
                     }
+                    crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                        inspect(nested, pump, grant)
+                    });
                 }
-                inspect(effects, &mut pump, &mut grant);
-                pump && grant
             }
-            // Activated bodies such as "Until end of turn, this creature gets
-            // +1/+1 ... and gains menace" are one coordinated modifier.  The
-            // generic source-boundary path can otherwise claim the leading
-            // `gets` as an unrelated counter-gain action.
-            if contains_compound_members(&effects) {
-                return Ok(effects);
-            }
+            inspect(effects, &mut pump, &mut grant);
+            pump && grant
+        }
+        // Activated bodies such as "Until end of turn, this creature gets
+        // +1/+1 ... and gains menace" are one coordinated modifier.  The
+        // generic source-boundary path can otherwise claim the leading
+        // `gets` as an unrelated counter-gain action.
+        if contains_compound_members(&effects) {
+            return Ok(effects);
         }
     }
     if let Ok(effects) = parse_effect_sentences_preserving_source_boundaries(tokens) {
@@ -580,6 +731,53 @@ fn parse_activated_effects_lexed(
     Ok(effects)
 }
 
+fn rewrite_self_replacements_as_conditionals(effect: EffectAst) -> EffectAst {
+    match effect {
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        } => EffectAst::Conditional {
+            predicate,
+            if_true: if_true
+                .into_iter()
+                .map(rewrite_self_replacements_as_conditionals)
+                .collect(),
+            if_false: if_false
+                .into_iter()
+                .map(rewrite_self_replacements_as_conditionals)
+                .collect(),
+        },
+        EffectAst::SelfReplacement {
+            predicate,
+            if_true,
+            if_false,
+            ..
+        } => EffectAst::Conditional {
+            predicate,
+            if_true: if_true
+                .into_iter()
+                .map(rewrite_self_replacements_as_conditionals)
+                .collect(),
+            if_false: if_false
+                .into_iter()
+                .map(rewrite_self_replacements_as_conditionals)
+                .collect(),
+        },
+        other => other,
+    }
+}
+
+fn normalize_mana_replacement_effects(effects: Vec<EffectAst>) -> Vec<EffectAst> {
+    effects
+        .into_iter()
+        .map(|effect| match effect {
+            EffectAst::SelfReplacement { .. } => effect,
+            other => rewrite_self_replacements_as_conditionals(other),
+        })
+        .collect()
+}
+
 pub(crate) struct ParsedActivatedLine {
     pub(crate) chunk: LineAst,
     pub(crate) restrictions: ParsedRestrictions,
@@ -601,7 +799,7 @@ pub(crate) fn parse_activated_line(
     // before that CST's broad `put ... cards` interpretation can survive as a
     // counter-placement cost. The grammar is strict about count, source zone,
     // ownership scope, and library destination.
-    let cost = crate::families::activation_and_restrictions::parse_single_graveyard_bottom_library_payment(
+    let cost = crate::activation_and_restrictions::parse_single_graveyard_bottom_library_payment(
         &cost_parse_tokens,
     )?
     .unwrap_or(cost);
@@ -632,8 +830,8 @@ fn parse_activated_line_impl(
     line: &RewriteActivatedLine,
     original_effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<ParsedActivatedLine, CardTextError> {
-    let has_x_definition_value =
-        activated_x_definition_value(original_effect_parse_tokens).is_some();
+    let x_definition_value = activated_x_definition_value(original_effect_parse_tokens);
+    let has_x_definition_value = x_definition_value.is_some();
     let SplitRewriteActivatedEffectText {
         effect_text,
         effect_parse_tokens,
@@ -648,7 +846,8 @@ fn parse_activated_line_impl(
         )));
     }
 
-    let normalized_cost = line.cost.clone();
+    let normalized_cost =
+        bind_activated_x_definition_to_mana_cost(line.cost.clone(), x_definition_value);
     let original_effect_mentions_where_x =
         activated_grammar::contains_where_x_definition(original_effect_parse_tokens);
     let ability_text = rewrite_activated_display_text(line);
@@ -661,22 +860,30 @@ fn parse_activated_line_impl(
     } else {
         normalized_cost
     };
+    let parsed_restriction_timing = restrictions
+        .activation
+        .iter()
+        .filter_map(|restriction| restriction.timing)
+        .find(|timing| *timing != ActivationTiming::AnyTime);
     let activation_timing = if is_forecast {
         ActivationTiming::DuringSourceOwnersUpkeep
-    } else {
+    } else if line.timing_hint != ActivationTiming::AnyTime {
         line.timing_hint
+    } else if authored_trailing_sorcery_speed_restriction(&line.info.raw_line) {
+        ActivationTiming::SorcerySpeed
+    } else {
+        parsed_restriction_timing.unwrap_or(ActivationTiming::AnyTime)
     };
     let activation_restrictions = is_forecast
         .then_some(crate::ConditionExpr::MaxActivationsPerTurn(1))
         .into_iter()
         .collect::<Vec<_>>();
-    let mut additional_activation_restrictions = if line.presentation_kind
-        == Some(crate::ir::ActivatedPresentationKind::Exhaust)
-    {
-        vec!["Activate each exhaust ability only once.".to_string()]
-    } else {
-        Vec::new()
-    };
+    let mut additional_activation_restrictions =
+        if line.presentation_kind == Some(crate::ir::ActivatedPresentationKind::Exhaust) {
+            vec!["Activate each exhaust ability only once.".to_string()]
+        } else {
+            Vec::new()
+        };
     if let Some(display) = presentation_display.as_deref() {
         additional_activation_restrictions.push(format!("__ironsmith_activation_label:{display}"));
     }
@@ -762,11 +969,11 @@ fn parse_activated_line_impl(
     }
 
     if activated_effect_may_be_mana_ability_lexed(&effect_parse_tokens) {
-        let effects_ast = parse_activated_effects_lexed(
+        let effects_ast = normalize_mana_replacement_effects(parse_activated_effects_lexed(
             effect_text.as_str(),
             &effect_parse_tokens,
             line.info.line_index,
-        )?;
+        )?);
         if effects_ast_can_lower_as_mana_ability(&effects_ast)
             || effects_ast
                 .first()
@@ -819,6 +1026,9 @@ fn parse_activated_line_impl(
         &effect_parse_tokens,
         line.info.line_index,
     )?;
+    if activation_cost_sets_x_from_counter_removal(&normalized_cost) {
+        bind_event_amounts_to_cost_x(&mut effects_ast);
+    }
     let functional_zones = infer_rewrite_activated_functional_zones(line)?;
     let reference_imports = activation_cost_reference_imports(&normalized_cost);
     let mut parsed = ParsedAbility {
@@ -929,7 +1139,7 @@ mod choose_color_of_object_tests {
 
     #[test]
     fn chooses_a_color_from_the_filtered_objects_instead_of_an_object() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Choose a color of a permanent you control. Add one mana of that color.",
             0,
         )
@@ -954,7 +1164,7 @@ mod choose_color_of_object_tests {
 
     #[test]
     fn chooses_a_color_of_a_typed_permanent_without_erasing_that_type() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Choose a color of an artifact you control. Add one mana of that color.",
             0,
         )
@@ -973,7 +1183,7 @@ mod choose_color_of_object_tests {
 
     #[test]
     fn unrelated_choose_object_then_chosen_color_is_not_reinterpreted() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Choose a permanent you control. Add one mana of the chosen color.",
             0,
         )
@@ -987,13 +1197,13 @@ mod hidden_look_partition_activated_tests {
     use super::*;
 
     fn parse(text: &str) -> Option<Vec<EffectAst>> {
-        let tokens = crate::runtime_backend::lex_line(text, 0).expect("activated body should lex");
+        let tokens = crate::lexer::lex_line(text, 0).expect("activated body should lex");
         parse_hidden_look_partition_activated(&tokens).expect("typed activated partition parser")
     }
 
     #[test]
     fn activated_body_keeps_one_hidden_exiled_card_and_its_permission_linked() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Look at the top three cards of your library. Exile one face down and put the rest on the bottom of your library in any order. For as long as it remains exiled, you may cast it if it's a creature spell.",
             0,
         )
@@ -1026,24 +1236,69 @@ mod leading_duration_gain_activated_tests {
 
     #[test]
     fn activated_pump_and_keyword_share_the_leading_duration() {
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Azula, Ruthless Firebender",
-            || {
-                for text in [
-                    "Until end of turn, this creature gets +1/+1 for each experience counter you have and gains menace.",
-                    "Until end of turn, Azula gets +1/+1 for each experience counter you have and gains menace.",
-                ] {
-                    let tokens = crate::runtime_backend::lex_line(text, 0)
-                        .expect("activated body should lex");
-                    let effects = parse_activated_effects_lexed("", &tokens, 0)
-                        .expect("activated pump-and-keyword body should parse");
-                    let debug = format!("{effects:#?}");
-                    assert!(debug.contains("Pump"), "{debug}");
-                    assert!(debug.contains("PlayerCounters"), "{debug}");
-                    assert!(debug.contains("Menace"), "{debug}");
-                    assert!(!debug.contains("ExperienceCounters"), "{debug}");
-                }
-            },
-        );
+        crate::util::with_source_reference_context("Azula, Ruthless Firebender", || {
+            for text in [
+                "Until end of turn, this creature gets +1/+1 for each experience counter you have and gains menace.",
+                "Until end of turn, Azula gets +1/+1 for each experience counter you have and gains menace.",
+            ] {
+                let tokens = crate::lexer::lex_line(text, 0).expect("activated body should lex");
+                let effects = parse_activated_effects_lexed("", &tokens, 0)
+                    .expect("activated pump-and-keyword body should parse");
+                let debug = format!("{effects:#?}");
+                assert!(debug.contains("Pump"), "{debug}");
+                assert!(debug.contains("PlayerCounters"), "{debug}");
+                assert!(debug.contains("Menace"), "{debug}");
+                assert!(!debug.contains("ExperienceCounters"), "{debug}");
+            }
+        });
+    }
+
+    #[test]
+    fn next_turn_pump_and_activation_restriction_keeps_typed_duration_scope() {
+        let tokens = crate::lexer::lex_line(
+            "Until your next turn, up to one target creature gets -3/-0 and its activated abilities can't be activated.",
+            0,
+        )
+        .expect("activated body should lex");
+        let effects =
+            parse_activated_effects_lexed("", &tokens, 0).expect("activated body should parse");
+        let [EffectAst::ControlFlow(control)] = effects.as_slice() else {
+            panic!("expected one duration control-flow node, got {effects:#?}");
+        };
+        let crate::model::ControlFlowNodeAst::Duration { duration, program } = &control.node else {
+            panic!("expected a duration node, got {control:#?}");
+        };
+        assert_eq!(duration, &crate::model::CompilerDurationAst::UntilNextTurn);
+        let program = control
+            .program(*program)
+            .expect("duration node should reference its effect program");
+        assert!(program.effects.iter().any(|effect| matches!(
+            effect,
+            EffectAst::SubjectVerb(subject_verb)
+                if matches!(&subject_verb.action, SubjectVerbActionAst::Pump { .. })
+        )));
+        assert!(program.effects.iter().any(|effect| matches!(
+            effect,
+            EffectAst::SubjectVerb(subject_verb)
+                if matches!(&subject_verb.action, SubjectVerbActionAst::Cant { .. })
+        )));
+    }
+}
+
+#[cfg(test)]
+mod trailing_sorcery_speed_surface_tests {
+    use super::*;
+
+    #[test]
+    fn quoted_effect_can_be_followed_by_an_outer_sorcery_speed_restriction() {
+        assert!(authored_trailing_sorcery_speed_restriction(
+            "{1}{U}: Create a Fish token with \"This token can't be blocked.\" Activate only as a sorcery."
+        ));
+        assert!(!authored_trailing_sorcery_speed_restriction(
+            "Create a token with \"{T}: Draw a card. Activate only as a sorcery.\""
+        ));
+        assert!(!authored_trailing_sorcery_speed_restriction(
+            "{1}{U}: Create a Fish token."
+        ));
     }
 }

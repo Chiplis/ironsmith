@@ -6,9 +6,7 @@ use crate::cards::builders::PlayerAst;
 use crate::effect::{EventValueSpec, Value};
 use crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words;
 use crate::grammar::{primitives, values};
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, TokenKind, TokenWordView,
-};
+use crate::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView};
 use crate::tag::TagKey;
 use crate::target::ChooseSpec;
 use ironsmith_core::ValueSurfaceHint;
@@ -274,7 +272,7 @@ pub(crate) fn parse_exile_bottom_library_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

@@ -2,8 +2,8 @@ use winnow::combinator::opt;
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 
-use crate::mana::ManaSymbol;
 use crate::lexer::{LexStream, OwnedLexToken};
+use crate::mana::ManaSymbol;
 
 use super::super::{leaf, primitives};
 
@@ -74,7 +74,7 @@ pub(crate) fn parse_mana_replacement_clause_spec_lexed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_typed_replacement_symbol() {

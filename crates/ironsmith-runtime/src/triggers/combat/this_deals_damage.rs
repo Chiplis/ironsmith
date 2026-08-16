@@ -16,6 +16,12 @@ pub struct ThisDealsDamageTrigger {
     pub combat_only: bool,
 }
 
+impl Default for ThisDealsDamageTrigger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ThisDealsDamageTrigger {
     pub fn new() -> Self {
         Self {

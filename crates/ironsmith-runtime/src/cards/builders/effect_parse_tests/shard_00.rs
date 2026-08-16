@@ -3780,7 +3780,7 @@ fn parse_triggering_land_produced_types_uses_actual_mana_event() {
     let restricted = triggered
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<AddManaOfLandProducedTypesEffect>())
         .expect("expected produced-types mana effect");
     assert_eq!(restricted.amount.unhinted(), &Value::Fixed(1));

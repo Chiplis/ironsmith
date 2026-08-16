@@ -1,8 +1,8 @@
 use crate::cards::builders::PlayerAst;
 use crate::effect::{Until, Value};
-use crate::mana::ManaCost;
 use crate::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
-use crate::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
+use crate::lexer::{OwnedLexToken, parser_token_word_refs};
+use crate::mana::ManaCost;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 use winnow::prelude::*;
@@ -70,24 +70,16 @@ pub(crate) fn parse_matching_spell_cost_reduction_shape(
     // complete subject up to `cost(s)`; the spell-filter grammar deliberately
     // ignores duration words while retaining typed characteristics.
     let subject_tokens =
-        crate::util::trim_edge_punctuation_tokens(
-            &tokens[subject_start_token_idx..cost_token_idx],
-        );
+        crate::util::trim_edge_punctuation_tokens(&tokens[subject_start_token_idx..cost_token_idx]);
     let reduction_tokens =
-        crate::util::trim_edge_punctuation_tokens(
-            &tokens[cost_token_idx + 1..less_token_idx],
-        );
-    let (reduction, used) =
-        crate::util::parse_value(reduction_tokens)?;
+        crate::util::trim_edge_punctuation_tokens(&tokens[cost_token_idx + 1..less_token_idx]);
+    let (reduction, used) = crate::util::parse_value(reduction_tokens)?;
     if used != reduction_tokens.len() {
         return None;
     }
 
     let where_value_tokens = if matches!(reduction, Value::X) {
-        let after_to_cast =
-            crate::util::trim_edge_punctuation_tokens(
-                after_to_cast?,
-            );
+        let after_to_cast = crate::util::trim_edge_punctuation_tokens(after_to_cast?);
         primitives::find_prefix(after_to_cast, || primitives::kw("where").void())
             .map(|(where_idx, _, _)| &after_to_cast[where_idx..])
     } else {
@@ -142,7 +134,7 @@ pub(crate) fn parse_matching_spell_cost_reduction_shape(
 #[cfg(test)]
 mod tests {
     use crate::color::ColorSet;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

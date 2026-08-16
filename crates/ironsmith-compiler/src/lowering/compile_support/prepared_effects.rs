@@ -4,9 +4,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{ChoiceCount, Condition, Effect, EffectPredicate, SearchSelectionMode, Value};
 use crate::filter::ObjectRef;
-use crate::model::visit::{
-    for_each_nested_effects, for_each_nested_effects_mut,
-};
+use crate::model::visit::{for_each_nested_effects, for_each_nested_effects_mut};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 
 use super::{
@@ -34,10 +32,10 @@ pub(crate) fn compile_statement_effects_with_imports(
     effects: &[EffectAst],
     imports: &ReferenceImports,
 ) -> Result<LoweredEffects, CardTextError> {
-    {
+    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         let prepared = rewrite_prepare_effects_for_lowering(effects, imports.clone())?;
         materialize_prepared_statement_effects(&prepared)
-    }
+    })
 }
 
 pub(crate) fn materialize_prepared_statement_effects(
@@ -117,7 +115,11 @@ fn fuse_trigger_context_battlefield_entry_counters(mut lowered: LoweredEffects) 
     lowered
 }
 
-fn normalize_compiled_effects(compiled: Vec<Effect>) -> Vec<Effect> {
+fn normalize_compiled_effects(mut compiled: Vec<Effect>) -> Vec<Effect> {
+    // A prepared statement is one authored clause. Preserve a single trailing
+    // duration across adjacent same-target grants even when the AST's
+    // coordination wrapper was flattened before this normalization stage.
+    super::effect_dispatch::preserve_shared_trailing_coordinated_duration(&mut compiled);
     let compiled = normalize_plural_coordinated_result_references(compiled);
     let compiled = normalize_coordinated_two_target_fight_sequences(compiled);
     let compiled = normalize_iterated_consult_exile_collection(compiled);
@@ -632,18 +634,18 @@ fn is_supported_counter_destination(
 ) -> bool {
     use ironsmith_core::ZoneReplacementLibraryPlacement;
 
-    match (replacement.replacement_zone, replacement.library_placement) {
-        (crate::zone::Zone::Exile | crate::zone::Zone::Hand, None) => true,
-        (
-            crate::zone::Zone::Library,
-            Some(
-                ZoneReplacementLibraryPlacement::Top
-                | ZoneReplacementLibraryPlacement::Bottom
-                | ZoneReplacementLibraryPlacement::TopOrBottom,
-            ),
-        ) => true,
-        _ => false,
-    }
+    matches!(
+        (replacement.replacement_zone, replacement.library_placement),
+        (crate::zone::Zone::Exile | crate::zone::Zone::Hand, None)
+            | (
+                crate::zone::Zone::Library,
+                Some(
+                    ZoneReplacementLibraryPlacement::Top
+                        | ZoneReplacementLibraryPlacement::Bottom
+                        | ZoneReplacementLibraryPlacement::TopOrBottom,
+                ),
+            )
+    )
 }
 
 fn fold_cross_segment_counter_rewrites(segments: &mut Vec<crate::resolution::ResolutionSegment>) {
@@ -1163,8 +1165,7 @@ pub(crate) fn rebind_returned_attachment_history_to_triggering_object(
                         && constraint.relation
                             == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 })
-        )
-        {
+        ) {
             continue;
         }
         let Some(attach_history) =
@@ -1370,6 +1371,11 @@ fn materialize_source_sentence_segments(
         ctx.auto_tag_object_targets = false;
         let (compiled, sentence_choices) = compile_annotated_effects_with_context(&annotated, ctx)?;
         let mut compiled = normalize_compiled_effects(compiled);
+        // Source-sentence materialization can expose the members of one
+        // coordinated grant as adjacent top-level effects even when the AST
+        // coordination wrapper was normalized away. The authored trailing
+        // duration still scopes every same-target continuous member.
+        super::effect_dispatch::preserve_shared_trailing_coordinated_duration(&mut compiled);
         previous_sentence_was_only_you_draw = compiled_sentence_is_only_you_draw(&compiled);
         if source_segment.starting_with_controller
             && let [effect] = compiled.as_mut_slice()
@@ -1651,9 +1657,10 @@ fn materialize_trailing_self_replacement(
         } else {
             None
         };
-        let has_default_action_target = default_effects.iter().rev().any(|effect| {
-            crate::lower::extract_previous_replacement_target(effect).is_some()
-        });
+        let has_default_action_target = default_effects
+            .iter()
+            .rev()
+            .any(|effect| crate::lower::extract_previous_replacement_target(effect).is_some());
         let has_resolution_target = default_effects
             .iter()
             .any(|effect| effect.target_spec().is_some());
@@ -1700,17 +1707,16 @@ fn materialize_trailing_self_replacement(
         }
         let mut replacement_effects =
             strip_duplicate_self_replacement_prelude(&default_effects, replacement_effects);
-        if let Some(previous_target) = default_effects.iter().rev().find_map(|effect| {
-            crate::lower::extract_previous_replacement_target(effect)
-        }) {
+        if let Some(previous_target) = default_effects
+            .iter()
+            .rev()
+            .find_map(crate::lower::extract_previous_replacement_target)
+        {
             replacement_effects = replacement_effects
                 .into_iter()
                 .map(|effect| {
-                    crate::lower::rewrite_replacement_effect_target(
-                        &effect,
-                        &previous_target,
-                    )
-                    .unwrap_or(effect)
+                    crate::lower::rewrite_replacement_effect_target(&effect, &previous_target)
+                        .unwrap_or(effect)
                 })
                 .collect();
         }
@@ -2576,8 +2582,7 @@ fn fight_references_result_tag_or_authored_group(
     let second_is_authored_group =
         choose_spec_has_authored_creature_group_surface(&fight.creature2)
             || choose_spec_references_tag(&fight.creature2, CHOSEN_OBJECTS_TAG);
-    (first_is_result && second_is_result)
-        || (first_is_result && second_is_authored_group)
+    (first_is_result && (second_is_result || second_is_authored_group))
         || (first_is_authored_group && second_is_result)
 }
 
@@ -2758,7 +2763,7 @@ pub(crate) fn compile_condition_from_predicate_ast_with_env(
     saved_last_object_tag: Option<&TagKey>,
 ) -> Result<Condition, CardTextError> {
     let mut ctx = EffectLoweringContext::new();
-    let reference_env: crate::cards::builders::ReferenceEnv = refs.clone().into();
+    let reference_env: crate::cards::builders::ReferenceEnv = refs.clone();
     ctx.apply_reference_env(&reference_env);
     let saved_last_tag = saved_last_object_tag.map(|tag| tag.as_str().to_string());
     compile_condition_from_predicate_ast(predicate, &mut ctx, &saved_last_tag)

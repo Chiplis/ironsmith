@@ -297,6 +297,12 @@ impl CostExecutableEffect for SaddleCostEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BecomeSaddledUntilEotEffect;
 
+impl Default for BecomeSaddledUntilEotEffect {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BecomeSaddledUntilEotEffect {
     pub fn new() -> Self {
         Self

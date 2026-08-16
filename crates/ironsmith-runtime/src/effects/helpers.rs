@@ -1100,7 +1100,7 @@ pub fn resolve_value(
                             | Subtype::Mountain
                             | Subtype::Forest
                     ) {
-                        seen.insert(subtype.clone());
+                        seen.insert(*subtype);
                     }
                 }
             }
@@ -1981,7 +1981,7 @@ pub fn resolve_value(
                 if *exclude_source && snapshot.object_id == ctx.source {
                     continue;
                 }
-                if !player_ids.iter().any(|pid| *pid == snapshot.controller) {
+                if !player_ids.contains(&snapshot.controller) {
                     continue;
                 }
                 if filter.matches_snapshot(&snapshot, &filter_ctx, game) {
@@ -2004,7 +2004,7 @@ pub fn resolve_value(
                 if *exclude_source && snapshot.object_id == ctx.source {
                     continue;
                 }
-                if !player_ids.iter().any(|pid| *pid == snapshot.controller) {
+                if !player_ids.contains(&snapshot.controller) {
                     continue;
                 }
                 if filter.matches_snapshot(&snapshot, &filter_ctx, game) {
@@ -2426,21 +2426,20 @@ pub fn resolve_value(
                     .sum());
             }
 
-            if matches!(spec.base(), ChooseSpec::Source) {
-                if let Some(snapshot) =
+            if matches!(spec.base(), ChooseSpec::Source)
+                && let Some(snapshot) =
                     source_lki_for_moved_current_object(game, ctx).or_else(|| {
                         ctx.source_snapshot
                             .as_ref()
                             .filter(|_| resolve_source_object_id(game, ctx).is_none())
                     })
-                {
-                    let total = if let Some(counter_type) = counter_type {
-                        snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32
-                    } else {
-                        snapshot.counters.values().map(|count| *count as i32).sum()
-                    };
-                    return Ok(total);
-                }
+            {
+                let total = if let Some(counter_type) = counter_type {
+                    snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32
+                } else {
+                    snapshot.counters.values().map(|count| *count as i32).sum()
+                };
+                return Ok(total);
             }
 
             let object_ids = resolve_objects_from_spec(game, spec, ctx)?;
@@ -2481,9 +2480,9 @@ pub fn resolve_value(
             if let Some(outcome) = ctx.get_outcome(crate::effect::EffectId::TAGGED_COUNT) {
                 Ok(outcome.count_or_zero())
             } else {
-                return Err(ExecutionError::UnresolvableValue(
+                Err(ExecutionError::UnresolvableValue(
                     "TaggedCount used outside ForEachControllerOfTagged loop".to_string(),
-                ));
+                ))
             }
         }
         Value::VoteCount(option) => Ok(ctx
@@ -3052,12 +3051,11 @@ pub fn resolve_player_filter(
             ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())
         }),
         PlayerFilter::DamagedPlayer => {
-            if let Some(triggering_event) = &ctx.triggering_event {
-                if let Some(damage_event) = triggering_event.downcast::<DamageEvent>() {
-                    if let DamageTarget::Player(player_id) = damage_event.target {
-                        return Ok(player_id);
-                    }
-                }
+            if let Some(triggering_event) = &ctx.triggering_event
+                && let Some(damage_event) = triggering_event.downcast::<DamageEvent>()
+                && let DamageTarget::Player(player_id) = damage_event.target
+            {
+                return Ok(player_id);
             }
             ctx.get_tagged_players("damaged_player")
                 .and_then(|players| players.first().copied())
@@ -3648,12 +3646,10 @@ pub fn resolve_objects_for_effect_with_choice_description(
             && matches!(spec.base(), ChooseSpec::Object(_))
             && !matches!(spec, ChooseSpec::WithCount(_, _))
             && filter.tagged_constraints.is_empty()
+            && let Ok(objects) = resolve_objects_from_spec(game, spec, ctx)
+            && !objects.is_empty()
         {
-            if let Ok(objects) = resolve_objects_from_spec(game, spec, ctx)
-                && !objects.is_empty()
-            {
-                return Ok(objects);
-            }
+            return Ok(objects);
         }
 
         if !filter.tagged_constraints.is_empty()
@@ -4291,10 +4287,10 @@ pub fn resolve_objects_from_spec(
             for constraint in &filter.tagged_constraints {
                 if let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) {
                     for snapshot in snapshots {
-                        if let Some(object_id) = resolve_tagged_object_id(game, snapshot) {
-                            if !tagged_candidates.contains(&object_id) {
-                                tagged_candidates.push(object_id);
-                            }
+                        if let Some(object_id) = resolve_tagged_object_id(game, snapshot)
+                            && !tagged_candidates.contains(&object_id)
+                        {
+                            tagged_candidates.push(object_id);
                         }
                     }
                 }
@@ -4568,18 +4564,17 @@ pub(crate) fn resolve_player_filter_to_list(
                     ResolvedTarget::Object(_) => None,
                 })
                 .collect::<Vec<_>>();
-            if players.is_empty() {
-                if let Some(delayed_players) =
+            if players.is_empty()
+                && let Some(delayed_players) =
                     ctx.get_tagged_players(crate::tag::DELAYED_TARGET_PLAYERS_TAG)
-                {
-                    let filter_ctx = ctx.filter_context(game);
-                    players.extend(
-                        delayed_players
-                            .iter()
-                            .copied()
-                            .filter(|player| inner.matches_player(*player, &filter_ctx)),
-                    );
-                }
+            {
+                let filter_ctx = ctx.filter_context(game);
+                players.extend(
+                    delayed_players
+                        .iter()
+                        .copied()
+                        .filter(|player| inner.matches_player(*player, &filter_ctx)),
+                );
             }
             if players.is_empty() {
                 Err(ExecutionError::InvalidTarget)
@@ -4802,12 +4797,11 @@ pub(crate) fn resolve_player_filter_to_list(
                 })
         }
         PlayerFilter::DamagedPlayer => {
-            if let Some(triggering_event) = &ctx.triggering_event {
-                if let Some(damage_event) = triggering_event.downcast::<DamageEvent>() {
-                    if let DamageTarget::Player(player_id) = damage_event.target {
-                        return Ok(vec![player_id]);
-                    }
-                }
+            if let Some(triggering_event) = &ctx.triggering_event
+                && let Some(damage_event) = triggering_event.downcast::<DamageEvent>()
+                && let DamageTarget::Player(player_id) = damage_event.target
+            {
+                return Ok(vec![player_id]);
             }
             ctx.get_tagged_players("damaged_player")
                 .and_then(|players| players.first().copied())

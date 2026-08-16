@@ -620,17 +620,15 @@ fn plan_general_combat_damage(
                     &explicit_assignments,
                 )?
             }
+        } else if explicit_assignments.is_empty() {
+            default_combat_damage_distribution(attacker_ids.len(), combat_stat as u32)
         } else {
-            if explicit_assignments.is_empty() {
-                default_combat_damage_distribution(attacker_ids.len(), combat_stat as u32)
-            } else {
-                validate_nontrample_damage_assignment(
-                    blocker_id,
-                    &attacker_ids,
-                    combat_stat as u32,
-                    &explicit_assignments,
-                )?
-            }
+            validate_nontrample_damage_assignment(
+                blocker_id,
+                &attacker_ids,
+                combat_stat as u32,
+                &explicit_assignments,
+            )?
         };
         let controller = game.controller_of(&blocker);
         let cause = combat_damage_cause(game, blocker_id);

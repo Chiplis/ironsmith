@@ -33,7 +33,7 @@ fn modify_memory_keeps_the_different_controller_target_set_and_neither_reference
     let exchange = program
         .flattened_default_effects()
         .iter()
-        .find_map(|effect| find_exchange_control(effect))
+        .find_map(find_exchange_control)
         .expect("the first sentence should remain an exchange-control effect");
     assert_eq!(exchange.permanent1, exchange.permanent2);
     assert_eq!(exchange.permanent1.count(), crate::ChoiceCount::exactly(2));

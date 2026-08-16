@@ -56,7 +56,10 @@ fn a_linked_search_put_attach_and_conditional_shuffle_is_one_instruction() {
     let expected = "Search your library for an Equipment card, put it onto the battlefield, attach it to a creature you control, then shuffle";
 
     assert_eq!(describe_effect(&sequence), expected);
-    assert_eq!(compile_effect_list(&[sequence.clone()]), expected);
+    assert_eq!(
+        compile_effect_list(std::slice::from_ref(&sequence)),
+        expected
+    );
     let program = crate::resolution::ResolutionProgram::from_effects(vec![sequence]);
     assert_eq!(describe_resolution_program(&program), expected);
 }
@@ -67,7 +70,10 @@ fn an_unrelated_shuffle_condition_is_not_folded_into_the_search_instruction() {
     let compact = "Search your library for an Equipment card, put it onto the battlefield, attach it to a creature you control, then shuffle";
 
     assert_ne!(describe_effect(&sequence), compact);
-    assert_ne!(compile_effect_list(&[sequence.clone()]), compact);
+    assert_ne!(
+        compile_effect_list(std::slice::from_ref(&sequence)),
+        compact
+    );
     let program = crate::resolution::ResolutionProgram::from_effects(vec![sequence]);
     assert_ne!(describe_resolution_program(&program), compact);
 }

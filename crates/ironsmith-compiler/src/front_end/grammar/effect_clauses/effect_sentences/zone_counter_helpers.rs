@@ -20,7 +20,7 @@ use super::super::util::{
     parse_counter_type_from_tokens, parse_target_phrase, parse_value,
     record_source_reference_surface, span_from_tokens,
 };
-use crate::families::activation_and_restrictions::controller_filter_for_token_player;
+use crate::activation_and_restrictions::controller_filter_for_token_player;
 use crate::grammar::effects::zone_counter_shapes as shapes;
 use crate::grammar::shared_util::value_semantics::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
@@ -92,11 +92,9 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
     // cards exiled this way). Reference resolution replaces IT_TAG with the
     // concrete snapshot tag emitted by the prior action.
     let mut for_each_words = vec!["for", "each"];
-    for_each_words.extend(crate::token_word_refs(tokens));
+    for_each_words.extend(crate::lexer::token_word_refs(tokens));
     if let Some((value, used)) =
-        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
-            &for_each_words,
-        )
+        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(&for_each_words)
         && used == for_each_words.len()
     {
         return Some(value);
@@ -197,12 +195,12 @@ fn parse_put_counter_count_value(
                 return Ok((preserve_surface(value), 3));
             }
             if let Some(value_tokens) = value_tokens {
-                if let Some((value, used)) = parse_value(&value_tokens)
+                if let Some((value, used)) = parse_value(value_tokens)
                     && used == value_tokens.len()
                 {
                     return Ok((preserve_surface(value), 3));
                 }
-                if let Some(value) = parse_named_source_power_value(&value_tokens) {
+                if let Some(value) = parse_named_source_power_value(value_tokens) {
                     return Ok((preserve_surface(value), 3));
                 }
             }
@@ -212,12 +210,12 @@ fn parse_put_counter_count_value(
             )));
         }
         shapes::CounterCountPrefixShape::ExistingCounterEqual { value_tokens } => {
-            if let Some((value, used)) = parse_value(&value_tokens)
+            if let Some((value, used)) = parse_value(value_tokens)
                 && used == value_tokens.len()
             {
                 return Ok((value, 0));
             }
-            if let Some(value) = parse_named_source_power_value(&value_tokens) {
+            if let Some(value) = parse_named_source_power_value(value_tokens) {
                 return Ok((value, 0));
             }
         }
@@ -261,7 +259,7 @@ pub(crate) fn merge_it_match_filter_into_target(
             tag: tag.clone(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        *target = TargetAst::Object(filter, span.clone(), None);
+        *target = TargetAst::Object(filter, *span, None);
     }
 
     let Some(filter) = target_object_filter_mut(target) else {
@@ -464,8 +462,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
     }
     let mut target = parse_counter_target_phrase(&target_tokens)?;
     if equal_to_difference {
-        let target_spec =
-            crate::references::reference_helpers::choose_spec_for_target(&target);
+        let target_spec = crate::reference_helpers::choose_spec_for_target(&target);
         count_value = Value::Add(
             Box::new(Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
                 IT_TAG,
@@ -737,7 +734,7 @@ pub(crate) fn apply_shuffle_subject_graveyard_owner_context(
 #[cfg(test)]
 mod filtered_prior_action_counter_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn counter_count_preserves_exiled_creature_filter() {

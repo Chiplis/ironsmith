@@ -209,17 +209,17 @@ pub(super) fn parse_graveyard_threshold_predicate(
         filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
     }
 
-    if constrained_player.is_none() {
-        if let Some(owner) = player_filter_for_graveyard_threshold(&player) {
-            if filter.owner.is_none() {
-                filter.owner = Some(owner);
-            }
-            return Ok(Some(PredicateAst::ValueComparison {
-                left: Value::Count(filter),
-                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-                right: Value::Fixed(count as i32),
-            }));
+    if constrained_player.is_none()
+        && let Some(owner) = player_filter_for_graveyard_threshold(&player)
+    {
+        if filter.owner.is_none() {
+            filter.owner = Some(owner);
         }
+        return Ok(Some(PredicateAst::ValueComparison {
+            left: Value::Count(filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        }));
     }
 
     Ok(Some(PredicateAst::PlayerHasAtLeast {
@@ -349,15 +349,14 @@ pub(super) fn parse_mana_symbol_word(word: &str) -> Option<ManaSymbol> {
 /// predicate-side parser can validate symbol words and parse each symbol from
 /// its token text without rebuilding the word slice locally.
 pub(super) fn mana_spent_symbol_clause_words<'a>(symbol_clause: LexedClause<'a>) -> Vec<&'a str> {
-    let symbol_words = symbol_clause.word_refs();
-    symbol_words
+    symbol_clause.word_refs()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lexer::lex_line;
     use crate::object::CounterType;
-    use crate::runtime_backend::lexer::lex_line;
     use crate::static_abilities::StaticAbilityId;
 
     #[test]

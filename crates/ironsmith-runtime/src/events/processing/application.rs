@@ -439,7 +439,7 @@ pub(super) fn apply_trait_replacement(
                 return TraitApplyResult::Unchanged(event);
             };
             let replacement_mana = if mana.len() == 1 {
-                vec![mana[0].clone(); mana_event.mana.len()]
+                vec![mana[0]; mana_event.mana.len()]
             } else {
                 mana.clone()
             };

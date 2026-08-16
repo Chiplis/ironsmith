@@ -59,7 +59,7 @@ fn static_player<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> {
         )
             .value(PlayerAst::Defending),
         (
-            primitives::kw("that"),
+            alt((primitives::kw("that"), primitives::kw("the"))),
             alt((primitives::kw("player"), primitives::kw("players"))),
         )
             .value(PlayerAst::That),
@@ -120,10 +120,10 @@ pub(crate) fn parse_delayed_player_prefix_words(
 ) -> Option<(PlayerAst, usize)> {
     let tokens = words_to_tokens(words);
     let tokens = trimmed(&tokens);
-    if let Some((player, rest)) = primitives::parse_prefix(tokens, static_player) {
-        if !static_must_be_exact || trimmed(rest).is_empty() {
-            return Some((player, tokens.len().saturating_sub(rest.len())));
-        }
+    if let Some((player, rest)) = primitives::parse_prefix(tokens, static_player)
+        && (!static_must_be_exact || trimmed(rest).is_empty())
+    {
+        return Some((player, tokens.len().saturating_sub(rest.len())));
     }
     let (player, rest) = primitives::parse_prefix(tokens, dynamic_player)?;
     Some((player, tokens.len().saturating_sub(rest.len())))

@@ -1,14 +1,12 @@
 use ironsmith_core::{EffectMetricSource, PriorEffectAction};
 
 use crate::effect::Value;
-use crate::object::CounterType;
 use crate::grammar::filters::parse_counter_type_words;
 use crate::grammar::permission_shapes;
+use crate::object::CounterType;
 use crate::object_filters::parse_object_filter_words;
-use crate::util::{
-    is_article, source_reference_surface_for_words, this_source_surface_for_words,
-};
 use crate::target::{ChooseSpec, PlayerFilter, SourceReferenceSurface};
+use crate::util::{is_article, source_reference_surface_for_words, this_source_surface_for_words};
 
 use super::value_shapes::{self, AggregateValueMetric};
 

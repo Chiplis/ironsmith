@@ -3,9 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::grammar::{leaf, permission_shapes, primitives};
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, TokenKind, TokenWordView,
-};
+use crate::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView};
 
 use super::super::{seek_sequence_phrase, sequence_any_phrase, sequence_phrase};
 use super::{ConsultManaValueConditionShape, parse_consult_mana_value_condition_shape};
@@ -160,7 +158,7 @@ pub(crate) fn parse_consult_cast_shape(tokens: &[OwnedLexToken]) -> Option<Consu
 mod tests {
     use super::*;
     use crate::effect::{Value, ValueComparisonOperator};
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

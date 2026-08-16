@@ -1,5 +1,71 @@
 use super::*;
 
+/// Rejoin a temporary flash permission with the delayed cast trigger that
+/// applies to the exact same spell filter. Both effects are optional under
+/// one `MayEffect`; the grant already renders its own "You may" surface, so
+/// the outer wrapper must not add a second `may` or split the authored
+/// coordination into two sentences.
+pub(super) fn describe_may_temporary_flash_and_cast_trigger(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    if !matches!(may.decider, None | Some(PlayerFilter::You)) {
+        return None;
+    }
+    let [grant_effect, schedule_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let grant = structural_unwrap_render_wrappers(grant_effect)
+        .downcast_ref::<crate::effects::GrantBySpecEffect>()?;
+    if grant.player != PlayerFilter::You
+        || grant.duration != crate::grant::GrantDuration::UntilEndOfTurn
+        || grant.spec.zone != Zone::Hand
+        || grant.spec.beneficiary != PlayerFilter::You
+        || !matches!(
+            &grant.spec.grantable,
+            crate::grant::Grantable::Ability(ability) if ability.has_flash()
+        )
+    {
+        return None;
+    }
+    let schedule = structural_unwrap_render_wrappers(schedule_effect)
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+    let spell_cast = schedule
+        .trigger
+        .downcast_ref::<crate::triggers::SpellCastTrigger>()?;
+    if schedule.controller != PlayerFilter::You
+        || schedule.one_shot
+        || !schedule.until_end_of_turn
+        || spell_cast.caster != PlayerFilter::You
+        || spell_cast.timing.is_some()
+        || spell_cast.during_turn.is_some()
+        || spell_cast.min_spells_this_turn.is_some()
+        || spell_cast.exact_spells_this_turn.is_some()
+        || spell_cast.count_all_spells_this_turn
+        || spell_cast.from_not_hand
+        || spell_cast.first_spell_of_game
+    {
+        return None;
+    }
+    let mut trigger_filter = spell_cast.filter.clone()?;
+    trigger_filter.zone = None;
+    trigger_filter.cast_by = None;
+    trigger_filter.stack_kind = None;
+    trigger_filter.has_mana_cost = false;
+    trigger_filter.union_surface = Default::default();
+    let mut grant_filter = grant.spec.filter.clone();
+    grant_filter.union_surface = Default::default();
+    if trigger_filter != grant_filter {
+        return None;
+    }
+
+    let permission = describe_effect(grant_effect);
+    let delayed = describe_effect(schedule_effect);
+    if !permission.starts_with("You may cast ") || !delayed.starts_with("Whenever you cast ") {
+        return None;
+    }
+    Some(format!("{permission}, and {}", lowercase_first(&delayed)))
+}
+
 /// Preserve the authored antecedent and chooser on an optional Aura move such
 /// as "That land's controller may attach this Aura to a land of their choice."
 /// The chooser, optional decider, and attachment target all have to be tied to
@@ -2537,9 +2603,9 @@ pub(super) fn describe_source_labeled_choose_mode_branch(effects: &[Effect]) -> 
     Some(format!("{header}\n• {}", modes.join("\n• ")))
 }
 
-pub(super) fn conditional_branch_destroy_no_regeneration_effect<'a>(
-    effect: &'a Effect,
-) -> Option<&'a crate::effects::DestroyNoRegenerationEffect> {
+pub(super) fn conditional_branch_destroy_no_regeneration_effect(
+    effect: &Effect,
+) -> Option<&crate::effects::DestroyNoRegenerationEffect> {
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>() {
         return Some(destroy);
     }
@@ -6001,8 +6067,7 @@ pub(crate) fn describe_conditional_token_entry_modification(
         return None;
     }
 
-    if describe_create_token_blueprint(true_create)
-        != describe_create_token_blueprint(false_create)
+    if describe_create_token_blueprint(true_create) != describe_create_token_blueprint(false_create)
         || true_create.count != false_create.count
         || true_create.controller != false_create.controller
         || true_create.controller_target != false_create.controller_target
@@ -6053,11 +6118,7 @@ mod conditional_token_entry_modification_tests {
         enters_tapped: bool,
         enters_attacking: bool,
     ) -> Effect {
-        let mut create = crate::effects::CreateTokenEffect::new(
-            token,
-            count,
-            PlayerFilter::You,
-        );
+        let mut create = crate::effects::CreateTokenEffect::new(token, count, PlayerFilter::You);
         create.enters_tapped = enters_tapped;
         create.enters_attacking = enters_attacking;
         Effect::new(create)

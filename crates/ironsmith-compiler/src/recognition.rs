@@ -232,11 +232,21 @@ impl ParseDiagnostic {
             .map(|rule| rule.as_str())
             .collect::<Vec<_>>()
             .join(" > ");
-        let message = if path.is_empty() {
+        let mut message = if path.is_empty() {
             self.message
         } else {
             format!("{} [rule-path={path}]", self.message)
         };
+        if let ParseDiagnosticKind::Ambiguous { alternatives } = &self.kind
+            && !alternatives.is_empty()
+        {
+            let alternatives = alternatives
+                .iter()
+                .map(|rule| rule.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            message.push_str(&format!(" [alternatives={alternatives}]"));
+        }
         match self.kind {
             ParseDiagnosticKind::Unsupported { .. } => CardTextError::UnsupportedLine(message),
             ParseDiagnosticKind::Malformed { .. }

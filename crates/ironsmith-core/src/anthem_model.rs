@@ -179,9 +179,11 @@ mod tests {
 
     #[test]
     fn controller_of_affected_object_count_reports_dependency() {
-        let mut cards_in_hand = ObjectFilter::default();
-        cards_in_hand.zone = Some(Zone::Hand);
-        cards_in_hand.owner = Some(PlayerFilter::ControllerOf(ObjectRef::Target));
+        let cards_in_hand = ObjectFilter {
+            zone: Some(Zone::Hand),
+            owner: Some(PlayerFilter::ControllerOf(ObjectRef::Target)),
+            ..ObjectFilter::default()
+        };
 
         assert!(
             AnthemValue::scaled(1, AnthemCountExpression::MatchingFilter(cards_in_hand))

@@ -165,17 +165,16 @@ impl CoordinationAst {
         }
         for (boundary_index, boundary) in boundaries.iter().enumerate() {
             let to_member = boundary_index + 1;
-            if let EffectDependencyAst::DependsOnMembers(dependencies) = &boundary.dependency {
-                if let Some(dependency) = dependencies
+            if let EffectDependencyAst::DependsOnMembers(dependencies) = &boundary.dependency
+                && let Some(dependency) = dependencies
                     .iter()
                     .copied()
                     .find(|dependency| *dependency >= to_member)
-                {
-                    return Err(CoordinationError::InvalidDependency {
-                        member: to_member,
-                        dependency,
-                    });
-                }
+            {
+                return Err(CoordinationError::InvalidDependency {
+                    member: to_member,
+                    dependency,
+                });
             }
             let mut carried_kinds = Vec::new();
             for carry in &boundary.carries {

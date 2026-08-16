@@ -344,7 +344,7 @@ fn parse_prior_result_object_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::target::ObjectFilter> {
     let mut start = 0usize;
-    if tokens.get(0).is_some_and(|token| token.is_word("one"))
+    if tokens.first().is_some_and(|token| token.is_word("one"))
         && tokens.get(1).is_some_and(|token| token.is_word("or"))
         && tokens.get(2).is_some_and(|token| token.is_word("more"))
     {
@@ -834,7 +834,7 @@ pub(crate) fn parse_if_result_predicate_lexed_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_modal_result_predicates() {

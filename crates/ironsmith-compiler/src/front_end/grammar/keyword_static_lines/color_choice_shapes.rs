@@ -103,10 +103,7 @@ fn classify_chosen_color_subject(tokens: &[OwnedLexToken]) -> WResult<ChosenColo
     }
     let words = TokenWordView::new(tokens).word_refs();
     if leaf::parse_leaf_this_source_reference_words(&words).is_some()
-        || crate::util::source_reference_surface_for_words(
-            &words,
-        )
-        .is_some()
+        || crate::util::source_reference_surface_for_words(&words).is_some()
     {
         return Ok(ChosenColorSubjectSurface::NamedSource);
     }

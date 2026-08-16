@@ -2,7 +2,7 @@ use winnow::prelude::*;
 
 use crate::cards::builders::{LibraryBottomOrderAst, LibraryConsultModeAst};
 use crate::grammar::{permission_shapes, primitives};
-use crate::front_end::lexer::{LexStream, OwnedLexToken, TokenWordView};
+use crate::lexer::{LexStream, OwnedLexToken, TokenWordView};
 
 use super::super::library::parse_bottom_order;
 use super::super::{sequence_any_phrase, sequence_phrase};
@@ -110,7 +110,7 @@ pub(crate) fn is_if_declined_put_match_into_hand_shape(tokens: &[OwnedLexToken])
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

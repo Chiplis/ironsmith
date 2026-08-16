@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::util::tokenize_line;
+use crate::util::tokenize_line;
 
 #[test]
 fn while_qualified_triggers_keep_event_time_conditions() {
@@ -12,28 +12,23 @@ fn while_qualified_triggers_keep_event_time_conditions() {
         "you cast this spell while you control your commander",
     ] {
         let tokens = tokenize_line(text, 0);
-        let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap_or_else(|error| panic!("failed to parse {text:?}: {error}"));
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+            .unwrap_or_else(|error| panic!("failed to parse {text:?}: {error}"));
         assert!(
             matches!(
                 parsed,
-                crate::runtime_backend::ast::TriggerSpec::ConditionQualified { .. }
+                crate::model::ast::TriggerSpec::ConditionQualified { .. }
             ),
             "{text}: {parsed:#?}"
         );
     }
 
     let tokens = tokenize_line("this creature attacks", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("ordinary attack trigger should parse");
     assert!(matches!(
         parsed,
-        crate::runtime_backend::ast::TriggerSpec::ThisAttacks
+        crate::model::ast::TriggerSpec::ThisAttacks
     ));
 }
 
@@ -44,11 +39,9 @@ fn filtered_damage_source_death_trigger_keeps_victim_and_damager_filters_distinc
         "another creature dealt damage by a Spider you controlled this turn dies",
     ] {
         let tokens = tokenize_line(text, 0);
-        let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .expect("filtered damage-history death trigger should parse");
-        let crate::runtime_backend::ast::TriggerSpec::DiesCreatureDealtDamageByFilteredSourceThisTurn {
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+            .expect("filtered damage-history death trigger should parse");
+        let crate::model::ast::TriggerSpec::DiesCreatureDealtDamageByFilteredSourceThisTurn {
             victim,
             damager_filter,
         } = parsed
@@ -70,15 +63,11 @@ fn filtered_damage_source_death_trigger_requires_turn_history_wording() {
         "another creature dealt damage by a Spider you controlled dies",
         0,
     );
-    if let Ok(parsed) =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-    {
+    if let Ok(parsed) = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens) {
         assert!(
             !matches!(
                 parsed,
-                crate::runtime_backend::ast::TriggerSpec::DiesCreatureDealtDamageByFilteredSourceThisTurn { .. }
+                crate::model::ast::TriggerSpec::DiesCreatureDealtDamageByFilteredSourceThisTurn { .. }
             ),
             "without `this turn`, the trigger must not acquire turn-history semantics"
         );
@@ -99,13 +88,11 @@ fn crime_trigger_preserves_during_your_turn_as_typed_timing() {
         ),
     ] {
         let tokens = tokenize_line(text, 0);
-        let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .expect("turn-qualified crime trigger should parse");
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+            .expect("turn-qualified crime trigger should parse");
         assert_eq!(
             parsed,
-            crate::runtime_backend::ast::TriggerSpec::KeywordAction {
+            crate::model::ast::TriggerSpec::KeywordAction {
                 action: crate::events::KeywordActionKind::CommitCrime,
                 player,
                 source_filter: None,
@@ -115,14 +102,11 @@ fn crime_trigger_preserves_during_your_turn_as_typed_timing() {
     }
 
     let untimed = tokenize_line("you commit a crime", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &untimed,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&untimed)
         .expect("ordinary crime trigger should still parse");
     assert!(matches!(
         parsed,
-        crate::runtime_backend::ast::TriggerSpec::KeywordAction {
+        crate::model::ast::TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::CommitCrime,
             during_your_turn: false,
             ..
@@ -136,13 +120,10 @@ fn your_graveyard_from_library_preempts_the_broad_any_origin_trigger() {
         "one or more cards are put into your graveyard from your library",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("origin-qualified graveyard trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::PutIntoGraveyardFromZone {
+    let crate::model::ast::TriggerSpec::PutIntoGraveyardFromZone {
         filter,
         from: Zone::Library,
         one_or_more: true,
@@ -160,13 +141,10 @@ fn graveyard_from_anywhere_except_battlefield_keeps_the_excluded_origin() {
         "a creature card is put into a graveyard from anywhere other than the battlefield",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("excluded-origin graveyard trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::PutIntoGraveyardFromAnyExcept {
+    let crate::model::ast::TriggerSpec::PutIntoGraveyardFromAnyExcept {
         filter,
         excluded: Zone::Battlefield,
         one_or_more: false,
@@ -179,11 +157,9 @@ fn graveyard_from_anywhere_except_battlefield_keeps_the_excluded_origin() {
 
     let ordinary = tokenize_line("a creature card is put into a graveyard from anywhere", 0);
     assert!(matches!(
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &ordinary,
-        )
-        .expect("ordinary any-origin trigger should still parse"),
-        crate::runtime_backend::ast::TriggerSpec::PutIntoGraveyard(_)
+        crate::activation_and_restrictions::parse_trigger_clause_lexed(&ordinary,)
+            .expect("ordinary any-origin trigger should still parse"),
+        crate::model::ast::TriggerSpec::PutIntoGraveyard(_)
     ));
 }
 
@@ -193,14 +169,10 @@ fn parses_excess_noncombat_damage_recipient_as_a_passive_qualified_trigger() {
         "a creature or planeswalker an opponent controls is dealt excess noncombat damage",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("qualified passive damage trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::IsDealtExcessNoncombatDamage(filter) = parsed
-    else {
+    let crate::model::ast::TriggerSpec::IsDealtExcessNoncombatDamage(filter) = parsed else {
         panic!("expected a typed excess-noncombat dealt-damage trigger");
     };
     assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
@@ -214,13 +186,9 @@ fn parses_one_or_more_excess_recipients_as_a_grouped_trigger() {
         "one or more creatures your opponents control are dealt excess noncombat damage",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("grouped excess-damage trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::IsDealtExcessNoncombatDamage(filter) = parsed
-    else {
+    let crate::model::ast::TriggerSpec::IsDealtExcessNoncombatDamage(filter) = parsed else {
         panic!("expected a typed grouped excess-damage trigger");
     };
     assert!(filter.union_is_one_or_more());
@@ -231,26 +199,21 @@ fn parses_one_or_more_excess_recipients_as_a_grouped_trigger() {
 #[test]
 fn named_source_or_another_dies_stays_two_matcher_branches() {
     let tokens = tokenize_line("Blood Artist or another creature dies", 0);
-    let parsed =
-        crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
-            "Blood Artist",
-            &[CardType::Creature],
-            &[Subtype::Vampire],
-            || {
-                crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-                    &tokens,
-                )
-            },
-        )
-        .expect("named source-or-another dies trigger should parse");
+    let parsed = crate::util::with_card_source_reference_context(
+        "Blood Artist",
+        &[CardType::Creature],
+        &[Subtype::Vampire],
+        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+    )
+    .expect("named source-or-another dies trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::Either(source, other) = parsed else {
+    let crate::model::ast::TriggerSpec::Either(source, other) = parsed else {
         panic!("expected distinct source and another-object branches");
     };
-    let crate::runtime_backend::ast::TriggerSpec::Dies(source_filter) = *source else {
+    let crate::model::ast::TriggerSpec::Dies(source_filter) = *source else {
         panic!("expected source dies branch");
     };
-    let crate::runtime_backend::ast::TriggerSpec::Dies(other_filter) = *other else {
+    let crate::model::ast::TriggerSpec::Dies(other_filter) = *other else {
         panic!("expected another-creature dies branch");
     };
 
@@ -268,22 +231,34 @@ fn named_source_or_another_dies_stays_two_matcher_branches() {
 }
 
 #[test]
+fn normalized_this_or_another_dies_stays_two_matcher_branches() {
+    let tokens = tokenize_line("this or another creature you control dies", 0);
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+        .expect("normalized source-or-another dies trigger should parse");
+
+    let crate::model::ast::TriggerSpec::Either(source, other) = parsed else {
+        panic!("expected distinct source and another-object branches: {parsed:#?}");
+    };
+    assert!(matches!(*source, crate::model::ast::TriggerSpec::ThisDies));
+    let crate::model::ast::TriggerSpec::Dies(other_filter) = *other else {
+        panic!("expected another-creature dies branch");
+    };
+    assert_eq!(other_filter.card_types, [CardType::Creature]);
+    assert_eq!(other_filter.controller, Some(PlayerFilter::You));
+}
+
+#[test]
 fn parses_generic_sticker_trigger_with_source_recipient() {
     let tokens = tokenize_line("you put a sticker on this enchantment", 0);
-    let parsed =
-        crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
-            "_____ Balls of Fire",
-            &[CardType::Enchantment],
-            &[],
-            || {
-                crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-                    &tokens,
-                )
-            },
-        )
-        .expect("generic sticker trigger should parse");
+    let parsed = crate::util::with_card_source_reference_context(
+        "_____ Balls of Fire",
+        &[CardType::Enchantment],
+        &[],
+        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+    )
+    .expect("generic sticker trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::KeywordAction {
+    let crate::model::ast::TriggerSpec::KeywordAction {
         action,
         player,
         source_filter: Some(source_filter),
@@ -307,13 +282,10 @@ fn parses_generic_sticker_trigger_with_source_recipient() {
 #[test]
 fn parses_typed_sticker_trigger_with_object_recipient() {
     let tokens = tokenize_line("an opponent puts an ability sticker on a creature", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("typed sticker trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::KeywordAction {
+    let crate::model::ast::TriggerSpec::KeywordAction {
         action,
         player,
         source_filter: Some(source_filter),
@@ -330,15 +302,12 @@ fn parses_typed_sticker_trigger_with_object_recipient() {
 #[test]
 fn parses_each_of_your_main_phases_as_one_typed_either_phase_trigger() {
     let tokens = tokenize_line("the beginning of each of your main phases", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("each-main-phase trigger should parse");
 
     assert_eq!(
         parsed,
-        crate::runtime_backend::ast::TriggerSpec::BeginningOfMainPhase {
+        crate::model::ast::TriggerSpec::BeginningOfMainPhase {
             player: PlayerFilter::You,
             surface: ironsmith_core::trigger_model::MainPhaseSurface::EachOfMainPhases,
         }
@@ -351,22 +320,17 @@ fn parses_split_possessive_unpaid_cumulative_upkeep_trigger() {
         "a player doesn't pay this enchantment's cumulative upkeep",
         0,
     );
-    let parsed =
-        crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
-            "Heart of Bogardan",
-            &[CardType::Enchantment],
-            &[],
-            || {
-                crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-                    &tokens,
-                )
-            },
-        )
-        .expect("unpaid cumulative upkeep trigger should parse");
+    let parsed = crate::util::with_card_source_reference_context(
+        "Heart of Bogardan",
+        &[CardType::Enchantment],
+        &[],
+        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+    )
+    .expect("unpaid cumulative upkeep trigger should parse");
 
     assert_eq!(
         parsed,
-        crate::runtime_backend::ast::TriggerSpec::KeywordActionFromSource {
+        crate::model::ast::TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::CumulativeUpkeepNotPaid,
             player: PlayerFilter::Any,
         }
@@ -379,13 +343,10 @@ fn parses_spell_causes_you_to_gain_life_as_a_causal_trigger() {
         "a white instant or sorcery spell causes you to gain life",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("causal life-gain trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::YouGainLifeCausedBy(source) = &parsed else {
+    let crate::model::ast::TriggerSpec::YouGainLifeCausedBy(source) = &parsed else {
         panic!("expected a causal life-gain trigger, got {parsed:?}");
     };
     assert_eq!(source.zone, Some(crate::Zone::Stack), "{source:#?}");
@@ -401,7 +362,7 @@ fn parses_spell_causes_you_to_gain_life_as_a_causal_trigger() {
         "{source:#?}"
     );
     assert_eq!(
-        crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+        crate::compile_support::compile_trigger_spec(parsed).display(),
         "Whenever a white instant or sorcery spell causes you to gain life"
     );
 }
@@ -412,13 +373,10 @@ fn shared_spell_noun_damage_source_keeps_stack_controller_and_mana_facts() {
         "an instant or sorcery spell you control with mana value 3 or greater deals damage",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("shared-noun spell damage trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::DealsDamage { source, .. } = &parsed else {
+    let crate::model::ast::TriggerSpec::DealsDamage { source, .. } = &parsed else {
         panic!("expected filtered damage-source trigger, got {parsed:?}");
     };
     assert!(source.any_of.is_empty(), "{source:#?}");
@@ -441,7 +399,7 @@ fn shared_spell_noun_damage_source_keeps_stack_controller_and_mana_facts() {
         "{source:#?}"
     );
 
-    let compiled = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+    let compiled = crate::compile_support::compile_trigger_spec(parsed);
     let crate::triggers::TriggerKind::DealsDamage { filter, .. } = compiled.kind else {
         panic!("expected lowered damage-source trigger, got {compiled:?}");
     };
@@ -466,15 +424,10 @@ fn source_or_spell_damage_subject_keeps_independent_filter_branches() {
         "this or an instant or sorcery spell you control deals damage to a player",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("source-or-spell damage trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::DealsDamageToPlayer { source, player, .. } =
-        &parsed
-    else {
+    let crate::model::ast::TriggerSpec::DealsDamageToPlayer { source, player, .. } = &parsed else {
         panic!("expected filtered damage-to-player trigger, got {parsed:#?}");
     };
     assert_eq!(*player, PlayerFilter::Any);
@@ -502,21 +455,18 @@ fn source_or_spell_damage_subject_keeps_independent_filter_branches() {
 #[test]
 fn parses_clash_and_win_as_the_winner_aware_trigger() {
     let tokens = tokenize_line("you clash and win", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("clash-and-win trigger should parse");
 
     assert_eq!(
         parsed,
-        crate::runtime_backend::ast::TriggerSpec::WinsClash {
+        crate::model::ast::TriggerSpec::WinsClash {
             player: PlayerFilter::You,
             surface: ironsmith_core::ClashWinTriggerSurface::ClashAndWin,
         }
     );
     assert_eq!(
-        crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+        crate::compile_support::compile_trigger_spec(parsed).display(),
         "Whenever you clash and win"
     );
 }
@@ -527,13 +477,10 @@ fn parses_passive_damage_by_qualified_source_union() {
         "an opponent is dealt damage by a red instant or sorcery spell you control or by a red planeswalker you control",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("passive qualified-source damage trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::DealsDamageToPlayer {
+    let crate::model::ast::TriggerSpec::DealsDamageToPlayer {
         source,
         player,
         source_surface,
@@ -573,7 +520,7 @@ fn parses_passive_damage_by_qualified_source_union() {
     );
 
     assert_eq!(
-        crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+        crate::compile_support::compile_trigger_spec(parsed).display(),
         "Whenever an opponent is dealt damage by a red instant or sorcery spell you control or a red planeswalker you control"
     );
 }
@@ -615,16 +562,10 @@ fn keeps_list_or_but_splits_clause_or() {
 #[test]
 fn cast_or_land_entry_stays_two_trigger_branches() {
     let tokens = tokenize_line("you cast a white spell or a Plains you control enters", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("cast-or-entry trigger should parse");
     assert!(
-        matches!(
-            parsed,
-            crate::runtime_backend::ast::TriggerSpec::Either(_, _)
-        ),
+        matches!(parsed, crate::model::ast::TriggerSpec::Either(_, _)),
         "{parsed:#?}"
     );
 }
@@ -632,18 +573,15 @@ fn cast_or_land_entry_stays_two_trigger_branches() {
 #[test]
 fn shared_attack_or_block_subject_is_preserved_on_both_trigger_arms() {
     let tokens = tokenize_line("enchanted creature attacks or blocks", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("shared attack/block trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::Either(left, right) = parsed else {
+    let crate::model::ast::TriggerSpec::Either(left, right) = parsed else {
         panic!("expected an either trigger");
     };
     let (
-        crate::runtime_backend::ast::TriggerSpec::Attacks(attacks),
-        crate::runtime_backend::ast::TriggerSpec::Blocks(blocks),
+        crate::model::ast::TriggerSpec::Attacks(attacks),
+        crate::model::ast::TriggerSpec::Blocks(blocks),
     ) = (*left, *right)
     else {
         panic!("expected matching attacks and blocks arms");
@@ -663,14 +601,11 @@ fn source_and_another_attacking_different_players_is_typed() {
         "this creature and another creature attack different players",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("different-player attack relation should parse");
     assert!(matches!(
         parsed,
-        crate::runtime_backend::ast::TriggerSpec::ThisAndAnotherAttackDifferentPlayers
+        crate::model::ast::TriggerSpec::ThisAndAnotherAttackDifferentPlayers
     ));
 }
 
@@ -680,12 +615,9 @@ fn source_attacks_player_with_most_life_keeps_the_attacked_player_filter() {
         "this creature attacks the player with the most life or tied for most life",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("most-life attack trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::Attacks(filter) = parsed else {
+    let crate::model::ast::TriggerSpec::Attacks(filter) = parsed else {
         panic!("expected typed attacks trigger: {parsed:#?}");
     };
     assert!(filter.source);
@@ -705,22 +637,19 @@ fn shared_spell_cast_or_copy_subject_is_preserved_on_both_trigger_arms() {
         "enchanted player casts a spell other than the first spell they cast each turn or copies a spell",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("shared cast/copy trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::Either(left, right) = parsed else {
+    let crate::model::ast::TriggerSpec::Either(left, right) = parsed else {
         panic!("expected a cast-or-copy trigger union");
     };
     let (
-        crate::runtime_backend::ast::TriggerSpec::SpellCast {
+        crate::model::ast::TriggerSpec::SpellCast {
             caster,
             min_spells_this_turn,
             ..
         },
-        crate::runtime_backend::ast::TriggerSpec::SpellCopied { copier, .. },
+        crate::model::ast::TriggerSpec::SpellCopied { copier, .. },
     ) = (*left, *right)
     else {
         panic!("expected spell-cast and spell-copied trigger arms");
@@ -734,12 +663,9 @@ fn shared_spell_cast_or_copy_subject_is_preserved_on_both_trigger_arms() {
 #[test]
 fn spell_from_their_hand_uses_the_caster_not_an_owner_constraint() {
     let tokens = tokenize_line("a player casts a spell from their hand", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("hand-origin cast trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::SpellCast {
+    let crate::model::ast::TriggerSpec::SpellCast {
         filter: Some(filter),
         caster: PlayerFilter::Any,
         ..
@@ -757,19 +683,15 @@ fn targets_only_relation_preserves_named_source_exclusion() {
         "a player casts a spell that targets only a single creature other than Ivy",
         0,
     );
-    let parsed = crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
+    let parsed = crate::util::with_card_source_reference_context(
         "Ivy, Gleeful Spellthief",
         &[CardType::Creature],
         &[Subtype::Faerie, Subtype::Rogue],
-        || {
-            crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-                &tokens,
-            )
-        },
+        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
     )
     .expect("source-excluding single-target spell trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::SpellCast {
+    let crate::model::ast::TriggerSpec::SpellCast {
         filter: Some(spell),
         caster: PlayerFilter::Any,
         ..
@@ -816,20 +738,15 @@ fn parses_counter_spans_and_recipient() {
 #[test]
 fn parses_numbered_counter_placement_as_an_ordinal_trigger() {
     let tokens = tokenize_line("the fourth plan counter is put on this enchantment", 0);
-    let parsed =
-        crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
-            "Plan Probe",
-            &[CardType::Enchantment],
-            &[],
-            || {
-                crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-                    &tokens,
-                )
-            },
-        )
-        .expect("ordinal counter trigger should parse");
+    let parsed = crate::util::with_card_source_reference_context(
+        "Plan Probe",
+        &[CardType::Enchantment],
+        &[],
+        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+    )
+    .expect("ordinal counter trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::NthCounterPutOn {
+    let crate::model::ast::TriggerSpec::NthCounterPutOn {
         filter,
         counter_type,
         counter_number,
@@ -838,26 +755,21 @@ fn parses_numbered_counter_placement_as_an_ordinal_trigger() {
         panic!("expected a numbered counter trigger, got {parsed:#?}");
     };
     assert!(filter.source);
-    assert_eq!(counter_type, CounterType::Named("plan".into()));
+    assert_eq!(counter_type, CounterType::Named("plan"));
     assert_eq!(counter_number, 4);
 }
 
 #[test]
 fn parses_last_named_counter_removed_from_typed_source() {
     let tokens = tokenize_line("the last ore counter is removed from this Aura", 0);
-    let parsed =
-        crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
-            "Mine Probe",
-            &[CardType::Enchantment],
-            &[crate::types::Subtype::Aura],
-            || {
-                crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-                    &tokens,
-                )
-            },
-        )
-        .expect("last named counter trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::CounterRemovedFrom {
+    let parsed = crate::util::with_card_source_reference_context(
+        "Mine Probe",
+        &[CardType::Enchantment],
+        &[crate::types::Subtype::Aura],
+        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+    )
+    .expect("last named counter trigger should parse");
+    let crate::model::ast::TriggerSpec::CounterRemovedFrom {
         filter,
         counter_type,
         last,
@@ -868,7 +780,7 @@ fn parses_last_named_counter_removed_from_typed_source() {
         panic!("expected a typed counter-removal trigger: {parsed:#?}");
     };
     assert!(filter.source);
-    assert_eq!(counter_type, Some(CounterType::Named("ore".into())));
+    assert_eq!(counter_type, Some(CounterType::Named("ore")));
     assert!(last);
     assert!(!caused_by_source);
 }
@@ -876,19 +788,14 @@ fn parses_last_named_counter_removed_from_typed_source() {
 #[test]
 fn parses_grouped_loyalty_counters_removed_from_named_source() {
     let tokens = tokenize_line("one or more loyalty counters are removed from Chandra", 0);
-    let parsed =
-        crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
-            "Chandra, Fire Artisan",
-            &[CardType::Planeswalker],
-            &[crate::types::Subtype::Chandra],
-            || {
-                crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-                    &tokens,
-                )
-            },
-        )
-        .expect("named grouped loyalty-removal trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::CounterRemovedFrom {
+    let parsed = crate::util::with_card_source_reference_context(
+        "Chandra, Fire Artisan",
+        &[CardType::Planeswalker],
+        &[crate::types::Subtype::Chandra],
+        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+    )
+    .expect("named grouped loyalty-removal trigger should parse");
+    let crate::model::ast::TriggerSpec::CounterRemovedFrom {
         filter,
         counter_type,
         last,
@@ -909,10 +816,8 @@ fn parses_grouped_loyalty_counters_removed_from_named_source() {
         0,
     );
     assert!(!matches!(
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &near_miss
-        ),
-        Ok(crate::runtime_backend::ast::TriggerSpec::CounterRemovedFrom { .. })
+        crate::activation_and_restrictions::parse_trigger_clause_lexed(&near_miss),
+        Ok(crate::model::ast::TriggerSpec::CounterRemovedFrom { .. })
     ));
 }
 
@@ -947,12 +852,9 @@ fn parses_ability_owner_tails() {
 #[test]
 fn named_activated_ability_reaches_the_typed_trigger_ast() {
     let tokens = tokenize_line("you activate a ninjutsu ability", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("named activated-ability trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::AbilityActivated {
+    let crate::model::ast::TriggerSpec::AbilityActivated {
         activator,
         filter,
         loyalty_only,
@@ -970,12 +872,9 @@ fn named_activated_ability_reaches_the_typed_trigger_ast() {
 #[test]
 fn chosen_subtype_activated_ability_reaches_the_typed_trigger_filter() {
     let tokens = tokenize_line("you activate an ability of a planeswalker of that type", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("chosen-subtype activated-ability trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::AbilityActivated {
+    let crate::model::ast::TriggerSpec::AbilityActivated {
         filter,
         loyalty_only,
         ..
@@ -1065,14 +964,10 @@ fn parses_trigger_subject_and_origin_surfaces_as_typed_facts() {
 #[test]
 fn grouped_dice_roll_reaches_the_typed_trigger_ast() {
     let tokens = tokenize_line("you roll one or more dice", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap();
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
     assert_eq!(
         parsed,
-        crate::runtime_backend::ast::TriggerSpec::PlayerRollsDie {
+        crate::model::ast::TriggerSpec::PlayerRollsDie {
             player: PlayerFilter::You,
             one_or_more: true,
         }
@@ -1082,17 +977,13 @@ fn grouped_dice_roll_reaches_the_typed_trigger_ast() {
 #[test]
 fn grouped_opponent_life_loss_reaches_the_typed_trigger_ast() {
     let tokens = tokenize_line("one or more opponents lose life", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap();
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
     assert_eq!(
         parsed,
-        crate::runtime_backend::ast::TriggerSpec::PlayersLoseLifeOneOrMore(PlayerFilter::Opponent,)
+        crate::model::ast::TriggerSpec::PlayersLoseLifeOneOrMore(PlayerFilter::Opponent,)
     );
     assert_eq!(
-        crate::runtime_backend::compile_support::compile_trigger_spec(parsed),
+        crate::compile_support::compile_trigger_spec(parsed),
         crate::triggers::Trigger::players_lose_life_one_or_more(PlayerFilter::Opponent),
     );
 }
@@ -1107,9 +998,9 @@ fn counter_removed_from_source_this_way_keeps_grouping_and_provenance() {
         ("a counter is removed from this permanent this way", false),
     ] {
         let tokens = tokenize_line(text, 0);
-        let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
             .unwrap_or_else(|err| panic!("{text}: {err:?}"));
-        let crate::runtime_backend::ast::TriggerSpec::CounterRemovedFrom {
+        let crate::model::ast::TriggerSpec::CounterRemovedFrom {
             filter,
             one_or_more,
             caused_by_source,
@@ -1122,7 +1013,7 @@ fn counter_removed_from_source_this_way_keeps_grouping_and_provenance() {
         assert_eq!(*one_or_more, expected_one_or_more, "{text}");
         assert!(*caused_by_source, "{text}");
 
-        let lowered = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+        let lowered = crate::compile_support::compile_trigger_spec(parsed);
         let ironsmith_core::trigger_model::TriggerKind::CounterRemovedFrom(lowered) = lowered.kind
         else {
             panic!("{text}: expected typed lowered counter-removal trigger");
@@ -1135,21 +1026,17 @@ fn counter_removed_from_source_this_way_keeps_grouping_and_provenance() {
 #[test]
 fn another_ability_trigger_reaches_typed_model() {
     let tokens = tokenize_line("another ability triggers", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap();
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
 
     assert_eq!(
         parsed,
-        crate::runtime_backend::ast::TriggerSpec::AbilityTriggered {
+        crate::model::ast::TriggerSpec::AbilityTriggered {
             another: true,
             source_filter: None,
             caused_by_source_entering: false,
         }
     );
-    let lowered = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+    let lowered = crate::compile_support::compile_trigger_spec(parsed);
     assert_eq!(lowered.display(), "Whenever another ability triggers");
     assert!(matches!(
         lowered.kind,
@@ -1167,13 +1054,10 @@ fn ability_triggered_by_its_own_sources_entry_reaches_typed_model() {
         "a creature entering under an opponent's control causes a triggered ability of that creature to trigger",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("qualified ability-trigger clause should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::AbilityTriggered {
+    let crate::model::ast::TriggerSpec::AbilityTriggered {
         another,
         source_filter: Some(filter),
         caused_by_source_entering,
@@ -1196,14 +1080,10 @@ fn extraordinary_journey_keeps_exile_entry_or_cast_provenance() {
         "one or more nontoken creatures enter, if one or more of them entered from exile or was cast from exile",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap();
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
     assert!(matches!(
         &parsed,
-        crate::runtime_backend::ast::TriggerSpec::EntersBattlefieldOneOrMore {
+        crate::model::ast::TriggerSpec::EntersBattlefieldOneOrMore {
             origin_condition: Some(
                 ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom {
                     zone: Zone::Exile,
@@ -1216,7 +1096,7 @@ fn extraordinary_journey_keeps_exile_entry_or_cast_provenance() {
         }
     ));
     assert_eq!(
-        crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+        crate::compile_support::compile_trigger_spec(parsed).display(),
         "Whenever one or more nontoken creatures enter the battlefield, if one or more of them entered from exile or was cast from exile"
     );
 }
@@ -1224,12 +1104,9 @@ fn extraordinary_journey_keeps_exile_entry_or_cast_provenance() {
 #[test]
 fn generic_etb_during_your_turn_keeps_the_active_turn_qualifier() {
     let tokens = tokenize_line("a land enters during your turn", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("qualified ETB trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::EntersBattlefield {
+    let crate::model::ast::TriggerSpec::EntersBattlefield {
         filter,
         during_turn,
         ..
@@ -1240,7 +1117,7 @@ fn generic_etb_during_your_turn_keeps_the_active_turn_qualifier() {
     assert_eq!(filter.card_types, vec![crate::types::CardType::Land]);
     assert_eq!(during_turn, &Some(crate::target::PlayerFilter::You));
 
-    let compiled = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+    let compiled = crate::compile_support::compile_trigger_spec(parsed);
     let crate::triggers::TriggerKind::ZoneChange(zone_change) = &compiled.kind else {
         panic!("expected an executable zone-change trigger, got {compiled:?}");
     };
@@ -1260,20 +1137,16 @@ fn parses_and_or_player_object_damage_recipients_as_both_trigger_branches() {
         "a red source you control deals damage to one or more permanents and/or players",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap();
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
     assert_eq!(
-        crate::runtime_backend::compile_support::compile_trigger_spec(parsed.clone()).display(),
+        crate::compile_support::compile_trigger_spec(parsed.clone()).display(),
         "Whenever a red source you control deals damage to one or more permanents and/or players"
     );
 
-    let crate::runtime_backend::ast::TriggerSpec::Either(object, player) = parsed else {
+    let crate::model::ast::TriggerSpec::Either(object, player) = parsed else {
         panic!("expected player/object damage union");
     };
-    let crate::runtime_backend::ast::TriggerSpec::DealsDamageTo {
+    let crate::model::ast::TriggerSpec::DealsDamageTo {
         source,
         target,
         source_surface,
@@ -1290,7 +1163,7 @@ fn parses_and_or_player_object_damage_recipients_as_both_trigger_branches() {
         crate::filter::ObjectFilterUnionConnective::AndOr
     );
     assert!(target.union_is_one_or_more());
-    let crate::runtime_backend::ast::TriggerSpec::DealsDamageToPlayer {
+    let crate::model::ast::TriggerSpec::DealsDamageToPlayer {
         source: player_source,
         player,
         source_surface: player_source_surface,
@@ -1309,13 +1182,10 @@ fn exact_damage_to_permanent_or_player_stays_one_correlated_trigger() {
         "another source you control deals exactly 1 damage to a permanent or player",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("exact object-or-player damage trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::DealsExactDamageToObjectOrPlayer {
+    let crate::model::ast::TriggerSpec::DealsExactDamageToObjectOrPlayer {
         source,
         object,
         player,
@@ -1335,7 +1205,7 @@ fn exact_damage_to_permanent_or_player_stays_one_correlated_trigger() {
     assert_eq!(amount, 1);
     assert_eq!(source_surface, crate::triggers::DamageSourceSurface::Source);
 
-    let compiled = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+    let compiled = crate::compile_support::compile_trigger_spec(parsed);
     assert_eq!(
         compiled.display(),
         "Whenever another source you control deals exactly 1 damage to a permanent or player"
@@ -1353,16 +1223,10 @@ fn exact_damage_to_permanent_or_player_stays_one_correlated_trigger() {
         "another source you control deals 1 damage to a permanent or player",
         0,
     );
-    let non_exact =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &non_exact,
-        )
+    let non_exact = crate::activation_and_restrictions::parse_trigger_clause_lexed(&non_exact)
         .expect("ordinary object-or-player damage trigger should retain its existing route");
     assert!(
-        matches!(
-            non_exact,
-            crate::runtime_backend::ast::TriggerSpec::Either(_, _)
-        ),
+        matches!(non_exact, crate::model::ast::TriggerSpec::Either(_, _)),
         "a bare numeric amount must not acquire the authored `exactly` surface: {non_exact:?}"
     );
 }
@@ -1373,20 +1237,17 @@ fn passive_sacrifice_or_destroy_keeps_one_typed_event_union() {
         "Whenever a noncreature artifact is sacrificed or destroyed",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("passive sacrifice-or-destroy trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::WithIntro { trigger, .. } = parsed else {
+    let crate::model::ast::TriggerSpec::WithIntro { trigger, .. } = parsed else {
         panic!("expected preserved trigger intro");
     };
-    let crate::runtime_backend::ast::TriggerSpec::AnyOf(branches) = *trigger else {
+    let crate::model::ast::TriggerSpec::AnyOf(branches) = *trigger else {
         panic!("expected a typed event union");
     };
     let [
-        crate::runtime_backend::ast::TriggerSpec::PermanentSacrificed(sacrificed),
-        crate::runtime_backend::ast::TriggerSpec::PermanentDestroyed(destroyed),
+        crate::model::ast::TriggerSpec::PermanentSacrificed(sacrificed),
+        crate::model::ast::TriggerSpec::PermanentDestroyed(destroyed),
     ] = branches.as_slice()
     else {
         panic!("expected passive sacrifice and destroy branches: {branches:#?}");
@@ -1402,13 +1263,9 @@ fn passive_sacrifice_or_destroy_keeps_one_typed_event_union() {
 #[test]
 fn generic_source_to_player_keeps_authored_surface_in_ast_and_model() {
     let tokens = tokenize_line("a source an opponent controls deals damage to you", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap();
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
 
-    let crate::runtime_backend::ast::TriggerSpec::DealsDamageToPlayer {
+    let crate::model::ast::TriggerSpec::DealsDamageToPlayer {
         source,
         player,
         source_surface,
@@ -1421,7 +1278,7 @@ fn generic_source_to_player_keeps_authored_surface_in_ast_and_model() {
     assert_eq!(player, PlayerFilter::You);
     assert_eq!(source_surface, crate::triggers::DamageSourceSurface::Source);
 
-    let compiled = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+    let compiled = crate::compile_support::compile_trigger_spec(parsed);
     let crate::triggers::TriggerKind::DealsDamageToPlayer {
         source,
         player,
@@ -1442,13 +1299,10 @@ fn grouped_noncombat_damage_to_opponents_during_your_turn_keeps_each_qualifier()
         "a source you control deals noncombat damage to one or more of your opponents during your turn",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("qualified noncombat-damage trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::DealsNoncombatDamageToPlayer {
+    let crate::model::ast::TriggerSpec::DealsNoncombatDamageToPlayer {
         source,
         player,
         source_surface,
@@ -1465,7 +1319,7 @@ fn grouped_noncombat_damage_to_opponents_during_your_turn_keeps_each_qualifier()
     assert!(damaged_player_one_or_more);
     assert_eq!(during_turn, Some(PlayerFilter::You));
 
-    let compiled = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+    let compiled = crate::compile_support::compile_trigger_spec(parsed);
     assert_eq!(
         compiled.display(),
         "Whenever a source you control deals noncombat damage to one or more of your opponents during your turn"
@@ -1483,14 +1337,11 @@ fn grouped_noncombat_damage_to_opponents_during_your_turn_keeps_each_qualifier()
         "a source you control deals noncombat damage to an opponent",
         0,
     );
-    let unqualified =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &unqualified,
-        )
+    let unqualified = crate::activation_and_restrictions::parse_trigger_clause_lexed(&unqualified)
         .expect("ordinary noncombat-damage trigger should retain its existing route");
     assert!(matches!(
         unqualified,
-        crate::runtime_backend::ast::TriggerSpec::DealsNoncombatDamageToPlayer {
+        crate::model::ast::TriggerSpec::DealsNoncombatDamageToPlayer {
             damaged_player_one_or_more: false,
             during_turn: None,
             ..
@@ -1505,12 +1356,10 @@ fn passive_player_combat_damage_keeps_the_combat_qualifier() {
         ("an opponent is dealt combat damage", PlayerFilter::Opponent),
     ] {
         let tokens = tokenize_line(clause, 0);
-        let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .expect("passive player combat-damage trigger should parse");
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+            .expect("passive player combat-damage trigger should parse");
 
-        let crate::runtime_backend::ast::TriggerSpec::DealsCombatDamageToPlayer { source, player } =
+        let crate::model::ast::TriggerSpec::DealsCombatDamageToPlayer { source, player } =
             parsed.clone()
         else {
             panic!("expected combat-damage-to-player trigger for {clause:?}, got {parsed:#?}");
@@ -1526,40 +1375,25 @@ fn one_or_more_damage_cardinality_survives_typed_lowering() {
         "this creature deals combat damage to one or more blocking creatures",
         0,
     );
-    let arashin =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &arashin,
-        )
+    let arashin = crate::activation_and_restrictions::parse_trigger_clause_lexed(&arashin)
         .expect("Arashin-style grouped damage recipient should parse");
-    let crate::runtime_backend::ast::TriggerSpec::ThisDealsCombatDamageTo(arashin_target) =
-        &arashin
-    else {
+    let crate::model::ast::TriggerSpec::ThisDealsCombatDamageTo(arashin_target) = &arashin else {
         panic!("expected source combat-damage recipient trigger, got {arashin:?}");
     };
     assert!(arashin_target.union_is_one_or_more());
 
     let briarbridge = tokenize_line("this creature deals damage to one or more creatures", 0);
-    let briarbridge =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &briarbridge,
-        )
+    let briarbridge = crate::activation_and_restrictions::parse_trigger_clause_lexed(&briarbridge)
         .expect("Briarbridge-style grouped damage recipient should parse");
-    let crate::runtime_backend::ast::TriggerSpec::ThisDealsDamageTo(briarbridge_target) =
-        &briarbridge
-    else {
+    let crate::model::ast::TriggerSpec::ThisDealsDamageTo(briarbridge_target) = &briarbridge else {
         panic!("expected source damage recipient trigger, got {briarbridge:?}");
     };
     assert!(briarbridge_target.union_is_one_or_more());
 
     let thing = tokenize_line("one or more Heroes you control deal damage to a player", 0);
-    let thing =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &thing,
-        )
+    let thing = crate::activation_and_restrictions::parse_trigger_clause_lexed(&thing)
         .expect("Thing-style grouped damage source should parse");
-    let crate::runtime_backend::ast::TriggerSpec::DealsDamageToPlayer { source, player, .. } =
-        &thing
-    else {
+    let crate::model::ast::TriggerSpec::DealsDamageToPlayer { source, player, .. } = &thing else {
         panic!("expected grouped source damage-to-player trigger, got {thing:?}");
     };
     assert!(source.union_is_one_or_more());
@@ -1569,13 +1403,9 @@ fn one_or_more_damage_cardinality_survives_typed_lowering() {
 #[test]
 fn noncreature_source_without_recipient_is_zone_less_in_ast_and_model() {
     let tokens = tokenize_line("a noncreature source you control deals damage", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap();
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
 
-    let crate::runtime_backend::ast::TriggerSpec::DealsDamage {
+    let crate::model::ast::TriggerSpec::DealsDamage {
         source,
         source_surface,
     } = parsed.clone()
@@ -1587,7 +1417,7 @@ fn noncreature_source_without_recipient_is_zone_less_in_ast_and_model() {
     assert_eq!(source.excluded_card_types, [CardType::Creature]);
     assert_eq!(source_surface, crate::triggers::DamageSourceSurface::Source);
 
-    let compiled = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+    let compiled = crate::compile_support::compile_trigger_spec(parsed);
     let crate::triggers::TriggerKind::DealsDamage {
         filter,
         source_surface,
@@ -1607,24 +1437,19 @@ fn parses_one_or_more_and_or_blockers_as_shared_union_metadata() {
         "this creature blocks or becomes blocked by one or more blue and/or black creatures",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap();
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
 
-    let crate::runtime_backend::ast::TriggerSpec::Either(blocks, becomes_blocked) = parsed else {
+    let crate::model::ast::TriggerSpec::Either(blocks, becomes_blocked) = parsed else {
         panic!("expected blocks/becomes-blocked trigger union");
     };
-    let crate::runtime_backend::ast::TriggerSpec::ThisBlocksObject {
+    let crate::model::ast::TriggerSpec::ThisBlocksObject {
         filter: blocker,
         min_blocked_objects,
     } = *blocks
     else {
         panic!("expected filtered blocks branch");
     };
-    let crate::runtime_backend::ast::TriggerSpec::ThisBecomesBlockedByObject(blocking) =
-        *becomes_blocked
+    let crate::model::ast::TriggerSpec::ThisBecomesBlockedByObject(blocking) = *becomes_blocked
     else {
         panic!("expected filtered becomes-blocked branch");
     };
@@ -1645,15 +1470,10 @@ fn parses_lesser_power_block_relationships_as_typed_pair_triggers() {
         "a creature becomes blocked by an artifact creature with lesser power",
         0,
     );
-    let becomes =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &becomes_tokens,
-        )
+    let becomes = crate::activation_and_restrictions::parse_trigger_clause_lexed(&becomes_tokens)
         .expect("relative-power becomes-blocked trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::BecomesBlockedByObjectWithLesserPower {
-        blocked,
-        blocker,
-    } = becomes
+    let crate::model::ast::TriggerSpec::BecomesBlockedByObjectWithLesserPower { blocked, blocker } =
+        becomes
     else {
         panic!("expected typed relative-power becomes-blocked trigger");
     };
@@ -1668,13 +1488,9 @@ fn parses_lesser_power_block_relationships_as_typed_pair_triggers() {
     );
 
     let blocks_tokens = tokenize_line("a red creature blocks a creature with lesser power", 0);
-    let blocks =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &blocks_tokens,
-        )
+    let blocks = crate::activation_and_restrictions::parse_trigger_clause_lexed(&blocks_tokens)
         .expect("relative-power blocks trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::BlocksObjectWithLesserPower { blocker, blocked } =
-        blocks
+    let crate::model::ast::TriggerSpec::BlocksObjectWithLesserPower { blocker, blocked } = blocks
     else {
         panic!("expected typed relative-power blocks trigger");
     };
@@ -1686,12 +1502,9 @@ fn parses_lesser_power_block_relationships_as_typed_pair_triggers() {
 #[test]
 fn this_blocks_group_preserves_minimum_cardinality() {
     let tokens = tokenize_line("this creature blocks two or more creatures", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("minimum-cardinality block trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::ThisBlocksObject {
+    let crate::model::ast::TriggerSpec::ThisBlocksObject {
         filter,
         min_blocked_objects,
     } = &parsed
@@ -1710,13 +1523,10 @@ fn attack_group_quantifiers_preserve_their_minimum_cardinality() {
         ("three or more creatures you control with flying attack", 3),
     ] {
         let tokens = tokenize_line(clause, 0);
-        let parsed =
-            crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-                &tokens,
-            )
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
             .unwrap_or_else(|error| panic!("failed to parse {clause:?}: {error}"));
 
-        let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMoreWithMinTotal {
+        let crate::model::ast::TriggerSpec::AttacksOneOrMoreWithMinTotal {
             min_total_attackers,
             ..
         } = &parsed
@@ -1733,12 +1543,9 @@ fn attack_group_total_power_is_not_a_per_attacker_filter() {
         "you attack with creatures with total power 12 or greater",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("aggregate-power attack trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMoreWithAggregate {
+    let crate::model::ast::TriggerSpec::AttacksOneOrMoreWithAggregate {
         filter,
         metric,
         comparison,
@@ -1761,18 +1568,15 @@ fn serial_shared_opponent_attack_draw_cast_union_keeps_all_three_events() {
         "an opponent attacks you with two or more creatures, draws their second card each turn, or casts their second spell each turn",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("serial shared-opponent trigger union should parse");
-    let crate::runtime_backend::ast::TriggerSpec::AnyOf(branches) = parsed else {
+    let crate::model::ast::TriggerSpec::AnyOf(branches) = parsed else {
         panic!("expected three independent trigger branches, got {parsed:#?}");
     };
     let [attack, draw, cast] = branches.as_slice() else {
         panic!("expected exactly three trigger branches: {branches:#?}");
     };
-    let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMoreWithMinTotal {
+    let crate::model::ast::TriggerSpec::AttacksOneOrMoreWithMinTotal {
         filter,
         min_total_attackers,
     } = attack
@@ -1793,14 +1597,14 @@ fn serial_shared_opponent_attack_draw_cast_union_keeps_all_three_events() {
     );
     assert!(matches!(
         draw,
-        crate::runtime_backend::ast::TriggerSpec::PlayerDrawsNthCardEachTurn {
+        crate::model::ast::TriggerSpec::PlayerDrawsNthCardEachTurn {
             player: PlayerFilter::Opponent,
             card_number: 2,
         }
     ));
     assert!(matches!(
         cast,
-        crate::runtime_backend::ast::TriggerSpec::SpellCast {
+        crate::model::ast::TriggerSpec::SpellCast {
             caster: PlayerFilter::Opponent,
             exact_spells_this_turn: Some(2),
             ..
@@ -1821,19 +1625,12 @@ fn opponent_or_opponent_planeswalker_attack_surfaces_reach_the_typed_trigger() {
         ),
     ] {
         let tokens = tokenize_line(clause, 0);
-        let parsed =
-            crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-                &tokens,
-            )
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
             .unwrap_or_else(|error| panic!("failed to parse {clause:?}: {error}"));
 
         let filter = match &parsed {
-            crate::runtime_backend::ast::TriggerSpec::Attacks(filter) if !expected_one_or_more => {
-                filter
-            }
-            crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMore(filter)
-                if expected_one_or_more =>
-            {
+            crate::model::ast::TriggerSpec::Attacks(filter) if !expected_one_or_more => filter,
+            crate::model::ast::TriggerSpec::AttacksOneOrMore(filter) if expected_one_or_more => {
                 filter
             }
             _ => panic!("unexpected attack-trigger shape for {clause:?}: {parsed:#?}"),
@@ -1855,13 +1652,10 @@ fn player_attacking_planeswalkers_keeps_planeswalker_only_target_semantics() {
         "an opponent attacks one or more planeswalkers you control",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("planeswalker-only player attack trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::PlayerAttacksOneOrMore { attacker, target } =
+    let crate::model::ast::TriggerSpec::PlayerAttacksOneOrMore { attacker, target } =
         parsed.clone()
     else {
         panic!("expected typed player-attack trigger, got {parsed:#?}");
@@ -1872,7 +1666,7 @@ fn player_attacking_planeswalkers_keeps_planeswalker_only_target_semantics() {
         ironsmith_core::AttackTargetRestriction::PlaneswalkerControlledBy(PlayerFilter::You)
     );
 
-    let lowered = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+    let lowered = crate::compile_support::compile_trigger_spec(parsed);
     assert!(matches!(
         lowered.kind,
         crate::triggers::TriggerKind::PlayerAttacksOneOrMore {
@@ -1887,13 +1681,10 @@ fn player_attacking_planeswalkers_keeps_planeswalker_only_target_semantics() {
 #[test]
 fn initiative_holder_attack_target_keeps_dynamic_player_reference() {
     let tokens = tokenize_line("you attack the player who has the initiative", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("initiative-holder attack trigger should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMore(filter) = &parsed else {
+    let crate::model::ast::TriggerSpec::AttacksOneOrMore(filter) = &parsed else {
         panic!("expected a group attack trigger, got {parsed:#?}");
     };
     let expected =
@@ -1910,14 +1701,11 @@ fn initiative_holder_attack_target_keeps_dynamic_player_reference() {
 #[test]
 fn monarch_end_step_is_an_event_qualified_trigger_surface() {
     let tokens = tokenize_line("at the beginning of the monarch's end step", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("monarch end-step trigger should parse");
     assert!(matches!(
         parsed,
-        crate::runtime_backend::ast::TriggerSpec::BeginningOfMonarchEndStep
+        crate::model::ast::TriggerSpec::BeginningOfMonarchEndStep
     ));
 }
 
@@ -1931,12 +1719,12 @@ fn normalized_monarch_end_step_is_still_event_qualified() {
         "beginning of monarch end step",
     ] {
         let tokens = tokenize_line(text, 0);
-        let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
             .expect("normalized monarch end-step trigger should parse");
         assert!(
             matches!(
                 parsed,
-                crate::runtime_backend::ast::TriggerSpec::BeginningOfMonarchEndStep
+                crate::model::ast::TriggerSpec::BeginningOfMonarchEndStep
             ),
             "{text}: {parsed:#?}"
         );
@@ -1945,13 +1733,9 @@ fn normalized_monarch_end_step_is_still_event_qualified() {
 
 #[test]
 fn repeated_attack_intro_resolves_enchanted_player_pronoun_on_both_branches() {
-    fn without_intro(
-        trigger: &crate::runtime_backend::ast::TriggerSpec,
-    ) -> &crate::runtime_backend::ast::TriggerSpec {
+    fn without_intro(trigger: &crate::model::ast::TriggerSpec) -> &crate::model::ast::TriggerSpec {
         match trigger {
-            crate::runtime_backend::ast::TriggerSpec::WithIntro { trigger, .. } => {
-                without_intro(trigger)
-            }
+            crate::model::ast::TriggerSpec::WithIntro { trigger, .. } => without_intro(trigger),
             trigger => trigger,
         }
     }
@@ -1960,22 +1744,16 @@ fn repeated_attack_intro_resolves_enchanted_player_pronoun_on_both_branches() {
         "when you attack enchanted opponent or a planeswalker they control or when they attack you or a planeswalker you control",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("repeated-intro attack union should parse");
-    let crate::runtime_backend::ast::TriggerSpec::Either(left, right) = &parsed else {
+    let crate::model::ast::TriggerSpec::Either(left, right) = &parsed else {
         panic!("expected a two-branch attack trigger, got {parsed:#?}");
     };
-    let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMore(left_filter) =
-        without_intro(left)
-    else {
+    let crate::model::ast::TriggerSpec::AttacksOneOrMore(left_filter) = without_intro(left) else {
         panic!("expected controller attack branch, got {left:#?}");
     };
-    let crate::runtime_backend::ast::TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(
-        right_filter,
-    ) = without_intro(right)
+    let crate::model::ast::TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(right_filter) =
+        without_intro(right)
     else {
         panic!("expected enchanted-player counterattack branch, got {right:#?}");
     };
@@ -1993,13 +1771,10 @@ fn repeated_attack_intro_resolves_enchanted_player_pronoun_on_both_branches() {
 #[test]
 fn subject_first_attack_group_does_not_claim_attack_with_surface() {
     let tokens = tokenize_line("one or more suspected creatures you control attack", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("subject-first attack group should parse");
 
-    let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMore(filter) = &parsed else {
+    let crate::model::ast::TriggerSpec::AttacksOneOrMore(filter) = &parsed else {
         panic!("expected one-or-more attack trigger, got {parsed:?}");
     };
     assert!(filter.suspected);
@@ -2015,19 +1790,15 @@ fn repeated_intro_player_attack_with_group_keeps_both_trigger_branches() {
         "Whenever you attack with one or more Gods and whenever a God dies",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("repeated-intro group attack should parse");
-    let crate::runtime_backend::ast::TriggerSpec::Either(left, right) = &parsed else {
+    let crate::model::ast::TriggerSpec::Either(left, right) = &parsed else {
         panic!("expected two executable trigger branches, got {parsed:#?}");
     };
-    let crate::runtime_backend::ast::TriggerSpec::WithIntro { trigger: left, .. } = left.as_ref()
-    else {
+    let crate::model::ast::TriggerSpec::WithIntro { trigger: left, .. } = left.as_ref() else {
         panic!("left branch should retain its authored intro: {left:#?}");
     };
-    let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMore(filter) = left.as_ref() else {
+    let crate::model::ast::TriggerSpec::AttacksOneOrMore(filter) = left.as_ref() else {
         panic!("expected group attack branch, got {left:#?}");
     };
     assert_eq!(filter.controller.as_ref(), Some(&PlayerFilter::You));
@@ -2035,11 +1806,11 @@ fn repeated_intro_player_attack_with_group_keeps_both_trigger_branches() {
     assert!(filter.union_is_one_or_more());
     assert!(matches!(
         right.as_ref(),
-        crate::runtime_backend::ast::TriggerSpec::WithIntro { .. }
+        crate::model::ast::TriggerSpec::WithIntro { .. }
     ));
 
     assert_eq!(
-        crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+        crate::compile_support::compile_trigger_spec(parsed).display(),
         "Whenever you attack with one or more Gods and whenever a God dies"
     );
 }
@@ -2063,12 +1834,10 @@ fn zone_change_unions_reach_runtime_with_quantifier_and_connective_surfaces() {
 
     for (clause, expected) in cases {
         let tokens = tokenize_line(clause, 0);
-        let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap_or_else(|error| panic!("failed to parse {clause:?}: {error}"));
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+            .unwrap_or_else(|error| panic!("failed to parse {clause:?}: {error}"));
         assert_eq!(
-            crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+            crate::compile_support::compile_trigger_spec(parsed).display(),
             expected,
             "unexpected compiled trigger surface for {clause:?}"
         );
@@ -2078,12 +1847,9 @@ fn zone_change_unions_reach_runtime_with_quantifier_and_connective_surfaces() {
 #[test]
 fn chosen_object_leaves_keeps_the_persistent_choice_tag() {
     let tokens = tokenize_line("the chosen creature leaves the battlefield", 0);
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("chosen-object leave trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::LeavesBattlefield(filter) = parsed else {
+    let crate::model::ast::TriggerSpec::LeavesBattlefield(filter) = parsed else {
         panic!("expected a filtered leaves-battlefield trigger, got {parsed:#?}");
     };
 
@@ -2106,12 +1872,9 @@ fn leaves_without_dying_keeps_excluded_destination_and_batch_count() {
         "one or more other creatures you control leave the battlefield without dying",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
         .expect("destination-excluding leave trigger should parse");
-    let crate::runtime_backend::ast::TriggerSpec::LeavesBattlefieldWithoutDying {
+    let crate::model::ast::TriggerSpec::LeavesBattlefieldWithoutDying {
         filter,
         one_or_more,
     } = &parsed
@@ -2123,7 +1886,7 @@ fn leaves_without_dying_keeps_excluded_destination_and_batch_count() {
     assert_eq!(filter.controller, Some(crate::target::PlayerFilter::You));
     assert_eq!(filter.card_types, vec![CardType::Creature]);
 
-    let compiled = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+    let compiled = crate::compile_support::compile_trigger_spec(parsed);
     let crate::triggers::TriggerKind::ZoneChange(zone_change) = &compiled.kind else {
         panic!("expected a typed zone-change trigger, got {compiled:#?}");
     };
@@ -2135,7 +1898,7 @@ fn leaves_without_dying_keeps_excluded_destination_and_batch_count() {
 
 #[test]
 fn combat_damage_recipients_prefer_registered_source_names_over_subtypes() {
-    crate::runtime_backend::util::with_source_reference_context("Vraska the Unseen", || {
+    crate::util::with_source_reference_context("Vraska the Unseen", || {
         for (recipient, expected_surface) in [
             (
                 "Vraska the Unseen",
@@ -2148,13 +1911,9 @@ fn combat_damage_recipients_prefer_registered_source_names_over_subtypes() {
         ] {
             let tokens =
                 tokenize_line(&format!("a creature deals combat damage to {recipient}"), 0);
-            let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-                &tokens,
-            )
-            .unwrap_or_else(|error| panic!("failed to parse {recipient:?}: {error}"));
-            let crate::runtime_backend::ast::TriggerSpec::DealsCombatDamageTo { target, .. } =
-                parsed
-            else {
+            let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+                .unwrap_or_else(|error| panic!("failed to parse {recipient:?}: {error}"));
+            let crate::model::ast::TriggerSpec::DealsCombatDamageTo { target, .. } = parsed else {
                 panic!("expected combat-damage-to trigger for {recipient:?}: {parsed:#?}");
             };
 
@@ -2170,13 +1929,11 @@ fn combat_damage_recipients_prefer_registered_source_names_over_subtypes() {
 
 #[test]
 fn named_source_attack_trigger_preserves_its_authored_short_name() {
-    crate::runtime_backend::util::with_source_reference_context("Altaïr Ibn-La'Ahad", || {
+    crate::util::with_source_reference_context("Altaïr Ibn-La'Ahad", || {
         let tokens = tokenize_line("Altaïr attacks", 0);
-        let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .expect("named-source attack trigger should parse");
-        let crate::runtime_backend::ast::TriggerSpec::Attacks(filter) = parsed else {
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+            .expect("named-source attack trigger should parse");
+        let crate::model::ast::TriggerSpec::Attacks(filter) = parsed else {
             panic!("expected a surfaced source attack trigger, got {parsed:#?}");
         };
 
@@ -2196,11 +1953,7 @@ fn grist_style_singular_origin_clause_scopes_zone_owner_and_caster_on_the_trigge
         "this creature or another creature you control enters, if it entered from your graveyard or you cast it from your graveyard",
         0,
     );
-    let parsed =
-        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
-            &tokens,
-        )
-        .unwrap();
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
 
     fn assert_origin(
         origin: &Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition>,
@@ -2224,19 +1977,19 @@ fn grist_style_singular_origin_clause_scopes_zone_owner_and_caster_on_the_trigge
         assert_eq!(*caster, Some(crate::target::PlayerFilter::You), "{context}");
     }
 
-    let crate::runtime_backend::ast::TriggerSpec::Either(left, right) = &parsed else {
+    let crate::model::ast::TriggerSpec::Either(left, right) = &parsed else {
         panic!("expected an either-union of this-enters and another-enters, got {parsed:?}");
     };
     match left.as_ref() {
-        crate::runtime_backend::ast::TriggerSpec::ThisEntersBattlefield { origin_condition }
-        | crate::runtime_backend::ast::TriggerSpec::ThisEntersBattlefieldWithSurface {
+        crate::model::ast::TriggerSpec::ThisEntersBattlefield { origin_condition }
+        | crate::model::ast::TriggerSpec::ThisEntersBattlefieldWithSurface {
             origin_condition,
             ..
         } => assert_origin(origin_condition, "this-enters branch"),
         other => panic!("expected a this-enters branch, got {other:?}"),
     }
     match right.as_ref() {
-        crate::runtime_backend::ast::TriggerSpec::EntersBattlefield {
+        crate::model::ast::TriggerSpec::EntersBattlefield {
             origin_condition, ..
         } => assert_origin(origin_condition, "another-enters branch"),
         other => panic!("expected an enters-battlefield branch, got {other:?}"),

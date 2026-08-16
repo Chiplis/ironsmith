@@ -159,7 +159,7 @@ fn lowercase_first_ascii(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(raw: &str) -> ActivationRestrictionNormalization {
         let tokens = lex_line(raw, 0).expect("restriction should lex");

@@ -199,7 +199,7 @@ const COMMANDER_ITERATED_PLAYER_OWNS_BATTLEFIELD_OR_COMMAND_ZONE_PHRASES: &[&[&s
 ];
 pub(crate) fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation_tokens(tokens);
-    let word_view = TokenWordView::new(&tokens);
+    let word_view = TokenWordView::new(tokens);
     let words = word_view.to_word_refs();
     let surface = value_shapes::parse_aggregate_value_surface(&words)?;
     let scope_start = words.len().checked_sub(surface.scope_words.len())?;
@@ -1226,7 +1226,7 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
 ) -> Option<Value> {
     let word_view = TokenWordView::new(tokens);
     let clause_words = word_view.to_word_refs();
-    if !parse_equal_to_start(&clause_words).is_some_and(|parsed| parsed.start == 0) {
+    if parse_equal_to_start(&clause_words).is_none_or(|parsed| parsed.start != 0) {
         return None;
     }
 
@@ -1306,10 +1306,9 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
 
     if aggregate == value_helper_shapes::AggregateKind::Greatest
         && value_kind == value_helper_shapes::AggregateValueKind::ManaValue
+        && let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx)
     {
-        if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {
-            return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
-        }
+        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
 
     let filter_range = clause_words.token_span_for_words(idx, clause_words.len())?;
@@ -1367,7 +1366,7 @@ pub(crate) fn parse_where_x_greatest_commander_mana_value(
 ) -> Option<Value> {
     let words = TokenWordView::new(tokens);
     let commander_range = words.token_span_for_words(commander_start_word_idx, words.len())?;
-    let commander_words = crate::token_word_refs(&tokens[commander_range]);
+    let commander_words = crate::lexer::token_word_refs(&tokens[commander_range]);
     let normalized = commander_words
         .iter()
         .copied()
@@ -1601,8 +1600,7 @@ mod tests {
     use crate::CardType;
 
     fn lex_words(text: &str) -> Vec<OwnedLexToken> {
-        let mut tokens =
-            crate::runtime_backend::lexer::lex_line(text, 0).expect("test phrase should lex");
+        let mut tokens = crate::lexer::lex_line(text, 0).expect("test phrase should lex");
         for token in &mut tokens {
             token.lowercase_word();
         }

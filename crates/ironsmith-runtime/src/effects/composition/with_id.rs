@@ -24,7 +24,7 @@ pub type WithIdEffect = ironsmith_core::WithIdEffect<crate::effect::Effect>;
 ///     Effect::sacrifice(ObjectFilter::creature(), 1),
 /// );
 /// ```
-
+///
 /// Wraps an inner proposal so the committed outcome is still recorded under
 /// this effect's outcome id, mirroring live execution.
 #[derive(Debug)]

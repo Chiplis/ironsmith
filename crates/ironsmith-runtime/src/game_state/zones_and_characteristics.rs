@@ -2002,11 +2002,11 @@ impl GameState {
             let _ = self.set_battle_protector(new_id, protector);
         }
 
-        if !result.paid_labels.is_empty() {
-            if let Some(obj) = self.object_mut(new_id) {
-                for label in &result.paid_labels {
-                    obj.optional_costs_paid.mark_label_paid(label);
-                }
+        if !result.paid_labels.is_empty()
+            && let Some(obj) = self.object_mut(new_id)
+        {
+            for label in &result.paid_labels {
+                obj.optional_costs_paid.mark_label_paid(label);
             }
         }
 
@@ -3030,19 +3030,18 @@ impl GameState {
             return Some(Arc::new(chars));
         }
         let effects_revision = self.effect_store.continuous_effects.revision();
-        if self.continuous_state_is_clean() {
-            if let Some(cached) = self
+        if self.continuous_state_is_clean()
+            && let Some(cached) = self
                 .runtime_cache
                 .characteristics_cache
                 .get(id, effects_revision)
-            {
-                self.runtime_cache
-                    .work_counters
-                    .bump_characteristics_cache_hits();
-                #[cfg(feature = "paranoid-invariants")]
-                self.assert_cached_characteristics_fresh(id, cached.as_deref());
-                return cached;
-            }
+        {
+            self.runtime_cache
+                .work_counters
+                .bump_characteristics_cache_hits();
+            #[cfg(feature = "paranoid-invariants")]
+            self.assert_cached_characteristics_fresh(id, cached.as_deref());
+            return cached;
         }
 
         let all_effects = self.all_continuous_effects();
@@ -3735,61 +3734,50 @@ impl GameState {
                 }
                 self.objects
                     .iter()
-                    .filter_map(|(&object_id, object)| {
+                    .flat_map(|(&object_id, object)| {
                         let zone = object.zone;
                         let controller = self.controller_of(object);
                         match zone {
-                            Zone::Battlefield => Some(
-                                if self.continuous_state_is_clean() {
-                                    self.calculated_characteristics_arc(object_id)
-                                } else {
-                                    self.calculated_characteristics_with_effects(
-                                        object_id,
-                                        all_effects.as_slice(),
-                                    )
-                                    .map(Arc::new)
-                                }
-                                .map(|chars| {
-                                    chars
-                                        .static_abilities
-                                        .iter()
-                                        .filter(|static_ability| {
-                                            static_ability.is_active(self, object_id)
-                                        })
-                                        .cloned()
-                                        .map(|static_ability| {
-                                            (static_ability, object_id, controller)
-                                        })
-                                        .collect::<Vec<_>>()
-                                })
-                                .unwrap_or_default(),
-                            ),
-                            _ => Some(
-                                object
-                                    .abilities
+                            Zone::Battlefield => if self.continuous_state_is_clean() {
+                                self.calculated_characteristics_arc(object_id)
+                            } else {
+                                self.calculated_characteristics_with_effects(
+                                    object_id,
+                                    all_effects.as_slice(),
+                                )
+                                .map(Arc::new)
+                            }
+                            .map(|chars| {
+                                chars
+                                    .static_abilities
                                     .iter()
-                                    .filter_map(|ability| {
-                                        if let AbilityKind::Static(static_ability) = &ability.kind {
-                                            if ability.functions_in(&zone)
-                                                && static_ability.is_active(self, object_id)
-                                            {
-                                                Some((
-                                                    static_ability.clone(),
-                                                    object_id,
-                                                    controller,
-                                                ))
-                                            } else {
-                                                None
-                                            }
+                                    .filter(|static_ability| {
+                                        static_ability.is_active(self, object_id)
+                                    })
+                                    .cloned()
+                                    .map(|static_ability| (static_ability, object_id, controller))
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default(),
+                            _ => object
+                                .abilities
+                                .iter()
+                                .filter_map(|ability| {
+                                    if let AbilityKind::Static(static_ability) = &ability.kind {
+                                        if ability.functions_in(&zone)
+                                            && static_ability.is_active(self, object_id)
+                                        {
+                                            Some((static_ability.clone(), object_id, controller))
                                         } else {
                                             None
                                         }
-                                    })
-                                    .collect::<Vec<_>>(),
-                            ),
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<_>>(),
                         }
                     })
-                    .flatten()
                     .collect()
             };
 

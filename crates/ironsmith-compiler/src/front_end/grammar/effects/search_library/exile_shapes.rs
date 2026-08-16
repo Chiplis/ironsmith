@@ -5,8 +5,8 @@ use winnow::prelude::*;
 use crate::cards::builders::PlayerAst;
 use crate::grammar::primitives;
 use crate::lexer::{OwnedLexToken, parser_token_word_refs, trim_lexed_commas};
-use crate::util::possessive_normalized_word_refs;
 use crate::target::PlayerFilter;
+use crate::util::possessive_normalized_word_refs;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -377,7 +377,7 @@ pub(crate) fn search_each_player_exiled_permanents_shape_lexed(tokens: &[OwnedLe
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

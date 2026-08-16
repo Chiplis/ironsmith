@@ -2,10 +2,10 @@ use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
-use crate::mana::ManaCost;
-use crate::util::trim_edge_punctuation_tokens;
 use crate::grammar::{leaf, primitives};
 use crate::lexer::{LexStream, LexedClause, OwnedLexToken};
+use crate::mana::ManaCost;
+use crate::util::trim_edge_punctuation_tokens;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DestroyConsultLoopShape<'a> {
@@ -607,7 +607,7 @@ pub(crate) fn parse_delayed_upkeep_payment_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::{LexedClause, lex_line};
+    use crate::lexer::{LexedClause, lex_line};
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

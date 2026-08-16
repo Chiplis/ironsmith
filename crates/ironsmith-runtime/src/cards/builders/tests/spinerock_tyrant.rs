@@ -20,7 +20,7 @@ fn plural_keyword_grants(
     triggered
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .filter_map(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
         .flat_map(|result| result.then.iter())
         .filter_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())

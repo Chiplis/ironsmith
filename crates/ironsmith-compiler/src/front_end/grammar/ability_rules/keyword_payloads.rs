@@ -127,6 +127,15 @@ pub(super) fn parse_additional_cost(
     tokens: &[OwnedLexToken],
     full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
+    let context = rewrite_context(
+        line,
+        tokens,
+        full_tokens,
+        KeywordLineKindCst::AdditionalCost,
+    );
+    if let Some(parsed) = parse_keyword_special_cases(&context, tokens)? {
+        return Ok(ast(parsed));
+    }
     if let Some(shape) = parse_behold_and_exile_additional_cost_tokens(tokens) {
         let tag = crate::TagKey::from("beheld_cost_0");
         let effects = vec![
@@ -137,15 +146,6 @@ pub(super) fn parse_additional_cost(
             EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
         ];
         return Ok(ast(LineAst::AdditionalCost { effects }));
-    }
-    let context = rewrite_context(
-        line,
-        tokens,
-        full_tokens,
-        KeywordLineKindCst::AdditionalCost,
-    );
-    if let Some(parsed) = parse_keyword_special_cases(&context, tokens)? {
-        return Ok(ast(parsed));
     }
     let Some(effect_tokens) = additional_cost_tail_tokens_lexed(tokens) else {
         return Ok(None);
@@ -524,7 +524,7 @@ pub(super) fn parse_splice(
                 .trim()
                 .to_string()
         });
-    let cost = crate::families::activation_and_restrictions::parse_payment_clause_as_total_cost(cost_tokens)?
+    let cost = crate::activation_and_restrictions::parse_payment_clause_as_total_cost(cost_tokens)?
         .ok_or_else(|| {
             crate::cards::builders::CardTextError::ParseError(format!(
                 "unsupported splice cost clause: {}",
@@ -672,7 +672,7 @@ pub(super) fn parse_exploit(
 mod tests {
     use super::*;
     use crate::cards::builders::{LineInfo, NormalizedLine};
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn line(text: &str) -> PreprocessedLine {
         let tokens = lex_line(text, 0).expect("keyword test line should lex");

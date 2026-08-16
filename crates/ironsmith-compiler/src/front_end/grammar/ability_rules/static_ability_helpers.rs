@@ -518,11 +518,11 @@ pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
 ) -> Result<Vec<Ability>, CardTextError> {
     let mut lowered = Vec::new();
     for ability in abilities {
-        if let GrantedAbilityAst::KeywordAction(action) = ability {
-            if let Some(executable) = executable_object_abilities_for_keyword_action(action) {
-                lowered.extend(executable);
-                continue;
-            }
+        if let GrantedAbilityAst::KeywordAction(action) = ability
+            && let Some(executable) = executable_object_abilities_for_keyword_action(action)
+        {
+            lowered.extend(executable);
+            continue;
         }
         match ability {
             GrantedAbilityAst::KeywordAction(KeywordAction::Afflict(amount)) => {
@@ -626,8 +626,8 @@ mod dynamic_keyword_grant_tests {
     ];
 
     fn parsed_keyword_action(keyword: &str) -> KeywordAction {
-        let tokens = crate::runtime_backend::lexer::lex_line(keyword, 0)
-            .unwrap_or_else(|error| panic!("{keyword}: {error}"));
+        let tokens =
+            crate::lexer::lex_line(keyword, 0).unwrap_or_else(|error| panic!("{keyword}: {error}"));
         let mut actions = super::super::keyword_static::parse_ability_line(&tokens)
             .unwrap_or_else(|| panic!("{keyword} should parse as a keyword action"));
         assert_eq!(actions.len(), 1, "{keyword} should parse as one action");

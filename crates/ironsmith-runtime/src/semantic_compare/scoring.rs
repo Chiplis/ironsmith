@@ -516,16 +516,14 @@ fn is_activation_restriction_reminder_clause(clause: &str) -> bool {
         return false;
     }
 
-    let has_activate = words.iter().any(|word| *word == "activate");
+    let has_activate = words.contains(&"activate");
     if !has_activate {
         return false;
     }
 
-    let has_only = words.iter().any(|word| *word == "only");
-    let has_trigger_limit = words.iter().any(|word| *word == "turn") && has_only;
-    let has_condition = words.iter().any(|word| *word == "if")
-        || words.iter().any(|word| *word == "when")
-        || words.iter().any(|word| *word == "as");
+    let has_only = words.contains(&"only");
+    let has_trigger_limit = words.contains(&"turn") && has_only;
+    let has_condition = words.contains(&"if") || words.contains(&"when") || words.contains(&"as");
     has_only && (has_trigger_limit || has_condition)
 }
 

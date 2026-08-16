@@ -3,7 +3,9 @@
 use crate::decisions::context::ViewCardsContext;
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_player_filter, resolve_value};
+use crate::effects::helpers::{
+    resolve_player_filter, resolve_player_filter_as_chooser, resolve_value,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
@@ -58,16 +60,17 @@ impl EffectExecutor for LookAtTopCardsEffect {
                     .view_cards(game, viewer, &top_cards, &view_ctx);
             }
         } else {
+            let viewer = resolve_player_filter_as_chooser(game, &self.viewer, ctx)?;
             let view_ctx = ViewCardsContext::new(
-                ctx.controller,
+                viewer,
                 player_id,
                 Some(ctx.source),
                 crate::zone::Zone::Library,
                 "Look at cards from the top of a library",
             );
             ctx.decision_maker
-                .view_cards(game, ctx.controller, &top_cards, &view_ctx);
-            ctx.remember_face_down_exile_viewers(&top_cards, ctx.controller);
+                .view_cards(game, viewer, &top_cards, &view_ctx);
+            ctx.remember_face_down_exile_viewers(&top_cards, viewer);
             ctx.set_tagged_objects(self.tag.clone(), snapshots.clone());
         }
 
@@ -79,11 +82,11 @@ impl EffectExecutor for LookAtTopCardsEffect {
             .with_chosen_object_memory(memory.clone())
             .with_affected_object_memory(memory);
         if self.reveal {
-            outcome = outcome.with_events(top_cards.iter().filter_map(|card_id| {
+            outcome = outcome.with_events(top_cards.iter().map(|card_id| {
                 let snapshot = game
                     .object(*card_id)
                     .map(|obj| ObjectSnapshot::from_object(obj, game));
-                Some(crate::triggers::TriggerEvent::new_with_provenance(
+                crate::triggers::TriggerEvent::new_with_provenance(
                     crate::events::CardRevealedEvent::new(
                         player_id,
                         *card_id,
@@ -92,7 +95,7 @@ impl EffectExecutor for LookAtTopCardsEffect {
                         snapshot,
                     ),
                     ctx.provenance,
-                ))
+                )
             }));
         }
         Ok(outcome)
@@ -163,7 +166,7 @@ mod tests {
         for idx in 0..count {
             let card = CardBuilder::new(
                 CardId::from_raw(10_000 + idx as u32),
-                &format!("Library Card {idx}"),
+                format!("Library Card {idx}"),
             )
             .build();
             game.create_object_from_card(&card, owner, Zone::Library);

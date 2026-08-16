@@ -40,10 +40,10 @@ use crate::cards::builders::{
     TargetAst, TextSpan,
 };
 use crate::effect::{Until, Value};
-use crate::mana::ManaCost;
 use crate::grammar::clause_support as clause_grammar;
 use crate::grammar::effects::gain_ability_shapes as gain_shapes;
 use crate::grammar::trigger_surface;
+use crate::mana::ManaCost;
 use crate::model::token_definition::TokenDefinitionSpec;
 use crate::static_abilities::{StaticAbility, StaticAbilityId};
 use crate::target::{ObjectFilter, PlayerFilter, SourceReferenceSurface};
@@ -95,7 +95,7 @@ fn trim_edge_punctuation_and_quotes(tokens: &[OwnedLexToken]) -> Vec<OwnedLexTok
             tokens.iter().filter(|token| token.kind == kind).count()
         });
         let has_matching_quote_pair = tokens.len() >= 2
-            && edge_count % 2 == 0
+            && edge_count.is_multiple_of(2)
             && edge_kind.is_some()
             && tokens
                 .last()
@@ -408,7 +408,7 @@ fn parse_shared_subject_pump_from_get_tail(
     };
     let has_local_duration = head.has_local_duration;
     let (power, toughness, local_duration, condition) =
-        parse_get_modifier_values_with_tail(&modifier_tokens, power, toughness)?;
+        parse_get_modifier_values_with_tail(modifier_tokens, power, toughness)?;
     let pump_duration = if has_explicit_duration || !has_local_duration {
         duration.clone()
     } else {
@@ -555,7 +555,7 @@ fn parse_granted_ability_component_for_gain(
     if ability_tokens.is_empty() {
         return Ok(None);
     }
-    let ability_words = crate::token_word_refs(&ability_tokens);
+    let ability_words = crate::lexer::token_word_refs(&ability_tokens);
     if ability_words == ["all", "bands", "with", "other", "abilities"]
         || ability_words == ["bands", "with", "other"]
     {
@@ -625,14 +625,13 @@ fn parse_granted_ability_component_for_gain(
     }
 
     if let Some(parsed) =
-        crate::families::activation_and_restrictions::parse_equip_line_lexed(
-            &ability_tokens,
-        )?
+        crate::activation_and_restrictions::parse_equip_line_lexed(&ability_tokens)?
     {
         return Ok(Some(vec![GrantedAbilityAst::ParsedObjectAbility {
-            display: parsed.text.clone().unwrap_or_else(|| {
-                crate::lexer::token_word_refs(&ability_tokens).join(" ")
-            }),
+            display: parsed
+                .text
+                .clone()
+                .unwrap_or_else(|| crate::lexer::token_word_refs(&ability_tokens).join(" ")),
             ability: parsed,
         }]));
     }
@@ -683,9 +682,7 @@ fn granted_ability_conjunction_is_keyword_list(abilities: &[GrantedAbilityAst]) 
             .all(|ability| matches!(ability, GrantedAbilityAst::KeywordAction(_)))
 }
 
-fn split_quoted_granted_ability_list<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<Vec<&'a [OwnedLexToken]>> {
+fn split_quoted_granted_ability_list(tokens: &[OwnedLexToken]) -> Option<Vec<&[OwnedLexToken]>> {
     let open = tokens
         .iter()
         .position(|token| token.kind == TokenKind::Quote)?;
@@ -857,8 +854,8 @@ fn token_rule_is_already_lowered_by_specialized_shape(
     ability_tokens: &[OwnedLexToken],
     token_name: &str,
 ) -> bool {
-    let words = crate::token_word_refs(ability_tokens);
-    let has = |word: &str| words.iter().any(|candidate| *candidate == word);
+    let words = crate::lexer::token_word_refs(ability_tokens);
+    let has = |word: &str| words.contains(&word);
     let all = |expected: &[&str]| expected.iter().all(|word| has(word));
 
     if super::super::grammar::token_definitions::parse_embedded_token_rule_tokens(
@@ -940,7 +937,10 @@ pub(crate) fn parse_granted_abilities_for_token_definition(
     // example, `Landfall — Whenever ...`). The label is presentation, while
     // the trigger body is the executable ability that the nested parser must
     // see.
-    let ability_tokens = crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(ability_tokens)
+    let ability_tokens =
+        crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(
+            ability_tokens,
+        )
         .map_or(ability_tokens, |shape| shape.body_tokens);
     // A mixed `It has <keyword>, "<rule>," and <activation>` sentence is a
     // list of independent abilities.  A compact token-rule probe can match
@@ -958,62 +958,56 @@ pub(crate) fn parse_granted_abilities_for_token_definition(
     if specialized {
         return Ok(Vec::new());
     }
-    let clause_words = crate::token_word_refs(ability_tokens);
-    crate::util::with_token_source_reference_context(
-        &name,
-        &card_types,
-        &subtypes,
-        || {
-            // A quoted token rule is one ability even when its trigger or
-            // activation uses a comma. The general grant-list parser tries
-            // comma-delimited items first, which would otherwise feed an
-            // incomplete trigger (for example, `Whenever this token blocks a
-            // creature`) to triggered-line parsing and discard the rule.
-            let starts_triggered_rule = ability_tokens.first().is_some_and(|token| {
-                token.parser_word_pieces().first().is_some_and(|word| {
-                    gain_shapes::gain_word_is_when_intro(&word.text)
-                        || (gain_shapes::gain_word_is_trigger_intro(&word.text)
-                            && ability_tokens
-                                .get(1)
-                                .is_some_and(|next| next.parser_text() == THE_WORD))
+    let clause_words = crate::lexer::token_word_refs(ability_tokens);
+    crate::util::with_token_source_reference_context(&name, &card_types, &subtypes, || {
+        // A quoted token rule is one ability even when its trigger or
+        // activation uses a comma. The general grant-list parser tries
+        // comma-delimited items first, which would otherwise feed an
+        // incomplete trigger (for example, `Whenever this token blocks a
+        // creature`) to triggered-line parsing and discard the rule.
+        let starts_triggered_rule = ability_tokens.first().is_some_and(|token| {
+            token.parser_word_pieces().first().is_some_and(|word| {
+                gain_shapes::gain_word_is_when_intro(&word.text)
+                    || (gain_shapes::gain_word_is_trigger_intro(&word.text)
+                        && ability_tokens
+                            .get(1)
+                            .is_some_and(|next| next.parser_text() == THE_WORD))
+            })
+        });
+        if (starts_triggered_rule || contains_token_kind(ability_tokens, TokenKind::Colon))
+            && let Some(ability) = parse_granted_activated_or_triggered_ability_for_gain(
+                ability_tokens,
+                &clause_words,
+            )?
+        {
+            return Ok(vec![ability]);
+        }
+
+        // A complete quoted static rule with an explicit filtered subject
+        // (for example, `Creatures you control attack each combat if
+        // able`) is an ability of the token, not a list of abilities the
+        // subject itself "has". Preserve the ordinary typed static-line
+        // parse as one granted carrier before the gain-list grammar can
+        // reduce the trailing restriction to an intrinsic token keyword.
+        if !mixed_pronoun_list
+            && let Some(static_abilities) = parse_static_ability_ast_line_lexed(ability_tokens)?
+            && !static_abilities.is_empty()
+            && static_abilities
+                .iter()
+                .all(|ability| matches!(ability, StaticAbilityAst::GrantStaticAbility { .. }))
+        {
+            return static_abilities
+                .into_iter()
+                .map(|ability| {
+                    rewrite_lower_static_ability_ast(ability).map(GrantedAbilityAst::StaticAbility)
                 })
-            });
-            if (starts_triggered_rule || contains_token_kind(ability_tokens, TokenKind::Colon))
-                && let Some(ability) = parse_granted_activated_or_triggered_ability_for_gain(
-                    ability_tokens,
-                    &clause_words,
-                )?
-            {
-                return Ok(vec![ability]);
-            }
+                .collect();
+        }
 
-            // A complete quoted static rule with an explicit filtered subject
-            // (for example, `Creatures you control attack each combat if
-            // able`) is an ability of the token, not a list of abilities the
-            // subject itself "has". Preserve the ordinary typed static-line
-            // parse as one granted carrier before the gain-list grammar can
-            // reduce the trailing restriction to an intrinsic token keyword.
-            if !mixed_pronoun_list
-                && let Some(static_abilities) = parse_static_ability_ast_line_lexed(ability_tokens)?
-                && !static_abilities.is_empty()
-                && static_abilities
-                    .iter()
-                    .all(|ability| matches!(ability, StaticAbilityAst::GrantStaticAbility { .. }))
-            {
-                return static_abilities
-                    .into_iter()
-                    .map(|ability| {
-                        rewrite_lower_static_ability_ast(ability)
-                            .map(GrantedAbilityAst::StaticAbility)
-                    })
-                    .collect();
-            }
-
-            let (abilities, is_choice) =
-                parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?;
-            Ok(if is_choice { Vec::new() } else { abilities })
-        },
-    )
+        let (abilities, is_choice) =
+            parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?;
+        Ok(if is_choice { Vec::new() } else { abilities })
+    })
 }
 
 pub(crate) fn parse_simple_ability_duration(
@@ -1337,13 +1331,13 @@ fn parse_simple_ability_modifier_clause_lexed(
         return Ok(None);
     };
 
-    if !losing && verb == gain_shapes::GainAbilityVerb::Gain {
-        if clause_words
+    if !losing
+        && verb == gain_shapes::GainAbilityVerb::Gain
+        && clause_words
             .get(verb_idx + 1)
             .is_some_and(|word| gain_shapes::gain_verb_is_life_or_control_head(word))
-        {
-            return Ok(None);
-        }
+    {
+        return Ok(None);
     }
 
     let leading_duration_phrase = parse_leading_simple_ability_duration(tokens);
@@ -1499,7 +1493,7 @@ fn parse_simple_ability_modifier_clause_lexed(
         }));
     }
 
-    if let Some(target) = source_target_from_subject_tokens(&subject_tokens) {
+    if let Some(target) = source_target_from_subject_tokens(subject_tokens) {
         if losing {
             return Ok(Some(EffectAst::subject_verb_remove_abilities_from_target(
                 TargetAst::Source(span_from_lexed_tokens(subject_tokens)),
@@ -1550,9 +1544,7 @@ fn parse_simple_ability_modifier_clause_lexed(
 
     // "The chosen creature gains ..." names the accumulated chosen set, not
     // a filtered grant over every creature.
-    if crate::grammar::targets::parse_chosen_object_target(subject_tokens)
-        .is_some()
-    {
+    if crate::grammar::targets::parse_chosen_object_target(subject_tokens).is_some() {
         let target = parse_target_phrase(subject_tokens)?;
         if losing {
             return Ok(Some(EffectAst::subject_verb_remove_abilities_from_target(
@@ -1607,9 +1599,9 @@ pub(crate) fn parse_simple_ability_modifier_clause(
 pub(crate) fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_gain_ability_sentence_inner(tokens)
-    }
+    })
 }
 
 fn parse_gain_ability_sentence_inner(
@@ -1618,8 +1610,7 @@ fn parse_gain_ability_sentence_inner(
     if let Some(player) = super::chain_carry::parse_leading_player_may_lexed(tokens) {
         let mut stripped = super::chain_carry::remove_through_first_word(tokens);
         if let Some(rest) =
-            crate::grammar::effects::chain_carry::
-                strip_leading_have_tokens(&stripped)
+            crate::grammar::effects::chain_carry::strip_leading_have_tokens(&stripped)
         {
             stripped = rest.to_vec();
         }
@@ -1662,7 +1653,7 @@ fn parse_gain_ability_sentence_with_subject(
         );
     }
 
-    let word_view = GainAbilityWordView::new(&tokens);
+    let word_view = GainAbilityWordView::new(tokens);
     let word_list = word_view.to_word_refs();
     if gain_shapes::gain_clause_is_defender_as_if_attack(&word_list) {
         return Ok(None);
@@ -1694,13 +1685,12 @@ fn parse_gain_ability_sentence_with_subject(
 
     let after_gain = &word_list[gain_idx + 1..];
     let after_gain_tokens = tokens.get(gain_token_idx + 1..).unwrap_or_default();
-    if gain_verb == gain_shapes::GainAbilityVerb::Gain {
-        if after_gain
+    if gain_verb == gain_shapes::GainAbilityVerb::Gain
+        && after_gain
             .first()
             .is_some_and(|word| gain_shapes::gain_verb_is_life_or_control_head(word))
-        {
-            return Ok(None);
-        }
+    {
+        return Ok(None);
     }
 
     let subject_start_token_idx = if subject_start_word_idx == 0 {
@@ -2030,7 +2020,7 @@ fn parse_gain_ability_sentence_with_subject(
             };
             let has_local_duration = head.has_local_duration;
             let (power, toughness, local_duration, condition) =
-                parse_get_modifier_values_with_tail(&modifier_tokens, power, toughness)?;
+                parse_get_modifier_values_with_tail(modifier_tokens, power, toughness)?;
             let pump_duration = if has_explicit_duration || !has_local_duration {
                 duration.clone()
             } else {
@@ -2146,7 +2136,7 @@ fn parse_gain_ability_sentence_with_subject(
         trim_commas(typed_subject_tokens.unwrap_or(inferred_subject_tokens));
     let real_subject_tokens = trim_trailing_also(&real_subject_token_storage);
     let following_become_effect = if let Some((_, become_tail_tokens)) = &following_become {
-        let mut effect = parse_become_clause(&real_subject_tokens, become_tail_tokens)?;
+        let mut effect = parse_become_clause(real_subject_tokens, become_tail_tokens)?;
         if has_explicit_duration {
             apply_gain_clause_duration_to_leading_effect(&mut effect, &duration);
         }
@@ -2158,7 +2148,7 @@ fn parse_gain_ability_sentence_with_subject(
     let mut effects = Vec::new();
 
     // Check for pronoun subjects ("it", "they") that reference a prior tagged object.
-    let real_subject_word_view = GainAbilityWordView::new(&real_subject_tokens);
+    let real_subject_word_view = GainAbilityWordView::new(real_subject_tokens);
     let real_subject_words = real_subject_word_view.to_word_refs();
     let real_subject_shape = gain_shapes::classify_gain_subject(&real_subject_words);
     let pronoun_set_quantifier_surface = pronoun_set_quantifier_surface(&real_subject_words);
@@ -2172,7 +2162,7 @@ fn parse_gain_ability_sentence_with_subject(
         let has_preceding_target_effect = pump_effect.is_some() || leading_become_effect.is_some();
         let declares_shared_target =
             !has_preceding_target_effect && following_pump_effect.is_some();
-        let target = parse_target_phrase(&real_subject_tokens)?;
+        let target = parse_target_phrase(real_subject_tokens)?;
         if declares_shared_target {
             // A gain-then-get clause has one authored target shared by both
             // continuous actions. Declare that target once, then compile both
@@ -2187,7 +2177,7 @@ fn parse_gain_ability_sentence_with_subject(
         append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         let grant_target = if has_preceding_target_effect || declares_shared_target {
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens))
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(real_subject_tokens))
         } else {
             target.clone()
         };
@@ -2223,7 +2213,7 @@ fn parse_gain_ability_sentence_with_subject(
             &duration,
         );
         let following_pump_target = if has_preceding_target_effect || declares_shared_target {
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens))
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(real_subject_tokens))
         } else {
             // A single-action target grant keeps its ordinary direct target.
             target
@@ -2244,7 +2234,7 @@ fn parse_gain_ability_sentence_with_subject(
 
     let is_pronoun_subject = real_subject_shape.pronoun;
     if is_pronoun_subject {
-        let span = span_from_tokens(&real_subject_tokens);
+        let span = span_from_tokens(real_subject_tokens);
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span);
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
@@ -2284,7 +2274,7 @@ fn parse_gain_ability_sentence_with_subject(
         return Ok(Some(effects));
     }
 
-    if let Some(target) = source_target_from_subject_tokens(&real_subject_tokens) {
+    if let Some(target) = source_target_from_subject_tokens(real_subject_tokens) {
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
@@ -2324,8 +2314,7 @@ fn parse_gain_ability_sentence_with_subject(
 
     let is_demonstrative_subject = real_subject_shape.demonstrative_object;
     if is_demonstrative_subject {
-        let target =
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens));
+        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(real_subject_tokens));
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
@@ -2367,7 +2356,7 @@ fn parse_gain_ability_sentence_with_subject(
         let Some(mut player_effects) = player_gain_effects_for_abilities(
             &abilities,
             &duration,
-            &real_subject_tokens,
+            real_subject_tokens,
             PlayerFilter::You,
         ) else {
             return Err(CardTextError::ParseError(format!(
@@ -2385,7 +2374,7 @@ fn parse_gain_ability_sentence_with_subject(
         let Some(mut player_effects) = player_gain_effects_for_abilities(
             &abilities,
             &duration,
-            &real_subject_tokens,
+            real_subject_tokens,
             PlayerFilter::You,
         ) else {
             return Err(CardTextError::ParseError(format!(
@@ -2407,7 +2396,7 @@ fn parse_gain_ability_sentence_with_subject(
         let Some(mut player_effects) = player_gain_effects_for_abilities(
             &abilities,
             &duration,
-            &real_subject_tokens,
+            real_subject_tokens,
             PlayerFilter::Any,
         ) else {
             return Err(CardTextError::ParseError(format!(
@@ -2426,12 +2415,9 @@ fn parse_gain_ability_sentence_with_subject(
         && leading_base_pt_effect.is_none()
         && pump_effect.is_none()
         && following_grant.is_none()
-        && crate::grammar::targets::parse_chosen_object_target(
-            &real_subject_tokens,
-        )
-        .is_some()
+        && crate::grammar::targets::parse_chosen_object_target(real_subject_tokens).is_some()
     {
-        let target = parse_target_phrase(&real_subject_tokens)?;
+        let target = parse_target_phrase(real_subject_tokens)?;
         let mut effects = effects;
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
@@ -2454,10 +2440,10 @@ fn parse_gain_ability_sentence_with_subject(
     }
 
     let filter =
-        if let Some(filter) = parse_bare_card_type_subtype_union_filter(&real_subject_tokens) {
+        if let Some(filter) = parse_bare_card_type_subtype_union_filter(real_subject_tokens) {
             filter
         } else {
-            parse_object_filter(&real_subject_tokens, false).map_err(|_| {
+            parse_object_filter(real_subject_tokens, false).map_err(|_| {
                 CardTextError::ParseError(format!(
                     "unsupported subject in {}-ability clause (clause: '{}')",
                     if losing { "lose" } else { "gain" },
@@ -2695,7 +2681,7 @@ fn parse_granted_trigger_with_nested_token_rule(
 
     let trigger_tokens = &ability_tokens[start_idx..split_idx];
     let effect_tokens = trim_lexed_commas(&ability_tokens[split_idx + 1..]);
-    let stripped_effect_tokens = strip_embedded_token_rules_text(&effect_tokens);
+    let stripped_effect_tokens = strip_embedded_token_rules_text(effect_tokens);
     if stripped_effect_tokens.as_slice() == effect_tokens {
         return Ok(None);
     }
@@ -2711,7 +2697,7 @@ fn parse_granted_trigger_with_nested_token_rule(
     };
     if !super::creation_handlers::attach_inline_token_granted_abilities_to_last_create(
         &mut effects,
-        &effect_tokens,
+        effect_tokens,
     ) {
         return Ok(None);
     }
@@ -3009,9 +2995,10 @@ mod tests {
 
     #[test]
     fn quoted_filtered_static_rule_remains_an_ability_of_the_token() {
-        let definition = crate::runtime_backend::front_end::grammar::token_definitions::
-            parse_token_definition_shape_text("1/1 red Pirate creature token")
-            .expect("Pirate token definition");
+        let definition = crate::grammar::token_definitions::parse_token_definition_shape_text(
+            "1/1 red Pirate creature token",
+        )
+        .expect("Pirate token definition");
         let tokens = lex_line("Creatures you control attack each combat if able.", 0)
             .expect("filtered quoted rule should lex");
         let parsed = parse_granted_abilities_for_token_definition(&definition, &tokens)
@@ -3049,8 +3036,8 @@ mod tests {
             0,
         )
         .expect("nested token trigger should lex");
-        let words = crate::runtime_backend::token_word_refs(&tokens);
-        let parsed = crate::runtime_backend::util::with_token_source_reference_context(
+        let words = crate::lexer::token_word_refs(&tokens);
+        let parsed = crate::util::with_token_source_reference_context(
             "Dragon Egg",
             &[crate::types::CardType::Creature],
             &[crate::types::Subtype::Dragon],
@@ -3078,8 +3065,8 @@ mod tests {
                 0,
             )
             .expect("named token death trigger should lex");
-            let words = crate::runtime_backend::token_word_refs(&tokens);
-            let parsed = crate::runtime_backend::util::with_token_source_reference_context(
+            let words = crate::lexer::token_word_refs(&tokens);
+            let parsed = crate::util::with_token_source_reference_context(
                 "Ember",
                 &[crate::types::CardType::Creature],
                 &[crate::types::Subtype::Dragon],
@@ -3128,7 +3115,7 @@ mod tests {
             0,
         )
         .expect("mixed granted-ability list should lex");
-        let clause_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+        let clause_words = crate::lexer::token_word_refs(&ability_tokens);
         let (abilities, is_choice) =
             parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)
                 .expect("mixed granted-ability list should parse");
@@ -3151,7 +3138,7 @@ mod tests {
             0,
         )
         .expect("mixed granted-ability list should lex");
-        let clause_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+        let clause_words = crate::lexer::token_word_refs(&ability_tokens);
         let (abilities, is_choice) =
             parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, true)
                 .expect("mixed granted-ability list should parse");
@@ -3169,7 +3156,7 @@ mod tests {
     fn keyword_before_final_quoted_ability_is_preserved() {
         let ability_tokens = lex_line("trample and \"{G}: Regenerate this creature.\"", 0)
             .expect("mixed granted-ability list should lex");
-        let clause_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+        let clause_words = crate::lexer::token_word_refs(&ability_tokens);
         let (abilities, is_choice) =
             parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, true)
                 .expect("mixed granted-ability list should parse");
@@ -3219,7 +3206,7 @@ mod tests {
     fn mixed_keyword_list_keeps_static_keyword_after_executable_keyword() {
         let ability_tokens = lex_line("trample, annihilator 2, and haste", 0)
             .expect("mixed keyword grant should lex");
-        let clause_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+        let clause_words = crate::lexer::token_word_refs(&ability_tokens);
         let (abilities, is_choice) =
             parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)
                 .expect("mixed keyword grant should parse");
@@ -3989,10 +3976,10 @@ mod tests {
             .iter()
             .find_map(|effect| match effect {
                 EffectAst::Conditional {
-                    predicate,
+                    predicate: PredicateAst::PlayerIsMonarch { .. },
                     if_false,
                     ..
-                } if matches!(predicate, PredicateAst::PlayerIsMonarch { .. }) => Some(if_false),
+                } => Some(if_false),
                 _ => None,
             })
             .expect("expected monarch conditional inside granted trigger");

@@ -10,7 +10,7 @@ fn parse_source_exiled_owner_library_bottom_subject_verb(
         effect_grammar::control_copy_attach_shapes::parse_source_exiled_owner_library_bottom_shape(
             tokens,
         )?;
-    let source_words = crate::token_word_refs(shape.source_tokens);
+    let source_words = crate::lexer::token_word_refs(shape.source_tokens);
     let source_surface =
         crate::util::source_reference_surface_for_words(
             &source_words,
@@ -48,9 +48,9 @@ fn parse_source_exiled_owner_library_bottom_subject_verb(
 fn parse_triggering_object_had_counters_create_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let wrap_condition = words.starts_with(&["if", "it", "had", "counters", "on", "it", "create"]);
-    if !wrap_condition && !words.first().is_some_and(|word| *word == "create") {
+    if !wrap_condition && words.first().is_none_or(|word| *word != "create") {
         return Ok(None);
     }
     let where_words = [
@@ -125,7 +125,7 @@ fn parse_source_exiled_counted_return_remainder_to_owners_libraries(
             && tokens[idx + 2].is_word("the")
             && tokens[idx + 3].is_word("rest")
     })?;
-    let suffix_words = crate::token_word_refs(&tokens[split + 1..]);
+    let suffix_words = crate::lexer::token_word_refs(&tokens[split + 1..]);
     if suffix_words.len() != 10
         || suffix_words[..8] != ["put", "the", "rest", "on", "the", "bottom", "of", "their"]
         || !matches!(suffix_words[8], "owner" | "owners" | "owner's" | "owners'")
@@ -1236,10 +1236,9 @@ pub(crate) fn parse_any_player_may_have_source_deal_damage(
     let Some((amount, used)) = parse_value(&deal_tail) else {
         return Ok(None);
     };
-    if !deal_tail
+    if deal_tail
         .get(used)
-        .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| word == "damage")
+        .and_then(OwnedLexToken::as_word).is_none_or(|word| word != "damage")
     {
         return Ok(None);
     }
@@ -1292,11 +1291,9 @@ fn parse_branch_scoped_collection_subject_verb(
     }
 
     let clause = trim_edge_punctuation(tokens);
-    let clause = clause
+    let clause = if clause
         .first()
-        .is_some_and(|token| token.is_word("then"))
-        .then(|| trim_edge_punctuation(&clause[1..]))
-        .unwrap_or(clause);
+        .is_some_and(|token| token.is_word("then")) { trim_edge_punctuation(&clause[1..]) } else { clause };
     let (route, effect) = if clause.first().is_some_and(|token| token.is_word("return")) {
         (
             "subject-verb verb=Return subject=implicit recognizer=branch-scoped-collection",
@@ -1464,14 +1461,12 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
         Some(GenericTopLevelProgram::EachPlayerExileTopCast { effects })
     } else if let Some(effects) = parse_cant_effect_sentence_lexed(tokens)? {
         Some(GenericTopLevelProgram::Cant { effects })
+    } else if has_where_x_value_binding(tokens) {
+        let mut effects = parse_effect_sentence_with_where_x_lexed(tokens)?;
+        apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
+        Some(GenericTopLevelProgram::ValueBinding { effects })
     } else {
-        if has_where_x_value_binding(tokens) {
-            let mut effects = parse_effect_sentence_with_where_x_lexed(tokens)?;
-            apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
-            Some(GenericTopLevelProgram::ValueBinding { effects })
-        } else {
-            None
-        }
+        None
     };
 
     Ok(program.map(|program| {
@@ -1665,7 +1660,7 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
     let [destroy_tokens, damage_tokens] = segments.as_slice() else {
         return Ok(None);
     };
-    let destroy_words = crate::token_word_refs(destroy_tokens);
+    let destroy_words = crate::lexer::token_word_refs(destroy_tokens);
     let ["destroy", attachment_word, object_noun] = destroy_words.as_slice() else {
         return Ok(None);
     };
@@ -1673,7 +1668,7 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
         return Ok(None);
     }
 
-    let damage_words = crate::token_word_refs(damage_tokens);
+    let damage_words = crate::lexer::token_word_refs(damage_tokens);
     let Some(deals_idx) = damage_words.iter().position(|word| *word == "deals") else {
         return Ok(None);
     };
@@ -2036,7 +2031,7 @@ fn parse_target_gets_then_gains_subject_verb(
 }
 
 fn subject_has_creature_type_choice(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     words
         .windows(5)
         .any(|window| window == ["creature", "type", "of", "your", "choice"])
@@ -2549,7 +2544,7 @@ pub(super) fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb
     ));
     // Honor the authored remainder wording: bare "the rest" (Kethek) vs
     // "the rest of the revealed cards" (Fathom Trawl).
-    let followup_words = crate::token_word_refs(&followup_tokens);
+    let followup_words = crate::lexer::token_word_refs(&followup_tokens);
     let bare_rest = followup_words
         .windows(2)
         .any(|window| window == ["the", "rest"])
@@ -2761,9 +2756,7 @@ pub(crate) fn parse_generic_control_combat_choices_subject_verb(
     let scope_clause = scope_clause.trimmed();
     let this_combat = scope_clause
         .words()
-        .to_word_refs()
-        .iter()
-        .any(|word| *word == "combat");
+        .to_word_refs().contains(&"combat");
     if CONTROL_COMBAT_ATTACK_ACTION_PATTERN.accepts_full(action_clause)
         && CONTROL_COMBAT_ATTACK_SCOPE_PATTERN.accepts_full(scope_clause)
     {
@@ -3192,7 +3185,7 @@ pub(crate) fn parse_for_each_type_slot_choice_clause(
             filter: merge_filters(&base_filter, &slot_filter),
             count: ChoiceCount::exactly(1),
             count_value: None,
-            player: chooser.clone(),
+            player: chooser,
             tag: keep_tag.clone(),
         });
     }
@@ -3772,7 +3765,7 @@ pub(crate) fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subjec
     choice_filter.zone = Some(Zone::Library);
 
     let mut effects = vec![
-        EffectAst::subject_verb_look_at_top_cards(player.clone(), count, looked_tag.clone()),
+        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
         EffectAst::ChooseObjects {
             filter: choice_filter,
             count: exile_count,
@@ -3809,7 +3802,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn as_you_cast_from_zone_this_turn_grant_preserves_origin_duration_and_keyword() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "As you cast spells from your hand this turn, they gain cascade.",
             0,
         )
@@ -3849,7 +3842,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn permanent_grant_does_not_enter_cast_origin_route() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Creatures you control gain trample until end of turn.",
             0,
         )
@@ -3865,7 +3858,7 @@ mod generic_subject_verb_program_tests {
     #[test]
     fn top_level_cant_route_preserves_leading_end_of_turn_surface() {
         let parse_surface = |text: &str| {
-            let tokens = crate::runtime_backend::lex_line(text, 0)
+            let tokens = crate::lexer::lex_line(text, 0)
                 .expect("temporary restriction should lex");
             let (_, effects) = parse_top_level_subject_verb_recognition(&tokens)
                 .expect("top-level restriction route should not error")
@@ -3902,7 +3895,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn top_cards_counted_hand_remainder_uses_captured_owners() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "look at the top three cards of your library, then put one of those cards into that player's hand and the rest into that player's graveyard.",
             0,
         )
@@ -3922,7 +3915,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn counted_face_down_exile_keeps_target_opponents_library_owner() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order.",
             0,
         )
@@ -3945,7 +3938,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn source_exiled_counted_return_keeps_original_set_for_the_remainder() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Return two cards exiled with this Saga to the battlefield under their owners' control and put the rest on the bottom of their owners' libraries.",
             0,
         )
@@ -3996,7 +3989,7 @@ mod generic_subject_verb_program_tests {
         assert_eq!(keep_tagged, tag);
         assert_ne!(keep_tagged, original_set);
 
-        let near_miss = crate::runtime_backend::lex_line(
+        let near_miss = crate::lexer::lex_line(
             "Return two cards exiled with this Saga to the battlefield under their owners' control and put those cards on the bottom of their owners' libraries.",
             0,
         )
@@ -4008,7 +4001,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn counted_face_down_exile_accepts_implicit_looked_set() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Look at the top four cards of your library, exile one face down, then put the rest on the bottom of your library in any order.",
             0,
         )
@@ -4029,7 +4022,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn full_sentence_dispatch_keeps_the_face_down_looked_partition_before_comma_then() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Look at the top four cards of your library, exile one face down, then put the rest on the bottom of your library in any order.",
             0,
         )
@@ -4049,7 +4042,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn two_card_face_down_partition_accepts_the_single_other_without_order_text() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Look at the top two cards of target opponent's library. Exile one of them face down and put the other on the bottom of that library.",
             0,
         )
@@ -4073,7 +4066,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn face_down_exile_counter_stays_on_the_selected_card_not_the_remainder() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Look at the top three cards of your library. Exile one of them face down with a hatching counter on it, then put the rest on the bottom of your library in any order.",
             0,
         )
@@ -4133,7 +4126,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn consult_reveal_until_hand_uses_captured_consult_and_followup_clauses() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Reveal cards from the top of your library until you reveal a nonland card, then put all cards revealed this way into your hand.",
             0,
         )
@@ -4152,7 +4145,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn undying_flames_exile_until_uses_typed_consult_traversal() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Exile cards from the top of your library until you exile a nonland card.",
             0,
         )
@@ -4176,7 +4169,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn consult_reveal_until_graveyard_moves_all_revealed_cards() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each opponent reveals cards from the top of their library until they reveal X land cards, then puts all cards revealed this way into their graveyard.",
             0,
         )
@@ -4198,7 +4191,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn consult_reveal_until_battlefield_bottom_uses_captured_consult_and_followup_clauses() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Reveal cards from the top of your library until you reveal a creature card, put it onto the battlefield, then put the rest on the bottom of your library in any order.",
             0,
         )
@@ -4219,7 +4212,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn consult_reveal_until_battlefield_bottom_preserves_tapped_land_group() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Reveal cards from the top of your library until you reveal X land cards, put those land cards onto the battlefield tapped and the rest on the bottom of your library in a random order.",
             0,
         )
@@ -4241,7 +4234,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn each_player_exile_top_cast_uses_captured_exile_and_cast_clauses() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Exile the top card of each player's library, then you may cast any number of spells from among the nonland cards exiled this way without paying their mana costs.",
             0,
         )
@@ -4260,7 +4253,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn zone_replacement_uses_captured_condition_and_replacement_clauses() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "If that card would be put into your graveyard this turn, exile that card instead.",
             0,
         )
@@ -4277,7 +4270,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn play_permission_uses_captured_duration_and_permission_tail() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Until end of turn, you may play lands and cast spells from your graveyard.",
             0,
         )
@@ -4293,7 +4286,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn secret_number_choice_vote_uses_captured_participants_and_options() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "You and target opponent each secretly choose 1, 2, or 3.",
             0,
         )
@@ -4312,7 +4305,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn generic_vote_start_uses_captured_voters_and_options() {
-        let tokens = crate::runtime_backend::lex_line("Each player votes for death or torture.", 0)
+        let tokens = crate::lexer::lex_line("Each player votes for death or torture.", 0)
             .expect("generic vote-start text should lex");
         let effect = parse_generic_vote_start(&tokens)
             .expect("generic vote-start parser should not error")
@@ -4326,12 +4319,12 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn generic_vote_start_prefers_named_options_over_source_name_alias() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each player secretly votes for truth or consequences, then those votes are revealed.",
             0,
         )
         .expect("source-name vote text should lex");
-        let effect = crate::runtime_backend::util::with_source_reference_context(
+        let effect = crate::util::with_source_reference_context(
             "Truth or Consequences",
             || {
                 parse_generic_vote_start(&tokens)
@@ -4349,7 +4342,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn generic_vote_option_effect_uses_captured_option_and_effect_tail() {
-        let tokens = crate::runtime_backend::lex_line("For each death vote, draw a card.", 0)
+        let tokens = crate::lexer::lex_line("For each death vote, draw a card.", 0)
             .expect("generic vote-option effect text should lex");
         let effect = parse_generic_vote_option_effects(&tokens)
             .expect("generic vote-option parser should not error")
@@ -4364,7 +4357,7 @@ mod generic_subject_verb_program_tests {
     #[test]
     fn player_vote_received_effect_uses_captured_player_and_effect_tail() {
         let tokens =
-            crate::runtime_backend::lex_line("For each vote you received, draw a card.", 0)
+            crate::lexer::lex_line("For each vote you received, draw a card.", 0)
                 .expect("player vote-received effect text should lex");
         let effect = parse_generic_vote_option_effects(&tokens)
             .expect("player vote-received parser should not error")
@@ -4379,7 +4372,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn extra_vote_uses_captured_optional_vote_shape() {
-        let tokens = crate::runtime_backend::lex_line("You may vote an additional time.", 0)
+        let tokens = crate::lexer::lex_line("You may vote an additional time.", 0)
             .expect("optional extra vote text should lex");
         let effect =
             parse_generic_extra_vote(&tokens).expect("optional extra vote parser should match");
@@ -4392,7 +4385,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn extra_vote_uses_captured_required_vote_shape() {
-        let tokens = crate::runtime_backend::lex_line("You vote an additional time.", 0)
+        let tokens = crate::lexer::lex_line("You vote an additional time.", 0)
             .expect("required extra vote text should lex");
         let effect =
             parse_generic_extra_vote(&tokens).expect("required extra vote parser should match");
@@ -4405,7 +4398,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn extra_vote_accepts_subjectless_clause_inside_optional_wrapper() {
-        let tokens = crate::runtime_backend::lex_line("Vote an additional time.", 0)
+        let tokens = crate::lexer::lex_line("Vote an additional time.", 0)
             .expect("subjectless extra vote text should lex");
         let effect =
             parse_generic_extra_vote(&tokens).expect("subjectless extra vote parser should match");
@@ -4418,7 +4411,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn vote_reveal_uses_captured_choice_reveal_shape() {
-        let tokens = crate::runtime_backend::lex_line("Then those choices are revealed.", 0)
+        let tokens = crate::lexer::lex_line("Then those choices are revealed.", 0)
             .expect("vote reveal text should lex");
         let effect = parse_vote_reveal_sentence(&tokens).expect("vote reveal parser should match");
         let debug = format!("{effect:#?}");
@@ -4429,7 +4422,7 @@ mod generic_subject_verb_program_tests {
     #[test]
     fn control_combat_choices_uses_captured_attack_shape() {
         let tokens =
-            crate::runtime_backend::lex_line("You choose which creatures attack this turn.", 0)
+            crate::lexer::lex_line("You choose which creatures attack this turn.", 0)
                 .expect("combat choice attack text should lex");
         let effect = parse_generic_control_combat_choices_subject_verb(&tokens)
             .expect("combat choice attack parser should not error")
@@ -4453,7 +4446,7 @@ mod generic_subject_verb_program_tests {
                 true,
             ),
         ] {
-            let tokens = crate::runtime_backend::lex_line(text, 0)
+            let tokens = crate::lexer::lex_line(text, 0)
                 .expect("combat choice block text should lex");
             let effect = parse_generic_control_combat_choices_subject_verb(&tokens)
                 .expect("combat choice block parser should not error")
@@ -4472,7 +4465,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn control_combat_choices_accepts_anaphoric_block_assignment_shape() {
-        let tokens = crate::runtime_backend::lex_line("You choose how those creatures block.", 0)
+        let tokens = crate::lexer::lex_line("You choose how those creatures block.", 0)
             .expect("anaphoric combat-choice text should lex");
         let effect = parse_generic_control_combat_choices_subject_verb(&tokens)
             .expect("combat-choice parser should not error")
@@ -4487,13 +4480,13 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn where_x_value_binding_uses_captured_effect_and_definition() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Target creature gets +X/+X until end of turn, where X is the number of cards in your hand.",
             0,
         )
         .expect("where-x value-binding text should lex");
         let non_binding_tokens =
-            crate::runtime_backend::lex_line("Target creature gets +1/+1 until end of turn.", 0)
+            crate::lexer::lex_line("Target creature gets +1/+1 until end of turn.", 0)
                 .expect("non-binding pump text should lex");
 
         assert!(has_where_x_value_binding(&tokens));
@@ -4506,7 +4499,7 @@ mod generic_subject_verb_program_tests {
             "Search your library for up to X Plains cards, where X is the number of players who control more lands than you.",
             "Create X 1/1 white Spirit creature tokens with flying, where X is the number of opponents who control more lands than you.",
         ] {
-            let tokens = crate::runtime_backend::lex_line(text, 0)
+            let tokens = crate::lexer::lex_line(text, 0)
                 .expect("player-comparison where-X text should lex");
             let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
                 .expect("player-comparison where-X text should parse");
@@ -4518,7 +4511,7 @@ mod generic_subject_verb_program_tests {
             );
         }
 
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Search your library for up to X basic land cards, where X is the number of players who control at least two more lands than you.",
             0,
         )
@@ -4535,7 +4528,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn where_x_scry_amount_binds_the_dynamic_counter_target_count() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Put a +1/+1 counter on each of up to X target creatures, where X is the number of cards looked at while scrying this way.",
             0,
         )
@@ -4555,7 +4548,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn where_x_binding_prioritizes_spell_history_aggregate_over_plain_count() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Create an X/X blue and red Elemental creature token with flying and haste, where X is the greatest mana value among instant and sorcery spells you've cast this turn.",
             0,
         )
@@ -4584,7 +4577,7 @@ mod generic_subject_verb_program_tests {
     #[test]
     fn shared_where_x_sum_binds_the_full_value_to_each_pump_clause() {
         let text = "Target creature you control gets +X/+0 until end of turn and up to one target creature an opponent controls gets -0/-X until end of turn, where X is the number of Elves you control plus the number of Elf cards in your graveyard.";
-        let tokens = crate::runtime_backend::lex_line(text, 0)
+        let tokens = crate::lexer::lex_line(text, 0)
             .expect("shared sum where-x pump text should lex");
         let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
             .expect("shared sum where-x pump text should parse");
@@ -4605,7 +4598,7 @@ mod generic_subject_verb_program_tests {
     fn shared_where_x_sum_binds_the_full_value_to_damage() {
         let text = "This deals X damage to target creature, where X is the number of creatures you control plus the number of Foods you control.";
         let tokens =
-            crate::runtime_backend::lex_line(text, 0).expect("shared sum damage text should lex");
+            crate::lexer::lex_line(text, 0).expect("shared sum damage text should lex");
         let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
             .expect("shared sum damage text should parse");
         let debug = format!("{effects:#?}");
@@ -4648,7 +4641,7 @@ mod generic_subject_verb_program_tests {
                 [PlayerFilter::You, PlayerFilter::IteratedPlayer],
             ),
         ] {
-            let tokens = crate::runtime_backend::lex_line(text, 0)
+            let tokens = crate::lexer::lex_line(text, 0)
                 .expect("dynamic subtraction where-x text should lex");
             let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
                 .expect("dynamic subtraction where-x text should parse");
@@ -4705,7 +4698,7 @@ mod generic_subject_verb_program_tests {
                 &["ColorsOfManaSpentToCastThisSpell", "WhereXIs"][..],
             ),
         ] {
-            let tokens = crate::runtime_backend::lex_line(text, 0)
+            let tokens = crate::lexer::lex_line(text, 0)
                 .expect("dynamic entry-counter text should lex");
             let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
                 .expect("dynamic entry-counter text should parse");
@@ -4735,7 +4728,7 @@ mod generic_subject_verb_program_tests {
             "Create X 1/1 black Rat creature tokens with \"This token can't block,\" where X is the amount of damage dealt to it this turn.",
             "Create X 1/1 black and green Pest creature tokens with \"When this token dies, you gain 1 life,\" where X is the sacrificed creature's power.",
         ] {
-            let tokens = crate::runtime_backend::lex_line(text, 0)
+            let tokens = crate::lexer::lex_line(text, 0)
                 .expect("quoted token where-x text should lex");
             assert!(has_where_x_value_binding(&tokens), "{text}");
         }
@@ -4743,7 +4736,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn choice_complement_uses_captured_choice_and_sacrifice_shape() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each player chooses a creature from among creatures they control, then sacrifices the rest.",
             0,
         )
@@ -4761,7 +4754,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn counted_choice_complement_keeps_that_many_and_sacrifices_others() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each player chooses five lands they control and sacrifices the rest.",
             0,
         )
@@ -4784,7 +4777,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn aggregate_choice_complement_keeps_the_group_power_constraint() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each player chooses any number of creatures they control with total power 4 or less, then sacrifices all other creatures they control.",
             0,
         )
@@ -4806,7 +4799,7 @@ mod generic_subject_verb_program_tests {
         assert!(debug.contains("SacrificeAll"), "{debug}");
 
         let effects =
-            crate::runtime_backend::sentences::effect_sentences::parse_effect_sentence_lexed(
+            crate::effect_sentences::parse_effect_sentence_lexed(
                 &tokens,
             )
             .expect("aggregate choice-complement full sentence should parse");
@@ -4819,7 +4812,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn party_choice_complement_uses_four_optional_distinct_role_slots() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each player chooses a party from among creatures they control, then sacrifices the rest.",
             0,
         )
@@ -4856,7 +4849,7 @@ mod generic_subject_verb_program_tests {
         );
 
         let effects =
-            crate::runtime_backend::sentences::effect_sentences::parse_effect_sentence_lexed(
+            crate::effect_sentences::parse_effect_sentence_lexed(
                 &tokens,
             )
             .expect("full effect parser should accept party complement");
@@ -4871,7 +4864,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn triggering_spell_damage_uses_triggering_spell_as_source_and_fans_out() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "That spell deals damage to each opponent equal to the number of instant and sorcery spells you've cast this turn.",
             0,
         )
@@ -4890,7 +4883,7 @@ mod generic_subject_verb_program_tests {
         );
 
         let effects =
-            crate::runtime_backend::sentences::effect_sentences::parse_effect_sentence_lexed(
+            crate::effect_sentences::parse_effect_sentence_lexed(
                 &tokens,
             )
             .expect("triggering-spell damage full sentence should parse");
@@ -4901,7 +4894,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn choice_complement_preserves_independent_keep_slots_for_type_lists() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each player chooses from among the permanents they control an artifact, a creature, an enchantment, and a land, then sacrifices the rest.",
             0,
         )
@@ -4909,10 +4902,10 @@ mod generic_subject_verb_program_tests {
         let recovered = choice_complement_choice_clause_from_word_order(LexedClause::new(&tokens))
             .expect("from-among word-order helper should recover choice clause");
         assert!(
-            crate::runtime_backend::lexer::render_token_slice(recovered.tokens())
+            crate::lexer::render_token_slice(recovered.tokens())
                 .contains("from among"),
             "{}",
-            crate::runtime_backend::lexer::render_token_slice(recovered.tokens())
+            crate::lexer::render_token_slice(recovered.tokens())
         );
         let recovered_tokens = recovered.tokens();
         let from_idx = find_from_among(recovered_tokens).expect("should find from among");
@@ -4925,12 +4918,12 @@ mod generic_subject_verb_program_tests {
         assert!(
             !base_tokens.is_empty(),
             "base was empty; recovered={}",
-            crate::runtime_backend::lexer::render_token_slice(recovered.tokens())
+            crate::lexer::render_token_slice(recovered.tokens())
         );
         assert!(
             !list_tokens.is_empty(),
             "list was empty; recovered={}",
-            crate::runtime_backend::lexer::render_token_slice(recovered.tokens())
+            crate::lexer::render_token_slice(recovered.tokens())
         );
         let effect = parse_choice_complement_subject_verb(&tokens)
             .expect("choice-complement parser should not error")
@@ -4948,13 +4941,13 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn choice_complement_full_effect_sentence_keeps_comma_list_together() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each player chooses from among the permanents they control an artifact, a creature, an enchantment, and a land, then sacrifices the rest.",
             0,
         )
         .expect("choice-complement type-list text should lex");
         let effects =
-            crate::runtime_backend::sentences::effect_sentences::parse_effect_sentence_lexed(
+            crate::effect_sentences::parse_effect_sentence_lexed(
                 &tokens,
             )
             .expect("choice-complement full sentence should parse");
@@ -4970,7 +4963,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn source_gets_unblockable_uses_captured_subject_modifier_and_tail() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "This creature gets +1/+1 until end of turn and can't be blocked this turn.",
             0,
         )
@@ -4989,7 +4982,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn attached_object_destroy_and_source_damage_keeps_one_linked_program() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Destroy enchanted land and this Aura deals 2 damage to that land's controller.",
             0,
         )
@@ -5008,7 +5001,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn attached_object_damage_rejects_a_mismatched_controller_noun() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Destroy enchanted land and this Aura deals 2 damage to that creature's controller.",
             0,
         )
@@ -5022,7 +5015,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn source_gets_filter_gains_uses_captured_filter_and_ability_tail() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "This creature gets +1/+1 and creatures you control gain trample until end of turn.",
             0,
         )
@@ -5044,7 +5037,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn target_gains_then_gets_gate_uses_captured_ability_and_pump_tail() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Target creature gains trample and gets +1/+0 until end of turn.",
             0,
         )
@@ -5061,7 +5054,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn target_gains_then_gets_where_x_reuses_the_exact_declared_target() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Target creature gains trample and gets +X/+0 until end of turn, where X is that creature's mana value.",
             0,
         )
@@ -5112,7 +5105,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn full_dispatch_keeps_gain_then_get_on_one_declared_target() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Target creature gains trample and gets +X/+0 until end of turn, where X is that creature's mana value.",
             0,
         )
@@ -5158,7 +5151,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn target_gets_then_gains_gate_uses_captured_pump_and_ability_tail() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Target creature gets +1/+1 and gains trample until end of turn.",
             0,
         )
@@ -5175,7 +5168,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn target_gets_then_gains_preserves_other_than_source_filter() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Target creature other than this creature gets +1/+1 and gains trample until end of turn.",
             0,
         )
@@ -5193,7 +5186,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn target_gets_then_gains_preserves_sticker_filter_before_reflexive_pronoun() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Another target creature with an art sticker on it gets +2/+0 and gains menace until end of turn.",
             0,
         )
@@ -5214,7 +5207,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn conditional_another_target_gets_then_gains_preserves_source_exclusion() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "If you do, another target attacking creature gets +1/+0 and gains menace until end of turn.",
             0,
         )
@@ -5231,7 +5224,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn duration_led_another_target_gets_then_gains_preserves_source_exclusion() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Until end of turn, another target creature you control gets +2/+0 and gains \"When this creature dies, return it to the battlefield tapped under its owner's control.\"",
             0,
         )
@@ -5248,7 +5241,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn attached_and_related_creatures_keep_both_subject_branches() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Enchanted creature and other creatures that share a creature type with it get +1/+0 and gain first strike until end of turn.",
             0,
         )
@@ -5267,7 +5260,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn attached_and_related_stat_pump_keeps_both_subject_branches() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Enchanted creature and other creatures that share a creature type with it get +1/+1 until end of turn.",
             0,
         )
@@ -5286,7 +5279,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn target_controlled_pump_uses_captured_granted_ability_tail() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Creatures target player controls get +1/+1 and gain haste until end of turn.",
             0,
         )
@@ -5305,7 +5298,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn target_controlled_pump_can_grant_all_creature_types() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Creatures target player controls get +0/+1 and gain all creature types until end of turn.",
             0,
         )
@@ -5324,7 +5317,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn target_controlled_pump_can_remove_all_creature_types() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Creatures target player controls get -2/-0 and lose all creature types until end of turn.",
             0,
         )
@@ -5342,7 +5335,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn target_controlled_pump_keeps_trailing_mana_spent_condition() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Creatures target player controls get +2/+0 and gain haste until end of turn if {R} was spent to cast this spell.",
             0,
         )
@@ -5370,7 +5363,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn result_gated_sacrificed_card_type_consult_uses_typed_traversal() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "they reveal cards from the top of their library until they reveal a permanent card that shares a card type with the sacrificed permanent, put that card onto the battlefield, then shuffle",
             0,
         )
@@ -5386,7 +5379,7 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn triggering_object_counter_total_binds_create_x_without_duplicating_condition() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Create X tapped 2/1 white and black Inkling creature tokens with flying, where X is the number of counters it had on it.",
             0,
         )

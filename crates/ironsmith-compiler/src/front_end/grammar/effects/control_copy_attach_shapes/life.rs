@@ -2,7 +2,7 @@ use winnow::combinator::{alt, eof};
 use winnow::prelude::*;
 
 use crate::grammar::{leaf, permission_shapes, primitives};
-use crate::front_end::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExactLifeSurface {
@@ -72,7 +72,7 @@ pub(crate) fn parse_life_surface_shape(tokens: &[OwnedLexToken]) -> LifeSurfaceS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_exact_and_source_stat_life_surfaces() {

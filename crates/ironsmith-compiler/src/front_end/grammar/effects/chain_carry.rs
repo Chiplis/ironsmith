@@ -471,9 +471,7 @@ pub(crate) fn parse_tap_then_unattach_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub(crate) fn split_return_then_loses_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    if primitives::parse_prefix(tokens, semantic_phrase(&["return", "it"])).is_none() {
-        return None;
-    }
+    primitives::parse_prefix(tokens, semantic_phrase(&["return", "it"]))?;
     let (idx, (), _) = primitives::find_prefix(tokens, || {
         semantic_phrase(&["and", "it", "loses", "all", "abilities"])
     })?;

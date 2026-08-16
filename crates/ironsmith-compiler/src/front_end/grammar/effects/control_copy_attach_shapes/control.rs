@@ -5,14 +5,12 @@ use crate::ConditionExpr;
 use crate::cards::builders::ControlDurationAst;
 use crate::effect::Until;
 use crate::grammar::{filters, permission_shapes, primitives};
-use crate::front_end::lexer::{
-    OwnedLexToken, TokenWordView, lex_line, trim_lexed_commas,
-};
+use crate::lexer::{OwnedLexToken, TokenWordView, lex_line, trim_lexed_commas};
+use crate::target::SourceReferenceSurface;
 use crate::util::{
     current_source_reference_name, source_reference_surface_for_words,
     this_source_surface_for_words,
 };
-use crate::target::SourceReferenceSurface;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct GainControlClauseShape<'a> {
@@ -294,7 +292,7 @@ pub(crate) fn parse_permanent_control_duration_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn splits_control_target_duration_and_delay() {
@@ -337,24 +335,21 @@ mod tests {
 
     #[test]
     fn parses_named_source_compound_control_duration_with_surface() {
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Rubinia Soulsinger",
-            || {
-                let tokens = lex_line(
+        crate::util::with_source_reference_context("Rubinia Soulsinger", || {
+            let tokens = lex_line(
                     "for as long as you control Rubinia Soulsinger and Rubinia Soulsinger remains tapped",
                     0,
                 )
                 .unwrap();
-                let shape = parse_permanent_control_duration_shape(&tokens).unwrap();
-                assert!(matches!(shape.until, Until::ForAsLongAs(_)));
-                assert_eq!(
-                    shape.source_surface,
-                    Some(SourceReferenceSurface::FullName(
-                        "Rubinia Soulsinger".to_string()
-                    ))
-                );
-            },
-        );
+            let shape = parse_permanent_control_duration_shape(&tokens).unwrap();
+            assert!(matches!(shape.until, Until::ForAsLongAs(_)));
+            assert_eq!(
+                shape.source_surface,
+                Some(SourceReferenceSurface::FullName(
+                    "Rubinia Soulsinger".to_string()
+                ))
+            );
+        });
     }
 
     #[test]

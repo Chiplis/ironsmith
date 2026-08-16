@@ -72,7 +72,7 @@ pub(super) fn alien_invasion_preserves_source_counter_count_and_created_token_ta
 
     let plus_one = effects
         .iter()
-        .find_map(|effect| find_plus_one_counter_effect(effect))
+        .find_map(find_plus_one_counter_effect)
         .expect("Alien Invasion should put +1/+1 counters on the created token");
     assert!(
         matches!(plus_one.target.unhinted(), ChooseSpec::Tagged(tag) if tag == created_tag),
@@ -2546,7 +2546,7 @@ pub(super) fn union_of_the_third_path_gains_life_equal_to_hand_size_after_draw()
     // Give Alice 3 cards in hand
     for i in 0..3 {
         game.create_object_from_card(
-            &crate::card::CardBuilder::new(CardId::from_raw(10 + i), &format!("Hand Card {i}"))
+            &crate::card::CardBuilder::new(CardId::from_raw(10 + i), format!("Hand Card {i}"))
                 .card_types(vec![CardType::Creature])
                 .build(),
             alice,
@@ -2556,7 +2556,7 @@ pub(super) fn union_of_the_third_path_gains_life_equal_to_hand_size_after_draw()
     // Give Alice 3 cards in library to draw from
     for i in 0..3 {
         game.create_object_from_card(
-            &crate::card::CardBuilder::new(CardId::from_raw(20 + i), &format!("Library Card {i}"))
+            &crate::card::CardBuilder::new(CardId::from_raw(20 + i), format!("Library Card {i}"))
                 .card_types(vec![CardType::Creature])
                 .build(),
             alice,
@@ -3476,7 +3476,7 @@ pub(super) fn esper_origins_graveyard_cast_condition_moves_source_with_finality_
         .as_ref()
         .expect("Esper Origins spell effect")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find(|effect| {
             effect
                 .downcast_ref::<crate::effects::ConditionalEffect>()

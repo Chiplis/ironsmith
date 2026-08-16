@@ -28,9 +28,9 @@ use self::render_effects::*;
 use self::surface_helpers::*;
 
 pub(crate) use self::normalize_common::{
-    describe_counter_for_each_basis, describe_death_history_subject,
-    describe_party_size_for_each_basis, describe_turn_history_for_each_basis, describe_value,
-    party_size_multiplier,
+    describe_aggregate_filter_value_subject, describe_counter_for_each_basis,
+    describe_death_history_subject, describe_party_size_for_each_basis,
+    describe_turn_history_for_each_basis, describe_value, party_size_multiplier,
 };
 pub use self::oracle_style::canonical_compiled_lines;
 pub use self::render_effects::compile_effect_list;
@@ -1076,9 +1076,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     if lower == "{t}: each player draws a card, then each player discards a card." {
         return "{T}: Each player draws a card, then discards a card.".to_string();
     }
-    if lower.contains("counter target artifact. then if a permanent's ability is countered this way, destroy that artifact")
-    {
-    }
     if lower.starts_with(
         "whenever one or more creature attack an opponent or a planeswalker controlled by an opponent",
     ) {
@@ -1147,21 +1144,11 @@ fn finalize_ast_surface_line(line: String) -> String {
         line = line.replace("on him", "on this creature");
         line = line.replace("on Him", "on this creature");
     }
-    if lower.contains("this equipment gets +x/+0 until end of turn")
-        && lower.contains("where x is the number of times this ability has resolved this turn")
-    {
-    }
     if lower.contains("whenever an opponent searches their library")
         && lower.contains("then draw a card")
     {
         line = line.replace(", then draw a card", ". Draw a card");
         line = line.replace(", then Draw a card", ". Draw a card");
-    }
-    if lower.contains("all nontoken non-auran artifacts, creatures, lands, or enchantments that shares a permanent type with that object")
-    {
-    }
-    if lower.contains("put a +1/+1 counter on each tapped creature you control, then untap all cards in that player's hand")
-    {
     }
     if lower.starts_with("creatures with mana value x or less lose all abilities until end of turn, then destroy all creatures with mana value x or less")
     {
@@ -1196,9 +1183,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     {
         line = line.replace("that permanent's mana value", "that card's mana value");
     }
-    if lower.contains("if it's a permanent, exile it")
-        && lower.contains("at the beginning of the next end step, exile it")
-    {}
     if lower.contains("as long as this creature is monstrous") {
         line = line.replace(
             "As long as this creature is monstrous",
@@ -1266,10 +1250,6 @@ fn finalize_ast_surface_line(line: String) -> String {
             "Each other non-Human creature you control enters with an additional +1/+1 counter on it."
                 .to_string();
     }
-    if lower.contains("if you cast it, you can't be targeted until your next turn")
-        && lower.contains("prevent all damage that would be dealt to you until your next turn")
-    {
-    }
     if lower.contains("you can't be targeted until your next turn")
         && lower.contains("prevent all damage that would be dealt to you until your next turn")
     {
@@ -1280,9 +1260,6 @@ fn finalize_ast_surface_line(line: String) -> String {
             "you gain protection from everything until your next turn",
         );
     }
-    if lower.contains("if you do, you lose x life, where x is a card in your hand's mana value")
-        && lower.contains("create x clue tokens, where x is a card in your hand's mana value")
-    {}
     if lower.contains("if the player doesn't, mill three cards, then this creature deals damage") {
         line = line.replace(
             "If the player doesn't, mill three cards",
@@ -1297,9 +1274,6 @@ fn finalize_ast_surface_line(line: String) -> String {
         line =
             "Prevent all combat damage that would be dealt to you this turn. Populate.".to_string();
     }
-    if lower.contains("you choose a creature card, that player chooses a creature card")
-        && lower.contains("you may put it onto the battlefield under its owner's control")
-    {}
     if lower.contains("destroy target opponent's nonbasic artifact, enchantment, or land")
         && lower.contains("then an opponent may search an opponent's library for a basic land card")
     {
@@ -1324,10 +1298,10 @@ fn finalize_ast_surface_line(line: String) -> String {
             "if you don't put the card into your hand",
         );
     }
-    if let Some(rest) = line.strip_prefix("During your turn, this creature has ") {
-        if rest.to_ascii_lowercase().starts_with("prevent ") {
-            line = format!("During your turn, {}", lowercase_first(rest));
-        }
+    if let Some(rest) = line.strip_prefix("During your turn, this creature has ")
+        && rest.to_ascii_lowercase().starts_with("prevent ")
+    {
+        line = format!("During your turn, {}", lowercase_first(rest));
     }
     line = line.replace(
         "Whenever an equipped creature deals combat damage to a player",
@@ -1342,10 +1316,6 @@ fn finalize_ast_surface_line(line: String) -> String {
             "When this token dies: It deals 1 damage to any target",
             "When this token dies, it deals 1 damage to any target",
         );
-    if line.to_ascii_lowercase().contains(
-        "creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this",
-    ) {
-    }
     if line.to_ascii_lowercase().contains(
         "at the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard",
     ) {
@@ -1640,7 +1610,7 @@ fn lowercase_conditional_comma_followup(line: &str, verb: &str, lowered: &str) -
 
 fn comma_follows_conditional_marker(prefix: &str) -> bool {
     let sentence_start = prefix
-        .rfind(|ch| matches!(ch, '.' | '\n' | ';'))
+        .rfind(['.', '\n', ';'])
         .map(|idx| idx + 1)
         .unwrap_or(0);
     let segment = prefix[sentence_start..].trim_start().to_ascii_lowercase();
@@ -2630,6 +2600,11 @@ fn expand_finalized_ast_surface_line(line: String) -> Vec<String> {
         ],
         _ => vec![line],
     }
+}
+
+#[cfg(test)]
+pub(crate) fn ability_surface_text_for_tests(ability: &Ability) -> String {
+    ability_surface_text(ability)
 }
 
 #[cfg(test)]
@@ -4123,9 +4098,4 @@ mod tests {
             }
         }
     }
-}
-
-#[cfg(test)]
-pub(crate) fn ability_surface_text_for_tests(ability: &Ability) -> String {
-    ability_surface_text(ability)
 }

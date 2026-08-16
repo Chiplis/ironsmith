@@ -5,9 +5,7 @@ use winnow::token::any;
 
 use crate::Value;
 use crate::grammar::{filters, leaf, primitives};
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, TokenKind, trim_lexed_commas,
-};
+use crate::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed_commas};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 use ironsmith_core::{EffectMetric, EffectMetricSource};
@@ -236,7 +234,7 @@ fn parse_tap_controlled_objects_then_empty_mana(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
     use crate::types::CardType;
 
     #[test]

@@ -2,9 +2,9 @@ use winnow::combinator::{alt, opt};
 use winnow::prelude::*;
 
 use crate::cards::builders::ChoiceCount;
-use crate::mana::ManaSymbol;
 use crate::grammar::{leaf, primitives};
-use crate::front_end::lexer::{OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{OwnedLexToken, trim_lexed_commas};
+use crate::mana::ManaSymbol;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ForEachObjectSubjectShape<'a> {
@@ -50,9 +50,7 @@ pub(crate) struct ForEachDynamicTargetEffectShape<'a> {
     pub(crate) effect_tokens: &'a [OwnedLexToken],
 }
 
-fn for_each_prefix<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
-) -> winnow::error::ModalResult<()> {
+fn for_each_prefix<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
     alt((
         primitives::phrase(&["for", "each"]),
         primitives::kw("each").void(),
@@ -62,7 +60,7 @@ fn for_each_prefix<'a>(
 }
 
 fn participant_prefix<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> winnow::error::ModalResult<()> {
     alt((
         alt((primitives::kw("player"), primitives::kw("players"))).void(),
@@ -83,7 +81,7 @@ fn participant_prefix<'a>(
 }
 
 fn attached_creature_tail<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> winnow::error::ModalResult<()> {
     primitives::phrase(&["attached", "to"]).parse_next(input)?;
     opt(primitives::kw("a")).parse_next(input)?;
@@ -100,7 +98,7 @@ fn normalized_filter_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 }
 
 fn contains_effect_verb_outside_filter_zone(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::front_end::lexer::parser_token_word_refs(tokens);
+    let words = crate::lexer::parser_token_word_refs(tokens);
     let Some(found) = super::super::chain_splitting::find_chain_verb_words(&words) else {
         return false;
     };
@@ -188,7 +186,7 @@ pub(crate) fn parse_for_each_target_players_shape(
         .and_then(|parsed| {
             let rest = tokens.get(parsed.consumed..)?;
             primitives::parse_prefix(rest, primitives::kw("target"))?;
-            Some((parsed.count.clone(), rest))
+            Some((parsed.count, rest))
         })
         .unwrap_or_else(|| (ChoiceCount::exactly(1), tokens));
     let (_, after_target) = primitives::parse_prefix(after_count, primitives::kw("target"))?;
@@ -218,9 +216,7 @@ pub(crate) fn parse_for_each_target_players_shape(
             // able") is part of that rule, not this clause's iterator marker.
             let inside_quote = after_player[..index]
                 .iter()
-                .filter(|token| {
-                    token.kind == crate::front_end::lexer::TokenKind::Quote
-                })
+                .filter(|token| token.kind == crate::lexer::TokenKind::Quote)
                 .count()
                 % 2
                 == 1;

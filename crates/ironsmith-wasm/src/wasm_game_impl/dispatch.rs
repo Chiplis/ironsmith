@@ -1788,10 +1788,9 @@ impl WasmGame {
                     .game
                     .object(object_id)
                     .is_some_and(|object| object.card.is_some())
+                && let Some(object) = self.game.object_mut(object_id)
             {
-                if let Some(object) = self.game.object_mut(object_id) {
-                    object.redact_to_hidden_card();
-                }
+                object.redact_to_hidden_card();
             }
             self.game.set_hidden_card_info(
                 object_id,

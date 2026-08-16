@@ -139,9 +139,9 @@ pub(crate) fn clone_sentence_chunk_tokens(
     Some(tokens[start..end_start + last_sentence.len()].to_vec())
 }
 
-pub(crate) fn split_em_dash_label_prefix_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
+pub(crate) fn split_em_dash_label_prefix_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let mut inside_quotes = false;
     let split_idx = tokens.iter().enumerate().find_map(|(idx, token)| {
         if token.kind == TokenKind::Quote {
@@ -206,9 +206,9 @@ fn label_has_disallowed_period(tokens: &[OwnedLexToken]) -> bool {
     false
 }
 
-pub(crate) fn split_em_dash_label_prefix<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(String, &'a [OwnedLexToken])> {
+pub(crate) fn split_em_dash_label_prefix(
+    tokens: &[OwnedLexToken],
+) -> Option<(String, &[OwnedLexToken])> {
     let (label_tokens, body_tokens) = split_em_dash_label_prefix_tokens(tokens)?;
     let label = render_token_slice(label_tokens).trim().to_string();
     (!label.is_empty()).then_some((label, body_tokens))
@@ -242,30 +242,30 @@ fn turn_duration_from_leaf(duration: LeafTurnDurationPhrase) -> TurnDurationPhra
 }
 
 #[cfg(test)]
-pub(crate) fn parse_turn_duration_prefix<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(TurnDurationPhrase, &'a [OwnedLexToken])> {
+pub(crate) fn parse_turn_duration_prefix(
+    tokens: &[OwnedLexToken],
+) -> Option<(TurnDurationPhrase, &[OwnedLexToken])> {
     let parsed = parse_leaf_turn_duration_prefix_tokens(tokens)?;
     Some((turn_duration_from_leaf(parsed.duration), parsed.rest))
 }
 
-pub(crate) fn parse_turn_duration_suffix<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(&'a [OwnedLexToken], TurnDurationPhrase)> {
+pub(crate) fn parse_turn_duration_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], TurnDurationPhrase)> {
     let parsed = parse_leaf_turn_duration_suffix_tokens(tokens)?;
     Some((parsed.rest, turn_duration_from_leaf(parsed.duration)))
 }
 
-pub(crate) fn parse_simple_restriction_duration_prefix<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(Until, &'a [OwnedLexToken])> {
+pub(crate) fn parse_simple_restriction_duration_prefix(
+    tokens: &[OwnedLexToken],
+) -> Option<(Until, &[OwnedLexToken])> {
     let parsed = parse_leaf_restriction_duration_prefix_tokens(tokens)?;
     Some((until_from_leaf_duration(parsed.duration), parsed.rest))
 }
 
-pub(crate) fn parse_simple_restriction_duration_suffix<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(&'a [OwnedLexToken], Until)> {
+pub(crate) fn parse_simple_restriction_duration_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], Until)> {
     let parsed = parse_leaf_restriction_duration_suffix_tokens(tokens)?;
     Some((parsed.rest, until_from_leaf_duration(parsed.duration)))
 }

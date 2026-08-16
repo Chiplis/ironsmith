@@ -15,22 +15,43 @@ use crate::zone::Zone;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::TokenWordView;
-use super::lexer::{LexCursor, render_token_slice};
-use super::{
-    RewriteKeywordLineKind, RewriteSemanticItem, lex_line, lower_activation_cost_cst,
-    parse_activate_only_timing_lexed, parse_activation_condition_lexed,
-    parse_activation_cost_rewrite, parse_activation_cost_tokens_rewrite,
-    parse_cant_effect_sentence_lexed, parse_cost_reduction_line, parse_effect_sentence_lexed,
-    parse_mana_cost_rewrite, parse_mana_symbol_group_rewrite,
-    parse_mana_usage_restriction_sentence_lexed, parse_restriction_duration_lexed,
-    parse_text_to_semantic_document, parse_text_with_annotations_lowered,
-    parse_triggered_times_each_turn_lexed, parse_type_line_rewrite, split_lexed_sentences,
-    token_word_refs,
+use crate::TokenWordView;
+use crate::activation_and_restrictions::{
+    parse_activate_only_timing_lexed, parse_activation_condition_lexed, parse_cost_reduction_line,
+    parse_mana_usage_restriction_sentence_lexed, parse_triggered_times_each_turn_lexed,
 };
-use crate::runtime_backend::util::parse_value_expr_words;
+use crate::compiler_pipeline::parse_text_with_annotations_lowered;
+use crate::cst_lowering::lower_activation_cost_cst;
+use crate::effect_sentences::{
+    parse_cant_effect_sentence_lexed, parse_effect_sentence_lexed, parse_restriction_duration_lexed,
+};
+use crate::grammar::activation_costs::{
+    parse_activation_cost_rewrite, parse_activation_cost_tokens_rewrite,
+};
+use crate::grammar::values::{
+    parse_mana_cost_rewrite, parse_mana_symbol_group_rewrite, parse_type_line_rewrite,
+};
+use crate::ir::{RewriteKeywordLineKind, RewriteSemanticDocument, RewriteSemanticItem};
+use crate::lexer::{
+    LexCursor, lex_line, render_token_slice, split_lexed_sentences, token_word_refs,
+};
+use crate::parse_context::ParseContext;
+use crate::util::parse_value_expr_words;
 
-fn find_nested_effect<'a, T: 'static>(effect: &'a crate::effect::Effect) -> Option<&'a T> {
+fn parse_text_to_semantic_document(
+    builder: CardDefinitionBuilder,
+    text: String,
+    allow_unsupported: bool,
+) -> Result<(RewriteSemanticDocument, crate::cards::ParseAnnotations), CardTextError> {
+    let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+    crate::compiler_pipeline::parse_text_to_semantic_document_with_context(
+        &mut context,
+        builder,
+        text,
+    )
+}
+
+fn find_nested_effect<T: 'static>(effect: &crate::effect::Effect) -> Option<&T> {
     if let Some(found) = effect.downcast_ref::<T>() {
         return Some(found);
     }
@@ -104,13 +125,13 @@ fn trigger_frequency_limit(condition: &crate::ConditionExpr) -> Option<u32> {
     }
 }
 
-fn rewrite_line_info(text: &str) -> super::LineInfo {
-    super::LineInfo {
+fn rewrite_line_info(text: &str) -> crate::model::facts::LineInfo {
+    crate::model::facts::LineInfo {
         line_index: 0,
         display_line_index: 0,
         raw_line: text.to_string(),
-        source_tokens: super::lexer::lex_line(text, 0).unwrap_or_default(),
-        normalized: super::NormalizedLine {
+        source_tokens: crate::lexer::lex_line(text, 0).unwrap_or_default(),
+        normalized: crate::model::facts::NormalizedLine {
             original: text.to_string(),
             normalized: text.to_string(),
             char_map: Vec::new(),
@@ -122,7 +143,7 @@ fn rewrite_line_info(text: &str) -> super::LineInfo {
 fn parse_modal_header_for_test(text: &str) -> Result<Option<ParsedModalHeader>, CardTextError> {
     let info = rewrite_line_info(text);
     let tokens = lex_line(&info.normalized.normalized, info.line_index)?;
-    super::modal_support::parse_modal_header(&info, &tokens)
+    crate::modal_support::parse_modal_header(&info, &tokens)
 }
 
 fn parse_error_message<T>(result: Result<T, CardTextError>) -> String {

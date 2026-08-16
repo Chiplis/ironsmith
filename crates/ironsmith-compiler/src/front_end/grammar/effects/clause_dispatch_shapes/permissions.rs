@@ -143,9 +143,9 @@ pub(crate) struct CastTaggedCollectionShape<'a> {
     pub(crate) mana_value: Option<Comparison>,
 }
 
-fn parse_collection_cast_count<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> (Option<ChoiceCount>, &'a [OwnedLexToken]) {
+fn parse_collection_cast_count(
+    tokens: &[OwnedLexToken],
+) -> (Option<ChoiceCount>, &[OwnedLexToken]) {
     if let Some(((), rest)) =
         primitives::parse_prefix(tokens, primitives::phrase(&["any", "number", "of"]))
     {
@@ -431,9 +431,7 @@ pub(crate) fn parse_trailing_if_fallback_shape(
         };
         let split = offset + relative;
         if let Some(predicate) =
-            crate::grammar::structure::parse_trailing_if_predicate_lexed(
-                tokens.get(split..)?,
-            )
+            crate::grammar::structure::parse_trailing_if_predicate_lexed(tokens.get(split..)?)
         {
             found = Some(TrailingIfFallbackShape {
                 head_tokens: trim_lexed_commas(tokens.get(..split)?),
@@ -448,8 +446,8 @@ pub(crate) fn parse_trailing_if_fallback_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::TokenWordView;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::TokenWordView;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_cast_and_counter_group_shapes() {

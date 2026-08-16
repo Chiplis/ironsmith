@@ -822,9 +822,9 @@ mod tests {
             ]),
             SubjectAst::TriggeringSourceController
         );
-        let lexed = crate::runtime_backend::lex_line("that spell or ability's controller", 0)
+        let lexed = crate::lexer::lex_line("that spell or ability's controller", 0)
             .expect("triggering spell-or-ability controller subject should lex");
-        let lexed_words = crate::runtime_backend::token_word_refs(&lexed);
+        let lexed_words = crate::lexer::token_word_refs(&lexed);
         assert_eq!(
             parse_subject_tokens(&lexed),
             SubjectAst::TriggeringSourceController,

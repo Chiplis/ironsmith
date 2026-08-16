@@ -1,16 +1,27 @@
 use super::*;
-use crate::lexer::{
-    lex_line, render_token_slice, split_lexed_sentences, trim_lexed_commas,
-};
+use crate::lexer::{lex_line, render_token_slice, split_lexed_sentences, trim_lexed_commas};
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cards::builders::{CardDefinitionBuilder, LineAst, LineInfo, NormalizedLine};
     use crate::ids::CardId;
-    use crate::runtime_backend::RewriteKeywordLineKind;
-    use crate::runtime_backend::pipeline::parse_text_to_semantic_document;
+    use crate::ir::{RewriteKeywordLineKind, RewriteSemanticDocument};
+    use crate::parse_context::ParseContext;
     use crate::types::CardType;
+
+    fn parse_text_to_semantic_document(
+        builder: CardDefinitionBuilder,
+        text: String,
+        allow_unsupported: bool,
+    ) -> Result<(RewriteSemanticDocument, crate::cards::ParseAnnotations), CardTextError> {
+        let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+        crate::compiler_pipeline::parse_text_to_semantic_document_with_context(
+            &mut context,
+            builder,
+            text,
+        )
+    }
 
     #[test]
     fn rewrite_exert_followup_subject_rewrite_uses_existing_tokens() {
@@ -177,8 +188,8 @@ mod tests {
         );
         assert!(matches!(
             parse_single_effect_lexed(trimmed)?,
-            EffectAst::SubjectVerb(crate::runtime_backend::ast::SubjectVerbEffectAst {
-                action: crate::runtime_backend::ast::SubjectVerbActionAst::Exile { .. },
+            EffectAst::SubjectVerb(crate::model::ast::SubjectVerbEffectAst {
+                action: crate::model::ast::SubjectVerbActionAst::Exile { .. },
                 ..
             })
         ));

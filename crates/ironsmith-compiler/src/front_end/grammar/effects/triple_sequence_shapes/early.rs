@@ -3,8 +3,8 @@ use std::ops::Range;
 use winnow::prelude::*;
 
 use crate::cards::builders::LibraryBottomOrderAst;
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
 use crate::grammar::{leaf, primitives};
+use crate::lexer::{LexStream, OwnedLexToken};
 
 use super::super::sequence_pairs::{
     contains_content_sequence, contains_sequence_phrase, contains_sequence_word,

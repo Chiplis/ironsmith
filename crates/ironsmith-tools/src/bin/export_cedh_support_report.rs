@@ -107,6 +107,10 @@ struct PublicPlayerEntry {
 }
 
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the report worker transfers one fully compiled definition at a time without retaining outcome collections"
+)]
 enum ParseOutcome {
     Success(CardDefinition),
     Error(String),
@@ -566,9 +570,9 @@ fn build_rows(
 }
 
 fn populate_row_from_definition(row: &mut Row, payload: &CardPayload, definition: &CardDefinition) {
-    let compiled = unprocessed_compiled_lines(&definition);
+    let compiled = unprocessed_compiled_lines(definition);
     row.compiled_lines_count = compiled.len();
-    row.has_unimplemented = generated_definition_has_unimplemented_content(&definition);
+    row.has_unimplemented = generated_definition_has_unimplemented_content(definition);
     let (oracle_cov, compiled_cov, similarity, line_delta, semantic_mismatch) =
         compare_semantics_scored(&payload.oracle_text, &compiled, None);
     row.oracle_coverage = oracle_cov;

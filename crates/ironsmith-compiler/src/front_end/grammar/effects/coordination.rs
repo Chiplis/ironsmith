@@ -1,11 +1,11 @@
 use crate::diagnostics::TextSpan;
+use crate::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 use crate::model::{
     CarriedFactAst, CoordinationAst, CoordinationBoundaryAst, CoordinationCarryAst,
     CoordinationKindAst, CoordinationMemberAst, CoordinationOperatorAst, EffectDependencyAst,
     EffectOrderingAst,
 };
 use crate::recognition::{ParseDiagnostic, ParseExpectation, ParseOutcome, RuleId};
-use crate::front_end::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 
 use super::chain_splitting::{ChainVerbKind, find_chain_verb_tokens, preserve_and_reason};
 use super::typed_clause_heads::{
@@ -142,6 +142,16 @@ impl CoordinationPlan<'_> {
         }
         Some(materialized)
     }
+
+    /// Return the authored member slices without applying subject carry. This
+    /// is used by outer constructs that already own and inject the subject of
+    /// every member, such as quantified-participant clauses.
+    pub(crate) fn member_segments(&self) -> Vec<Vec<OwnedLexToken>> {
+        self.members
+            .iter()
+            .map(|member| member.tokens.to_vec())
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +160,7 @@ pub(crate) struct CoordinationClauseFacts {
     pub imperative_collection_move: bool,
     pub imperative_return: bool,
     pub explicitly_conjugated_player_action: bool,
+    pub anaphoric_library_owner: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,7 +173,7 @@ pub(crate) struct CoordinationReferenceFacts {
 pub(crate) fn recognize_coordination_reference_facts(
     tokens: &[OwnedLexToken],
 ) -> CoordinationReferenceFacts {
-    let words = crate::front_end::lexer::parser_token_word_refs(tokens);
+    let words = crate::lexer::parser_token_word_refs(tokens);
     const AFFECTED_OBJECT_CONTROLLER_REWARD: &[&str] = &[
         "the",
         "controller",
@@ -200,6 +211,7 @@ pub(crate) fn recognize_coordination_reference_facts(
 pub(crate) fn recognize_coordination_clause_facts(
     tokens: &[OwnedLexToken],
 ) -> CoordinationClauseFacts {
+    let words = crate::lexer::parser_token_word_refs(tokens);
     let significant = tokens
         .iter()
         .filter(|token| !token.parser_word_pieces().is_empty())
@@ -215,6 +227,12 @@ pub(crate) fn recognize_coordination_clause_facts(
                 || token.slice.eq_ignore_ascii_case("scries")
                 || token.slice.eq_ignore_ascii_case("surveils")
         }),
+        anaphoric_library_owner: words
+            .windows(2)
+            .any(|window| window == ["their", "library"])
+            || words
+                .windows(4)
+                .any(|window| window == ["his", "or", "her", "library"]),
     }
 }
 
@@ -253,6 +271,14 @@ pub(crate) fn recognize_coordination(
     tokens: &[OwnedLexToken],
 ) -> ParseOutcome<CoordinationPlan<'_>> {
     let tokens = trim_lexed_commas(tokens);
+    let tokens = if tokens
+        .first()
+        .is_some_and(|token| token.is_word("then") || token.is_word("and"))
+    {
+        trim_lexed_commas(&tokens[1..])
+    } else {
+        tokens
+    };
     if tokens.is_empty() {
         return ParseOutcome::NoMatch;
     }
@@ -399,9 +425,46 @@ fn classify_boundary<'a>(
     RecognizedCoordinationBoundary,
     Option<TypedClauseHeadAst<'a>>,
 )> {
+    if candidate.operator == CoordinationOperatorAst::Comma
+        && super::for_each_shapes::parse_participant_clause_shape(before)
+            .is_some_and(|shape| !shape.participant_is_actor && shape.inner_tokens.is_empty())
+    {
+        // `For each player/opponent, <program>` owns this delimiter as part
+        // of the quantifier. Splitting it as effect coordination creates an
+        // empty loop followed by an unrelated top-level action.
+        return None;
+    }
     if candidate.operator == CoordinationOperatorAst::And
         && preserve_and_reason(before, after, true).is_some()
     {
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Comma
+        && before
+            .iter()
+            .any(|token| token.is_word("choose") || token.is_word("chooses"))
+        && after.first().and_then(OwnedLexToken::as_word).is_some_and(|word| {
+            word == "nontoken" || word == "non-token" || word.starts_with("non-")
+        })
+        && crate::object_filters::parse_object_filter(after, false).is_ok()
+    {
+        // A serial negative modifier is still part of the chosen object
+        // filter: `choose two nontoken, non-Vehicle creatures ...`.  The
+        // relative `they control` tail contains a verb, so generic
+        // coordination otherwise mistakes the adjective comma for a new
+        // ordered action and emits a verb-less `non-Vehicle creatures ...`
+        // clause.
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Or
+        && before.last().is_some_and(token_is_card_type_noun)
+        && after.first().is_some_and(token_is_card_type_noun)
+    {
+        // A card-type union is one object operand even when a later action
+        // follows in the same sentence. Do not let the typed clause-head
+        // classifier reinterpret the second type as a structural action
+        // head (for example, "sacrifices a creature or planeswalker ... and
+        // loses 1 life").
         return None;
     }
     let before_verb = find_chain_verb_tokens(before);
@@ -465,6 +528,22 @@ fn classify_boundary<'a>(
         },
         after_head,
     ))
+}
+
+fn token_is_card_type_noun(token: &OwnedLexToken) -> bool {
+    token.as_word().is_some_and(|word| {
+        matches!(
+            word,
+            "artifact"
+                | "battle"
+                | "creature"
+                | "enchantment"
+                | "instant"
+                | "land"
+                | "planeswalker"
+                | "sorcery"
+        )
+    })
 }
 
 fn coordination_kind(boundaries: &[RecognizedCoordinationBoundary]) -> CoordinationKindAst {

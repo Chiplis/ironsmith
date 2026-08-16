@@ -6,9 +6,7 @@ use winnow::prelude::*;
 use winnow::token::{any, take};
 
 use super::super::primitives;
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, lex_line, render_token_slice,
-};
+use crate::lexer::{LexStream, OwnedLexToken, lex_line, render_token_slice};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SameIsTrueSurface {

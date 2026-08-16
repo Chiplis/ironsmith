@@ -4,7 +4,7 @@ use winnow::prelude::*;
 
 use crate::cards::builders::PlayerAst;
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 
 use super::{semantic_kw, semantic_phrase, trimmed};
 
@@ -157,7 +157,7 @@ pub(crate) fn parse_delayed_schedule_sentence_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{LexedClause, lex_line};
+    use crate::lexer::{LexedClause, lex_line};
 
     fn tokens(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()

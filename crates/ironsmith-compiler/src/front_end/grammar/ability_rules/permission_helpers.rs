@@ -9,12 +9,12 @@ use super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas}
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{TurnDurationPhrase, parse_turn_duration_suffix};
 use super::util::{parse_target_phrase, strip_leading_token_words_any, trim_commas};
+use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value, ValueComparisonOperator};
-use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst};
-use crate::GrantedAbilityAst;
 use crate::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, starts_explicit_ordered_comparison,
 };
+use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
@@ -352,9 +352,9 @@ fn strip_for_as_long_as_look_at_tagged_prefix_tokens(
     Some(permission_tokens)
 }
 
-fn parse_filtered_spells_from_among_tagged_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Result<Option<(TaggedPermissionTarget, &'a [OwnedLexToken], ObjectFilter)>, CardTextError> {
+fn parse_filtered_spells_from_among_tagged_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(TaggedPermissionTarget, &[OwnedLexToken], ObjectFilter)>, CardTextError> {
     let Some(fact) = permission_tagged_facts::parse_spells_from_tagged_tokens(tokens) else {
         return Ok(None);
     };
@@ -379,11 +379,11 @@ fn parse_filtered_spells_from_among_tagged_tokens<'a>(
 /// "a [creature] spell from among cards exiled with this <source-type>"
 /// (Prosper window grants, e.g. "Until end of turn, you may cast a spell from
 /// among cards exiled with this enchantment without paying its mana cost.")
-fn parse_spell_from_among_source_exiled_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
+fn parse_spell_from_among_source_exiled_tokens(
+    tokens: &[OwnedLexToken],
 ) -> Option<(
     TaggedPermissionTarget,
-    &'a [OwnedLexToken],
+    &[OwnedLexToken],
     Option<ObjectFilter>,
 )> {
     let fact = permission_source_exiled_facts::parse_spell_from_source_exiled_tokens(tokens)?;
@@ -515,9 +515,9 @@ fn with_mana_reference_surface(
     }
 }
 
-fn parse_permission_duration_prefix_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> (Option<PermissionLifetime>, &'a [OwnedLexToken]) {
+fn parse_permission_duration_prefix_tokens(
+    tokens: &[OwnedLexToken],
+) -> (Option<PermissionLifetime>, &[OwnedLexToken]) {
     let Some(fact) = permission_tagged_facts::parse_permission_duration_prefix_tokens(tokens)
     else {
         return (None, tokens);
@@ -538,9 +538,9 @@ fn permission_lifetime_from_turn_duration(duration: TurnDurationPhrase) -> Permi
     }
 }
 
-fn parse_permission_lead_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(PermissionLead, &'a [OwnedLexToken])> {
+fn parse_permission_lead_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(PermissionLead, &[OwnedLexToken])> {
     let fact = permission_tagged_facts::parse_permission_lead_tokens(tokens)?;
     let player = match fact.actor {
         permission_tagged_facts::PermissionActor::You => PlayerAst::You,
@@ -557,9 +557,9 @@ fn parse_permission_lead_tokens<'a>(
     ))
 }
 
-fn parse_tagged_cast_or_play_target_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(TaggedPermissionTarget, &'a [OwnedLexToken])> {
+fn parse_tagged_cast_or_play_target_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(TaggedPermissionTarget, &[OwnedLexToken])> {
     let fact = permission_tagged_facts::parse_tagged_permission_target_tokens(tokens)?;
     let tag = match fact.reference {
         permission_tagged_facts::TaggedPermissionReference::LastTagged => TagKey::from(IT_TAG),
@@ -1391,17 +1391,16 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                     | PermissionLifetime::UntilYourNextTurn
             )
         )
+        && let Some(spec) = parse_static_hand_free_cast_grant_spec_from_rest(rest_tokens)?
     {
-        if let Some(spec) = parse_static_hand_free_cast_grant_spec_from_rest(rest_tokens)? {
-            if rest_is_singular_free_cast_from_hand(rest_tokens) {
-                return Ok(None);
-            }
-            return Ok(Some(PermissionClauseSpec::GrantBySpec {
-                player,
-                spec,
-                lifetime: prefixed_lifetime.unwrap_or(PermissionLifetime::Static),
-            }));
+        if rest_is_singular_free_cast_from_hand(rest_tokens) {
+            return Ok(None);
         }
+        return Ok(Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec,
+            lifetime: prefixed_lifetime.unwrap_or(PermissionLifetime::Static),
+        }));
     }
 
     Ok(None)
@@ -1724,6 +1723,19 @@ fn value_is_tagged_it_mana_value(value: &Value) -> bool {
 fn parse_cast_with_tagged_mana_value_limit_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    let words = token_word_refs(tokens);
+    if !words.iter().any(|word| matches!(*word, "cast" | "play"))
+        || parse_permission_lead_tokens(tokens).is_none()
+    {
+        return Ok(None);
+    }
+
+    parse_cast_with_tagged_mana_value_limit_clause_impl(tokens)
+}
+
+fn parse_cast_with_tagged_mana_value_limit_clause_impl(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
     fn parse_cast_with_prefixed_mana_value_limit(
         rest_tokens: &[OwnedLexToken],
         player: PlayerAst,
@@ -1830,20 +1842,19 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         ));
     }
 
-    if let Some(parsed) = parse_command_zone_free_cast_rest_tokens(rest_tokens) {
-        if permission_subject_facts::parse_exact_permission_subject(parsed.filter_tokens)
+    if let Some(parsed) = parse_command_zone_free_cast_rest_tokens(rest_tokens)
+        && permission_subject_facts::parse_exact_permission_subject(parsed.filter_tokens)
             == Some(permission_subject_facts::ExactPermissionSubject::YourCommander)
-        {
-            return Ok(Some(
-                EffectAst::may_cast_matching_spell_without_paying_mana_cost(
-                    lead.player,
-                    ObjectFilter::default()
-                        .commander()
-                        .owned_by(crate::target::PlayerFilter::You),
-                    Zone::Command,
-                ),
-            ));
-        }
+    {
+        return Ok(Some(
+            EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+                lead.player,
+                ObjectFilter::default()
+                    .commander()
+                    .owned_by(crate::target::PlayerFilter::You),
+                Zone::Command,
+            ),
+        ));
     }
 
     if let Some(effect) = parse_cast_with_prefixed_mana_value_limit(
@@ -1925,18 +1936,16 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
                 tag: TagKey::from(IT_TAG),
                 relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
             });
+    } else if let (ValueComparisonOperator::Equal, Value::CountersOnSource(counter_type)) =
+        (&operator, &rhs_value)
+    {
+        filter.mana_value_eq_counters_on_source = Some(*counter_type);
     } else {
-        if let (ValueComparisonOperator::Equal, Value::CountersOnSource(counter_type)) =
-            (&operator, &rhs_value)
-        {
-            filter.mana_value_eq_counters_on_source = Some(*counter_type);
-        } else {
-            filter.mana_value = Some(mana_value_filter_comparison(
-                parsed.comparison_tokens,
-                operator,
-                rhs_value,
-            ));
-        }
+        filter.mana_value = Some(mana_value_filter_comparison(
+            parsed.comparison_tokens,
+            operator,
+            rhs_value,
+        ));
     }
 
     Ok(Some(
@@ -2263,8 +2272,8 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
 #[cfg(test)]
 mod source_exile_duration_tests {
     use super::*;
-    use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
+    use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
 
     #[test]
     fn authored_from_exile_survives_temporary_tagged_play_permission() {

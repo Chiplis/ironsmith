@@ -2,8 +2,8 @@ use super::super::*;
 
 use crate::grammar::leaf;
 use crate::grammar::permission_shapes;
-use crate::util::parse_subtype_flexible;
 use crate::lexer::TokenWordView;
+use crate::util::parse_subtype_flexible;
 use winnow::combinator::{alt, eof, opt, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
@@ -666,7 +666,7 @@ pub(crate) fn parse_return_clause_shape(tokens: &[OwnedLexToken]) -> Option<Retu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_return_all_surface_facts() {

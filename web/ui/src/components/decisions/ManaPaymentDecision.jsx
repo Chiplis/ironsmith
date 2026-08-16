@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, RotateCcw, Settings2, Shield, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Check, LoaderCircle, RotateCcw, Shield, X } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
@@ -45,23 +45,6 @@ function PoolSummary({ label, pool }) {
             {amount > 1 ? <span>×{amount}</span> : null}
           </span>
         )) : <span className="text-xs opacity-60">Empty</span>}
-      </span>
-    </div>
-  );
-}
-
-function CompactPoolSummary({ label, pool }) {
-  const entries = poolEntries(pool);
-  return (
-    <div className="mana-plan-strip-pool">
-      <span className="mana-plan-strip-label">{label}</span>
-      <span className="mana-plan-strip-pool-symbols">
-        {entries.length ? entries.map(({ symbol, amount }) => (
-          <span key={symbol} className="mana-plan-strip-pool-symbol">
-            <ManaSymbol sym={symbol} size={15} />
-            {amount > 1 ? <span>×{amount}</span> : null}
-          </span>
-        )) : <span className="mana-plan-strip-empty-pool">Empty</span>}
       </span>
     </div>
   );
@@ -132,7 +115,7 @@ export default function ManaPaymentDecision({
   onSubmitActionChange = null,
   layout = "panel",
 }) {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, dispatchInBackground } = useGame();
   const {
     hoverCard,
     clearHover,
@@ -146,6 +129,8 @@ export default function ManaPaymentDecision({
   const [excluded, setExcluded] = useState(() => idSet(payment?.excluded_source_ids));
   const [preserved, setPreserved] = useState(() => idSet(payment?.preserved_source_ids));
   const [preferLife, setPreferLife] = useState(() => Boolean(payment?.prefer_life));
+  const payWhenReadyRef = useRef(false);
+  const optimizationKeyRef = useRef("");
 
   const plannedIds = useMemo(
     () => (payment?.planned_sources || []).map((source) => source.source_id),
@@ -180,17 +165,49 @@ export default function ManaPaymentDecision({
     return Array.from(rows.values());
   }, [adjusting, payment?.available_sources, payment?.planned_sources]);
 
-  const confirm = useCallback(() => {
-    if (!payment) return;
+  const sendConfirmation = useCallback((currentPayment) => {
+    if (!currentPayment) return;
     dispatch({
       type: "mana_payment",
       response: {
         action: "confirm",
-        plan_id: String(payment.plan_id),
-        request_hash: String(payment.request_hash),
+        plan_id: String(currentPayment.plan_id),
+        request_hash: String(currentPayment.request_hash),
       },
-    }, `Paid mana for ${payment.source_name || decision.subject}`);
-  }, [decision.subject, dispatch, payment]);
+    }, `Paid mana for ${currentPayment.source_name || decision.subject}`);
+  }, [decision.subject, dispatch]);
+
+  const confirm = useCallback(() => {
+    if (!payment) return;
+    if (!payment.planning_complete) {
+      payWhenReadyRef.current = true;
+      return;
+    }
+    sendConfirmation(payment);
+  }, [payment, sendConfirmation]);
+
+  useEffect(() => {
+    if (!payWhenReadyRef.current || !payment?.planning_complete) return;
+    payWhenReadyRef.current = false;
+    sendConfirmation(payment);
+  }, [payment, sendConfirmation]);
+
+  useEffect(() => {
+    if (!canAct || !payment || payment.planning_complete || !dispatchInBackground) return;
+    const optimizationKey = `${payment.request_hash}:${payment.plan_id}`;
+    if (optimizationKeyRef.current === optimizationKey) return;
+    optimizationKeyRef.current = optimizationKey;
+    dispatchInBackground({
+      type: "mana_payment",
+      response: {
+        action: "replan",
+        required_source_ids: (payment.required_source_ids || []).map(String),
+        excluded_source_ids: (payment.excluded_source_ids || []).map(String),
+        preserved_source_ids: (payment.preserved_source_ids || []).map(String),
+        prefer_life: Boolean(payment.prefer_life),
+      },
+    });
+  }, [canAct, dispatchInBackground, payment]);
 
   const cancel = useCallback(() => {
     dispatch({ type: "mana_payment", response: { action: "cancel" } }, "Mana payment cancelled");
@@ -233,10 +250,16 @@ export default function ManaPaymentDecision({
   }, [payment]);
 
   const submitAction = useMemo(() => ({
-    label: "Auto Pay",
+    label: "Pay",
     disabled: !canAct || !payment,
     onSubmit: confirm,
-  }), [canAct, confirm, payment]);
+    secondaryAction: {
+      label: "Plan",
+      disabled: !canAct || !payment,
+      active: adjusting,
+      onSubmit: adjusting ? replan : () => setAdjusting(true),
+    },
+  }), [adjusting, canAct, confirm, payment, replan]);
   useEffect(() => {
     if (!onSubmitActionChange) return undefined;
     onSubmitActionChange(submitAction);
@@ -257,36 +280,6 @@ export default function ManaPaymentDecision({
 
     return (
       <div className={cn("mana-plan-strip", adjusting && "is-adjusting")}>
-        <div className="mana-plan-strip-cost" title={payment.source_name || decision.subject}>
-          <span className="mana-plan-strip-label truncate">
-            {payment.source_name || decision.subject || "Mana payment"}
-          </span>
-          <span className="mana-plan-strip-pips" aria-label="Mana cost">
-            {(payment.pips || []).map((pip, index) => (
-              <span
-                key={`${pip.join("-")}-${index}`}
-                className={cn(
-                  "mana-plan-strip-pip",
-                  `is-${allocationsByIndex.get(index)?.payment_kind || "planned"}`
-                )}
-                title={pipPaymentLabel(allocationsByIndex.get(index))}
-              >
-                <ManaSymbol sym={pip.join("/")} size={20} />
-              </span>
-            ))}
-          </span>
-        </div>
-
-        {!adjusting ? (
-          <div className="mana-plan-strip-pools" aria-label="Mana pool payment preview">
-            <CompactPoolSummary label="Now" pool={payment.pool_before} />
-            <span className="mana-plan-strip-arrow">→</span>
-            <CompactPoolSummary label="Sources" pool={payment.pool_after_activations} />
-            <span className="mana-plan-strip-arrow">→</span>
-            <CompactPoolSummary label="Paid" pool={payment.pool_after_payment} />
-          </div>
-        ) : null}
-
         <div
           className="mana-plan-strip-source-region"
           aria-label={adjusting ? "Available sources" : "Planned sources"}
@@ -309,20 +302,22 @@ export default function ManaPaymentDecision({
                 >
                   <span className="mana-plan-source-index">{source.planned ? index + 1 : "·"}</span>
                   <span className="mana-plan-strip-source-copy">
-                    <span className="mana-plan-strip-source-name">{source.source_name}</span>
+                    <span className="mana-plan-strip-source-name-row">
+                      <span className="mana-plan-strip-source-name">{source.source_name}</span>
+                      {produced.length ? (
+                        <span className="mana-plan-strip-produced">
+                          {produced.map(({ symbol, amount }) => (
+                            <span key={symbol} className="mana-plan-strip-pool-symbol">
+                              <ManaSymbol sym={symbol} size={15} />{amount > 1 ? `×${amount}` : ""}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="mana-plan-strip-source-action">
                       {sourceActionLabel(source)}{!source.undo_safe ? " · no undo" : ""}
                     </span>
                   </span>
-                  {produced.length ? (
-                    <span className="mana-plan-strip-produced">
-                      {produced.map(({ symbol, amount }) => (
-                        <span key={symbol} className="mana-plan-strip-pool-symbol">
-                          <ManaSymbol sym={symbol} size={15} />{amount > 1 ? `×${amount}` : ""}
-                        </span>
-                      ))}
-                    </span>
-                  ) : null}
                   {adjusting ? (
                     <SourceConstraintButtons
                       sourceId={source.source_id}
@@ -348,6 +343,13 @@ export default function ManaPaymentDecision({
           </div>
         ) : null}
 
+        {!payment.planning_complete ? (
+          <div className="mana-plan-strip-planning" title="Checking for a better payment plan">
+            <LoaderCircle size={15} className="animate-spin" />
+            <span>Improving</span>
+          </div>
+        ) : null}
+
         {adjusting ? (
           <label className="mana-plan-strip-life-preference" title="Prefer legal life payments over spending mana">
             <input
@@ -362,19 +364,10 @@ export default function ManaPaymentDecision({
 
         <div className="mana-plan-strip-actions">
           {adjusting ? (
-            <>
-              <Button type="button" variant="ghost" size="sm" onClick={resetAdjustments}>
-                <RotateCcw size={13} /> Reset
-              </Button>
-              <Button type="button" size="sm" disabled={!canAct} onClick={replan}>
-                Replan
-              </Button>
-            </>
-          ) : (
-            <Button type="button" variant="outline" size="sm" disabled={!canAct} onClick={() => setAdjusting(true)}>
-              <Settings2 size={13} /> Adjust
+            <Button type="button" variant="ghost" size="sm" onClick={resetAdjustments}>
+              <RotateCcw size={13} /> Reset
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
     );
@@ -507,11 +500,11 @@ export default function ManaPaymentDecision({
         ) : (
           <>
             <Button type="button" variant="outline" size="sm" disabled={!canAct} onClick={() => setAdjusting(true)}>
-              <Settings2 size={14} /> Adjust
+              Plan
             </Button>
             {inlineSubmit ? (
               <Button type="button" size="sm" disabled={!canAct} onClick={confirm}>
-                Auto Pay
+                Pay
               </Button>
             ) : null}
           </>

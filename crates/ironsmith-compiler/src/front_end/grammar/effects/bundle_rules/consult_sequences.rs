@@ -4,9 +4,7 @@ use winnow::prelude::*;
 
 use crate::cards::builders::LibraryBottomOrderAst;
 use crate::grammar::{filters, primitives};
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, split_lexed_sentences, trim_lexed_commas,
-};
+use crate::lexer::{LexStream, OwnedLexToken, split_lexed_sentences, trim_lexed_commas};
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
@@ -145,8 +143,7 @@ fn normalize_possessive_filter_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexT
     let Some(word) = last.as_word() else {
         return normalized;
     };
-    let stem =
-        crate::util::strip_possessive_suffix(word).to_string();
+    let stem = crate::util::strip_possessive_suffix(word).to_string();
     if stem != word {
         last.replace_word(stem);
     }
@@ -313,7 +310,7 @@ pub(crate) fn parse_each_player_shuffle_then_consult_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
     use crate::types::CardType;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {

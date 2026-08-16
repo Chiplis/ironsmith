@@ -145,7 +145,6 @@ fn damage_object_description(filter: &ObjectFilter) -> String {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::filter::ObjectFilterExt as _;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::types::CardType;
     use crate::zone::Zone;

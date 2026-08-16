@@ -1486,7 +1486,7 @@ mod tests {
     }
 
     fn add_hand_card(game: &mut GameState, id: u32, owner: PlayerId) {
-        let card = CardBuilder::new(CardId::from_raw(id), &format!("Hand Card {id}"))
+        let card = CardBuilder::new(CardId::from_raw(id), format!("Hand Card {id}"))
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(1, 1))
@@ -1501,13 +1501,12 @@ mod tests {
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
 
-        let obj = Object::from_card(
+        Object::from_card(
             ObjectId::from_raw(id as u64),
             &card,
             controller,
             Zone::Battlefield,
-        );
-        obj
+        )
     }
 
     fn create_artifact(id: u32, name: &str, controller: PlayerId, mana_value: u8) -> Object {
@@ -1532,13 +1531,12 @@ mod tests {
             .card_types(vec![CardType::Battle])
             .build();
 
-        let obj = Object::from_card(
+        Object::from_card(
             ObjectId::from_raw(id as u64),
             &card,
             controller,
             Zone::Battlefield,
-        );
-        obj
+        )
     }
 
     fn create_planeswalker(id: u32, name: &str, controller: PlayerId) -> Object {
@@ -1560,13 +1558,12 @@ mod tests {
             .card_types(vec![CardType::Land])
             .build();
 
-        let obj = Object::from_card(
+        Object::from_card(
             ObjectId::from_raw(id as u64),
             &card,
             controller,
             Zone::Battlefield,
-        );
-        obj
+        )
     }
 
     fn add_static_ability(obj: &mut Object, ability: StaticAbility) {
@@ -1691,7 +1688,7 @@ mod tests {
             .map(|index| {
                 let card = CardBuilder::new(
                     CardId::from_raw(20_000 + index),
-                    &format!("Hand Creature {index}"),
+                    format!("Hand Creature {index}"),
                 )
                 .card_types(vec![CardType::Creature])
                 .power_toughness(PowerToughness::fixed(1, 1))

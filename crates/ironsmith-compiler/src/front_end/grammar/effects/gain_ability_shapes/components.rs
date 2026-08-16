@@ -3,7 +3,7 @@ use winnow::prelude::*;
 
 use crate::effect::Until;
 use crate::grammar::{leaf, primitives};
-use crate::front_end::lexer::{OwnedLexToken, TokenWordView, trim_lexed_commas};
+use crate::lexer::{OwnedLexToken, TokenWordView, trim_lexed_commas};
 
 use super::durations::parse_simple_ability_duration_shape;
 
@@ -26,7 +26,7 @@ pub(crate) struct SourceGainAbilityShape<'a> {
 }
 
 fn cant_be_blocked_except_haste<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> winnow::error::ModalResult<()> {
     (
         (
@@ -103,9 +103,7 @@ pub(crate) fn parse_ability_choice_shape(
     (options.len() >= 2).then_some(AbilityChoiceShape { options })
 }
 
-fn gain_verb<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
-) -> winnow::error::ModalResult<()> {
+fn gain_verb<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
     alt((primitives::kw("gain"), primitives::kw("gains")))
         .void()
         .parse_next(input)
@@ -122,10 +120,7 @@ pub(crate) fn parse_source_gain_ability_shape(
         .filter(|word| leaf::parse_leaf_article_complete(word).is_err())
         .collect::<Vec<_>>();
     let is_source = leaf::parse_leaf_this_source_reference_words(&subject_words).is_some()
-        || crate::util::source_reference_surface_for_words(
-            &subject_words,
-        )
-        .is_some();
+        || crate::util::source_reference_surface_for_words(&subject_words).is_some();
     if !is_source {
         return None;
     }
@@ -152,7 +147,7 @@ pub(crate) fn parse_source_gain_ability_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_component_choice_and_source_shapes() {

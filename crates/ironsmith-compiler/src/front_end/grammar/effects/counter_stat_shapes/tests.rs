@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::lexer::lex_line;
+use crate::lexer::lex_line;
 
 #[test]
 fn classifies_reveal_life_and_counter_reference_surfaces() {

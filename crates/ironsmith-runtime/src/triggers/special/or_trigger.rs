@@ -745,16 +745,15 @@ impl OrTrigger {
             }
             return false;
         }
-        if let Some(ability) = trigger.downcast_ref::<AbilityActivatedTrigger>() {
-            if ability.activator == PlayerFilter::You
-                && ability.filter == ObjectFilter::default()
-                && !ability.non_mana_only
-                && ability.loyalty_only
-                && ability.activation_cost_has_tap.is_none()
-            {
-                components.push(CastOrActivateComponent::LoyaltyAbility);
-                return true;
-            }
+        if let Some(ability) = trigger.downcast_ref::<AbilityActivatedTrigger>()
+            && ability.activator == PlayerFilter::You
+            && ability.filter == ObjectFilter::default()
+            && !ability.non_mana_only
+            && ability.loyalty_only
+            && ability.activation_cost_has_tap.is_none()
+        {
+            components.push(CastOrActivateComponent::LoyaltyAbility);
+            return true;
         }
         false
     }

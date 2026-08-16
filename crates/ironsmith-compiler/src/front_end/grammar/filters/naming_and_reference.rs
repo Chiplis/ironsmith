@@ -370,7 +370,7 @@ fn word_is_any(word: &str, expected: &[&str]) -> bool {
 }
 
 fn words_contain_word(words: &[&str], expected: &str) -> bool {
-    words.iter().any(|word| *word == expected)
+    words.contains(&expected)
 }
 
 fn words_contain_any_word(words: &[&str], expected: &[&str]) -> bool {
@@ -462,12 +462,9 @@ where
         "not-named",
     )?;
     let parsed_surface = literal_name_surface_after_marker(source_tokens, NOT_NAMED_PHRASE);
-    let exact_source_name =
-        crate::util::current_source_reference_name().filter(
-            |source_name| {
-                normalized_literal_name_key(source_name) == normalized_literal_name_key(&name)
-            },
-        );
+    let exact_source_name = crate::util::current_source_reference_name().filter(|source_name| {
+        normalized_literal_name_key(source_name) == normalized_literal_name_key(&name)
+    });
     filter.excluded_name = Some(name);
     if let Some(surface) = exact_source_name.or(parsed_surface) {
         filter.set_excluded_name_surface(surface);
@@ -797,7 +794,7 @@ pub(super) fn parse_mana_value_counters_on_source_words(
         return None;
     }
     let counter_idx = NUMBER_OF_WORDS.len();
-    let counter_type = parse_counter_type_word(*after_operator.get(counter_idx)?)?;
+    let counter_type = parse_counter_type_word(after_operator.get(counter_idx)?)?;
     if !after_operator
         .get(counter_idx + 1)
         .is_some_and(|word| word_is_any(word, COUNTER_OR_COUNTERS_WORDS))
@@ -847,10 +844,10 @@ pub(super) fn try_apply_mana_value_counters_on_source_clause(
     if let Some((start_word_idx, end_word_idx)) = segment_match
         && let Some(token_range) =
             segment_words_view.token_span_for_words(start_word_idx, end_word_idx)
+        && token_range.start < token_range.end
+        && token_range.end <= segment_tokens.len()
     {
-        if token_range.start < token_range.end && token_range.end <= segment_tokens.len() {
-            segment_tokens.drain(token_range);
-        }
+        segment_tokens.drain(token_range);
     }
 
     true
@@ -984,7 +981,7 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
             filter.multicolored = true;
         }
         if let Some(color) = parse_color(word) {
-            let existing = filter.colors.unwrap_or(ColorSet::new());
+            let existing = filter.colors.unwrap_or_default();
             filter.colors = Some(existing.union(color));
         }
         idx += 1;

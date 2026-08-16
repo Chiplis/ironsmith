@@ -1,11 +1,12 @@
 use ironsmith_tools::{
-    CardPayload, CardStatusDb, compile_authoritative_snapshot_from_payload,
+    CardPayload, CardStatusDb, CompilationSnapshot, compile_authoritative_snapshot_from_payload,
     compile_strict_snapshot_from_payload, default_db_path, load_canonical_cards,
 };
 use rayon::prelude::*;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    sync::Mutex,
     time::{Duration, Instant},
 };
 
@@ -184,15 +185,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .stack_size(RAYON_WORKER_STACK_SIZE)
         .build()?;
     let compile_start = Instant::now();
+    let completed_cards = Mutex::new(0usize);
     let (compiled_snapshots, rayon_threads) = rayon_pool.install(|| {
         let snapshots = filtered_cards
             .par_iter()
             .map(|payload| {
-                if args.strict_only {
+                let snapshot = if args.strict_only {
                     compile_strict_snapshot_from_payload(payload)
                 } else {
                     compile_authoritative_snapshot_from_payload(payload)
-                }
+                };
+                let mut completed = completed_cards
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                *completed += 1;
+                eprintln!("{}", format_card_progress(*completed, processed, &snapshot));
+                snapshot
             })
             .collect::<Vec<_>>();
         (snapshots, rayon::current_num_threads())
@@ -304,6 +312,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn format_card_progress(completed: usize, total: usize, snapshot: &CompilationSnapshot) -> String {
+    format!(
+        "[{completed}/{total}] {} — {} (similarity {:.4})",
+        snapshot.card_name,
+        snapshot.parse_status.as_str(),
+        snapshot.similarity_score
+    )
+}
+
 fn format_duration(duration: Duration) -> String {
     if duration.as_secs() > 0 {
         format!("{:.3}s", duration.as_secs_f64())
@@ -391,4 +408,39 @@ fn average(values: impl IntoIterator<Item = f32>) -> Option<f32> {
         count += 1;
     }
     (count > 0).then_some(total / count as f32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ironsmith_tools::ParseStatus;
+
+    #[test]
+    fn card_progress_includes_count_name_status_and_score() {
+        let snapshot = CompilationSnapshot {
+            card_name: "Progress Test".to_string(),
+            oracle_text: String::new(),
+            raw_oracle_text: String::new(),
+            parse_status: ParseStatus::StrictCompiled,
+            parse_error: None,
+            normalized_oracle_text: String::new(),
+            compiled_text: None,
+            compiled_card_definition: None,
+            oracle_coverage: 1.0,
+            compiled_coverage: 1.0,
+            similarity_score: 0.99725,
+            line_delta: 0,
+            semantic_mismatch: false,
+            has_unimplemented: false,
+            parse_lossy: false,
+            parse_loss_reasons: String::new(),
+            parse_loss_count: 0,
+            content_hash: String::new(),
+        };
+
+        assert_eq!(
+            format_card_progress(17, 42, &snapshot),
+            "[17/42] Progress Test — strict_compiled (similarity 0.9973)"
+        );
+    }
 }

@@ -2198,7 +2198,7 @@ pub(super) fn add_kitsune_library_cards(game: &mut GameState, owner: PlayerId, c
     for index in 0..count {
         let card = CardBuilder::new(
             CardId::from_raw(80_500 + index),
-            &format!("Kitsune Library Card {index}"),
+            format!("Kitsune Library Card {index}"),
         )
         .card_types(vec![CardType::Sorcery])
         .build();
@@ -4193,7 +4193,7 @@ pub(super) fn scroll_of_isildur_chapters_two_and_three_target_tap_stun_and_draw_
     );
     for idx in 0..4 {
         let card =
-            CardBuilder::new(CardId::from_raw(993_010 + idx), &format!("Draw Card {idx}")).build();
+            CardBuilder::new(CardId::from_raw(993_010 + idx), format!("Draw Card {idx}")).build();
         game.create_object_from_card(&card, alice, Zone::Library);
     }
     let initial_hand_size = game.player(alice).expect("Alice exists").hand.len();

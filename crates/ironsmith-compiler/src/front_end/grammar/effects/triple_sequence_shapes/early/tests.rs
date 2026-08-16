@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::front_end::lexer::lex_line;
+use crate::lexer::lex_line;
 
 #[test]
 fn parses_filtered_search_with_chosen_name_condition() {

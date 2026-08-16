@@ -306,7 +306,7 @@ fn positive_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
 }
 
 fn object_filter_word_is_any(word: &str, candidates: &[&str]) -> bool {
-    candidates.iter().any(|candidate| word == *candidate)
+    candidates.contains(&word)
 }
 
 fn object_filter_word_is_other_or_another(word: &str) -> bool {
@@ -353,7 +353,7 @@ fn preserve_union_surface(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     let serial_or = subtype_member_count >= 3
         && filter.union_connective() == ObjectFilterUnionConnective::Or
         && tokens.iter().any(OwnedLexToken::is_comma)
-        && words.iter().any(|word| *word == "or");
+        && words.contains(&"or");
     filter.set_serial_or_list_surface(serial_or);
 
     let first_member = words.iter().position(|word| {
@@ -472,9 +472,7 @@ fn normalize_generic_card_ability_tail(tokens: &[OwnedLexToken], filter: &mut Ob
     // word inside the ability name (for example, Doctor in "doctor's
     // companion"). Explicit source locations such as "card with cycling from
     // your graveyard" are semantic and must survive this normalization.
-    if filter.zone == Some(crate::Zone::Battlefield)
-        && !words.iter().any(|word| *word == "battlefield")
-    {
+    if filter.zone == Some(crate::Zone::Battlefield) && !words.contains(&"battlefield") {
         filter.zone = None;
     }
     filter.card_types.clear();
@@ -1154,11 +1152,11 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
         push_unique(&mut base.excluded_ability_markers, marker);
     }
     if let Some(colors) = extra.colors {
-        let existing = base.colors.unwrap_or(ColorSet::new());
+        let existing = base.colors.unwrap_or_default();
         base.colors = Some(existing.union(colors));
     }
     if let Some(colors) = extra.required_colors {
-        let existing = base.required_colors.unwrap_or(ColorSet::new());
+        let existing = base.required_colors.unwrap_or_default();
         base.required_colors = Some(existing.union(colors));
     }
     base.colorless |= extra.colorless;
@@ -1250,12 +1248,31 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     }
 }
 
+pub(crate) fn is_comparison_or_delimiter(tokens: &[OwnedLexToken], idx: usize) -> bool {
+    if !token_slice_at_is(tokens, idx, "or") {
+        return false;
+    }
+    let previous_word = (0..idx).rev().find_map(|i| tokens[i].as_word());
+    let next_word = tokens.get(idx + 1).and_then(OwnedLexToken::as_word);
+    if next_word
+        .is_some_and(|word| object_filter_word_is_any(word, &["less", "greater", "more", "fewer"]))
+    {
+        return true;
+    }
+    if previous_word.is_some_and(|word| word == "than")
+        && next_word.is_some_and(|word| word == "equal")
+    {
+        return true;
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::TagKey;
     use crate::mana::ManaSymbol;
-    use crate::runtime_backend::util::tokenize_line;
+    use crate::util::tokenize_line;
 
     fn assert_supertype_or_mana_capability_union(filter: &ObjectFilter) {
         assert_eq!(filter.card_types, [CardType::Land], "{filter:#?}");
@@ -1431,9 +1448,8 @@ mod tests {
 
     #[test]
     fn lexed_generic_card_ability_tail_does_not_invent_a_subtype() {
-        let tokens =
-            crate::runtime_backend::front_end::lexer::lex_line("a card with doctor's companion", 0)
-                .expect("generic card ability filter should lex");
+        let tokens = crate::lexer::lex_line("a card with doctor's companion", 0)
+            .expect("generic card ability filter should lex");
         let filter =
             parse_object_filter(&tokens, false).expect("generic card ability filter should parse");
 
@@ -1445,11 +1461,8 @@ mod tests {
 
     #[test]
     fn generic_card_ability_tail_preserves_explicit_graveyard_location() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
-            "cards with cycling from your graveyard",
-            0,
-        )
-        .expect("generic card ability filter should lex");
+        let tokens = crate::lexer::lex_line("cards with cycling from your graveyard", 0)
+            .expect("generic card ability filter should lex");
 
         let filter =
             parse_object_filter(&tokens, false).expect("generic card ability filter should parse");
@@ -1462,7 +1475,7 @@ mod tests {
 
     #[test]
     fn repeated_card_union_lifts_shared_graveyard_scope_and_keeps_ability_marker() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Assassin card or card with freerunning from your graveyard",
             0,
         )
@@ -1940,11 +1953,8 @@ mod tests {
 
     #[test]
     fn shared_terminal_card_noun_scopes_graveyard_over_and_or_type_arms() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
-            "artifact and/or creature card in your graveyard",
-            0,
-        )
-        .expect("shared-domain filter should lex");
+        let tokens = crate::lexer::lex_line("artifact and/or creature card in your graveyard", 0)
+            .expect("shared-domain filter should lex");
         assert!(
             has_shared_terminal_object_noun(&tokens),
             "the one terminal card noun must scope both selector arms"
@@ -1972,7 +1982,7 @@ mod tests {
 
     #[test]
     fn independently_nouned_and_or_arms_keep_their_own_domains() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "artifacts you control and/or creature cards in your graveyard",
             0,
         )
@@ -2119,9 +2129,8 @@ mod tests {
 
     #[test]
     fn parse_object_filter_lexed_preserves_adjacent_compound_subtypes() {
-        let tokens =
-            crate::runtime_backend::lexer::lex_line("Eldrazi Spawn creatures you control", 0)
-                .expect("compound subtype fixture should lex");
+        let tokens = crate::lexer::lex_line("Eldrazi Spawn creatures you control", 0)
+            .expect("compound subtype fixture should lex");
         let filter =
             parse_object_filter_lexed(&tokens, false).expect("compound subtype should parse");
 
@@ -2724,28 +2733,21 @@ mod tests {
 
     #[test]
     fn compound_subtype_outranks_matching_current_source_alias_in_object_filters() {
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Time Lord Regeneration",
-            || {
-                let target = parse_object_filter_lexed(
-                    &tokenize_line("target Time Lord you control", 0),
-                    false,
-                )
-                .expect("typed target should parse");
-                assert!(!target.source, "{target:#?}");
-                assert_eq!(target.subtypes, [Subtype::TimeLord]);
-                assert_eq!(target.controller, Some(PlayerFilter::You));
+        crate::util::with_source_reference_context("Time Lord Regeneration", || {
+            let target =
+                parse_object_filter_lexed(&tokenize_line("target Time Lord you control", 0), false)
+                    .expect("typed target should parse");
+            assert!(!target.source, "{target:#?}");
+            assert_eq!(target.subtypes, [Subtype::TimeLord]);
+            assert_eq!(target.controller, Some(PlayerFilter::You));
 
-                let card = parse_object_filter_lexed(
-                    &tokenize_line("a Time Lord creature card", 0),
-                    false,
-                )
-                .expect("typed card should parse");
-                assert!(!card.source, "{card:#?}");
-                assert_eq!(card.subtypes, [Subtype::TimeLord]);
-                assert_eq!(card.card_types, [CardType::Creature]);
-            },
-        );
+            let card =
+                parse_object_filter_lexed(&tokenize_line("a Time Lord creature card", 0), false)
+                    .expect("typed card should parse");
+            assert!(!card.source, "{card:#?}");
+            assert_eq!(card.subtypes, [Subtype::TimeLord]);
+            assert_eq!(card.card_types, [CardType::Creature]);
+        });
     }
 
     #[test]
@@ -2773,23 +2775,4 @@ mod tests {
                     ))
         }));
     }
-}
-
-pub(crate) fn is_comparison_or_delimiter(tokens: &[OwnedLexToken], idx: usize) -> bool {
-    if !token_slice_at_is(tokens, idx, "or") {
-        return false;
-    }
-    let previous_word = (0..idx).rev().find_map(|i| tokens[i].as_word());
-    let next_word = tokens.get(idx + 1).and_then(OwnedLexToken::as_word);
-    if next_word
-        .is_some_and(|word| object_filter_word_is_any(word, &["less", "greater", "more", "fewer"]))
-    {
-        return true;
-    }
-    if previous_word.is_some_and(|word| word == "than")
-        && next_word.is_some_and(|word| word == "equal")
-    {
-        return true;
-    }
-    false
 }

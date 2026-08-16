@@ -4,7 +4,7 @@ use winnow::prelude::*;
 
 use crate::effect::Value;
 use crate::grammar::{leaf, primitives};
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct EachPlayerMayDiscardHandAndDrawShape {
@@ -47,7 +47,7 @@ pub(crate) fn parse_each_player_may_discard_hand_and_draw_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_each_player_optional_discard_and_draw_as_one_typed_scope() {

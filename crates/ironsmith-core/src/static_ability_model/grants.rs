@@ -690,6 +690,10 @@ pub enum AttackingGroupAttackCondition {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "defending-player conditions preserve typed object filters inline"
+)]
 pub enum DefendingPlayerAttackCondition {
     Controls(ObjectFilter),
     ControlsEnchantmentOrEnchantedPermanent,
@@ -699,6 +703,10 @@ pub enum DefendingPlayerAttackCondition {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "attack restrictions preserve typed conditions and filters inline"
+)]
 pub enum CantAttackUnlessConditionSpec {
     AttackCost(AttackCostCondition),
     AttackingGroupCondition(AttackingGroupAttackCondition),

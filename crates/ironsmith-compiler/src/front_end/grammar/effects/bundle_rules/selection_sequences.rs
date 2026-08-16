@@ -4,9 +4,7 @@ use winnow::prelude::*;
 
 use crate::effect::ChoiceCount;
 use crate::grammar::{filters, leaf, primitives};
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, split_lexed_sentences, trim_lexed_commas,
-};
+use crate::lexer::{LexStream, OwnedLexToken, split_lexed_sentences, trim_lexed_commas};
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
@@ -198,7 +196,7 @@ pub(crate) fn parse_proliferate_choose_phase_out_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
     use crate::types::CardType;
 
     #[test]

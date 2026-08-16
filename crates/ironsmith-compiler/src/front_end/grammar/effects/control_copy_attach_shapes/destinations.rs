@@ -2,7 +2,7 @@ use winnow::combinator::{alt, opt, repeat};
 use winnow::prelude::*;
 
 use crate::grammar::{permission_shapes, primitives};
-use crate::front_end::lexer::{OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{OwnedLexToken, trim_lexed_commas};
 use crate::zone::Zone;
 
 use super::common::{
@@ -62,7 +62,7 @@ pub(crate) fn parse_source_exiled_owner_library_bottom_shape(
         )
             .void()
     })?;
-    if !crate::token_word_refs(trailing).is_empty() {
+    if !crate::lexer::token_word_refs(trailing).is_empty() {
         return None;
     }
     let source_tokens = trim_lexed_commas(after_prefix.get(..puts_index)?);
@@ -114,9 +114,7 @@ pub(crate) struct OntoBattlefieldDestinationShape {
     pub(crate) supported_tail: bool,
 }
 
-fn article(
-    input: &mut crate::front_end::lexer::LexStream<'_>,
-) -> winnow::error::ModalResult<()> {
+fn article(input: &mut crate::lexer::LexStream<'_>) -> winnow::error::ModalResult<()> {
     alt((
         primitives::kw("a"),
         primitives::kw("an"),
@@ -511,7 +509,7 @@ pub(crate) fn parse_onto_battlefield_destination_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_library_and_battlefield_destinations() {
@@ -523,7 +521,7 @@ mod tests {
         assert!(
             parse_library_choice_destination_shape(&choice).is_some(),
             "{:?}",
-            crate::runtime_backend::front_end::lexer::TokenWordView::new(&choice).to_word_refs()
+            crate::lexer::TokenWordView::new(&choice).to_word_refs()
         );
 
         let onto = lex_line(
@@ -549,7 +547,7 @@ mod tests {
         let clause = parse_onto_clause_shape(&tokens).expect("onto clause");
 
         assert_eq!(
-            crate::runtime_backend::token_word_refs(clause.destination_tokens),
+            crate::lexer::token_word_refs(clause.destination_tokens),
             ["the", "battlefield"]
         );
     }
@@ -568,7 +566,7 @@ mod tests {
             .attached_to_tokens
             .expect("attachment suffix should survive controller parsing");
         assert_eq!(
-            crate::runtime_backend::front_end::lexer::TokenWordView::new(&attached).to_word_refs(),
+            crate::lexer::TokenWordView::new(&attached).to_word_refs(),
             vec!["target", "creature"]
         );
     }
@@ -579,7 +577,7 @@ mod tests {
             lex_line("a creature you control on top of its owner's library", 0).unwrap();
         let owner_shape = parse_library_placement_destination_shape(&owner_destination).unwrap();
         assert_eq!(
-            crate::runtime_backend::front_end::grammar::effects::control_copy_attach_shapes::parse_destination_player(
+            crate::grammar::effects::control_copy_attach_shapes::parse_destination_player(
                 owner_shape.destination_tokens,
             ),
             None,
@@ -590,13 +588,13 @@ mod tests {
         let plural_owner_shape =
             parse_library_placement_destination_shape(&plural_owner_destination).unwrap();
         assert_eq!(
-            crate::runtime_backend::front_end::grammar::effects::control_copy_attach_shapes::parse_destination_player(
+            crate::grammar::effects::control_copy_attach_shapes::parse_destination_player(
                 plural_owner_shape.destination_tokens,
             ),
             None,
         );
         assert_eq!(
-            crate::runtime_backend::front_end::grammar::effects::control_copy_attach_shapes::parse_destination_player_reference_surface(
+            crate::grammar::effects::control_copy_attach_shapes::parse_destination_player_reference_surface(
                 plural_owner_shape.destination_tokens,
             ),
             None,
@@ -606,7 +604,7 @@ mod tests {
             lex_line("a creature you control on top of your library", 0).unwrap();
         let your_shape = parse_library_placement_destination_shape(&your_destination).unwrap();
         assert_eq!(
-            crate::runtime_backend::front_end::grammar::effects::control_copy_attach_shapes::parse_destination_player(
+            crate::grammar::effects::control_copy_attach_shapes::parse_destination_player(
                 your_shape.destination_tokens,
             ),
             Some(crate::cards::builders::PlayerAst::You),

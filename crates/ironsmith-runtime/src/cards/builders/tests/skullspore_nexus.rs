@@ -57,7 +57,7 @@ fn skullspore_public_payload_keeps_dynamic_batch_power_and_exact_surface() {
     let set_pt = triggered
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>())
         .expect("created token should receive typed dynamic base power and toughness");
     for value in [&set_pt.power, &set_pt.toughness] {

@@ -3,7 +3,7 @@ use std::ops::Range;
 use winnow::prelude::*;
 
 use crate::cards::builders::LibraryBottomOrderAst;
-use crate::front_end::lexer::{LexStream, OwnedLexToken, TokenKind};
+use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 
 use super::super::sequence_pairs::{
     contains_content_sequence, contains_sequence_phrase, contains_sequence_word,
@@ -247,7 +247,7 @@ pub(crate) fn is_nonhand_replacement_looked_split_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, split_lexed_sentences};
+    use crate::lexer::{lex_line, split_lexed_sentences};
 
     #[test]
     fn parses_card_type_iteration_shape() {

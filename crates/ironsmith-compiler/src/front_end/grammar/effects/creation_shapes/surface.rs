@@ -497,7 +497,7 @@ impl<'a> CreationWords<'a> {
     }
 
     pub(super) fn has_literal(self, expected: &str) -> bool {
-        self.words.iter().any(|word| *word == expected)
+        self.words.contains(&expected)
     }
 
     pub(crate) fn location(self, class: CreationWordClass) -> Option<usize> {
@@ -574,7 +574,7 @@ impl<'a> CreationTokens<'a> {
     pub(crate) fn token_is(self, token_idx: usize, class: CreationWordClass) -> bool {
         self.tokens.get(token_idx).is_some_and(|token| {
             let text = token.parser_text();
-            class.words().iter().any(|expected| text == *expected)
+            class.words().contains(&text)
         })
     }
 }

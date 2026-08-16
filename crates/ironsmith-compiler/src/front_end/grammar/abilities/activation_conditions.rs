@@ -262,9 +262,7 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
 
 fn parse_combined_once_and_timing_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
     let words = TokenWordView::new(tokens).word_refs();
-    if phrase_offset_words(&words, &["once", "each", "turn"]).is_none() {
-        return None;
-    }
+    phrase_offset_words(&words, &["once", "each", "turn"])?;
     let timing = if phrase_offset_words(&words, &["during", "your", "turn"]).is_some() {
         ActivationTiming::DuringYourTurn
     } else if phrase_offset_words(&words, &["during", "combat"]).is_some() {

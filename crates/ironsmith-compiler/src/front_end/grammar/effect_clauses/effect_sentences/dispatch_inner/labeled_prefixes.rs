@@ -60,9 +60,9 @@ fn parse_player_villainous_choice_statement(
 pub(crate) fn parse_effect_sentence_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_effect_sentence_inner_lexed_unstacked(tokens)
-    }
+    })
 }
 
 fn parse_effect_sentence_inner_lexed_unstacked(
@@ -519,23 +519,21 @@ fn lower_matching_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Opt
                 reduction,
             )
         })
-    } else {
-        if shape.duration == Until::EndOfTurn {
-            Some(
-                EffectAst::subject_verb_reduce_matching_spell_cost_this_turn(
-                    shape.player,
-                    shape.filter,
-                    reduction,
-                ),
-            )
-        } else {
-            Some(EffectAst::subject_verb_reduce_matching_spell_cost(
+    } else if shape.duration == Until::EndOfTurn {
+        Some(
+            EffectAst::subject_verb_reduce_matching_spell_cost_this_turn(
                 shape.player,
                 shape.filter,
                 reduction,
-                shape.duration,
-            ))
-        }
+            ),
+        )
+    } else {
+        Some(EffectAst::subject_verb_reduce_matching_spell_cost(
+            shape.player,
+            shape.filter,
+            reduction,
+            shape.duration,
+        ))
     }
 }
 
@@ -726,12 +724,11 @@ fn parse_earthbend_subject_verb_sentence(
     }
 
     let mut effects = vec![earthbend];
-    if token_slice_first_is(&tail, "earthbend") {
-        if let Some(mut tail_effects) = parse_earthbend_subject_verb_sentence(&tail)? {
+    if token_slice_first_is(&tail, "earthbend")
+        && let Some(mut tail_effects) = parse_earthbend_subject_verb_sentence(&tail)? {
             effects.append(&mut tail_effects);
             return Ok(Some(effects));
         }
-    }
     effects.extend(parse_effect_chain_lexed(&tail)?);
     Ok(Some(effects))
 }

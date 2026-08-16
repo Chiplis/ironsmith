@@ -34,7 +34,7 @@ fn mishras_foundry_keeps_assembly_worker_on_both_activated_abilities() {
     let animation_effect = animation
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
         .expect("animation should be one typed continuous effect");
     assert!(modifications(animation_effect).any(|modification| matches!(
@@ -51,7 +51,7 @@ fn mishras_foundry_keeps_assembly_worker_on_both_activated_abilities() {
     let pump_effect = pump
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
         .expect("pump should be one typed continuous effect");
     let Some(ChooseSpec::Target(target)) = &pump_effect.target_spec else {

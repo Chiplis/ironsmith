@@ -54,10 +54,10 @@ pub(crate) mod combat_damage_family_shapes;
 pub(crate) mod combat_shapes;
 #[path = "effects/control_copy_attach_shapes.rs"]
 pub(crate) mod control_copy_attach_shapes;
-#[path = "effects/coordination.rs"]
-pub(crate) mod coordination;
 #[path = "effects/control_flow.rs"]
 pub(crate) mod control_flow;
+#[path = "effects/coordination.rs"]
+pub(crate) mod coordination;
 #[path = "effects/damage.rs"]
 mod damage;
 pub(crate) use damage::*;
@@ -179,10 +179,10 @@ mod sequence_pairs;
 pub(crate) mod special_sentence_shapes;
 #[path = "effects/subject_verb_registry_shapes.rs"]
 pub(crate) mod subject_verb_registry_shapes;
-#[path = "effects/typed_clause_heads.rs"]
-pub(crate) mod typed_clause_heads;
 #[path = "effects/triple_sequence_shapes.rs"]
 pub(crate) mod triple_sequence_shapes;
+#[path = "effects/typed_clause_heads.rs"]
+pub(crate) mod typed_clause_heads;
 pub(crate) use sequence_pairs::*;
 #[path = "effects/sentence_prelude.rs"]
 mod sentence_prelude;
@@ -428,7 +428,7 @@ fn is_prevent_damage_source_head_word(word: &str) -> bool {
 
 fn is_prevent_damage_explicit_target_source(tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(tokens);
-    words.iter().any(|word| *word == "target")
+    words.contains(&"target")
         && !words
             .windows(3)
             .any(|window| window == ["other", "than", "target"])
@@ -473,34 +473,26 @@ pub(crate) fn find_cant_sentence_negation_span_lexed(
 
     while cursor < tokens.len() {
         let token = &tokens[cursor];
-        if token
-            .as_word()
-            .is_some_and(|word| is_cant_negation_word(word))
-        {
+        if token.as_word().is_some_and(is_cant_negation_word) {
             return Some((cursor, cursor + 1));
         }
-        if token
-            .as_word()
-            .is_some_and(|word| is_dont_negation_word(word))
-        {
+        if token.as_word().is_some_and(is_dont_negation_word) {
             if cursor >= 2
                 && token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
             {
                 cursor += 1;
                 continue;
             }
-            if tokens.get(cursor + 1).is_some_and(|next| {
-                next.as_word()
-                    .is_some_and(|word| is_control_or_own_word(word))
-            }) {
+            if tokens
+                .get(cursor + 1)
+                .is_some_and(|next| next.as_word().is_some_and(is_control_or_own_word))
+            {
                 cursor += 1;
                 continue;
             }
             return Some((cursor, cursor + 1));
         }
-        if token
-            .as_word()
-            .is_some_and(|word| is_does_do_can_word(word))
+        if token.as_word().is_some_and(is_does_do_can_word)
             && tokens
                 .get(cursor + 1)
                 .is_some_and(|next| token_is_any_word(next, &["not"]))
@@ -511,11 +503,10 @@ pub(crate) fn find_cant_sentence_negation_span_lexed(
                 cursor += 2;
                 continue;
             }
-            if token.as_word().is_some_and(|word| is_does_or_do_word(word))
-                && tokens.get(cursor + 2).is_some_and(|next| {
-                    next.as_word()
-                        .is_some_and(|word| is_control_or_own_word(word))
-                })
+            if token.as_word().is_some_and(is_does_or_do_word)
+                && tokens
+                    .get(cursor + 2)
+                    .is_some_and(|next| next.as_word().is_some_and(is_control_or_own_word))
             {
                 cursor += 1;
                 continue;
@@ -940,7 +931,7 @@ fn split_for_each_doesnt_clause_lexed<'a>(
     let inner_tokens = trim_lexed_commas(rest_tokens);
     let inner_clause = LexedClause::new(inner_tokens);
     let inner_words = token_word_refs(inner_tokens);
-    if !inner_words.first().is_some_and(|word| *word == "who") {
+    if inner_words.first().is_none_or(|word| *word != "who") {
         return None;
     }
     let (negation_idx, negation_len) = negated_action_word_index(&inner_words)?;
@@ -986,7 +977,7 @@ pub(crate) fn split_negated_who_this_way_filter_tokens_lexed(
 ) -> Option<&[OwnedLexToken]> {
     let inner_clause = LexedClause::new(inner_tokens);
     let inner_words = token_word_refs(inner_tokens);
-    if !inner_words.first().is_some_and(|word| *word == "who") {
+    if inner_words.first().is_none_or(|word| *word != "who") {
         return None;
     }
     let this_way_idx = primitives::parse_word_sequence_span(&inner_words, THIS_WAY_PHRASE)?.start;
@@ -1654,15 +1645,11 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             return Some(filter.clone());
         }
         let mut found = None;
-        crate::model::visit::for_each_nested_effects(
-            effect,
-            true,
-            |nested| {
-                if found.is_none() {
-                    found = nested.iter().find_map(nested_iterated_object_filter);
-                }
-            },
-        );
+        crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+            if found.is_none() {
+                found = nested.iter().find_map(nested_iterated_object_filter);
+            }
+        });
         found
     }
 
@@ -2323,7 +2310,21 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     }
 
     if let Some(discard_tokens) = discard_after_shuffle_followup {
-        effects.push(parse_effect_clause_lexed(discard_tokens)?);
+        let mut discard = parse_effect_clause_lexed(discard_tokens)?;
+        // The strict boundary helper starts at the authored verb in
+        // `..., shuffle, then discard ...`; its omitted subject is the search
+        // actor, not a newly selected opponent inherited from an earlier
+        // sentence. Preserve that actor explicitly before reference carry can
+        // reinterpret the subjectless clause.
+        if crate::lexer::parser_token_word_refs(discard_tokens)
+            .first()
+            .is_some_and(|word| *word == "discard")
+            && let EffectAst::SubjectVerb(discard) = &mut discard
+            && matches!(discard.action, SubjectVerbActionAst::Discard { .. })
+        {
+            discard.subject.player = player;
+        }
+        effects.push(discard);
     }
 
     if trailing_that_player_shuffle {

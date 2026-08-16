@@ -4,7 +4,6 @@ use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, RepeatableManaPaymentAction};
-use crate::target::PlayerFilter;
 
 /// Grants a player a repeatable mana-payment special action through end of turn.
 ///
@@ -59,6 +58,7 @@ mod tests {
     use crate::mana::ManaCost;
     use crate::mana::ManaSymbol;
     use crate::special_actions::{SpecialAction, can_perform_check, perform};
+    use crate::target::PlayerFilter;
     use crate::types::CardType;
     use crate::zone::Zone;
 

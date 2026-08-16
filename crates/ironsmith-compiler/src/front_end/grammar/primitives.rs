@@ -590,7 +590,7 @@ pub(crate) fn phrase<'a>(
         PhraseTraceLabel(expected),
         move |input: &mut LexStream<'a>| {
             for word in expected {
-                if let Err(err) = kw(*word).parse_next(input) {
+                if let Err(err) = kw(word).parse_next(input) {
                     return Err(err.map(|mut inner| {
                         inner.push(StrContext::Label("phrase"));
                         inner.push(StrContext::Expected(StrContextValue::Description(
@@ -735,10 +735,10 @@ where
     Some((&tokens[..split_idx], parsed))
 }
 
-pub(crate) fn split_lexed_once_on_delimiter<'a>(
-    tokens: &'a [LexToken],
+pub(crate) fn split_lexed_once_on_delimiter(
+    tokens: &[LexToken],
     delimiter: TokenKind,
-) -> Option<(&'a [LexToken], &'a [LexToken])> {
+) -> Option<(&[LexToken], &[LexToken])> {
     let parser = take_till(0.., move |token: &LexToken| token.kind == delimiter).with_taken();
     let (rest, ((_, head), _)) = (parser, token_kind(delimiter))
         .parse_peek(LexStream::new(tokens))
@@ -747,9 +747,7 @@ pub(crate) fn split_lexed_once_on_delimiter<'a>(
     Some((head, remaining))
 }
 
-pub(crate) fn split_lexed_once_on_comma<'a>(
-    tokens: &'a [LexToken],
-) -> Option<(&'a [LexToken], &'a [LexToken])> {
+pub(crate) fn split_lexed_once_on_comma(tokens: &[LexToken]) -> Option<(&[LexToken], &[LexToken])> {
     split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
 }
 
@@ -765,7 +763,7 @@ fn should_keep_and_for_power_toughness_axis<'a>(
         && parse_word_sequence_prefix(&remaining_words, &[TOUGHNESS_WORD]).is_some()
 }
 
-pub(crate) fn split_lexed_slices_on_and<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
+pub(crate) fn split_lexed_slices_on_and(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     let raw = split_lexed_slices_on_separator(tokens, || phrase(&["and"]));
     let mut merged = Vec::new();
     let mut idx = 0usize;
@@ -798,9 +796,7 @@ pub(crate) fn split_lexed_slices_on_and<'a>(tokens: &'a [LexToken]) -> Vec<&'a [
 /// preserving the power-and-toughness axis as one phrase.  The latter is a
 /// single lexical word, so callers that only split on `and` otherwise leave a
 /// leading `and/or` attached to the final list item.
-pub(crate) fn split_lexed_slices_on_list_conjunction<'a>(
-    tokens: &'a [LexToken],
-) -> Vec<&'a [LexToken]> {
+pub(crate) fn split_lexed_slices_on_list_conjunction(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     let raw = split_lexed_slices_on_separator(tokens, || alt((kw("and"), kw("and/or"))).void());
     let mut merged = Vec::new();
     let mut idx = 0usize;
@@ -829,7 +825,7 @@ pub(crate) fn split_lexed_slices_on_list_conjunction<'a>(
     merged
 }
 
-pub(crate) fn split_lexed_slices_on_comma<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
+pub(crate) fn split_lexed_slices_on_comma(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     split_lexed_slices_on_separator(tokens, || comma().void())
 }
 
@@ -841,17 +837,15 @@ fn is_comparison_or_delimiter(previous_word: Option<&str>, next_word: Option<&st
     previous_word == Some(THAN_WORD) && next_word == Some(EQUAL_WORD)
 }
 
-pub(crate) fn split_lexed_slices_on_or<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
+pub(crate) fn split_lexed_slices_on_or(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     split_lexed_slices_with_parser(tokens, || parse_segment_until_or_separator)
 }
 
-pub(crate) fn split_lexed_slices_on_commas_or_semicolons<'a>(
-    tokens: &'a [LexToken],
-) -> Vec<&'a [LexToken]> {
+pub(crate) fn split_lexed_slices_on_commas_or_semicolons(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     split_lexed_slices_on_separator(tokens, || alt((comma().void(), semicolon().void())))
 }
 
-pub(crate) fn split_lexed_slices_on_period<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
+pub(crate) fn split_lexed_slices_on_period(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     split_lexed_slices_with_parser(tokens, || parse_segment_until_period)
 }
 
@@ -936,16 +930,16 @@ pub(crate) fn strip_lexed_prefix_phrase<'a>(
     parse_prefix(tokens, phrase(phrase_words)).map(|(_, rest)| rest)
 }
 
-pub(crate) fn strip_lexed_prefix_phrases<'a, 'b>(
+pub(crate) fn strip_lexed_prefix_phrases<'a>(
     tokens: &'a [LexToken],
-    phrases: &'b [&'static [&'static str]],
+    phrases: &[&'static [&'static str]],
 ) -> Option<(&'static [&'static str], &'a [LexToken])> {
     parse_prefix(tokens, any_phrase(phrases))
 }
 
-pub(crate) fn starts_with_any_phrase<'b>(
+pub(crate) fn starts_with_any_phrase(
     tokens: &[LexToken],
-    phrases: &'b [&'static [&'static str]],
+    phrases: &[&'static [&'static str]],
 ) -> bool {
     parse_prefix(tokens, any_phrase(phrases)).is_some()
 }
@@ -1007,9 +1001,9 @@ pub(crate) fn match_word_prefix<'a>(
     Some(&tokens[token_end..])
 }
 
-pub(crate) fn match_any_word_prefix<'a, 'b>(
+pub(crate) fn match_any_word_prefix<'a>(
     tokens: &'a [LexToken],
-    phrases: &'b [&'static [&'static str]],
+    phrases: &[&'static [&'static str]],
 ) -> Option<(&'static [&'static str], &'a [LexToken])> {
     phrases
         .iter()

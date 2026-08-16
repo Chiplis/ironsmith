@@ -165,7 +165,7 @@ pub(crate) fn recognizes_core_keyword_marker(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::TokenWordView;
+    use crate::lexer::TokenWordView;
 
     #[test]
     fn parses_conditional_and_may_action_prefixes() {

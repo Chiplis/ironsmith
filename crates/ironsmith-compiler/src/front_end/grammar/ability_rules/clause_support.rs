@@ -467,7 +467,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             return None;
         }
 
-        if clause_grammar::parse_casualty_planeswalker_copy_prefix_words(&words) {
+        if clause_grammar::parse_casualty_planeswalker_copy_prefix_words(words) {
             return Some(KeywordAction::VariableCasualtyPlaneswalkerCopy);
         }
 
@@ -481,7 +481,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
                     .first()
                     .is_some_and(|word| is_keyword_with_count_word(word))
                     || !is_keyword_with_count_word(expected)
-                    || !words.first().is_some_and(|word| *word == expected)
+                    || words.first().is_none_or(|word| *word != expected)
                 {
                     return None;
                 }
@@ -536,7 +536,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         if let Some(action) = parse_count_keyword("soulshift", KeywordAction::Soulshift) {
             return Some(action);
         }
-        if let Some(action) = super::activation_and_restrictions::keyword_action_costs::parse_dynamic_soulshift_keyword_action(&words)
+        if let Some(action) = super::activation_and_restrictions::keyword_action_costs::parse_dynamic_soulshift_keyword_action(words)
         {
             return Some(action);
         }
@@ -574,7 +574,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             return Some(KeywordAction::Dredge(amount));
         }
 
-        if clause_grammar::parse_read_ahead_prefix_words(&words) {
+        if clause_grammar::parse_read_ahead_prefix_words(words) {
             return Some(KeywordAction::ReadAhead);
         }
 
@@ -855,12 +855,18 @@ pub(crate) fn parse_linked_attack_group_combat_triggered_line_lexed(
 pub(crate) fn parse_triggered_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    let (tokens, trailing_cap) = crate::grammar::document_shapes::parse_trailing_trigger_cap_suffix_tokens(tokens)
-        .map(|shape| (shape.head_tokens, Some(match shape.cap {
-            crate::grammar::document_shapes::TriggerCapSurface::Once => 1,
-            crate::grammar::document_shapes::TriggerCapSurface::Twice => 2,
-        })))
-        .unwrap_or((tokens, None));
+    let (tokens, trailing_cap) =
+        crate::grammar::document_shapes::parse_trailing_trigger_cap_suffix_tokens(tokens)
+            .map(|shape| {
+                (
+                    shape.head_tokens,
+                    Some(match shape.cap {
+                        crate::grammar::document_shapes::TriggerCapSurface::Once => 1,
+                        crate::grammar::document_shapes::TriggerCapSurface::Twice => 2,
+                    }),
+                )
+            })
+            .unwrap_or((tokens, None));
     let mut parsed = parse_triggered_line_lexed_inner(tokens)?;
     if let Some(cap) = trailing_cap
         && let LineAst::Triggered {
@@ -1366,7 +1372,7 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
         if let Ok(trigger) = parse_trigger_clause_lexed(trigger_tokens) {
             let rewritten_effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
                 trigger_tokens,
-                &effects_tokens,
+                effects_tokens,
             );
             let effects = parse_effect_sentences_lexed(&rewritten_effects_tokens).or_else(|_| {
                 let Some(stripped) =
@@ -1393,7 +1399,7 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                 // (earliest split point = most effects).
                 if best_result
                     .as_ref()
-                    .map_or(true, |(prev_count, _)| effect_token_count > *prev_count)
+                    .is_none_or(|(prev_count, _)| effect_token_count > *prev_count)
                 {
                     best_result = Some((effect_token_count, line_ast));
                 }
@@ -1521,10 +1527,9 @@ mod tests {
             0,
         )
         .unwrap();
-        let parsed = crate::runtime_backend::util::with_source_reference_context(
-            "Merry, Esquire of Rohan",
-            || parse_triggered_line_lexed(&tokens).unwrap(),
-        );
+        let parsed = crate::util::with_source_reference_context("Merry, Esquire of Rohan", || {
+            parse_triggered_line_lexed(&tokens).unwrap()
+        });
         let LineAst::Triggered {
             trigger:
                 TriggerSpec::ThisAttacksWithNOthers {
@@ -1591,7 +1596,7 @@ mod tests {
             0,
         )
         .unwrap();
-        let parsed = crate::runtime_backend::util::with_source_reference_context("Probe", || {
+        let parsed = crate::util::with_source_reference_context("Probe", || {
             parse_triggered_line_lexed(&tokens).unwrap()
         });
         let LineAst::Triggered {

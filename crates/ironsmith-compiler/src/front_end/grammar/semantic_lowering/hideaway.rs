@@ -65,7 +65,7 @@ pub(crate) fn parse_hideaway_keyword_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_typed_hideaway_count_and_rejects_malformed_counts() {

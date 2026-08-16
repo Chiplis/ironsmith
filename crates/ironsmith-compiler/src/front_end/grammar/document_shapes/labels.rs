@@ -165,7 +165,7 @@ fn preserved_keyword_label(input: &mut LexStream<'_>) -> WResult<PreservedKeywor
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn classifies_keyword_and_council_labels() {

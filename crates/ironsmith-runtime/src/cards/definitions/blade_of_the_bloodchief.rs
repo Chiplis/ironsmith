@@ -283,11 +283,11 @@ mod tests {
         execute_blade_trigger(&mut game, alice, equipment_id);
 
         assert!(
-            game.object(equipment_id)
+            !game
+                .object(equipment_id)
                 .unwrap()
                 .counters
-                .get(&CounterType::PlusOnePlusOne)
-                .is_none(),
+                .contains_key(&CounterType::PlusOnePlusOne),
             "Equipment should not receive counters"
         );
     }
@@ -310,11 +310,11 @@ mod tests {
         execute_blade_trigger(&mut game, alice, equipment_id);
 
         assert!(
-            game.object(equipment_id)
+            !game
+                .object(equipment_id)
                 .unwrap()
                 .counters
-                .get(&CounterType::PlusOnePlusOne)
-                .is_none(),
+                .contains_key(&CounterType::PlusOnePlusOne),
             "Equipment should not receive counters"
         );
     }

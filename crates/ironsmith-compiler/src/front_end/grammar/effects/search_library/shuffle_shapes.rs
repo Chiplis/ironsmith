@@ -3,9 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::grammar::primitives;
-use crate::lexer::{
-    LexStream, OwnedLexToken, parser_token_word_refs, trim_lexed_commas,
-};
+use crate::lexer::{LexStream, OwnedLexToken, parser_token_word_refs, trim_lexed_commas};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SearchShuffleGraveyardShape<'a> {
@@ -124,8 +122,9 @@ fn possessive_owner_target_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedL
         return None;
     }
     let normalized =
-        crate::grammar::activation_restrictions::
-            parse_activation_possessive_owner_tokens(target_tokens);
+        crate::grammar::activation_restrictions::parse_activation_possessive_owner_tokens(
+            target_tokens,
+        );
     (normalized != target_tokens).then_some(normalized)
 }
 

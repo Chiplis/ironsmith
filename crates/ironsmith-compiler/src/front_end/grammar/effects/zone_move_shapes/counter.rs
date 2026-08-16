@@ -4,9 +4,9 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::effect::Value;
-use crate::mana::ManaSymbol;
 use crate::grammar::{leaf, primitives, values};
-use crate::front_end::lexer::{LexStream, LexedClause, OwnedLexToken};
+use crate::lexer::{LexStream, LexedClause, OwnedLexToken};
+use crate::mana::ManaSymbol;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CounterClauseShapeError {
@@ -313,7 +313,7 @@ pub(crate) fn parse_counter_clause_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn tokens(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()

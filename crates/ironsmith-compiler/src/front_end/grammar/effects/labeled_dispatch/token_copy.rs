@@ -1,4 +1,4 @@
-use crate::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
+use crate::lexer::{OwnedLexToken, parser_token_word_refs};
 
 use super::super::super::leaf;
 use super::common;
@@ -237,7 +237,7 @@ pub(crate) fn parse_token_copy_modifier_kind(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

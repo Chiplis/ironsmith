@@ -436,7 +436,7 @@ mod tests {
 
     fn add_cards_to_library(game: &mut GameState, owner: PlayerId, count: usize) {
         for i in 1..=count {
-            let card = CardBuilder::new(CardId::new(), &format!("Library Card {}", i))
+            let card = CardBuilder::new(CardId::new(), format!("Library Card {}", i))
                 .card_types(vec![CardType::Instant])
                 .build();
             game.create_object_from_card(&card, owner, Zone::Library);

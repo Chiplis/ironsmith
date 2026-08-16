@@ -2,7 +2,7 @@ use winnow::combinator::alt;
 use winnow::prelude::*;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{OwnedLexToken, TokenWordView, trim_lexed_commas};
+use crate::lexer::{OwnedLexToken, TokenWordView, trim_lexed_commas};
 
 use super::common::{ChoiceDamageScope, is_choice_damage_drain_shape, parse_choice_damage_scope};
 
@@ -53,7 +53,7 @@ pub(crate) struct EachOpponentReturnUnlessDrawShape {
 }
 
 fn each_opponent_prefix<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> winnow::error::ModalResult<()> {
     alt((
         primitives::phrase(&["for", "each", "opponent"]),
@@ -64,9 +64,7 @@ fn each_opponent_prefix<'a>(
     .parse_next(input)
 }
 
-fn where_x_is<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
-) -> winnow::error::ModalResult<()> {
+fn where_x_is<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
     primitives::phrase(&["where", "x", "is"]).parse_next(input)
 }
 
@@ -85,9 +83,7 @@ pub(crate) fn parse_opponent_drain_sentence_shape(
         .then_some(OpponentDrainSentenceShape { where_tokens })
 }
 
-fn hand_suffix<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
-) -> winnow::error::ModalResult<()> {
+fn hand_suffix<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
     alt((
         primitives::phrase(&["in", "your", "hand"]),
         primitives::phrase(&["in", "your", "hands"]),
@@ -102,7 +98,7 @@ fn hand_suffix<'a>(
 }
 
 fn each_player_may_prefix<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
+    input: &mut crate::lexer::LexStream<'a>,
 ) -> winnow::error::ModalResult<()> {
     primitives::phrase(&["each", "player", "may"]).parse_next(input)
 }
@@ -124,17 +120,13 @@ pub(crate) fn parse_reveal_selected_hand_shape(
     (!descriptor_tokens.is_empty()).then_some(RevealSelectedHandShape { descriptor_tokens })
 }
 
-fn reveal_verb<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
-) -> winnow::error::ModalResult<()> {
+fn reveal_verb<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
     alt((primitives::kw("reveal"), primitives::kw("reveals")))
         .void()
         .parse_next(input)
 }
 
-fn reveal_article<'a>(
-    input: &mut crate::front_end::lexer::LexStream<'a>,
-) -> winnow::error::ModalResult<()> {
+fn reveal_article<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
     alt((
         primitives::kw("a"),
         primitives::kw("an"),
@@ -199,7 +191,7 @@ pub(crate) fn parse_relative_opponent_damage_difference_shape(
         primitives::phrase(&["than", "you", "equal", "to", "the", "difference"]).void()
     })?;
     let filter_tokens = trim_lexed_commas(after_damage.get(..suffix_offset)?);
-    if filter_tokens.is_empty() || TokenWordView::new(after_suffix).len() != 0 {
+    if filter_tokens.is_empty() || !TokenWordView::new(after_suffix).is_empty() {
         return None;
     }
 
@@ -282,7 +274,7 @@ pub(crate) fn parse_each_opponent_return_unless_draw_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()

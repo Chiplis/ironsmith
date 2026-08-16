@@ -3,7 +3,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{OwnedLexToken, TokenWordView};
+use crate::lexer::{OwnedLexToken, TokenWordView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DivvyChooserShape {
@@ -673,7 +673,7 @@ pub(crate) fn parse_divvy_sequence_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn classifies_exchange_control_sequence() {

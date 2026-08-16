@@ -917,7 +917,7 @@ pub(super) fn become_anonymous_uses_one_hidden_pile_and_a_real_cloak_operation()
     assert_eq!(library_exile.count, Value::Fixed(2));
     assert_eq!(
         library_exile.accumulated_tags.as_slice(),
-        [pile_tag.clone()],
+        std::slice::from_ref(pile_tag),
         "top cards should append to, rather than replace, the targeted pile"
     );
     assert!(cloak.cloak && cloak.shuffle && cloak.tapped);
@@ -1130,7 +1130,7 @@ pub(super) fn katara_seeking_revenge_waterbend_tap_cost_taps_chosen_artifact_and
                 .iter()
                 .filter(|candidate| candidate.legal)
                 .map(|candidate| candidate.id)
-                .take(ctx.max.unwrap_or(ctx.min) as usize)
+                .take(ctx.max.unwrap_or(ctx.min))
                 .collect()
         }
     }
@@ -1992,7 +1992,7 @@ pub(super) fn staff_of_the_storyteller_activation_removes_story_counter_and_draw
         .add(ManaSymbol::White, 1);
     crate::cost::can_pay_cost(&game, staff, alice, &activated.mana_cost)
         .expect("Staff activation should be payable with white mana, tap, and a story counter");
-    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    let mut dm = crate::decision::AutoPassDecisionMaker;
     crate::special_actions::pay_total_cost_with_choice(
         &mut game,
         alice,
@@ -2609,7 +2609,7 @@ pub(super) fn ichormoon_gauntlet_chosen_counter_effect(def: &CardDefinition) -> 
             AbilityKind::Triggered(triggered) => triggered
                 .effects
                 .flattened_default_effects()
-                .into_iter()
+                .iter()
                 .find(|effect| {
                     effect
                         .downcast_ref::<crate::effects::PutCounterOfChosenKindEffect>()
@@ -2709,7 +2709,7 @@ pub(super) fn ichormoon_gauntlet_grants_two_loyalty_abilities_to_planeswalkers_y
             && activated
                 .effects
                 .flattened_default_effects()
-                .into_iter()
+                .iter()
                 .any(|effect| effect
                     .downcast_ref::<crate::effects::ProliferateEffect>()
                     .is_some())),
@@ -2721,7 +2721,7 @@ pub(super) fn ichormoon_gauntlet_grants_two_loyalty_abilities_to_planeswalkers_y
                 && activated
                     .effects
                     .flattened_default_effects()
-                    .into_iter()
+                    .iter()
                     .any(|effect| effect
                         .downcast_ref::<crate::effects::ExtraTurnEffect>()
                         .is_some())
@@ -2884,23 +2884,27 @@ pub(super) fn nicol_bolas_dragon_god_copies_only_other_planeswalkers_loyalty_abi
         "Nicol Bolas should have his three printed loyalty abilities plus one copied loyalty ability, got {activated:#?}"
     );
     assert!(
-        activated.iter().any(|ability| ability
-            .effects
-            .flattened_default_effects()
-            .into_iter()
-            .any(|effect| effect
-                .downcast_ref::<crate::effects::GainLifeEffect>()
-                .is_some())),
+        activated.iter().any(
+            |ability| ability
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| effect
+                    .downcast_ref::<crate::effects::GainLifeEffect>()
+                    .is_some())
+        ),
         "Nicol Bolas should copy the other planeswalker's loyalty ability, got {activated:#?}"
     );
     assert!(
-        !activated.iter().any(|ability| ability
-            .effects
-            .flattened_default_effects()
-            .into_iter()
-            .any(|effect| effect
-                .downcast_ref::<crate::effects::DrawCardsEffect>()
-                .is_some_and(|draw| draw.count == Value::Fixed(2)))),
+        !activated.iter().any(
+            |ability| ability
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| effect
+                    .downcast_ref::<crate::effects::DrawCardsEffect>()
+                    .is_some_and(|draw| draw.count == Value::Fixed(2)))
+        ),
         "Nicol Bolas must not copy non-loyalty activated abilities, got {activated:#?}"
     );
 }
@@ -2919,14 +2923,7 @@ pub(super) fn nicol_bolas_plus_one_effects(def: &CardDefinition) -> Vec<Effect> 
                         && debug.contains("zone: Exile")
                 } =>
             {
-                Some(
-                    activated
-                        .effects
-                        .flattened_default_effects()
-                        .into_iter()
-                        .cloned()
-                        .collect(),
-                )
+                Some(activated.effects.flattened_default_effects().to_vec())
             }
             _ => None,
         })
@@ -3101,17 +3098,10 @@ pub(super) fn nicol_bolas_minus_eight_effects(def: &CardDefinition) -> Vec<Effec
                     && activated
                         .effects
                         .flattened_default_effects()
-                        .into_iter()
+                        .iter()
                         .any(|effect| format!("{effect:#?}").contains("LoseTheGameEffect")) =>
             {
-                Some(
-                    activated
-                        .effects
-                        .flattened_default_effects()
-                        .into_iter()
-                        .cloned()
-                        .collect(),
-                )
+                Some(activated.effects.flattened_default_effects().to_vec())
             }
             _ => None,
         })

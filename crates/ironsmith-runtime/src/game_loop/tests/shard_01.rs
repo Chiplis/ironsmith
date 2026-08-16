@@ -168,7 +168,7 @@ pub(super) fn put_test_cards_in_zone(
     for index in 0..count {
         let card = CardBuilder::new(
             CardId::from_raw(73_000 + index),
-            &format!("Test Card {index}"),
+            format!("Test Card {index}"),
         )
         .card_types(vec![CardType::Sorcery])
         .build();
@@ -3170,7 +3170,7 @@ pub(super) fn necromantic_summons_targets_only_creature_cards_in_graveyards() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 pub(super) fn dance_of_the_manse_definition() -> crate::cards::CardDefinition {
-    let definition = CardDefinitionBuilder::new(CardId::from_raw(72_960), "Dance of the Manse")
+    CardDefinitionBuilder::new(CardId::from_raw(72_960), "Dance of the Manse")
         .mana_cost(ManaCost::from_pips(vec![
             vec![ManaSymbol::X],
             vec![ManaSymbol::White],
@@ -3180,8 +3180,7 @@ pub(super) fn dance_of_the_manse_definition() -> crate::cards::CardDefinition {
         .parse_text(
             "Return up to X target artifact and/or non-Aura enchantment cards each with mana value X or less from your graveyard to the battlefield. If X is 6 or more, those permanents are 4/4 creatures in addition to their other types.",
         )
-        .expect("Dance of the Manse should parse");
-    definition
+        .expect("Dance of the Manse should parse")
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

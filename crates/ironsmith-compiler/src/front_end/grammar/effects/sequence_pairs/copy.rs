@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use winnow::prelude::*;
 
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 
 use super::{
     contains_sequence_phrase, contains_sequence_word, matches_complete_content_sequence,
@@ -305,7 +305,7 @@ pub(crate) fn parse_tagged_copy_retarget_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

@@ -46,7 +46,7 @@ fn expected_phrase<'i, 'p>(
             return Err(primitives::backtrack_err("phrase fact", "nonempty phrase"));
         }
         for word in expected {
-            expected_word(*word).void().parse_next(input)?;
+            expected_word(word).void().parse_next(input)?;
         }
         Ok(())
     }
@@ -76,7 +76,7 @@ fn expected_word_choice<'i, 'p>(
     move |input: &mut primitives::WordSliceInput<'i>| {
         for candidate in expected {
             let checkpoint = *input;
-            if let Ok(word) = expected_word(*candidate).parse_next(input) {
+            if let Ok(word) = expected_word(candidate).parse_next(input) {
                 return Ok(word);
             }
             *input = checkpoint;

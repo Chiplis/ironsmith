@@ -3,10 +3,10 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use super::{leaf, permission_shapes, primitives};
-use crate::recognition::ParseOutcome;
 use crate::lexer::{
     LexStream, OwnedLexToken, TokenKind, TokenWordView, lex_line, render_token_slice,
 };
+use crate::recognition::ParseOutcome;
 
 #[path = "document_shapes/labels.rs"]
 mod labels;

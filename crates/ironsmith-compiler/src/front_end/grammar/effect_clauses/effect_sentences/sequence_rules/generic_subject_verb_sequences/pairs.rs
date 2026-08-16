@@ -14,13 +14,11 @@ use crate::cards::builders::{
 use crate::effect::{EffectPredicate, Value};
 use crate::effect_sentences;
 use crate::effect_sentences::SentenceInput;
-use crate::grammar::sentence_markers::{
-    self, ConditionalFollowupActor, LeadingMayActor,
-};
 use crate::grammar::effects::triple_sequence_shapes as triple_grammar;
 use crate::grammar::effects::{
     self as effect_grammar, parse_reciprocal_creature_control_sequence_tokens,
 };
+use crate::grammar::sentence_markers::{self, ConditionalFollowupActor, LeadingMayActor};
 use crate::grammar::structure::{
     LeadingResultPrefixKind, parse_predicate_with_grammar_entrypoint_lexed,
     split_leading_result_prefix_lexed,
@@ -28,11 +26,11 @@ use crate::grammar::structure::{
 use crate::lexer::LexedClause;
 use crate::object_filters::parse_object_filter_lexed;
 use crate::permission_helpers::parse_cast_or_play_tagged_clause;
-use crate::util::trim_commas;
-use crate::util::{helper_tag_for_tokens, parse_subject};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
+use crate::util::trim_commas;
+use crate::util::{helper_tag_for_tokens, parse_subject};
 use crate::zone::Zone;
 
 fn target_opponent_filter(player: &PlayerFilter) -> bool {
@@ -45,7 +43,7 @@ fn target_opponent_filter(player: &PlayerFilter) -> bool {
 }
 
 fn tagged_subset_destroy_words(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     words.starts_with(&["destroy", "any", "of", "them", "that", "are"])
         || words.starts_with(&["destroy", "any", "of", "those", "creatures", "that", "are"])
         || words.starts_with(&["destroy", "any", "of", "those", "permanents", "that", "are"])
@@ -77,11 +75,11 @@ pub(crate) fn parse_target_opponent_may_copy_triggering_spell_then_retarget(
     let Some(second) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    if crate::token_word_refs(first.lowered())
+    if crate::lexer::token_word_refs(first.lowered())
         != [
             "up", "to", "one", "target", "opponent", "may", "also", "copy", "that", "spell",
         ]
-        || crate::token_word_refs(second.lowered())
+        || crate::lexer::token_word_refs(second.lowered())
             != [
                 "they", "may", "choose", "new", "targets", "for", "that", "copy",
             ]
@@ -89,9 +87,7 @@ pub(crate) fn parse_target_opponent_may_copy_triggering_spell_then_retarget(
         return Ok(None);
     }
 
-    let target = crate::util::parse_target_phrase(
-        &first.lowered()[..5],
-    )?;
+    let target = crate::util::parse_target_phrase(&first.lowered()[..5])?;
     let copy = EffectAst::subject_verb_copy_spell(
         TargetAst::Tagged(TagKey::from("triggering"), None),
         Value::Fixed(1),
@@ -112,7 +108,7 @@ pub(crate) fn parse_target_opponent_may_copy_triggering_spell_then_retarget(
 #[cfg(test)]
 mod target_opponent_copy_triggering_spell_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(first: &str, second: &str) -> Option<Vec<EffectAst>> {
         let first = lex_line(first, 0).expect("first sentence should lex");
@@ -194,7 +190,7 @@ pub(crate) fn parse_copy_next_spell_when_cast_then_retarget(
     let Some(second) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    if crate::token_word_refs(second.lowered())
+    if crate::lexer::token_word_refs(second.lowered())
         != [
             "you", "may", "choose", "new", "targets", "for", "the", "copy",
         ]
@@ -202,7 +198,7 @@ pub(crate) fn parse_copy_next_spell_when_cast_then_retarget(
         return Ok(None);
     }
 
-    let words = crate::token_word_refs(first.lowered());
+    let words = crate::lexer::token_word_refs(first.lowered());
     if words
         != [
             "copy", "the", "next", "spell", "you", "cast", "this", "turn", "when", "you", "cast",
@@ -240,7 +236,7 @@ pub(crate) fn parse_copy_next_spell_when_cast_then_retarget(
 #[cfg(test)]
 mod copy_next_spell_when_cast_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(first: &str, second: &str) -> Option<Vec<EffectAst>> {
         let first = lex_line(first, 0).expect("first sentence should lex");
@@ -323,7 +319,7 @@ pub(crate) fn parse_counter_on_enchanted_if_attacked_or_blocked_since_last_upkee
     let Some(second) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    let first_words = crate::token_word_refs(first.lowered());
+    let first_words = crate::lexer::token_word_refs(first.lowered());
     let expected_tail = [
         "if", "it", "attacked", "or", "blocked", "since", "your", "last", "upkeep",
     ];
@@ -343,7 +339,7 @@ pub(crate) fn parse_counter_on_enchanted_if_attacked_or_blocked_since_last_upkee
     else {
         return Ok(None);
     };
-    let second_words = crate::token_word_refs(second.lowered());
+    let second_words = crate::lexer::token_word_refs(second.lowered());
     if !matches!(second_words.first(), Some(&"otherwise")) {
         return Ok(None);
     }
@@ -378,7 +374,7 @@ pub(crate) fn parse_counter_on_source_if_blocked_or_been_blocked_since_last_upke
     let expected_tail = [
         "if", "it", "has", "blocked", "or", "been", "blocked", "since", "your", "last", "upkeep",
     ];
-    let first_words = crate::token_word_refs(first.lowered());
+    let first_words = crate::lexer::token_word_refs(first.lowered());
     let Some(if_word_index) = first_words
         .windows(expected_tail.len())
         .position(|window| window == expected_tail)
@@ -396,7 +392,7 @@ pub(crate) fn parse_counter_on_source_if_blocked_or_been_blocked_since_last_upke
         return Ok(None);
     };
     if !matches!(
-        crate::token_word_refs(second.lowered()).first(),
+        crate::lexer::token_word_refs(second.lowered()).first(),
         Some(&"otherwise")
     ) {
         return Ok(None);
@@ -429,7 +425,7 @@ pub(crate) fn parse_controller_defending_loot_then_greatest_mana_value_followup(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = sentences[sentence_idx].lowered();
-    let first_words = crate::token_word_refs(first_tokens);
+    let first_words = crate::lexer::token_word_refs(first_tokens);
     if first_words
         != [
             "you",
@@ -469,7 +465,7 @@ pub(crate) fn parse_controller_defending_loot_then_greatest_mana_value_followup(
     let Some(if_idx) = second_tokens.iter().position(|token| token.is_word("if")) else {
         return Ok(None);
     };
-    if crate::token_word_refs(&second_tokens[if_idx..])
+    if crate::lexer::token_word_refs(&second_tokens[if_idx..])
         != [
             "if",
             "you",
@@ -546,7 +542,7 @@ pub(crate) fn parse_controller_defending_loot_then_greatest_mana_value_followup(
 #[cfg(test)]
 mod participant_loot_extremum_tests {
     use super::*;
-    use crate::runtime_backend::{lex_line, split_lexed_sentences};
+    use crate::{lex_line, split_lexed_sentences};
 
     fn sentence_inputs(text: &str) -> Vec<SentenceInput> {
         let tokens = lex_line(text, 0).expect("participant loot text should lex");
@@ -708,8 +704,8 @@ pub(crate) fn parse_multi_target_restriction_then_destroy_typed_subset(
 #[cfg(test)]
 mod tagged_target_subset_tests {
     use super::*;
-    use crate::runtime_backend::{lex_line, split_lexed_sentences};
     use crate::types::Subtype;
+    use crate::{lex_line, split_lexed_sentences};
 
     #[test]
     fn later_wall_subset_reuses_the_exact_multi_target_set() {
@@ -864,7 +860,7 @@ pub(crate) fn parse_destroy_all_then_search_target_opponent_to_graveyard_then_sh
 #[cfg(test)]
 mod destroy_search_partition_tests {
     use super::*;
-    use crate::runtime_backend::{lex_line, split_lexed_sentences};
+    use crate::{lex_line, split_lexed_sentences};
 
     #[test]
     fn global_destroy_keeps_targeted_search_owner_chooser_and_destination_separate() {
@@ -970,35 +966,34 @@ pub(crate) fn parse_counter_spell_then_artifact_or_creature_enters_under_your_co
     let first = sentences[sentence_idx].lowered();
     if crate::lexer::parser_token_word_refs(sentences[sentence_idx].lexed())
         != ["counter", "target", "spell"]
-        || crate::lexer::parser_token_word_refs(
-            sentences[sentence_idx + 1].lexed(),
-        ) != [
-            "if",
-            "an",
-            "artifact",
-            "or",
-            "creature",
-            "spell",
-            "is",
-            "countered",
-            "this",
-            "way",
-            "put",
-            "that",
-            "card",
-            "onto",
-            "the",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "instead",
-            "of",
-            "into",
-            "its",
-            "owners",
-            "graveyard",
-        ]
+        || crate::lexer::parser_token_word_refs(sentences[sentence_idx + 1].lexed())
+            != [
+                "if",
+                "an",
+                "artifact",
+                "or",
+                "creature",
+                "spell",
+                "is",
+                "countered",
+                "this",
+                "way",
+                "put",
+                "that",
+                "card",
+                "onto",
+                "the",
+                "battlefield",
+                "under",
+                "your",
+                "control",
+                "instead",
+                "of",
+                "into",
+                "its",
+                "owners",
+                "graveyard",
+            ]
     {
         return Ok(None);
     }
@@ -1049,7 +1044,7 @@ pub(crate) fn parse_counter_spell_then_artifact_or_creature_enters_under_your_co
 #[cfg(test)]
 mod resolving_card_exile_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn resolving_card_exile_registers_exact_one_shot_replacement_and_linked_return() {
@@ -1094,7 +1089,7 @@ mod resolving_card_exile_tests {
 #[cfg(test)]
 mod counter_destination_replacement_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(second: &str) -> Option<Vec<EffectAst>> {
         let first = lex_line("Counter target spell.", 0).expect("counter should lex");
@@ -1171,7 +1166,7 @@ pub(crate) fn parse_reveal_hand_then_draw_shared_terminal_union(
         _ => return Ok(None),
     };
 
-    let draw_words = crate::token_word_refs(sentences[sentence_idx + 1].lowered());
+    let draw_words = crate::lexer::token_word_refs(sentences[sentence_idx + 1].lowered());
     if draw_words.len() < 10
         || draw_words.get(..6) != Some(["you", "draw", "a", "card", "for", "each"].as_slice())
         || draw_words.get(draw_words.len() - 2..) != Some(["in", "it"].as_slice())
@@ -1179,13 +1174,9 @@ pub(crate) fn parse_reveal_hand_then_draw_shared_terminal_union(
         return Ok(None);
     }
     let filter_words = &draw_words[6..draw_words.len() - 2];
-    let filter_tokens =
-        crate::front_end::lexer::synthetic_word_tokens(filter_words);
+    let filter_tokens = crate::lexer::synthetic_word_tokens(filter_words);
     let Some(mut filter) =
-        crate::grammar::filters::parse_subtype_color_shared_card_union_lexed(
-            &filter_tokens,
-            false,
-        )
+        crate::grammar::filters::parse_subtype_color_shared_card_union_lexed(&filter_tokens, false)
     else {
         return Ok(None);
     };
@@ -1229,7 +1220,7 @@ pub(crate) fn parse_reveal_opponent_hand_then_choose_from_it_or_their_graveyard(
     else {
         return Ok(None);
     };
-    let words = crate::token_word_refs(sentences[sentence_idx + 1].lowered());
+    let words = crate::lexer::token_word_refs(sentences[sentence_idx + 1].lowered());
     if !matches!(
         words.as_slice(),
         [
@@ -1296,7 +1287,7 @@ pub(crate) fn parse_reveal_opponent_hand_then_choose_from_it_or_their_graveyard(
 #[cfg(test)]
 mod revealed_hand_graveyard_disjunction_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(second: &str) -> Option<Vec<EffectAst>> {
         let lexed = [
@@ -1485,7 +1476,7 @@ pub(crate) fn parse_look_at_players_hand_then_may_cast_from_those_cards(
 #[cfg(test)]
 mod looked_hand_optional_cast_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex_inputs(first: &str, second: &str) -> [Vec<OwnedLexToken>; 2] {
         [
@@ -1605,7 +1596,7 @@ mod looked_hand_optional_cast_tests {
 #[cfg(test)]
 mod revealed_hand_optional_cast_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
@@ -1674,7 +1665,7 @@ mod revealed_hand_optional_cast_tests {
 #[cfg(test)]
 mod revealed_hand_union_count_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn revealed_target_hand_scopes_shared_terminal_union_count() {
@@ -1719,7 +1710,7 @@ pub(crate) fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = sentences[sentence_idx].lowered();
-    let first_words = crate::token_word_refs(first_tokens);
+    let first_words = crate::lexer::token_word_refs(first_tokens);
     let Some(choose_idx) = first_words.iter().position(|word| *word == "choose") else {
         return Ok(None);
     };
@@ -1739,7 +1730,7 @@ pub(crate) fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
         return Ok(None);
     }
     let mut filter = parse_object_filter_lexed(&object_tokens, false)?;
-    let object_words = crate::token_word_refs(&object_tokens);
+    let object_words = crate::lexer::token_word_refs(&object_tokens);
     if !object_words
         .windows(3)
         .any(|window| window == ["that", "player", "controls"])
@@ -1750,7 +1741,7 @@ pub(crate) fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
     filter.zone.get_or_insert(Zone::Battlefield);
 
     let second_tokens = sentences[sentence_idx + 1].lowered();
-    let second_words = crate::token_word_refs(second_tokens);
+    let second_words = crate::lexer::token_word_refs(second_tokens);
     let sacrifice_idx = second_words
         .windows(2)
         .position(|window| window == ["player", "sacrifices"])
@@ -1803,7 +1794,7 @@ pub(crate) fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
 #[cfg(test)]
 mod secret_object_choice_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn participant_relative_secret_object_choices_keep_the_revealed_result_set() {
@@ -2279,7 +2270,7 @@ fn wrap_optional_consult_effects(
 #[cfg(test)]
 mod optional_consult_gating_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse_effect_text(text: &str) -> Vec<EffectAst> {
         let lexed = lex_line(text, 0).expect("focused consult text should lex");
@@ -3326,7 +3317,7 @@ pub(crate) fn parse_when_result_may_cast_target_graveyard_spell_then_exile_repla
     };
     if prefix.kind != LeadingResultPrefixKind::When
         || prefix.predicate != IfResultPredicate::Did
-        || !crate::token_word_refs(prefix.trailing_tokens)
+        || !crate::lexer::token_word_refs(prefix.trailing_tokens)
             .starts_with(&["you", "may", "cast", "target"])
     {
         return Ok(None);
@@ -3462,7 +3453,7 @@ pub(crate) fn parse_tempting_offer_copy_spell_sequence(
 #[cfg(test)]
 mod tempting_offer_copy_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn additional_copy_count_keeps_typed_authored_surface() {
@@ -4025,7 +4016,7 @@ pub(crate) fn parse_mill_then_may_cast_from_among(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = sentences[sentence_idx].lowered();
     let second_tokens = sentences[sentence_idx + 1].lowered();
-    let second_words = crate::token_word_refs(second_tokens);
+    let second_words = crate::lexer::token_word_refs(second_tokens);
     let maximum_mana_value = match second_words.as_slice() {
         [
             "you",
@@ -4149,7 +4140,7 @@ pub(crate) fn parse_mill_then_may_cast_from_among(
 #[cfg(test)]
 mod mill_result_cast_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse_pair(second: &str) -> Option<Vec<EffectAst>> {
         let first = lex_line("Target opponent mills five cards.", 0).expect("mill sentence");
@@ -5438,7 +5429,7 @@ pub(crate) fn parse_consult_match_into_battlefield_others_graveyard(
 #[cfg(test)]
 mod looked_partition_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse_pair(first: &str, second: &str) -> Option<Vec<EffectAst>> {
         let first = lex_line(first, 0).expect("first sentence should lex");
@@ -5651,8 +5642,8 @@ mod looked_partition_tests {
             effect_grammar::parse_graveyard_cast_replacement_shape(&first_lowered, &second_lowered)
                 .is_some(),
             "dynamic cast/replacement surface should reach the typed pair shape: {:?} / {:?}",
-            crate::runtime_backend::token_word_refs(&first_lowered),
-            crate::runtime_backend::token_word_refs(&second_lowered)
+            crate::lexer::token_word_refs(&first_lowered),
+            crate::lexer::token_word_refs(&second_lowered)
         );
         let target_start = first_lowered
             .iter()
@@ -5663,7 +5654,7 @@ mod looked_partition_tests {
             .unwrap_or_else(|error| {
                 panic!(
                     "dynamic source-power target filter should parse ({error}): {:?}",
-                    crate::runtime_backend::token_word_refs(&first_lowered[target_start..])
+                    crate::lexer::token_word_refs(&first_lowered[target_start..])
                 )
             });
         assert_eq!(
@@ -6425,12 +6416,12 @@ mod looked_partition_tests {
             SentenceInput::from_lexed(&second),
         ];
 
-        let matched = crate::runtime_backend::sentences::effect_sentences::sequence_rules::try_parse_subject_verb_sequence_rule(
-            &sentences,
-            0,
-        )
-        .expect("sequence registry should not error")
-        .expect("look/exile/permission sequence should match");
+        let matched =
+            crate::effect_sentences::sequence_rules::try_parse_subject_verb_sequence_rule(
+                &sentences, 0,
+            )
+            .expect("sequence registry should not error")
+            .expect("look/exile/permission sequence should match");
 
         assert_eq!(
             matched.name,

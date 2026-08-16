@@ -29,7 +29,7 @@ impl DecisionMaker for TargetBob {
                     .iter()
                     .find_map(|target| match target {
                         crate::game_state::Target::Player(player) if *player == self.bob => {
-                            Some(target.clone())
+                            Some(*target)
                         }
                         _ => None,
                     })

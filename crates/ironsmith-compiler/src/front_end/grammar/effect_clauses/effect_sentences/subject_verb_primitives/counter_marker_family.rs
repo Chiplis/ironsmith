@@ -138,8 +138,7 @@ fn parse_put_counter_choice_sequence(
         return Ok(None);
     };
     let target = parse_target_phrase(shape.target_tokens)?;
-    let target_phrase =
-        crate::front_end::lexer::render_token_slice(shape.target_tokens);
+    let target_phrase = crate::lexer::render_token_slice(shape.target_tokens);
     let mode_texts = shape
         .counter_types
         .iter()
@@ -171,8 +170,7 @@ pub(crate) fn parse_sentence_put_fixed_and_counter_choice(
         return Ok(None);
     };
     let target = parse_target_phrase(shape.target_tokens)?;
-    let target_phrase =
-        crate::front_end::lexer::render_token_slice(shape.target_tokens);
+    let target_phrase = crate::lexer::render_token_slice(shape.target_tokens);
     let mode_texts = shape
         .counter_types
         .iter()
@@ -331,34 +329,33 @@ pub(crate) fn parse_sentence_put_counter_sequence(
         return Ok(Some(effects));
     }
 
-    if let Some(shape) = counter_shapes::parse_counter_followup_tokens(clause.tokens()) {
-        if let Ok(first) = parse_put_counters(shape.counter_tokens)
-            && let Ok(mut followup_effects) = parse_effect_chain(shape.followup_tokens)
-            && !followup_effects.is_empty()
-        {
-            let source_target = match &first {
-                effect if subject_verb_put_counters_target(effect).is_some() => {
-                    subject_verb_put_counters_target(effect)
-                }
-                EffectAst::Conditional { if_true, .. } if if_true.len() == 1 => {
-                    if_true.first().and_then(subject_verb_put_counters_target)
-                }
-                _ => None,
-            };
-
-            if let Some(source_target) = source_target {
-                for effect in &mut followup_effects {
-                    retarget_it_effect_for_counter_followup(effect, &source_target);
-                }
-
-                let mut effects = vec![first];
-                effects.append(&mut followup_effects);
-                return Ok(Some(vec![EffectAst::Coordinated {
-                    effects,
-                    leading_duration: false,
-                    result_conjunction: false,
-                }]));
+    if let Some(shape) = counter_shapes::parse_counter_followup_tokens(clause.tokens())
+        && let Ok(first) = parse_put_counters(shape.counter_tokens)
+        && let Ok(mut followup_effects) = parse_effect_chain(shape.followup_tokens)
+        && !followup_effects.is_empty()
+    {
+        let source_target = match &first {
+            effect if subject_verb_put_counters_target(effect).is_some() => {
+                subject_verb_put_counters_target(effect)
             }
+            EffectAst::Conditional { if_true, .. } if if_true.len() == 1 => {
+                if_true.first().and_then(subject_verb_put_counters_target)
+            }
+            _ => None,
+        };
+
+        if let Some(source_target) = source_target {
+            for effect in &mut followup_effects {
+                retarget_it_effect_for_counter_followup(effect, &source_target);
+            }
+
+            let mut effects = vec![first];
+            effects.append(&mut followup_effects);
+            return Ok(Some(vec![EffectAst::Coordinated {
+                effects,
+                leading_duration: false,
+                result_conjunction: false,
+            }]));
         }
     }
 
@@ -504,7 +501,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
 pub(crate) fn parse_return_with_dynamic_entry_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::token_word_refs(clause.tokens());
+    let words = crate::lexer::token_word_refs(clause.tokens());
     let Some(destination) = words
         .windows(6)
         .position(|window| window == ["to", "the", "battlefield", "with", "x", "additional"])
@@ -525,13 +522,11 @@ pub(crate) fn parse_return_with_dynamic_entry_counters_sentence(
     if counter_words.is_empty() {
         return Ok(None);
     }
-    let counter_tokens =
-        crate::front_end::lexer::synthetic_word_tokens(counter_words);
+    let counter_tokens = crate::lexer::synthetic_word_tokens(counter_words);
     let Some(counter_type) = parse_counter_type_from_tokens(&counter_tokens) else {
         return Ok(None);
     };
-    let target_tokens =
-        crate::front_end::lexer::synthetic_word_tokens(target_words);
+    let target_tokens = crate::lexer::synthetic_word_tokens(target_words);
     let mut target = parse_target_phrase(&target_tokens)?;
 
     fn bind_owned_graveyard(target: &mut TargetAst) -> bool {
@@ -650,7 +645,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
 fn parse_optional_put_from_owned_hand_or_graveyard_with_counters(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::token_word_refs(clause.tokens());
+    let words = crate::lexer::token_word_refs(clause.tokens());
     let put_index = if words.starts_with(&["you", "may", "put"]) {
         2
     } else if words.starts_with(&["may", "put"]) {
@@ -1118,7 +1113,7 @@ mod dynamic_entry_counter_tests {
 
     #[test]
     fn owned_graveyard_return_keeps_x_as_an_inline_entry_counter() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Return target artifact or non-Aura enchantment card from your graveyard to the battlefield with X additional +1/+1 counters on it.",
             0,
         )
@@ -1161,7 +1156,7 @@ mod dynamic_entry_counter_tests {
 
     #[test]
     fn a_return_from_an_opponents_graveyard_is_not_rebound_to_you() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Return target artifact card from an opponent's graveyard to the battlefield with X additional +1/+1 counters on it.",
             0,
         )

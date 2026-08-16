@@ -3,7 +3,7 @@ use winnow::prelude::*;
 
 use crate::events::KeywordActionKind;
 use crate::grammar::primitives;
-use crate::front_end::lexer::{OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{OwnedLexToken, trim_lexed_commas};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PutStickerShape<'a> {
@@ -21,11 +21,7 @@ pub(crate) struct StickerAuraShape<'a> {
 fn marker_anywhere<'a, P, F>(tokens: &'a [OwnedLexToken], make_parser: F) -> bool
 where
     F: Fn() -> P,
-    P: Parser<
-            crate::front_end::lexer::LexStream<'a>,
-            (),
-            winnow::error::ErrMode<winnow::error::ContextError>,
-        >,
+    P: Parser<crate::lexer::LexStream<'a>, (), winnow::error::ErrMode<winnow::error::ContextError>>,
 {
     primitives::find_prefix(tokens, make_parser).is_some()
 }
@@ -121,7 +117,7 @@ pub(crate) fn parse_sticker_aura_shape(tokens: &[OwnedLexToken]) -> Option<Stick
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn captures_sticker_target_and_aura_tail() {

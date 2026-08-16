@@ -84,7 +84,9 @@ pub struct UnsupportedLineCst {
 mod tests {
     use super::*;
     use crate::diagnostics::TextSpan;
-    use crate::front_end::{LineInfo, MetadataLine, NormalizedLine};
+    use crate::front_end::{
+        LineInfo, MetadataLine, NormalizedLine, NormalizedSourceMap, NormalizedSourceSegment,
+    };
 
     fn sample_line_info() -> LineInfo {
         LineInfo {
@@ -95,6 +97,13 @@ mod tests {
                 original: "Draw a card.".to_string(),
                 normalized: "Draw a card.".to_string(),
                 char_map: (0..12).collect(),
+                source_map: NormalizedSourceMap {
+                    segments: vec![NormalizedSourceSegment {
+                        normalized_bytes: 0..12,
+                        source_bytes: 0..12,
+                    }],
+                    omitted_source_bytes: Vec::new(),
+                },
             },
         }
     }

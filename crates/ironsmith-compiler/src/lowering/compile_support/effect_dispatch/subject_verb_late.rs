@@ -90,7 +90,7 @@ pub(super) fn compile_subject_verb_late(
     let player = subject_verb.subject.player;
     let result = match &subject_verb.action {
         SubjectVerbActionAst::GrantAbilityToSource { ability, duration } => {
-            let lowered = lower_parsed_ability(ability.clone())?;
+            let lowered = lower_parsed_ability(ability.as_ref().clone())?;
             Ok((
                 vec![Effect::new(
                     crate::effects::ApplyContinuousEffect::with_spec(
@@ -1705,7 +1705,7 @@ pub(super) fn compile_subject_verb_late(
             true,
             false,
             |value| Effect::set_life_total_player(value, PlayerFilter::You),
-            |value, filter| Effect::set_life_total_player(value, filter),
+            Effect::set_life_total_player,
         ),
         SubjectVerbActionAst::ReverseTurnOrder => Ok((
             vec![Effect::new(crate::effects::ReverseTurnOrderEffect::new())],
@@ -1860,8 +1860,9 @@ pub(super) fn compile_subject_verb_late(
                     &last_player_filter,
                 );
             }
-            let lowered =
-                lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(ability))?;
+            let lowered = lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(
+                ability.as_ref(),
+            ))?;
             if lowered.is_empty() {
                 return Err(CardTextError::ParseError(
                     "temporary next-spell grant did not lower to an object ability".to_string(),
@@ -1954,15 +1955,11 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::Goad { target, duration } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let spec = if matches!(
-                spec.base(),
-                ChooseSpec::Object(filter) if filter.set_quantifier_surface().is_some()
-            ) {
-                match spec {
-                    ChooseSpec::Object(filter) => ChooseSpec::All(filter),
-                    other => other,
-                }
-            } else if choices.is_empty() {
+            let spec = if choices.is_empty()
+                || matches!(
+                    spec.base(),
+                    ChooseSpec::Object(filter) if filter.set_quantifier_surface().is_some()
+                ) {
                 match spec {
                     ChooseSpec::Object(filter) => ChooseSpec::All(filter),
                     other => other,

@@ -202,7 +202,7 @@ pub(crate) fn parse_loyalty_shorthand_activation_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn owns_activation_x_and_where_x_facts() {

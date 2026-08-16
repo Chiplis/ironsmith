@@ -101,7 +101,7 @@ pub(crate) fn parse_statement_grouping_tokens(tokens: &[OwnedLexToken]) -> State
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::{lex_line, render_token_slice};
+    use crate::lexer::{lex_line, render_token_slice};
 
     #[test]
     fn grouping_returns_typed_label_and_instead_boundary_facts() {

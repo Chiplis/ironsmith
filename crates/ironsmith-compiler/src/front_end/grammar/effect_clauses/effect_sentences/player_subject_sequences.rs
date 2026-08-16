@@ -110,7 +110,7 @@ pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
     let is_linked_return = third_words
         .first()
         .is_some_and(|word| matches!(*word, "puts" | "put"))
-        && third_words.iter().any(|word| *word == "all")
+        && third_words.contains(&"all")
         && third_words
             .iter()
             .any(|word| matches!(*word, "card" | "cards"))
@@ -130,8 +130,7 @@ pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
         return Ok(None);
     }
 
-    let exiled_tag =
-        crate::util::helper_tag_for_tokens(first_tokens, "exiled_this_way");
+    let exiled_tag = crate::util::helper_tag_for_tokens(first_tokens, "exiled_this_way");
     let return_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
     let put_exiled = EffectAst::subject_verb_put_onto_battlefield(
         PlayerAst::That,
@@ -250,9 +249,9 @@ pub(super) fn split_explicit_player_subject_clauses(
             continue;
         }
 
-        let boundary_start = if token.kind == TokenKind::Comma {
-            idx + 1
-        } else if token_word_refs(std::slice::from_ref(token)).as_slice() == ["and"] {
+        let boundary_start = if token.kind == TokenKind::Comma
+            || token_word_refs(std::slice::from_ref(token)).as_slice() == ["and"]
+        {
             idx + 1
         } else {
             continue;
@@ -321,7 +320,7 @@ mod tests {
     use crate::cards::builders::{
         EffectAst, SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst,
     };
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::super::parse_effect_sentence_lexed;
     use super::split_explicit_player_subject_clauses;

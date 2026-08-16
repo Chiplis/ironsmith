@@ -540,17 +540,34 @@ pub(super) fn alternative_cast_matches_kind(
     kind: AlternativeCastKind,
 ) -> bool {
     use crate::alternative_cast::AlternativeCastingMethod;
-    match (kind, method) {
-        (AlternativeCastKind::Blitz, AlternativeCastingMethod::Blitz { .. }) => true,
-        (AlternativeCastKind::Dash, AlternativeCastingMethod::Dash { .. }) => true,
-        (AlternativeCastKind::Flashback, AlternativeCastingMethod::Flashback { .. }) => true,
-        (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart { .. }) => true,
-        (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. }) => true,
-        (AlternativeCastKind::Madness, AlternativeCastingMethod::Madness { .. }) => true,
-        (AlternativeCastKind::Miracle, AlternativeCastingMethod::Miracle { .. }) => true,
-        (AlternativeCastKind::Suspend, AlternativeCastingMethod::Suspend { .. }) => true,
-        _ => false,
-    }
+    matches!(
+        (kind, method),
+        (
+            AlternativeCastKind::Blitz,
+            AlternativeCastingMethod::Blitz { .. }
+        ) | (
+            AlternativeCastKind::Dash,
+            AlternativeCastingMethod::Dash { .. }
+        ) | (
+            AlternativeCastKind::Flashback,
+            AlternativeCastingMethod::Flashback { .. }
+        ) | (
+            AlternativeCastKind::JumpStart,
+            AlternativeCastingMethod::JumpStart { .. }
+        ) | (
+            AlternativeCastKind::Escape,
+            AlternativeCastingMethod::Escape { .. }
+        ) | (
+            AlternativeCastKind::Madness,
+            AlternativeCastingMethod::Madness { .. }
+        ) | (
+            AlternativeCastKind::Miracle,
+            AlternativeCastingMethod::Miracle { .. }
+        ) | (
+            AlternativeCastKind::Suspend,
+            AlternativeCastingMethod::Suspend { .. }
+        )
+    )
 }
 
 pub(super) fn object_has_alternative_cast_kind(

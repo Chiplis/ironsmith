@@ -1,4 +1,4 @@
-use crate::families::activation_and_restrictions::keyword_action_costs::{
+use crate::activation_and_restrictions::keyword_action_costs::{
     is_known_keyword_action_head, parse_single_word_keyword_action,
 };
 use crate::grammar::{permission_shapes, primitives};
@@ -83,7 +83,7 @@ pub(crate) fn parse_short_self_reference_name(name: &str) -> String {
     let Ok(tokens) = lex_line(trimmed, 0) else {
         return trimmed.to_string();
     };
-    if let Some((_, comma, _)) = primitives::find_prefix(&tokens, || primitives::comma()) {
+    if let Some((_, comma, _)) = primitives::find_prefix(&tokens, primitives::comma) {
         let alias = trimmed.get(..comma.span.start).unwrap_or(trimmed).trim();
         if !alias.is_empty() {
             return alias.to_string();

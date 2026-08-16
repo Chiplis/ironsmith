@@ -1,9 +1,9 @@
 use crate::model::ParsedCardAst;
 
-pub(crate) mod legality_materialization;
-pub(crate) mod selection_materialization;
 pub(crate) mod activated_ability_materialization;
 pub(crate) mod cost_materialization;
+pub(crate) mod legality_materialization;
+pub(crate) mod selection_materialization;
 pub(crate) mod static_ability_materialization;
 pub(crate) mod structured_ability_materialization;
 pub(crate) mod triggered_ability_materialization;

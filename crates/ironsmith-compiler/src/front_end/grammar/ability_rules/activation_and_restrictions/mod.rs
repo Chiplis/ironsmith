@@ -38,8 +38,8 @@ use crate::cost::TotalCost;
 use crate::effect::{ChoiceCount, Effect, Until, Value};
 use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::object::CounterType;
 use crate::model::ast::TriggerIntroSurfaceAst;
+use crate::object::CounterType;
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
@@ -53,7 +53,7 @@ pub(crate) mod choice_object_clauses;
 pub(crate) mod keyword_action_costs;
 #[path = "keyword_activated_lines.rs"]
 pub(crate) mod keyword_activated_lines;
-#[path = "../../front_end/grammar/trigger_clauses/semantic.rs"]
+#[path = "../../trigger_clauses/semantic.rs"]
 pub(crate) mod trigger_clause_core;
 pub(crate) mod trigger_subject_filters;
 

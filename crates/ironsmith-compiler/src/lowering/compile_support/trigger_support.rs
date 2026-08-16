@@ -10,7 +10,99 @@ use crate::triggers::Trigger;
 use super::LoweredEffects;
 
 fn one_or_more_subject_description(filter: &crate::target::ObjectFilter) -> String {
-    format!("one or more {}", filter.description())
+    fn has_subtype_named(filter: &crate::target::ObjectFilter, word: &str) -> bool {
+        filter
+            .subtypes
+            .iter()
+            .any(|subtype| subtype.to_string().eq_ignore_ascii_case(word))
+            || filter
+                .any_of
+                .iter()
+                .any(|branch| has_subtype_named(branch, word))
+    }
+
+    let pluralize_word = |word: &str| {
+        let lower = word.to_ascii_lowercase();
+        let plural = match lower.as_str() {
+            "elf" => "elves".to_string(),
+            "dwarf" => "dwarves".to_string(),
+            "wolf" => "wolves".to_string(),
+            "werewolf" => "werewolves".to_string(),
+            "mouse" => "mice".to_string(),
+            "plains" | "urzas" | "myr" | "merfolk" | "equipment" => word.to_string(),
+            _ if lower.ends_with('y')
+                && lower.len() > 1
+                && !matches!(
+                    lower.as_bytes().get(lower.len() - 2).copied(),
+                    Some(b'a' | b'e' | b'i' | b'o' | b'u')
+                ) =>
+            {
+                format!("{}ies", &word[..word.len() - 1])
+            }
+            _ if lower.ends_with('s')
+                || lower.ends_with('x')
+                || lower.ends_with('z')
+                || lower.ends_with("ch")
+                || lower.ends_with("sh") =>
+            {
+                format!("{word}es")
+            }
+            _ => format!("{word}s"),
+        };
+        if word.chars().next().is_some_and(char::is_uppercase) {
+            let mut chars = plural.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        } else {
+            plural
+        }
+    };
+    let description = filter
+        .description()
+        .split_whitespace()
+        .map(|word| {
+            let bare_word = word.trim_end_matches(',');
+            let punctuation = &word[bare_word.len()..];
+            let is_subtype = has_subtype_named(filter, bare_word);
+            if is_subtype
+                || matches!(
+                    bare_word,
+                    "artifact"
+                        | "battle"
+                        | "card"
+                        | "creature"
+                        | "enchantment"
+                        | "land"
+                        | "permanent"
+                        | "planeswalker"
+                        | "player"
+                        | "source"
+                        | "spell"
+                        | "token"
+                )
+            {
+                format!("{}{punctuation}", pluralize_word(bare_word))
+            } else {
+                word.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let description = description
+        .strip_prefix("a ")
+        .or_else(|| description.strip_prefix("an "))
+        .unwrap_or(&description);
+    let description = if filter.other {
+        description
+            .strip_prefix("another ")
+            .map(|rest| format!("other {rest}"))
+            .unwrap_or_else(|| description.to_string())
+    } else {
+        description.to_string()
+    };
+    format!("one or more {description}")
 }
 
 fn damage_source_description(
@@ -84,7 +176,10 @@ fn describe_damage_to_object_and_player_union(
     {
         return None;
     }
-    let target_description = target.description();
+    let target_description = one_or_more_subject_description(target);
+    let target_description = target_description
+        .strip_prefix("one or more ")
+        .unwrap_or(&target_description);
     Some(format!(
         "Whenever {} deals damage to one or more {target_description} and/or players",
         damage_source_description(source, source_surface),

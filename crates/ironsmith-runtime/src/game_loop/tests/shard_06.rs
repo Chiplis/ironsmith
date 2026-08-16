@@ -922,7 +922,7 @@ pub(super) fn priority_loop_resolves_next_spell_granted_protection_after_counter
 #[test]
 pub(super) fn test_active_target_assignments_modal_target_slot_tracks_chosen_mode_without_rechecking_legality()
  {
-    let effects = vec![Effect::choose_one(vec![
+    let effects = [Effect::choose_one(vec![
         crate::effect::EffectMode {
             source_text: "Counter target spell".to_string(),
             effects: vec![Effect::counter(ChooseSpec::spell())],

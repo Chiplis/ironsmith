@@ -37,6 +37,12 @@ fn synthetic_sentence_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
     tokens
 }
 
+fn is_direct_alternative_cost_keyword_line(line: &PreprocessedLine) -> Result<bool, CardTextError> {
+    Ok(super::super::grammar::shared_util::alternative_cost_lines::
+        parse_you_may_rather_than_spell_cost(&line.tokens, &line.info.raw_line)?
+        .is_some())
+}
+
 fn parse_static_line_from_tokens(
     line: &PreprocessedLine,
     parse_tokens: Vec<OwnedLexToken>,
@@ -47,20 +53,31 @@ fn parse_static_line_from_tokens(
 pub(super) fn run_trailing_keyword_activation_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
+        return Ok(Some(result));
+    }
     try_parse_trailing_keyword_activation_dispatch(&ctx.preprocessed.builder, ctx.idx, ctx.line)
 }
 
 pub(super) fn run_labeled_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if is_sticker_sheet_ticket_marker_line(ctx) {
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Static(sticker_sheet_ticket_marker_static_line(ctx)),
-            ctx.idx + 1,
-        )));
+    if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
+        return Ok(Some(result));
     }
 
     try_parse_labeled_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
+}
+
+pub(super) fn sticker_sheet_ticket_marker_result(
+    ctx: &LineDispatchContext<'_>,
+) -> Option<LineDispatchResult> {
+    is_sticker_sheet_ticket_marker_line(ctx).then(|| {
+        LineDispatchResult::single(
+            RewriteLineCst::Static(sticker_sheet_ticket_marker_static_line(ctx)),
+            ctx.idx + 1,
+        )
+    })
 }
 
 fn sticker_sheet_ticket_marker_static_line(ctx: &LineDispatchContext<'_>) -> StaticLineCst {
@@ -86,7 +103,7 @@ fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {
             PreprocessedItem::Metadata(metadata)
                 if matches!(
                     &metadata.value,
-                    crate::MetadataLine::TypeLine(value)
+                    crate::model::facts::MetadataLine::TypeLine(value)
                         if value.eq_ignore_ascii_case("Stickers")
                 )
         )
@@ -100,6 +117,9 @@ fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {
 pub(super) fn run_triggered_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
+        return Ok(Some(result));
+    }
     try_parse_triggered_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
 }
 
@@ -904,6 +924,9 @@ fn alternative_cost_parse_tokens(
 pub(super) fn run_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
+        return Ok(Some(result));
+    }
     if super::super::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(
         &ctx.line.tokens,
     )
@@ -1142,7 +1165,7 @@ pub(super) fn run_activation_line_family(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn partner_variant_separator_detection_uses_tokens() {
@@ -1254,7 +1277,7 @@ mod tests {
             "keyword discovery must not claim a typed conditional static ladder: {cst:#?}"
         );
 
-        let compiled = crate::runtime_backend::compile_card_text(
+        let compiled = crate::compile_card_text(
             CardDefinitionBuilder::new(crate::CardId::new(), "Animus of Predation")
                 .card_types(vec![crate::types::CardType::Creature]),
             oracle,
@@ -1471,11 +1494,11 @@ mod tests {
             "{debug}"
         );
 
-        let compiled = crate::runtime_backend::compile_card_text(
+        let compiled = crate::compile_card_text(
             CardDefinitionBuilder::new(crate::CardId::new(), "Attached Restriction Test")
                 .card_types(vec![crate::types::CardType::Enchantment])
                 .subtypes(vec![crate::types::Subtype::Aura]),
-            &format!(
+            format!(
                 "Enchant creature\n{restriction}\n{{1}}{{U}}: Return this Aura to its owner's hand."
             ),
             false,
@@ -1594,6 +1617,24 @@ fn is_lose_game_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
 pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if run_keyword_line_family(ctx)?.is_some() || run_start_your_engines_line_family(ctx)?.is_some()
+    {
+        return Ok(None);
+    }
+    // Dedicated trigger and activation families own their complete source
+    // lines. The statement grammar intentionally understands many of their
+    // effect bodies, but must not advertise those partial interpretations as
+    // competing top-level registry matches.
+    if run_triggered_line_family(ctx)?.is_some() || run_activation_line_family(ctx)?.is_some() {
+        return Ok(None);
+    }
+    // A direct alternative-cast-cost sentence is a keyword line.  The broad
+    // statement parsers can also interpret its leading `you may pay` as an
+    // effect, but that interpretation drops the casting-method semantics and
+    // must not become a second registry candidate.
+    if is_direct_alternative_cost_keyword_line(ctx.line)? {
+        return Ok(None);
+    }
     // A token creation can contain quoted static-looking abilities.  Claim
     // the complete create sentence before the ability/static probes classify
     // one of those quoted rules as the host card's own ability.
@@ -1656,11 +1697,7 @@ pub(super) fn run_statement_probe_line_family(
     {
         return Ok(None);
     }
-    if crate::families::keyword_static::parse_double_counters_replacement_line(
-        &ctx.line.tokens,
-    )?
-    .is_some()
-    {
+    if crate::keyword_static::parse_double_counters_replacement_line(&ctx.line.tokens)?.is_some() {
         return Ok(None);
     }
     // "As this artifact enters, you may have it become a copy of ..." has a
@@ -1676,11 +1713,7 @@ pub(super) fn run_statement_probe_line_family(
     // line before the typed static replacement family sees it.  Probe the
     // typed shape here as well so malformed variants fail instead of being
     // accepted as a partial "enters tapped" statement.
-    if super::super::families::keyword_static::parse_pay_life_or_enter_tapped_line(
-        &ctx.line.tokens,
-    )?
-    .is_some()
-    {
+    if crate::keyword_static::parse_pay_life_or_enter_tapped_line(&ctx.line.tokens)?.is_some() {
         return Ok(None);
     }
     if let Some(split_result) =
@@ -1692,9 +1725,7 @@ pub(super) fn run_statement_probe_line_family(
     let linked_preference = line_grammar::parse_linked_statement_preference(&ctx.line.tokens);
     let static_preference = line_grammar::parse_statement_static_preference(&ctx.line.tokens);
     if (matches!(
-        crate::grammar::structure::classify_statement_line_family_lexed(
-            &ctx.line.tokens
-        ),
+        crate::grammar::structure::classify_statement_line_family_lexed(&ctx.line.tokens),
         Some(
             crate::grammar::structure::StatementLineFamily::Divvy
                 | crate::grammar::structure::StatementLineFamily::PactNextUpkeep
@@ -1718,8 +1749,11 @@ pub(super) fn run_statement_probe_line_family(
         && !is_lose_game_replacement_static_line(&ctx.line.tokens)
         && let Some(mut statement_line) = parse_statement_line_cst(ctx.line)?
     {
-        statement_line.info.semantic_facts.statement.presentation_label =
-            activated_presentation_from_preprocessed_line(ctx.line);
+        statement_line
+            .info
+            .semantic_facts
+            .statement
+            .presentation_label = activated_presentation_from_preprocessed_line(ctx.line);
         let (statement_line, next_idx) = extend_statement_line_with_result_followups(
             &ctx.preprocessed.items,
             ctx.idx,
@@ -1736,6 +1770,24 @@ pub(super) fn run_statement_probe_line_family(
 pub(super) fn run_static_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if run_keyword_line_family(ctx)?.is_some() || run_start_your_engines_line_family(ctx)?.is_some()
+    {
+        return Ok(None);
+    }
+    // Activated and triggered source lines may contain text that the broad
+    // static grammar can parse after the cost/trigger prefix.  Their dedicated
+    // families own the complete line, so that partial static interpretation is
+    // never an independent registry candidate.
+    if run_triggered_line_family(ctx)?.is_some() || run_activation_line_family(ctx)?.is_some() {
+        return Ok(None);
+    }
+    // The statement probe already performs the static-vs-statement ownership
+    // checks (including typed static preemption). If it accepts the complete
+    // line, a later permissive static parse is an overlapping fallback, not a
+    // second semantic interpretation.
+    if run_statement_probe_line_family(ctx)?.is_some() {
+        return Ok(None);
+    }
     match parse_static_line_cst(ctx.line) {
         Ok(static_line) => Ok(static_line.map(|static_line| {
             LineDispatchResult::single(RewriteLineCst::Static(static_line), ctx.idx + 1)
@@ -1759,6 +1811,35 @@ pub(super) fn run_static_line_family(
 pub(super) fn run_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if run_keyword_line_family(ctx)?.is_some() || run_start_your_engines_line_family(ctx)?.is_some()
+    {
+        return Ok(None);
+    }
+    if run_triggered_line_family(ctx)?.is_some() || run_activation_line_family(ctx)?.is_some() {
+        return Ok(None);
+    }
+    if is_direct_alternative_cost_keyword_line(ctx.line)? {
+        return Ok(None);
+    }
+    // This is the permissive fallback behind the guarded statement probe.
+    // If the probe already owns the line, returning the same statement a
+    // second time creates a false registry ambiguity; specialized probe
+    // results (including linked followups) must also keep their precedence.
+    if run_statement_probe_line_family(ctx)?.is_some() {
+        return Ok(None);
+    }
+    // A successful typed static parse owns permanent rules text.  The final
+    // statement family is intentionally permissive and can often reinterpret
+    // the same words as a one-shot effect; do not advertise that fallback as
+    // a second registry meaning.  Instants and sorceries retain the explicit
+    // statement-before-static exception used by the guarded probe above.
+    if !should_prefer_statement_before_static_for_nonpermanent_spell(
+        ctx.preprocessed,
+        &ctx.line.tokens,
+    ) && matches!(parse_static_line_cst(ctx.line), Ok(Some(_)))
+    {
+        return Ok(None);
+    }
     Ok(
         parse_statement_line_cst(ctx.line)?.map(|mut statement_line| {
             statement_line
@@ -1801,6 +1882,10 @@ pub(super) fn run_leading_unless_statement_line_family(
 pub(super) fn run_colon_nonactivation_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if run_activation_line_family(ctx)?.is_some() {
+        return Ok(None);
+    }
+
     Ok(
         parse_colon_nonactivation_statement_fallback(ctx.line)?.map(|statement_line| {
             LineDispatchResult::single(RewriteLineCst::Statement(statement_line), ctx.idx + 1)
@@ -1925,7 +2010,7 @@ mod ticket_marker_tests {
     use super::*;
 
     fn compiled_sticker_marker_labels(name: &str, text: &str) -> Vec<String> {
-        let compiled = crate::runtime_backend::compile_card_text(
+        let compiled = crate::compile_card_text(
             CardDefinitionBuilder::new(crate::ids::CardId::new(), name),
             text,
             false,

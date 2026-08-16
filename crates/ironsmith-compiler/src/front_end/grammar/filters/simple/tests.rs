@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::lexer::lex_line;
+use crate::lexer::lex_line;
 
 fn parse(raw: &str) -> ObjectFilter {
     let tokens = lex_line(raw, 0).expect("lex simple object-filter fixture");
@@ -261,9 +261,9 @@ fn wave_of_vitriol_preserves_nonbasic_on_only_the_land_arm() {
         0,
     )
     .unwrap();
-    let filter = crate::runtime_backend::grammar::filters::
-        parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
-        .expect("branch-scoped card-type list should parse");
+    let filter =
+        crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
+            .expect("branch-scoped card-type list should parse");
 
     assert_eq!(filter.zone, Some(Zone::Battlefield));
     assert_eq!(filter.controller, Some(PlayerFilter::IteratedPlayer));
@@ -346,9 +346,9 @@ fn spell_markers_preserve_stack_inference() {
 #[test]
 fn coordinated_spell_and_ability_uses_the_complete_stack_domain() {
     let tokens = lex_line("spell and ability your opponents control", 0).unwrap();
-    let filter = crate::runtime_backend::grammar::filters::
-        parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
-        .expect("coordinated stack domain should parse");
+    let filter =
+        crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
+            .expect("coordinated stack domain should parse");
 
     assert_eq!(filter.zone, Some(Zone::Stack));
     assert_eq!(filter.controller, Some(PlayerFilter::Opponent));

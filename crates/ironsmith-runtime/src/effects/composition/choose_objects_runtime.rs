@@ -254,10 +254,10 @@ fn same_name_reference_name(
     ctx: &ExecutionContext,
     filter: &ObjectFilter,
 ) -> Option<String> {
-    if let Some(object_id) = ctx.iteration.iterated_object {
-        if let Some(object) = game.object(object_id) {
-            return Some(object.name.to_string());
-        }
+    if let Some(object_id) = ctx.iteration.iterated_object
+        && let Some(object) = game.object(object_id)
+    {
+        return Some(object.name.to_string());
     }
 
     let constraint = filter.tagged_constraints.iter().find(|constraint| {
@@ -1500,10 +1500,8 @@ pub(crate) fn run_choose_objects(
             } else {
                 ctx.tag_objects(effect.tag.clone(), snapshots);
             }
-        } else {
-            if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
-                ctx.clear_object_tag(effect.tag.as_str());
-            }
+        } else if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
+            ctx.clear_object_tag(effect.tag.as_str());
         }
 
         let outcome = EffectOutcome::with_objects(outcome_objects.clone())

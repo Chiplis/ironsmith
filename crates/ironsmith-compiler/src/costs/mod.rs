@@ -112,43 +112,40 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
         return true;
     }
 
-    if let Some(tagged) = effect.downcast_ref::<effects::TaggedEffect>() {
-        if is_payment_effect(&tagged.effect) {
-            return true;
-        }
+    if let Some(tagged) = effect.downcast_ref::<effects::TaggedEffect>()
+        && is_payment_effect(&tagged.effect)
+    {
+        return true;
     }
-    if let Some(sequence) = effect.downcast_ref::<effects::SequenceEffect>() {
-        if sequence.effects.iter().all(is_payment_effect) {
-            return true;
-        }
+    if let Some(sequence) = effect.downcast_ref::<effects::SequenceEffect>()
+        && sequence.effects.iter().all(is_payment_effect)
+    {
+        return true;
     }
-    if let Some(with_id) = effect.downcast_ref::<effects::WithIdEffect>() {
-        if is_payment_effect(&with_id.effect) {
-            return true;
-        }
+    if let Some(with_id) = effect.downcast_ref::<effects::WithIdEffect>()
+        && is_payment_effect(&with_id.effect)
+    {
+        return true;
     }
-    if let Some(may) = effect.downcast_ref::<effects::MayEffect<crate::effect::Effect>>() {
-        if may.effects.iter().all(is_payment_effect) {
-            return true;
-        }
+    if let Some(may) = effect.downcast_ref::<effects::MayEffect<crate::effect::Effect>>()
+        && may.effects.iter().all(is_payment_effect)
+    {
+        return true;
     }
     if let Some(unless) =
         effect.downcast_ref::<effects::UnlessActionEffect<crate::effect::Effect>>()
+        && unless.effects.iter().all(is_payment_effect)
+        && unless.alternative.iter().all(is_payment_effect)
     {
-        if unless.effects.iter().all(is_payment_effect)
-            && unless.alternative.iter().all(is_payment_effect)
-        {
-            return true;
-        }
+        return true;
     }
-    if let Some(choice) = effect.downcast_ref::<effects::ChooseModeEffect>() {
-        if choice
+    if let Some(choice) = effect.downcast_ref::<effects::ChooseModeEffect>()
+        && choice
             .modes
             .iter()
             .all(|mode| mode.effects.iter().all(is_payment_effect))
-        {
-            return true;
-        }
+    {
+        return true;
     }
 
     false

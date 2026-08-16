@@ -141,16 +141,16 @@ fn resolve_fixed_target(
     ctx: &ExecutionContext,
     spec: &ChooseSpec,
 ) -> Result<Target, ExecutionError> {
-    if let Ok(objects) = resolve_objects_from_spec(game, spec, ctx) {
-        if let Some(id) = objects.first() {
-            return Ok(Target::Object(*id));
-        }
+    if let Ok(objects) = resolve_objects_from_spec(game, spec, ctx)
+        && let Some(id) = objects.first()
+    {
+        return Ok(Target::Object(*id));
     }
 
-    if let Ok(players) = resolve_players_from_spec(game, spec, ctx) {
-        if let Some(id) = players.first() {
-            return Ok(Target::Player(*id));
-        }
+    if let Ok(players) = resolve_players_from_spec(game, spec, ctx)
+        && let Some(id) = players.first()
+    {
+        return Ok(Target::Player(*id));
     }
 
     Err(ExecutionError::InvalidTarget)
@@ -207,7 +207,7 @@ fn resolve_retarget_objects(
                 chooser,
                 Some(ctx.source),
                 description,
-                candidates.drain(..).collect(),
+                std::mem::take(&mut candidates),
                 min,
                 max,
             );

@@ -20,11 +20,11 @@ pub(crate) fn choose_exact_target_type(
     Some(choose.tag.as_str())
 }
 
-pub(crate) fn exact_counted_target_filter<'a>(
-    spec: &'a ChooseSpec,
+pub(crate) fn exact_counted_target_filter(
+    spec: &ChooseSpec,
     exact: usize,
     target_context: bool,
-) -> Option<&'a crate::filter::ObjectFilter> {
+) -> Option<&crate::filter::ObjectFilter> {
     fn object_filter(spec: &ChooseSpec) -> Option<&crate::filter::ObjectFilter> {
         match spec.unhinted() {
             ChooseSpec::Target(inner) => object_filter(inner),
@@ -1629,7 +1629,7 @@ pub(crate) fn render_exile_top_then_put_from_among_onto_battlefield(
     {
         if choose.chooser != PlayerFilter::You
             || choose.zone != Some(Zone::Exile)
-            || choose.additional_zones.len() > 0
+            || !choose.additional_zones.is_empty()
             || choose.is_search
             || choose.reveal
         {
@@ -2156,10 +2156,10 @@ pub(crate) fn valid_revealed_choice<'a>(
     {
         return None;
     }
-    if let Some(chosen_tag) = chosen_tag {
-        if choose.tag != *chosen_tag || !choose_excludes_chosen_tag(choose, chosen_tag) {
-            return None;
-        }
+    if let Some(chosen_tag) = chosen_tag
+        && (choose.tag != *chosen_tag || !choose_excludes_chosen_tag(choose, chosen_tag))
+    {
+        return None;
     }
     Some((revealed_choice_label(choose)?, &choose.tag))
 }

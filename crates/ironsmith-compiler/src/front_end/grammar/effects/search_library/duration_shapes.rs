@@ -162,7 +162,7 @@ pub(crate) fn parse_search_restriction_duration_shape_lexed(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

@@ -1,3 +1,4 @@
+use crate::TagKey;
 use crate::cards::builders::{
     ADDITIONAL_COST_OBJECT_TAG, CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, IT_TAG, IdGenContext,
     IfResultPredicate, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
@@ -8,11 +9,8 @@ use crate::filter::TaggedOpbjectRelation;
 use crate::target::ChooseSpec;
 use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
-use crate::references::legacy_tag_symbol_bridge::legacy_tag;
 use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectAction, ValueSurfaceHint};
 
-#[cfg(test)]
-use crate::TagKey;
 #[cfg(test)]
 use crate::cards::builders::{
     ObjectRefAst, PreventNextTimeDamageSourceAst, RetargetModeAst, SubjectVerbRoleAst,
@@ -36,7 +34,7 @@ use super::reference_helpers::{
     is_sacrificed_object_reference_tag, is_you_player_filter, object_filter_as_tagged_reference,
     resolve_it_tag, resolve_non_target_player_filter, resolve_target_spec_with_choices,
 };
-use super::reference_model::{
+use crate::model::reference_state::{
     AnnotatedEffect, AnnotatedEffectSequence, RefState, ReferenceEnv, ReferenceFrame,
     ReferenceImports,
 };
@@ -312,10 +310,9 @@ fn track_effect_player(
 
 fn predicate_bound_player_filter(predicate: &PredicateAst) -> Option<PlayerFilter> {
     match predicate {
-        PredicateAst::PlayerWouldBeginExtraTurn { player } => match player {
-            PlayerAst::Opponent => Some(PlayerFilter::Opponent),
-            _ => None,
-        },
+        PredicateAst::PlayerWouldBeginExtraTurn {
+            player: PlayerAst::Opponent,
+        } => Some(PlayerFilter::Opponent),
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             predicate_bound_player_filter(left).or_else(|| predicate_bound_player_filter(right))
         }
@@ -452,7 +449,7 @@ fn should_alias_followup_player_to_chosen_owner(
 ) -> bool {
     filter.zone == Some(crate::zone::Zone::Graveyard)
         && filter.owner == Some(PlayerFilter::Opponent)
-        && chooser.map_or(true, is_you_player_filter)
+        && chooser.is_none_or(is_you_player_filter)
 }
 
 fn maybe_tag_target(
@@ -626,6 +623,11 @@ fn advance_reference_frame_for_effect(
     frame: &mut ReferenceFrame,
 ) -> Result<(), CardTextError> {
     match effect {
+        EffectAst::DocumentProgram(program) => {
+            for statement in &program.statements {
+                advance_reference_frames(&statement.effects, id_gen, frame)?;
+            }
+        }
         EffectAst::PlaySubgame { nonwinner_effects } => {
             advance_effects_in_iterated_player_context(nonwinner_effects, id_gen, frame, None)?;
         }
@@ -666,6 +668,10 @@ fn advance_reference_frame_for_effect(
                 }
             }
         }
+        EffectAst::Iteration(iteration) => {
+            advance_reference_frames(&iteration.body, id_gen, frame)?;
+        }
+        EffectAst::Vote(_) => {}
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
@@ -864,8 +870,8 @@ fn advance_reference_frame_for_effect(
                     if matches!(spec.base(), ChooseSpec::Source) {
                         frame.source_object_antecedent = true;
                     }
-                    if frame.auto_tag_object_targets {
-                        if choose_spec_targets_object(&spec) {
+                    if frame.auto_tag_object_targets
+                        && choose_spec_targets_object(&spec) {
                             if let ChooseSpec::Tagged(tag) = spec.base()
                                 && (is_sentence_helper_consult_match_tag(tag.as_str())
                                     || is_sentence_helper_exiled_collection_tag(tag.as_str()))
@@ -889,7 +895,6 @@ fn advance_reference_frame_for_effect(
                                     Some(crate::tag::SOURCE_EXILED_TAG.to_string());
                             }
                         }
-                    }
                     track_target_player(target, frame);
                 }
                 SubjectVerbActionAst::ExileAll { filter, .. } => {
@@ -1209,7 +1214,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::CopySpell { target, player, .. }
                 | SubjectVerbActionAst::CopySpellForEachTarget { target, player, .. } => {
                     let _ = target;
-                    track_effect_player(player.clone(), frame, true, true)?;
+                    track_effect_player(*player, frame, true, true)?;
                     // Copying does not change the ordinary pronoun
                     // antecedent: in “copy target spell, then return it,”
                     // `it` is still the original targeted spell. Explicit
@@ -1561,9 +1566,7 @@ fn advance_reference_frame_for_effect(
                     chosen_tag.as_str(),
                 )));
             }
-            if tag.as_str()
-                != crate::condition_antecedent::CONDITION_COLLECTION_CHOICE_TAG
-            {
+            if tag.as_str() != crate::condition_antecedent::CONDITION_COLLECTION_CHOICE_TAG {
                 frame.last_object_tag = Some(chosen_tag);
             }
             frame.last_it_choice_is_set = tag.as_str() == IT_TAG;
@@ -1629,7 +1632,7 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::May { effects } => {
-            advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
+            advance_effects_preserving_last_effect(effects, id_gen, frame)?;
         }
         EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilNextCleanupStep { effects, .. }
@@ -1640,23 +1643,23 @@ fn advance_reference_frame_for_effect(
         | EffectAst::DelayedTriggerForDuration { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. } => {
-            advance_delayed_effects_preserving_antecedents(&effects, id_gen, frame)?;
+            advance_delayed_effects_preserving_antecedents(effects, id_gen, frame)?;
         }
         EffectAst::MayByPlayer { player, effects } => {
             // The named decider is also the actor for references inside the
             // optional instruction. Bind it before walking the body so a
             // relative filter cannot capture an older player antecedent.
             // Re-track it afterward to keep that actor as the exported player.
-            track_effect_player(player.clone(), frame, true, true)?;
-            advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
-            track_effect_player(player.clone(), frame, true, true)?;
+            track_effect_player(*player, frame, true, true)?;
+            advance_effects_preserving_last_effect(effects, id_gen, frame)?;
+            track_effect_player(*player, frame, true, true)?;
         }
         EffectAst::DelayedUntilNextUntapStep { player, effects }
         | EffectAst::DelayedUntilNextUpkeep { player, effects }
         | EffectAst::DelayedUntilNextDrawStep { player, effects }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { player, effects } => {
-            advance_delayed_effects_preserving_antecedents(&effects, id_gen, frame)?;
-            track_effect_player(player.clone(), frame, true, true)?;
+            advance_delayed_effects_preserving_antecedents(effects, id_gen, frame)?;
+            track_effect_player(*player, frame, true, true)?;
         }
         EffectAst::Conditional {
             predicate,
@@ -1674,7 +1677,7 @@ fn advance_reference_frame_for_effect(
             if let Some(player_filter) = predicate_bound_player_filter(predicate) {
                 true_frame.last_player_filter = Some(player_filter);
             }
-            advance_reference_frames(&if_true, id_gen, &mut true_frame)?;
+            advance_reference_frames(if_true, id_gen, &mut true_frame)?;
             if if_false.is_empty() {
                 *frame = true_frame;
             } else {
@@ -1682,7 +1685,7 @@ fn advance_reference_frame_for_effect(
                 if let Some(player_filter) = predicate_bound_player_filter(predicate) {
                     false_frame.last_player_filter = Some(player_filter);
                 }
-                advance_reference_frames(&if_false, id_gen, &mut false_frame)?;
+                advance_reference_frames(if_false, id_gen, &mut false_frame)?;
                 frame.last_object_tag = saved.last_object_tag;
                 frame.last_player_filter = saved.last_player_filter;
                 frame.iterated_player = saved.iterated_player;
@@ -1694,7 +1697,7 @@ fn advance_reference_frame_for_effect(
             if let Some(player_filter) = predicate_bound_player_filter(predicate) {
                 branch_frame.last_player_filter = Some(player_filter);
             }
-            advance_reference_frames(&effects, id_gen, &mut branch_frame)?;
+            advance_reference_frames(effects, id_gen, &mut branch_frame)?;
             *frame = branch_frame;
         }
         EffectAst::ResolvedIfResult {
@@ -1706,7 +1709,7 @@ fn advance_reference_frame_for_effect(
             let saved_bind = frame.bind_unbound_x_to_last_effect;
             frame.last_effect_id = Some(*condition);
             frame.bind_unbound_x_to_last_effect = predicate != &IfResultPredicate::AcceptedChoice;
-            advance_reference_frames(&effects, id_gen, frame)?;
+            advance_reference_frames(effects, id_gen, frame)?;
             frame.last_effect_id = saved_last_effect;
             frame.bind_unbound_x_to_last_effect = saved_bind;
         }
@@ -1717,7 +1720,7 @@ fn advance_reference_frame_for_effect(
             let saved_bind = frame.bind_unbound_x_to_last_effect;
             frame.last_effect_id = Some(*condition);
             frame.bind_unbound_x_to_last_effect = true;
-            advance_reference_frames(&effects, id_gen, frame)?;
+            advance_reference_frames(effects, id_gen, frame)?;
             frame.last_effect_id = saved_last_effect;
             frame.bind_unbound_x_to_last_effect = saved_bind;
         }
@@ -1727,7 +1730,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::AnyPlayerMay { effects, .. }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachTaggedPlayer { effects, .. } => {
-            advance_effects_in_iterated_player_context(&effects, id_gen, frame, None)?;
+            advance_effects_in_iterated_player_context(effects, id_gen, frame, None)?;
         }
         EffectAst::ForEachObject { effects, .. } => {
             let saved = frame.clone();
@@ -1740,7 +1743,7 @@ fn advance_reference_frame_for_effect(
             }
             nested.last_object_tag = Some(IT_TAG.to_string());
             nested.iterated_object = true;
-            advance_reference_frames(&effects, id_gen, &mut nested)?;
+            advance_reference_frames(effects, id_gen, &mut nested)?;
             if saved.last_object_tag != nested.last_object_tag {
                 frame.last_object_tag = nested.last_object_tag;
             }
@@ -1754,7 +1757,7 @@ fn advance_reference_frame_for_effect(
             } else {
                 Some(tag.as_str().to_string())
             };
-            advance_effects_in_iterated_player_context(&effects, id_gen, frame, tagged_object)?;
+            advance_effects_in_iterated_player_context(effects, id_gen, frame, tagged_object)?;
         }
         EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { tag, effects, .. } => {
             let tagged_object = if tag.as_str() == IT_TAG {
@@ -1762,7 +1765,7 @@ fn advance_reference_frame_for_effect(
             } else {
                 Some(tag.as_str().to_string())
             };
-            advance_effects_in_iterated_player_context(&effects, id_gen, frame, tagged_object)?;
+            advance_effects_in_iterated_player_context(effects, id_gen, frame, tagged_object)?;
         }
         EffectAst::MoveTaggedGroupToZone { .. } => {
             // Moves an existing tagged group; introduces no new references and
@@ -1782,10 +1785,10 @@ fn advance_reference_frame_for_effect(
             }
         }
         EffectAst::RepeatProcess { effects, .. } => {
-            advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
+            advance_effects_preserving_last_effect(effects, id_gen, frame)?;
         }
         EffectAst::RepeatEffects { effects, .. } => {
-            advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
+            advance_effects_preserving_last_effect(effects, id_gen, frame)?;
         }
         EffectAst::BidLife { winner_effects, .. } => {
             advance_effects_preserving_last_effect(winner_effects, id_gen, frame)?;
@@ -1852,7 +1855,8 @@ fn advance_reference_frame_for_effect(
             // introduced while lowering the nested action.
             frame.last_object_tag = Some(tag.as_str().to_string());
         }
-        EffectAst::RepeatThisProcess
+        EffectAst::Clause(_)
+        | EffectAst::RepeatThisProcess
         | EffectAst::SolveCase
         | EffectAst::RepeatThisProcessMay
         | EffectAst::RepeatThisProcessOnce
@@ -1975,8 +1979,8 @@ fn annotate_effect_sequence_with_env_internal(
         resolution_state.last_exile_cost_tag_index = resolution_state
             .last_exile_cost_tag_index
             .or(imported_exile_cost_tag_index);
-        let mut effect =
-            resolve_effect_references_in_effect(effect.clone(), id_gen, resolution_state)?;
+        let mut effect = effect.clone();
+        resolve_effect_references_in_effect(&mut effect, id_gen, resolution_state)?;
         // Some surface parsers initially spell "the exiled card" as the
         // ordinary `it` target and only resolve it to the source-linked exile
         // tag while resolving the action. If the trailing `it` predicate was
@@ -3106,14 +3110,40 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
 }
 
 fn resolve_effect_references_in_effect(
-    mut effect: EffectAst,
+    effect: &mut EffectAst,
     id_gen: &mut IdGenContext,
     state: EffectReferenceResolutionState,
-) -> Result<EffectAst, CardTextError> {
+) -> Result<(), CardTextError> {
+    if let EffectAst::Coordination(coordination) = effect
+        && coordination.kind != crate::model::CoordinationKindAst::Disjunction
+    {
+        // Ordered coordination members share one result-reference scope.
+        // Resolving each member as an isolated child loses dependencies such
+        // as “an opponent discards any number of cards, then draws that many
+        // cards”. Flatten only for reference resolution, then restore the
+        // authored member boundaries for lowering and rendering.
+        let lengths = coordination
+            .members
+            .iter()
+            .map(|member| member.effects.len())
+            .collect::<Vec<_>>();
+        let flattened = coordination
+            .members
+            .iter()
+            .flat_map(|member| member.effects.iter().cloned())
+            .collect::<Vec<_>>();
+        let resolved = resolve_effect_sequence_references_with_state(&flattened, id_gen, state)?;
+        let mut resolved = resolved.into_iter();
+        for (member, length) in coordination.members.iter_mut().zip(lengths) {
+            member.effects = resolved.by_ref().take(length).collect();
+        }
+        return Ok(());
+    }
+
     if let EffectAst::IfResult {
         predicate: IfResultPredicate::PriorEffectResult(surface),
         effects,
-    } = &effect
+    } = &*effect
         && state.last_effect_id.is_none()
         && surface.action == PriorEffectAction::Sacrificed
         && surface.actor == ironsmith_core::PriorEffectResultActor::Passive
@@ -3130,9 +3160,9 @@ fn resolve_effect_references_in_effect(
         // `TaggedObjectMatches` represents exactly. A compatible sacrifice
         // inside the resolution program still receives an EffectId and wins
         // through the ordinary result path above.
-        effect = EffectAst::Conditional {
+        *effect = EffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
-                legacy_tag(format!("sacrifice_cost_{tag_index}")),
+                TagKey::new(format!("sacrifice_cost_{tag_index}")),
                 surface.filter.clone(),
             ),
             if_true: effects.clone(),
@@ -3141,6 +3171,8 @@ fn resolve_effect_references_in_effect(
     }
 
     if let EffectAst::IfResult { predicate, effects } = effect {
+        let predicate = predicate.clone();
+        let effects = std::mem::take(effects);
         let condition = if if_result_predicate_is_searched_library(&predicate) {
             state.last_library_search_effect_id.or(state.last_effect_id)
         } else {
@@ -3164,14 +3196,17 @@ fn resolve_effect_references_in_effect(
                 bind_unbound_x_to_last_effect: predicate != IfResultPredicate::AcceptedChoice,
             },
         )?;
-        return Ok(EffectAst::ResolvedIfResult {
+        *effect = EffectAst::ResolvedIfResult {
             condition,
             predicate,
             effects,
-        });
+        };
+        return Ok(());
     }
 
     if let EffectAst::WhenResult { predicate, effects } = effect {
+        let predicate = predicate.clone();
+        let effects = std::mem::take(effects);
         let condition = state.last_effect_id.ok_or_else(|| {
             CardTextError::ParseError("missing prior effect for when clause".to_string())
         })?;
@@ -3190,14 +3225,15 @@ fn resolve_effect_references_in_effect(
                 bind_unbound_x_to_last_effect: true,
             },
         )?;
-        return Ok(EffectAst::ResolvedWhenResult {
+        *effect = EffectAst::ResolvedWhenResult {
             condition,
             predicate,
             effects,
-        });
+        };
+        return Ok(());
     }
 
-    if let EffectAst::SubjectVerb(subject_verb) = &effect
+    if let EffectAst::SubjectVerb(subject_verb) = &*effect
         && let SubjectVerbActionAst::PumpByLastEffect {
             power,
             toughness,
@@ -3217,16 +3253,17 @@ fn resolve_effect_references_in_effect(
             1 => basis.clone(),
             _ => Value::Scaled(Box::new(basis.clone()), multiplier),
         };
-        return Ok(EffectAst::subject_verb_pump(
+        *effect = EffectAst::subject_verb_pump(
             scale(*power),
             scale(*toughness),
             target.clone(),
             duration.clone(),
             None,
-        ));
+        );
+        return Ok(());
     }
 
-    if let EffectAst::DelayedUntilNextEndStep { effects, .. } = &mut effect
+    if let EffectAst::DelayedUntilNextEndStep { effects, .. } = effect
         && effects
             .iter()
             .any(effect_references_prior_prevention_amount)
@@ -3243,8 +3280,8 @@ fn resolve_effect_references_in_effect(
             allow_life_event_value: true,
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
         };
-        *effects = resolve_effect_sequence_references_with_state(effects, id_gen, nested_state)?;
-        return Ok(effect);
+        resolve_effect_sequence_references_with_state_in_place(effects, id_gen, nested_state)?;
+        return Ok(());
     }
 
     if let EffectAst::DelayedTriggerThisTurn {
@@ -3252,7 +3289,7 @@ fn resolve_effect_references_in_effect(
     }
     | EffectAst::DelayedTriggerForDuration {
         trigger, effects, ..
-    } = &mut effect
+    } = effect
     {
         let nested_state = EffectReferenceResolutionState {
             last_effect_id: state.last_effect_id,
@@ -3263,14 +3300,14 @@ fn resolve_effect_references_in_effect(
             allow_life_event_value: trigger_supports_event_amount(trigger),
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
         };
-        *effects = resolve_effect_sequence_references_with_state(effects, id_gen, nested_state)?;
-        return Ok(effect);
+        resolve_effect_sequence_references_with_state_in_place(effects, id_gen, nested_state)?;
+        return Ok(());
     }
 
-    resolve_effect_result_values_in_fields(&mut effect, state)?;
+    resolve_effect_result_values_in_fields(effect, state)?;
     let mut nested_state = state;
-    if effect_is_player_or_object_fanout(&effect)
-        && effect_references_typed_removed_counter_metric(&effect)
+    if effect_is_player_or_object_fanout(effect)
+        && effect_references_typed_removed_counter_metric(effect)
         && nested_state.pinned_effect_metric_id.is_none()
     {
         // The fanout's first damage arm is itself a result-producing effect.
@@ -3279,30 +3316,31 @@ fn resolve_effect_references_in_effect(
         // much" to an earlier damage recipient.
         nested_state.pinned_effect_metric_id = nested_state.last_effect_id;
     }
-    try_for_each_nested_effects_mut(&mut effect, true, |nested| {
-        let resolved = resolve_effect_sequence_references_with_state(nested, id_gen, nested_state)?;
-        nested.clone_from_slice(&resolved);
-        Ok::<_, CardTextError>(())
+    try_for_each_nested_effects_mut(effect, true, |nested| {
+        resolve_effect_sequence_references_with_state_in_place(nested, id_gen, nested_state)
     })?;
-    Ok(effect)
+    Ok(())
 }
 
 fn resolve_effect_sequence_references_with_state(
     effects: &[EffectAst],
     id_gen: &mut IdGenContext,
-    mut state: EffectReferenceResolutionState,
+    state: EffectReferenceResolutionState,
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    let mut resolved = Vec::with_capacity(effects.len());
+    let mut resolved = effects.to_vec();
+    resolve_effect_sequence_references_with_state_in_place(&mut resolved, id_gen, state)?;
+    Ok(resolved)
+}
 
-    for (idx, effect) in effects.iter().enumerate() {
+fn resolve_effect_sequence_references_with_state_in_place(
+    effects: &mut [EffectAst],
+    id_gen: &mut IdGenContext,
+    mut state: EffectReferenceResolutionState,
+) -> Result<(), CardTextError> {
+    let effect_count = effects.len();
+
+    for idx in 0..effect_count {
         let saved_last_effect_id = state.last_effect_id;
-        let effect = resolve_effect_references_in_effect(effect.clone(), id_gen, state)?;
-        let remaining = if idx + 1 < effects.len() {
-            &effects[idx + 1..]
-        } else {
-            &[]
-        };
-        let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
         let assigned_effect_id = maybe_assign_effect_result_id(
             effects,
             idx,
@@ -3312,6 +3350,12 @@ fn resolve_effect_sequence_references_with_state(
                 ..Default::default()
             },
         );
+        let (_, current_and_remaining) = effects.split_at_mut(idx);
+        let (effect, remaining) = current_and_remaining
+            .split_first_mut()
+            .expect("effect index is within the resolution sequence");
+        resolve_effect_references_in_effect(effect, id_gen, state)?;
+        let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
         state.last_effect_id = if matches!(
             effect,
             EffectAst::ResolvedIfResult { .. }
@@ -3319,7 +3363,7 @@ fn resolve_effect_sequence_references_with_state(
                 | EffectAst::IfResult { .. }
                 | EffectAst::WhenResult { .. }
         ) {
-            if result_gate_exports_outcome_to_fallback(&effect, remaining.first()) {
+            if result_gate_exports_outcome_to_fallback(effect, remaining.first()) {
                 assigned_effect_id.or(saved_last_effect_id)
             } else {
                 saved_last_effect_id
@@ -3335,14 +3379,13 @@ fn resolve_effect_sequence_references_with_state(
             assigned_effect_id.or(saved_last_effect_id)
         };
         if let Some(id) = assigned_effect_id
-            && effect_is_library_search(&effect)
+            && effect_is_library_search(effect)
         {
             state.last_library_search_effect_id = Some(id);
         }
-        resolved.push(effect);
     }
 
-    Ok(resolved)
+    Ok(())
 }
 
 fn advance_reference_env_for_effect(
@@ -4115,7 +4158,7 @@ fn resolve_sacrifice_cost_tagged_metric(
         return None;
     }
     let filter = query.filter.clone().unwrap_or_default().match_tagged(
-        legacy_tag(format!("sacrifice_cost_{tag_index}")),
+        TagKey::new(format!("sacrifice_cost_{tag_index}")),
         TaggedOpbjectRelation::IsTaggedObject,
     );
     match query.metric {
@@ -4148,7 +4191,7 @@ fn resolve_exile_cost_tagged_metric(
         return None;
     }
     let filter = query.filter.clone().unwrap_or_default().match_tagged(
-        legacy_tag(format!("exile_cost_{tag_index}")),
+        TagKey::new(format!("exile_cost_{tag_index}")),
         TaggedOpbjectRelation::IsTaggedObject,
     );
     match query.metric {
@@ -4888,11 +4931,12 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
             | SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. }
-            | SubjectVerbActionAst::GrantAbilitiesChoiceAll { filter, .. }
-            | SubjectVerbActionAst::GrantBySpec {
-                spec: crate::grant::GrantSpec { filter, .. },
-                ..
-            } => bind_unresolved_it_in_filter(filter, seed_tag),
+            | SubjectVerbActionAst::GrantAbilitiesChoiceAll { filter, .. } => {
+                bind_unresolved_it_in_filter(filter, seed_tag)
+            }
+            SubjectVerbActionAst::GrantBySpec { spec, .. } => {
+                bind_unresolved_it_in_filter(&mut spec.filter, seed_tag)
+            }
             SubjectVerbActionAst::ConsultTopOfLibrary {
                 filter,
                 stop_rule,
@@ -5332,14 +5376,14 @@ fn bind_unresolved_it_in_restriction(
 
 #[cfg(test)]
 mod tests {
-    use super::super::reference_model::{
-        RefState as ModelRefState, ReferenceFrame as ModelReferenceFrame,
-        ReferenceImports as ModelReferenceImports,
-    };
     use super::*;
     use crate::cards::TextSpan;
     use crate::cards::builders::IfResultPredicate;
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::model::reference_state::{
+        RefState as ModelRefState, ReferenceFrame as ModelReferenceFrame,
+        ReferenceImports as ModelReferenceImports,
+    };
     use crate::*;
     use ironsmith_core::{
         PriorEffectResultActor, PriorEffectResultQuantifier, PriorEffectResultSurface,
@@ -6321,7 +6365,7 @@ mod tests {
         assert!(matches!(spec.unhinted(), ChooseSpec::Tagged(tag) if tag.as_str() == "returned_0"));
         assert!(choices.is_empty(), "a delayed pronoun is not a new target");
 
-        let lowered = crate::runtime_backend::compile_support::compile_statement_effects(&effects)
+        let lowered = crate::compile_support::compile_statement_effects(&effects)
             .expect("lower returned-object follow-ups");
         assert!(
             lowered.iter().all(|effect| effect
@@ -6348,10 +6392,11 @@ mod tests {
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "Thopter".to_string(),
-                    definition: crate::runtime_backend::grammar::token_definitions::parse_token_definition_shape_text(
-                        "1/1 colorless Thopter artifact creature token with flying",
-                    )
-                    .expect("test Thopter token definition should parse"),
+                    definition:
+                        crate::grammar::token_definitions::parse_token_definition_shape_text(
+                            "1/1 colorless Thopter artifact creature token with flying",
+                        )
+                        .expect("test Thopter token definition should parse"),
                     count: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
                     dynamic_power_toughness: None,
                     player: PlayerAst::Implicit,
@@ -7087,10 +7132,11 @@ mod tests {
                 PlayerAst::You,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "0/0 green and blue creature".to_string(),
-                    definition: crate::runtime_backend::grammar::token_definitions::parse_token_definition_shape_text(
-                        "0/0 green and blue creature token",
-                    )
-                    .expect("test dynamic creature token definition should parse"),
+                    definition:
+                        crate::grammar::token_definitions::parse_token_definition_shape_text(
+                            "0/0 green and blue creature token",
+                        )
+                        .expect("test dynamic creature token definition should parse"),
                     count: Value::Fixed(1),
                     dynamic_power_toughness: None,
                     player: PlayerAst::You,
@@ -7257,10 +7303,11 @@ mod tests {
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "Knight".to_string(),
-                    definition: crate::runtime_backend::grammar::token_definitions::parse_token_definition_shape_text(
-                        "2/2 white Knight creature token",
-                    )
-                    .expect("test Knight token definition should parse"),
+                    definition:
+                        crate::grammar::token_definitions::parse_token_definition_shape_text(
+                            "2/2 white Knight creature token",
+                        )
+                        .expect("test Knight token definition should parse"),
                     count: Value::PendingEffectMetric {
                         source: EffectMetricSource::Outcome,
                         metric: EffectMetric::OtherNumber,
@@ -7408,8 +7455,7 @@ mod tests {
 
     #[test]
     fn public_revealed_collection_alias_refreshes_and_clears() {
-        let mut frame =
-            crate::runtime_backend::references::reference_model::ReferenceFrame::default();
+        let mut frame = crate::model::reference_state::ReferenceFrame::default();
 
         remember_public_revealed_alias(&mut frame, Some("consult_all"));
         remember_public_revealed_alias(&mut frame, Some("later_reveal"));

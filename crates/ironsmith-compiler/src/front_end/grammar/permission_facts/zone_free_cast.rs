@@ -388,7 +388,7 @@ fn semantic_finish<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::{lex_line, render_token_slice};
+    use crate::lexer::{lex_line, render_token_slice};
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("zone permission fixture should lex")

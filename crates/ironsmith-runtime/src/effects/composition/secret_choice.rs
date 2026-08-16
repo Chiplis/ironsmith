@@ -105,8 +105,7 @@ impl SecretChoiceEffect {
         let mut selected = Vec::new();
 
         for player in players {
-            let original_iterated_player =
-                std::mem::replace(&mut ctx.iteration.iterated_player, Some(player));
+            let original_iterated_player = ctx.iteration.iterated_player.replace(player);
             let filter_ctx = ctx.filter_context(game);
             let zone = choice.filter.zone.unwrap_or(Zone::Battlefield);
             let candidates = game

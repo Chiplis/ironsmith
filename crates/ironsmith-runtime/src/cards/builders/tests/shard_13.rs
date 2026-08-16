@@ -3947,7 +3947,7 @@ pub(super) fn create_mindstorm_crown_test_card(
     zone: Zone,
 ) -> ObjectId {
     game.create_object_from_card(
-        &crate::card::CardBuilder::new(CardId::from_raw(id), &format!("Mindstorm Test Card {id}"))
+        &crate::card::CardBuilder::new(CardId::from_raw(id), format!("Mindstorm Test Card {id}"))
             .card_types(vec![CardType::Creature])
             .build(),
         owner,

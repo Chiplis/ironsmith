@@ -85,7 +85,7 @@ pub(super) fn jasmine_dragon_tea_shop_token_activation_creates_white_ally() {
         .filter(|(_, object)| {
             matches!(object.kind, crate::object::ObjectKind::Token)
                 && object.subtypes.contains(&Subtype::Ally)
-                && game.controller_of(*object) == alice
+                && game.controller_of(object) == alice
         })
         .collect();
     assert_eq!(ally_tokens.len(), 1, "expected one Ally token");
@@ -1062,7 +1062,7 @@ pub(super) fn bucolic_ranch_activated_ability_can_decline_hand_and_bottom_the_ca
         "Bucolic Ranch should ask both optional branch decisions when the top card is a Mount"
     );
     assert!(
-        game.player(alice).expect("alice exists").library.len() >= 1,
+        !game.player(alice).expect("alice exists").library.is_empty(),
         "Bucolic Ranch should keep cards in library after resolving fallback branch"
     );
 }

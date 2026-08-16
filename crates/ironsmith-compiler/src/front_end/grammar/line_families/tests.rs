@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::lexer::{lex_line, render_token_slice};
+use crate::lexer::{lex_line, render_token_slice};
 
 #[test]
 fn visible_line_boundary_ignores_nested_ability_punctuation() {

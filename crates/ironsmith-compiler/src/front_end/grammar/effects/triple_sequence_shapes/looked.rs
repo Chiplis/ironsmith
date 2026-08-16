@@ -4,9 +4,9 @@ use winnow::prelude::*;
 
 use crate::cards::builders::LibraryBottomOrderAst;
 use crate::effect::ChoiceCount;
-use crate::object::CounterType;
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
 use crate::grammar::{leaf, primitives};
+use crate::lexer::{LexStream, OwnedLexToken};
+use crate::object::CounterType;
 
 use super::super::control_copy_attach_shapes::{
     BattlefieldControllerShape, parse_battlefield_controller_prefix,
@@ -574,7 +574,7 @@ pub(crate) fn parse_reveal_one_gain_mana_value_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, split_lexed_sentences};
+    use crate::lexer::{lex_line, split_lexed_sentences};
 
     #[test]
     fn parses_reveal_one_gain_mana_value_shape() {

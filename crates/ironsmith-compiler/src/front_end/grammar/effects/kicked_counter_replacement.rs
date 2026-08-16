@@ -102,7 +102,7 @@ pub(crate) fn parse_kicked_counter_replacement_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_generic_bounds_and_typed_target_references() {

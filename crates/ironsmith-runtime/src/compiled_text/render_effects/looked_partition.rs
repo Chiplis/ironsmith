@@ -984,9 +984,9 @@ pub(in crate::compiled_text) fn describe_looked_and_or_destination_self_replacem
     ))
 }
 
-fn tagged_group_move<'a>(
-    effect: &'a Effect,
-) -> Option<(&'a crate::TagKey, &'a crate::effects::ForEachTaggedEffect)> {
+fn tagged_group_move(
+    effect: &Effect,
+) -> Option<(&crate::TagKey, &crate::effects::ForEachTaggedEffect)> {
     if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
         return Some((
             &tag_all.tag,
@@ -2639,9 +2639,11 @@ mod tests {
                 )],
             )],
         );
-        let bottom_keep = correlated_bottom
-            .then_some(selected)
-            .unwrap_or_else(|| crate::TagKey::from("unrelated_selection"));
+        let bottom_keep = if correlated_bottom {
+            selected
+        } else {
+            crate::TagKey::from("unrelated_selection")
+        };
         let bottom_remainder = Effect::new(
             crate::effects::PutTaggedRemainderOnLibraryBottomEffect::new(
                 looked.clone(),

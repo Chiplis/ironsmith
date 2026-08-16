@@ -408,9 +408,9 @@ fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> {
         {
             let counter_start = words.token_start_indices().get(start).copied()?;
             let counter_end = words.token_start_indices().get(start + on).copied()?;
-            if let Some(counter_type) = crate::util::parse_counter_type_from_tokens(
-                &tokens[counter_start..counter_end],
-            ) {
+            if let Some(counter_type) =
+                crate::util::parse_counter_type_from_tokens(&tokens[counter_start..counter_end])
+            {
                 return Some(Value::CountersOnSource(counter_type));
             }
         }
@@ -418,8 +418,7 @@ fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> {
 
     let mut number_of_words = vec!["the", "number", "of"];
     number_of_words.extend_from_slice(after_each);
-    if let Some((value, used)) =
-        crate::util::parse_value_expr_words(&number_of_words)
+    if let Some((value, used)) = crate::util::parse_value_expr_words(&number_of_words)
         && used == number_of_words.len()
     {
         return Some(value);
@@ -508,7 +507,7 @@ pub(crate) fn parse_mill_action_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_switch_skip_flip_and_roll_shapes() {

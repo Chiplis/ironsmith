@@ -224,22 +224,11 @@ fn parse_number_of_counters_on_source_value_lexed<'a>(input: &mut LexStream<'a>)
         })?;
     let source_tokens = trim_lexed_commas(source_tokens);
     let source_words = TokenWordView::new(source_tokens).word_refs();
-    let surface =
-        crate::util::source_reference_surface_for_words(
-            &source_words,
-        )
-        .or_else(|| {
-            crate::util::this_source_surface_for_words(
-                &source_words,
-            )
-        });
+    let surface = crate::util::source_reference_surface_for_words(&source_words)
+        .or_else(|| crate::util::this_source_surface_for_words(&source_words));
     if let Some(surface) = surface {
         return Ok(Value::CountersOn(
-            Box::new(
-                crate::util::source_choose_spec_for_surface(
-                    surface,
-                ),
-            ),
+            Box::new(crate::util::source_choose_spec_for_surface(surface)),
             Some(counter_type),
         ));
     }

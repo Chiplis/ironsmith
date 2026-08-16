@@ -578,7 +578,7 @@ fn word_slice_has_suffix(words: &[&str], expected: &[&str]) -> bool {
 fn word_slice_has_any_word(words: &[&str], expected: &[&str]) -> bool {
     let mut input: primitives::WordSliceInput<'_> = words;
     while let Ok(word) = take_word_slice_any(&mut input) {
-        if expected.iter().any(|candidate| word == *candidate) {
+        if expected.contains(&word) {
             return true;
         }
     }
@@ -591,7 +591,7 @@ fn parse_word_slice_index(words: &[&str], expected: &[&str]) -> Option<usize> {
     loop {
         let index = initial_len.saturating_sub(input.len());
         let word = take_word_slice_any(&mut input).ok()?;
-        if expected.iter().any(|candidate| word == *candidate) {
+        if expected.contains(&word) {
             return Some(index);
         }
     }
@@ -610,7 +610,7 @@ fn parse_comma_offset_lexed<'a>(input: &mut LexStream<'a>) -> WResult<usize> {
     }
 }
 
-fn take_word_slice_any<'slice, 'word>(input: &mut &'slice [&'word str]) -> WResult<&'word str> {
+fn take_word_slice_any<'word>(input: &mut &[&'word str]) -> WResult<&'word str> {
     any.parse_next(input)
 }
 
@@ -643,7 +643,7 @@ fn exact_phrase_occurs(words: &[&str], expected: &[&str]) -> bool {
 fn exact_word_occurs(words: &[&str], expected: &[&str]) -> bool {
     let mut input: primitives::WordSliceInput<'_> = words;
     while let Ok(word) = take_word_slice_any(&mut input) {
-        if expected.iter().any(|candidate| word == *candidate) {
+        if expected.contains(&word) {
             return true;
         }
     }

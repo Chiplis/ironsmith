@@ -8,11 +8,11 @@ use crate::grammar::effects::{
     ExileLibraryPlayerShape, ExilePermissionFollowupKind, parse_exile_dynamic_top_library_shape,
     parse_exile_permission_followup_shape,
 };
-use crate::util::strip_leading_token_words_any;
 use crate::permission_helpers::parse_cast_or_play_tagged_clause;
-use crate::util::helper_tag_for_tokens;
 use crate::target::PlayerFilter;
 use crate::types::CardType;
+use crate::util::helper_tag_for_tokens;
+use crate::util::strip_leading_token_words_any;
 
 pub(super) fn rebind_permission_tag(
     mut permission: EffectAst,
@@ -185,7 +185,7 @@ pub(crate) fn parse_exile_top_play_then_event_followup(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, split_lexed_sentences};
+    use crate::lexer::{lex_line, split_lexed_sentences};
 
     fn parse(text: &str) -> Vec<EffectAst> {
         let tokens = lex_line(text, 0).expect("lex");

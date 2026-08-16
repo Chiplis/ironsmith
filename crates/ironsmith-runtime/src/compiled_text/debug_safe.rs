@@ -180,7 +180,9 @@ fn normalize_debug_safe_mana_symbol_case(line: &str) -> String {
 fn draw_clause_keeps_coordinated_controller_subject(tail: &str) -> bool {
     tail.split(['.', '\n', ';', '—'])
         .next()
-        .is_some_and(|clause| clause.contains(" and you lose "))
+        .is_some_and(|clause| {
+            clause.contains(" and you lose ") || clause.contains(" and you create ")
+        })
 }
 
 fn revealed_hand_union_keeps_explicit_draw_subject(
@@ -293,6 +295,9 @@ fn normalize_exact_choice_coordinated_reward_voice(line: &str) -> String {
 }
 
 fn normalize_debug_safe_spelling_surface(line: &str) -> String {
+    let lower_line = line.to_ascii_lowercase();
+    let preserve_you_had_entry_battlefield =
+        lower_line.contains("you had ") && lower_line.contains(" enter the battlefield under ");
     let mut normalized = line
         .trim()
         .replace("that many color plus one", "that many colors plus one")
@@ -399,6 +404,13 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
             "Soldiers or Knight creatures you control get +1/+1 as long as this creature is equipped",
             "As long as this creature is equipped, each creature you control that's a Soldier or a Knight gets +1/+1",
         );
+    if preserve_you_had_entry_battlefield
+        && !normalized
+            .to_ascii_lowercase()
+            .contains(" enter the battlefield under ")
+    {
+        normalized = normalized.replacen(" enter under ", " enter the battlefield under ", 1);
+    }
     normalized = normalize_imperative_draw_subject_outside_quotes(&normalized);
     normalized = normalize_exact_choice_coordinated_reward_voice(&normalized);
 
@@ -604,6 +616,12 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_preserves_battlefield_in_authored_you_had_creature_entry_condition() {
+        let text = "This creature gets +2/+2 as long as you had another creature enter the battlefield under your control this turn.";
+        assert_eq!(normalize_debug_safe_spelling_surface(text), text);
+    }
+
+    #[test]
     fn cleanup_preserves_explicit_draw_subject_inside_rules_quotes() {
         let emblem = "−6: You get an emblem with \"Whenever you cast an Elf spell, it gains haste until end of turn and you draw two cards.\"";
         assert_eq!(normalize_debug_safe_spelling_surface(emblem), emblem);
@@ -636,6 +654,12 @@ mod tests {
             ),
             "When this artifact enters, draw a card. You lose 1 life.",
             "separate instructions must not be mistaken for one coordinator"
+        );
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(
+                "For each opponent who does, you draw a card and you create a Rabbit token."
+            ),
+            "For each opponent who does, you draw a card and you create a Rabbit token."
         );
     }
 

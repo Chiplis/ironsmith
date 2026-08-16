@@ -105,9 +105,7 @@ pub fn split_sentences_for_parse_fallback(line: &str) -> Vec<String> {
             continue;
         }
         if ch == ')' {
-            if paren_depth > 0 {
-                paren_depth -= 1;
-            }
+            paren_depth = paren_depth.saturating_sub(1);
             current.push(ch);
             continue;
         }

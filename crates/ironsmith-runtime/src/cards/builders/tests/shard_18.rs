@@ -1321,10 +1321,10 @@ pub(super) fn parse_sporeweb_weaver_strict_regression() {
         .abilities
         .iter()
         .find_map(|ability| {
-            if let AbilityKind::Static(static_ability) = &ability.kind {
-                if static_ability.id() == StaticAbilityId::HexproofFrom {
-                    return static_ability.hexproof_from_filter();
-                }
+            if let AbilityKind::Static(static_ability) = &ability.kind
+                && static_ability.id() == StaticAbilityId::HexproofFrom
+            {
+                return static_ability.hexproof_from_filter();
             }
             None
         })
@@ -2299,7 +2299,7 @@ pub(super) fn cloudspire_coordinator_creates_pilot_tokens_for_your_entered_mount
             AbilityKind::Activated(activated) => activated
                 .effects
                 .flattened_default_effects()
-                .into_iter()
+                .iter()
                 .find(|effect| effect.downcast_ref::<CreateTokenEffect>().is_some())
                 .cloned(),
             _ => None,
@@ -2387,7 +2387,7 @@ pub(super) fn cloudspire_coordinator_pilot_token_power_bonus_applies_to_saddle_a
             AbilityKind::Activated(activated) => activated
                 .effects
                 .flattened_default_effects()
-                .into_iter()
+                .iter()
                 .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
                 .map(|create| create.token.clone()),
             _ => None,
@@ -2493,7 +2493,7 @@ pub(super) fn cloudspire_coordinator_creates_no_tokens_without_entered_mounts_or
             AbilityKind::Activated(activated) => activated
                 .effects
                 .flattened_default_effects()
-                .into_iter()
+                .iter()
                 .find(|effect| effect.downcast_ref::<CreateTokenEffect>().is_some())
                 .cloned(),
             _ => None,

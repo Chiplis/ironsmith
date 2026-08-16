@@ -35,7 +35,7 @@ fn memory_iteration(
     triggered
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ForEachObject>())
         .expect("Altaïr should iterate the owned memory-counter cards in exile")
 }

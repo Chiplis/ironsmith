@@ -148,7 +148,7 @@ pub(crate) fn parse_look_top_exile_one_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_hand_targets_and_name_followup() {

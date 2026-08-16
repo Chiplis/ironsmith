@@ -9,11 +9,9 @@ use super::{
     subject_verb_special_recognizers::SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED,
 };
 use crate::cards::builders::{CardTextError, EffectAst};
-use crate::recognition::{ParseOutcome, RuleMatch};
-use crate::grammar::effects::{
-    SentencePreludeShape, parse_sentence_prelude_shape_tokens,
-};
+use crate::grammar::effects::{SentencePreludeShape, parse_sentence_prelude_shape_tokens};
 use crate::lexer::OwnedLexToken;
+use crate::recognition::{ParseOutcome, RuleMatch};
 
 fn run_sentence_rule_family(
     registry: crate::recognition::RuleId,

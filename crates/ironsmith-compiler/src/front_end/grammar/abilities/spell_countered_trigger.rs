@@ -79,9 +79,9 @@ fn take_subject_before_countered_suffix<'a>(
         .parse_next(input)
 }
 
-fn take_before_first_cast<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Result<&'a [OwnedLexToken], ErrMode<ContextError>> {
+fn take_before_first_cast(
+    tokens: &[OwnedLexToken],
+) -> Result<&[OwnedLexToken], ErrMode<ContextError>> {
     let mut input = LexStream::new(tokens);
     let before_cast = repeat_till(0.., any.void(), peek(parse_cast_verb))
         .map(|((), ())| ())
@@ -201,7 +201,7 @@ pub(crate) fn parse_spell_countered_trigger_spec_lexed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn parses_you_cast_controller_and_unqualified_spell() {

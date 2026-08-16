@@ -580,14 +580,13 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
                 joined
             }
         } else {
-            let article = joined
-                .chars()
-                .next()
-                .is_some_and(|letter| {
-                    matches!(letter.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u')
-                })
-                .then_some("an")
-                .unwrap_or("a");
+            let article = if joined.chars().next().is_some_and(|letter| {
+                matches!(letter.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u')
+            }) {
+                "an"
+            } else {
+                "a"
+            };
             format!("{article} {joined}")
         }
     };

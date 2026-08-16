@@ -5,7 +5,7 @@ use crate::effect::Value;
 #[cfg(test)]
 use crate::filter::Comparison;
 use crate::filter::TaggedObjectConstraint;
-use crate::front_end::lexer::OwnedLexToken;
+use crate::lexer::OwnedLexToken;
 use crate::target::{ObjectFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
@@ -126,11 +126,10 @@ pub(crate) fn parse_typed_choice_object_clause_tokens(
     };
     filter = expand_graveyard_or_hand_disjunction_filter(filter, shape.filter_facts);
     if references_it {
-        if shape.references.explicit_container_reference
-            && matches!(filter.zone, None | Some(Zone::Battlefield))
+        if (shape.references.explicit_container_reference
+            && matches!(filter.zone, None | Some(Zone::Battlefield)))
+            || (shape.references.references_container_it && filter.zone.is_none())
         {
-            filter.zone = Some(Zone::Hand);
-        } else if shape.references.references_container_it && filter.zone.is_none() {
             filter.zone = Some(Zone::Hand);
         }
         if !filter

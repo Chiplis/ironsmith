@@ -1,5 +1,84 @@
 use super::*;
 
+fn normalize_unless_cost_for_payer(cost: crate::cost::TotalCost) -> crate::cost::TotalCost {
+    cost.try_map(|component| {
+        let component = match component {
+            crate::costs::Cost::Sacrifice(mut filter) => {
+                bind_relative_iterated_player_filters_to_chooser(&mut filter, &PlayerFilter::You);
+                crate::costs::Cost::Sacrifice(filter)
+            }
+            crate::costs::Cost::DynamicMana(mut dynamic) => {
+                for value in [
+                    &mut dynamic.x_value,
+                    &mut dynamic.additional_generic,
+                    &mut dynamic.multiplier,
+                ] {
+                    if let Some(value) = value.as_mut() {
+                        bind_relative_iterated_player_in_value_to_player_filter(
+                            value,
+                            &PlayerFilter::You,
+                        );
+                    }
+                }
+                crate::costs::Cost::DynamicMana(dynamic)
+            }
+            crate::costs::Cost::Energy(mut value) => {
+                bind_relative_iterated_player_in_value_to_player_filter(
+                    &mut value,
+                    &PlayerFilter::You,
+                );
+                crate::costs::Cost::Energy(value)
+            }
+            crate::costs::Cost::Mill(mut value) => {
+                bind_relative_iterated_player_in_value_to_player_filter(
+                    &mut value,
+                    &PlayerFilter::You,
+                );
+                crate::costs::Cost::Mill(value)
+            }
+            crate::costs::Cost::Life(mut value) => {
+                bind_relative_iterated_player_in_value_to_player_filter(
+                    &mut value,
+                    &PlayerFilter::You,
+                );
+                crate::costs::Cost::Life(value)
+            }
+            crate::costs::Cost::Effect(effect) => {
+                if let Some(put) = effect
+                    .downcast_ref::<crate::effects::PutCountersEffect>()
+                    .cloned()
+                {
+                    let mut put = put;
+                    bind_relative_iterated_player_in_choose_spec_to_player_filter(
+                        &mut put.target,
+                        &PlayerFilter::You,
+                    );
+                    bind_relative_iterated_player_in_value_to_player_filter(
+                        &mut put.amount,
+                        &PlayerFilter::You,
+                    );
+                    crate::costs::Cost::Effect(Effect::new(put))
+                } else if let Some(sacrifice) = effect
+                    .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+                    .cloned()
+                {
+                    let mut sacrifice = sacrifice;
+                    bind_relative_iterated_player_in_choose_spec_to_player_filter(
+                        &mut sacrifice.target,
+                        &PlayerFilter::You,
+                    );
+                    crate::costs::Cost::Effect(Effect::new(sacrifice))
+                } else {
+                    crate::costs::Cost::Effect(effect)
+                }
+            }
+            other => other,
+        };
+        Ok::<_, std::convert::Infallible>(component)
+    })
+    .expect("payer-relative unless-cost normalization is infallible")
+}
+
 fn bind_relative_attachment_count_player(value: &mut Value, player: &PlayerFilter) {
     match value {
         Value::SurfaceHinted { value, .. }
@@ -655,7 +734,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
             let mut choices = inner_choices;
             choices.append(&mut player_choices);
-            let resolved_cost = resolve_total_cost_it_tags(cost, &current_reference_env(ctx))?;
+            let payer_relative_cost = normalize_unless_cost_for_payer(cost.clone());
+            let resolved_cost =
+                resolve_total_cost_it_tags(&payer_relative_cost, &current_reference_env(ctx))?;
             let effect = Effect::new(crate::effects::UnlessPaysEffect {
                 player: player_filter,
                 effects: inner_effects,

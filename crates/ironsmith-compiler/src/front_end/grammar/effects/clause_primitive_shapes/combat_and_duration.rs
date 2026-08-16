@@ -1,5 +1,5 @@
 use super::*;
-use crate::front_end::lexer::LexStream;
+use crate::lexer::LexStream;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CombatRequirementKind {

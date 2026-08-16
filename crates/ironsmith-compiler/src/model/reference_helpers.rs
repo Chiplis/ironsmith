@@ -4,12 +4,11 @@ use crate::cards::builders::{
 };
 use crate::effect::{EventValueSpec, Restriction, Value};
 use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
-use crate::references::legacy_tag_symbol_bridge::legacy_tag;
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
 use crate::zone::Zone;
 use ironsmith_core::TurnHistoryCount;
 
-use super::reference_model::ReferenceEnv;
+use crate::model::reference_state::ReferenceEnv;
 
 pub(crate) fn is_sacrificed_object_reference_tag(tag: &str) -> bool {
     tag == "sacrificed"
@@ -113,7 +112,7 @@ pub(crate) fn resolve_non_target_player_filter(
         PlayerAst::Opponent => Ok(PlayerFilter::Opponent),
         PlayerAst::PlayerToYourLeft => Ok(PlayerFilter::PlayerToYourLeft),
         PlayerAst::PlayerToYourRight => Ok(PlayerFilter::PlayerToYourRight),
-        PlayerAst::Enchanted => Ok(PlayerFilter::TaggedPlayer(legacy_tag("enchanted"))),
+        PlayerAst::Enchanted => Ok(PlayerFilter::TaggedPlayer(TagKey::new("enchanted"))),
         PlayerAst::NotYou => {
             if let Some(excluded) = refs.known_last_player_filter()
                 && !is_you_player_filter(excluded)
@@ -491,17 +490,14 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => replace_it_tag_in_filter(filter, tag),
         Value::StaticAbilitiesAmong { filter, .. } => replace_it_tag_in_filter(filter, tag),
-        Value::TurnHistoryCount(query) => match query {
+        Value::TurnHistoryCount(
             TurnHistoryCount::Died { filter, .. }
             | TurnHistoryCount::EnteredBattlefield(filter)
             | TurnHistoryCount::MovedZones { filter, .. }
             | TurnHistoryCount::Sacrificed { filter, .. }
             | TurnHistoryCount::CountersPutOn { filter, .. }
-            | TurnHistoryCount::CreaturesAttackedWith { filter, .. } => {
-                replace_it_tag_in_filter(filter, tag)
-            }
-            _ => {}
-        },
+            | TurnHistoryCount::CreaturesAttackedWith { filter, .. },
+        ) => replace_it_tag_in_filter(filter, tag),
         Value::SpellsCastThisTurnMatching { filter, .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { filter, .. } => {
             replace_it_tag_in_filter(filter, tag)
@@ -669,16 +665,14 @@ pub(crate) fn resolve_it_tag(
             && constraint.tag.as_str().starts_with("sacrifice_cost_"))
         .then(|| constraint.tag.clone())
     }) && let Some(color_count) = filter_with_context.color_count.as_mut()
-    {
-        if let Comparison::EqualExpr(value)
+        && let Comparison::EqualExpr(value)
         | Comparison::NotEqualExpr(value)
         | Comparison::LessThanExpr(value)
         | Comparison::LessThanOrEqualExpr(value)
         | Comparison::GreaterThanExpr(value)
         | Comparison::GreaterThanOrEqualExpr(value) = color_count
-        {
-            replace_it_tag_in_value(value, &cost_tag);
-        }
+    {
+        replace_it_tag_in_value(value, &cost_tag);
     }
     let mut resolved = resolve_object_filter_player_refs(&filter_with_context, refs)?;
     if let Some(attached_to_object) = resolved.attached_to_object.as_mut() {
@@ -710,7 +704,7 @@ pub(crate) fn resolve_it_tag(
             .snapshot_tag_aliases
             .iter()
             .find(|(alias, _)| alias == ADDITIONAL_COST_OBJECT_TAG)
-            .map(|(_, concrete)| legacy_tag(concrete.as_str()))
+            .map(|(_, concrete)| TagKey::new(concrete.as_str()))
             .expect("plural cost reference proved a snapshot above");
         for constraint in &mut resolved.tagged_constraints {
             if constraint.tag.as_str() == IT_TAG
@@ -730,7 +724,7 @@ pub(crate) fn resolve_it_tag(
         refs.snapshot_tag_aliases
             .iter()
             .find(|(alias, _)| alias == "__public_revealed")
-            .map(|(_, concrete)| legacy_tag(concrete.as_str()))
+            .map(|(_, concrete)| TagKey::new(concrete.as_str()))
     })
     .flatten();
     if let Some(revealed_collection_tag) = revealed_collection_tag {
@@ -752,7 +746,7 @@ pub(crate) fn resolve_it_tag(
                 .iter()
                 .find(|(alias, _)| alias == constraint.tag.as_str())
             {
-                constraint.tag = legacy_tag(concrete.as_str());
+                constraint.tag = TagKey::new(concrete.as_str());
             }
         }
     }
@@ -898,7 +892,7 @@ pub(crate) fn resolve_it_tag_key(
         .iter()
         .find(|(alias, _)| alias == tag.as_str())
     {
-        return Ok(legacy_tag(concrete.as_str()));
+        return Ok(TagKey::new(concrete.as_str()));
     }
     if tag.as_str() == ADDITIONAL_COST_OBJECT_TAG {
         return refs.known_last_object_tag().cloned().ok_or_else(|| {
@@ -932,7 +926,7 @@ pub(crate) fn resolve_it_tag_key(
     let resolved = refs.known_last_object_tag().ok_or_else(|| {
         CardTextError::ParseError("unable to resolve 'it' without prior reference".to_string())
     })?;
-    Ok(legacy_tag(resolved.as_str()))
+    Ok(TagKey::new(resolved.as_str()))
 }
 
 pub(crate) fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option<TagKey> {
@@ -1120,11 +1114,11 @@ pub(crate) fn resolve_choose_spec_it_tag(
                 return Ok(if refs.iterated_object {
                     ChooseSpec::Iterated
                 } else {
-                    ChooseSpec::Tagged(legacy_tag(IT_TAG))
+                    ChooseSpec::Tagged(TagKey::new(IT_TAG))
                 });
             }
             if let Some(resolved) = refs.known_last_object_tag() {
-                return Ok(ChooseSpec::Tagged(legacy_tag(resolved.as_str())));
+                return Ok(ChooseSpec::Tagged(TagKey::new(resolved.as_str())));
             }
             if refs.has_source_object_antecedent() {
                 return Ok(ChooseSpec::Source);
@@ -1666,8 +1660,7 @@ pub(crate) fn resolve_target_spec_with_choices(
         }
         TargetAst::Tagged(tag, span)
             if tag.as_str() == IT_TAG
-                && crate::util::sacrificed_object_kind_for_span(*span)
-                    .is_none()
+                && crate::util::sacrificed_object_kind_for_span(*span).is_none()
                 && implicit_it_reference_resolves_to_source(refs) =>
         {
             source_reference_hinted_spec(
@@ -1692,7 +1685,7 @@ pub(crate) fn resolve_target_spec_with_choices(
         let tag = refs
             .known_last_object_tag()
             .cloned()
-            .unwrap_or_else(|| legacy_tag(IT_TAG));
+            .unwrap_or_else(|| TagKey::new(IT_TAG));
         spec = ChooseSpec::Tagged(tag);
     }
     if let TargetAst::Player(filter, explicit_target_span) = target
@@ -1740,7 +1733,7 @@ pub(crate) fn resolve_attach_object_spec(
                 tag.as_str().to_string()
             };
             Ok((
-                ChooseSpec::All(ObjectFilter::tagged(legacy_tag(resolved_tag.as_str()))),
+                ChooseSpec::All(ObjectFilter::tagged(TagKey::new(resolved_tag.as_str()))),
                 Vec::new(),
             ))
         }
@@ -1782,9 +1775,7 @@ pub(crate) fn resolve_attach_object_spec(
 mod tests {
     use super::*;
     use crate::cards::builders::TagKey;
-    use crate::runtime_backend::references::reference_model::{
-        RefState, ReferenceFrame, ReferenceImports,
-    };
+    use crate::model::reference_state::{RefState, ReferenceFrame, ReferenceImports};
 
     #[test]
     fn repeated_target_opponent_reference_requires_a_matching_announced_target() {

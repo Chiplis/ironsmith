@@ -71,10 +71,12 @@ impl EffectExecutor for ReorderLibraryTopEffect {
         }
 
         let spec = OrderLibraryTopSpec::new(ctx.source, current_top_to_bottom.clone());
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let ordered = make_decision(
             game,
             &mut ctx.decision_maker,
-            ctx.controller,
+            chooser,
             Some(ctx.source),
             spec,
         );

@@ -838,7 +838,7 @@ pub(super) fn niambi_esteemed_speaker_activation_cost_requires_and_discards_lege
 
     crate::cost::can_pay_cost(&game, source, alice, &activated.mana_cost)
         .expect("Niambi activation should be payable with a legendary card in hand");
-    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    let mut dm = crate::decision::AutoPassDecisionMaker;
     crate::special_actions::pay_total_cost_with_choice(
         &mut game,
         alice,
@@ -1978,7 +1978,7 @@ pub(super) fn tormented_thoughts_strict_parser_and_compiled_text_regression() {
         .as_ref()
         .expect("Tormented Thoughts should have spell effects")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| {
             effect
                 .downcast_ref::<crate::effects::DiscardEffect>()
@@ -3277,7 +3277,7 @@ pub(super) fn render_rain_of_daggers_uses_destroyed_this_way_life_loss_clause() 
         .as_ref()
         .expect("Rain of Daggers variant should have spell effects")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| {
             effect
                 .downcast_ref::<crate::effects::LoseLifeEffect>()

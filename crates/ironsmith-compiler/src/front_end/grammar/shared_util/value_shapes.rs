@@ -349,7 +349,7 @@ fn parse_fixed_number(input: &mut primitives::WordSliceInput<'_>) -> WResult<u32
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_aggregate_value_surfaces() {

@@ -134,7 +134,7 @@ fn word_stream_has_any_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
 }
 
 pub(crate) fn is_enters_as_copy_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let as_copy_idx = parse_any_word_phrase_offset(&words, AS_COPY_PREFIXES);
     match as_copy_idx {
         Some(idx) => tokens[..idx].iter().any(|token| {
@@ -157,7 +157,7 @@ pub(crate) fn is_negated_untap_clause_words(words: &[&str]) -> bool {
 }
 
 pub(crate) fn is_negated_untap_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let has_untap = unsupported_words_contain_any(&words, &["untap", "untaps"]);
     let has_negation = unsupported_words_contain_any(&words, &["doesnt", "dont", "cant"])
         || word_stream_has_any_phrase(&words, SPLIT_NEGATION_PHRASES);
@@ -203,7 +203,7 @@ pub(crate) fn has_each_player_exile_sacrifice_return_exiled_clause_sentence_lexe
 pub(crate) fn has_put_one_of_them_into_hand_rest_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     word_stream_has_phrase(&words, &["one", "of", "them", "into", "your"])
         && primitives::contains_word(tokens, "rest")
         && (primitives::contains_word(tokens, "graveyard")
@@ -213,7 +213,7 @@ pub(crate) fn has_put_one_of_them_into_hand_rest_clause_sentence_lexed(
 pub(crate) fn has_loses_all_abilities_with_becomes_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let has_loses_all_abilities = (primitives::contains_word(tokens, "lose")
         || primitives::contains_word(tokens, "loses"))
         && word_stream_has_phrase(&words, &["all", "abilities"]);
@@ -223,7 +223,7 @@ pub(crate) fn has_loses_all_abilities_with_becomes_clause_sentence_lexed(
 pub(crate) fn has_spent_to_cast_this_spell_without_condition_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     word_stream_has_phrase(&words, &["was", "spent", "to", "cast", "this", "spell"])
         && !primitives::contains_word(tokens, "if")
         && !primitives::contains_word(tokens, "unless")
@@ -240,13 +240,13 @@ pub(crate) fn has_would_enter_instead_replacement_clause_sentence_lexed(
 
 pub(crate) fn has_different_mana_value_constraint_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     word_stream_has_phrase(
-        &crate::token_word_refs(tokens),
+        &crate::lexer::token_word_refs(tokens),
         &["different", "mana", "value"],
     )
 }
 
 pub(crate) fn has_most_common_color_constraint_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if word_stream_has_phrase(&words, MOST_COMMON_COLOR_EXCLUDED_SHARES_PHRASE) {
         return false;
     }
@@ -255,7 +255,7 @@ pub(crate) fn has_most_common_color_constraint_sentence_lexed(tokens: &[OwnedLex
 }
 
 pub(crate) fn has_power_vs_count_constraint_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     primitives::contains_word(tokens, "power")
         && word_stream_has_phrase(
             &words,
@@ -267,13 +267,13 @@ pub(crate) fn has_put_into_graveyards_from_battlefield_this_turn_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     word_stream_has_phrase(
-        &crate::token_word_refs(tokens),
+        &crate::lexer::token_word_refs(tokens),
         PUT_INTO_GRAVEYARDS_FROM_BATTLEFIELD_THIS_TURN_PHRASE,
     )
 }
 
 pub(crate) fn has_phase_out_until_leaves_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     (primitives::contains_word(tokens, "phase")
         || primitives::contains_word(tokens, "phases")
         || primitives::contains_word(tokens, "phased"))
@@ -285,7 +285,7 @@ pub(crate) fn has_same_name_as_another_in_hand_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     word_stream_has_phrase(
-        &crate::token_word_refs(tokens),
+        &crate::lexer::token_word_refs(tokens),
         &["same", "name", "as", "another", "card", "in"],
     ) && primitives::contains_word(tokens, "hand")
 }
@@ -293,7 +293,7 @@ pub(crate) fn has_same_name_as_another_in_hand_clause_sentence_lexed(
 pub(crate) fn has_for_each_mana_from_spent_to_cast_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     word_stream_has_phrase(&words, &["for", "each", "mana", "from"])
         && primitives::contains_word(tokens, "spent")
         && word_stream_has_phrase(&words, &["cast", "this", "spell", "create"])
@@ -302,7 +302,7 @@ pub(crate) fn has_for_each_mana_from_spent_to_cast_clause_sentence_lexed(
 pub(crate) fn has_when_you_sacrifice_this_way_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     word_stream_has_phrase(&words, &["when", "you", "sacrifice"])
         && word_stream_has_phrase(&words, &["this", "way"])
 }
@@ -336,7 +336,7 @@ pub(crate) fn has_chosen_at_random_clause_sentence_lexed(words: &[&str]) -> bool
 
 pub(crate) fn has_defending_players_choice_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     word_stream_has_any_phrase(
-        &crate::token_word_refs(tokens),
+        &crate::lexer::token_word_refs(tokens),
         DEFENDING_PLAYER_CHOICE_PHRASES,
     )
 }
@@ -404,7 +404,7 @@ pub(crate) fn has_return_each_creature_that_isnt_list_clause_sentence_lexed(
 pub(crate) fn has_unsupported_negated_untap_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let has_supported_control_duration =
         word_stream_has_phrase(&words, &["for", "as", "long", "as", "you", "control"]);
     let has_supported_source_tapped_duration =

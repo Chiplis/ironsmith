@@ -1,6 +1,4 @@
 use super::*;
-use crate::SubjectAst;
-use crate::model::ast::SubjectVerbActionAst;
 use crate::grammar::activated_lines::{
     self as activated_line_grammar, ActivatedAbilitiesReductionRemainder,
     ActivatedBlockRequirement, ActivatedDevotionParseError, ActivatedLoyaltyShorthand,
@@ -9,11 +7,13 @@ use crate::grammar::activated_lines::{
 };
 use crate::grammar::leaf::parse_leaf_fixed_mana_output_tokens;
 use crate::lexer::render_token_slice;
+use crate::model::ast::SubjectVerbActionAst;
+use crate::util::SubjectAst;
 
 pub(crate) type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
 
 pub(crate) fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
-    crate::token_word_refs(tokens).join(" ")
+    crate::lexer::token_word_refs(tokens).join(" ")
 }
 
 pub(crate) fn parse_prefixed_activated_ability_label(
@@ -102,7 +102,7 @@ pub(crate) fn parse_activated_line_with_raw(
     let mut effect_sentences = grammar::split_lexed_slices_on_period(effect_tokens);
     let functional_zones = infer_activated_functional_zones_lexed(cost_tokens, &effect_sentences);
     let mut timing = ActivationTiming::AnyTime;
-    let scanned_modifiers = collect_activated_sentence_modifiers(&effect_sentences, timing.clone());
+    let scanned_modifiers = collect_activated_sentence_modifiers(&effect_sentences, timing);
     let mana_activation_condition = scanned_modifiers.mana_activation_condition;
     let mut additional_activation_restrictions =
         scanned_modifiers.additional_activation_restrictions;
@@ -117,7 +117,7 @@ pub(crate) fn parse_activated_line_with_raw(
     effect_sentences = scanned_modifiers.kept_sentences;
     timing = scanned_modifiers.timing;
     let mana_activation_condition =
-        combine_mana_activation_condition(mana_activation_condition, timing.clone());
+        combine_mana_activation_condition(mana_activation_condition, timing);
     if !effect_sentences.is_empty() {
         let primary_sentence = &effect_sentences[0];
         let x_defined_by_cost = activation_cost_mentions_x(cost_tokens);
@@ -162,7 +162,7 @@ pub(crate) fn parse_activated_line_with_raw(
             let loyalty_timing = if loyalty_shorthand_cost.is_some() {
                 ActivationTiming::SorcerySpeed
             } else {
-                timing.clone()
+                timing
             };
             let loyalty_restrictions =
                 loyalty_additional_restrictions(loyalty_shorthand_cost.is_some());
@@ -173,7 +173,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 restrictions
             };
             if primary_mana.requires_general_effect {
-                let mut mana_ast = parse_add_mana(mana_tokens, mana_subject.clone())?;
+                let mut mana_ast = parse_add_mana(mana_tokens, mana_subject)?;
                 resolve_activated_mana_x_requirements(
                     &mut mana_ast,
                     primary_sentence,
@@ -184,7 +184,7 @@ pub(crate) fn parse_activated_line_with_raw(
                         mana_cost,
                         effects: crate::resolution::ResolutionProgram::default(),
                         choices: vec![],
-                        timing: loyalty_timing.clone(),
+                        timing: loyalty_timing,
                         is_loyalty_ability,
                         additional_restrictions: build_additional_restrictions(),
                         activation_restrictions: vec![],
@@ -215,7 +215,7 @@ pub(crate) fn parse_activated_line_with_raw(
                             mana_cost,
                             effects: crate::resolution::ResolutionProgram::default(),
                             choices: vec![],
-                            timing: loyalty_timing.clone(),
+                            timing: loyalty_timing,
                             is_loyalty_ability,
                             additional_restrictions: build_additional_restrictions(),
                             activation_restrictions: vec![],
@@ -260,7 +260,7 @@ pub(crate) fn parse_activated_line_with_raw(
                     ability: ability.into(),
                     text: ability_display_text.clone(),
                     effects_ast: Some(effects_ast),
-                    reference_imports: reference_imports,
+                    reference_imports,
                     trigger_spec: None,
                 }));
             }
@@ -285,7 +285,7 @@ pub(crate) fn parse_activated_line_with_raw(
     {
         return Ok(Some(ParsedAbility {
             ability: {
-                let ability = Ability {
+                Ability {
                     kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
                         mana_cost,
                         effects: crate::resolution::ResolutionProgram::default(),
@@ -299,8 +299,7 @@ pub(crate) fn parse_activated_line_with_raw(
                         mana_usage_restrictions,
                     }),
                     functional_zones,
-                };
-                ability
+                }
             }
             .into(),
             text: ability_display_text.clone(),
@@ -340,7 +339,7 @@ pub(crate) fn parse_activated_line_with_raw(
 
     Ok(Some(ParsedAbility {
         ability: {
-            let ability = Ability {
+            Ability {
                 kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
                     mana_cost,
                     effects: crate::resolution::ResolutionProgram::default(),
@@ -354,8 +353,7 @@ pub(crate) fn parse_activated_line_with_raw(
                     mana_usage_restrictions,
                 }),
                 functional_zones,
-            };
-            ability
+            }
         }
         .into(),
         text: ability_display_text,
@@ -622,7 +620,7 @@ pub(crate) fn merge_mana_activation_conditions(
     if let Some(base) = base {
         flatten_mana_activation_conditions(&base, &mut conditions);
     }
-    if !conditions.iter().any(|existing| *existing == condition) {
+    if !conditions.contains(&condition) {
         conditions.push(condition);
     }
     rebuild_mana_activation_conditions(conditions)
@@ -679,7 +677,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
 pub(crate) fn parse_devotion_value_from_add_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     activated_line_grammar::parse_activated_devotion_value_tokens(tokens).map_err(|error| {
         let detail = match error {
             ActivatedDevotionParseError::UnsupportedPlayer => {
@@ -749,7 +747,7 @@ pub(crate) fn parse_enters_tapped_line(
 pub(crate) fn parse_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let line_words = crate::token_word_refs(tokens);
+    let line_words = crate::lexer::token_word_refs(tokens);
     let Some(head) = activated_line_grammar::parse_cost_reduction_line_head_tokens(tokens) else {
         return Ok(None);
     };

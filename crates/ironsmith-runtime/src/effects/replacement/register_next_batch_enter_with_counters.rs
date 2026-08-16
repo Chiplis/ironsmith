@@ -13,10 +13,24 @@ impl EffectExecutor for RegisterNextBatchEnterWithCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let mut matcher = WouldEnterBattlefieldMatcher::new(self.filter.clone());
+        if let Some(tag) = &self.same_stable_id_tag {
+            let stable_id = ctx
+                .tagged_objects
+                .get(tag)
+                .and_then(|snapshots| snapshots.first())
+                .map(|snapshot| snapshot.stable_id)
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(format!(
+                        "missing tagged object for future entry replacement: {tag}"
+                    ))
+                })?;
+            matcher = matcher.with_stable_id(stable_id);
+        }
         let replacement = ReplacementEffect::with_matcher(
             ctx.source,
             ctx.controller,
-            WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+            matcher,
             ReplacementAction::EnterWithCounters {
                 counter_type: self.counter_type,
                 count: self.count.clone(),

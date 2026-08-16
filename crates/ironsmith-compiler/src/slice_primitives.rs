@@ -30,7 +30,7 @@ pub(crate) fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) -> bool {
 }
 
 pub(crate) fn equals_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
-    patterns.iter().any(|pattern| items == *pattern)
+    patterns.contains(&items)
 }
 
 pub(crate) fn matching_value<T: PartialEq, V: Clone>(

@@ -459,7 +459,7 @@ fn stack_trigger_pass(
         }
         let ordered_for_stacking: Vec<_> = ordered.into_iter().rev().collect();
         for (index, trigger) in ordered_for_stacking.iter().enumerate() {
-            if !can_stack_trigger_this_turn(game, &trigger) {
+            if !can_stack_trigger_this_turn(game, trigger) {
                 continue;
             }
 

@@ -1,4 +1,8 @@
-use self::subject_verb_followups::try_bind_conditional_token_entry_followup;
+use self::subject_verb_followups::{
+    PostParseFollowupResult, PreParseFollowupResult, is_conditional_token_entry_followup_sentence,
+    run_post_parse_followup_registry, run_pre_parse_followup_registry,
+    try_bind_conditional_token_entry_followup,
+};
 use super::super::activation_and_restrictions::{
     parse_mana_usage_restriction_sentence_lexed, parse_single_word_keyword_action,
 };
@@ -23,6 +27,7 @@ use super::consult_family;
 use super::divvy::try_parse_divvy_sentence_sequence;
 use super::looked_cards_family;
 use super::sentence_helpers::*;
+use super::sequence_rules::{subject_verb_sequence_route, try_parse_subject_verb_sequence_rule};
 use super::{
     SubjectVerbPrimitiveClause, parse_effect_sentence_lexed, parse_token_copy_modifier_sentence,
     trim_edge_punctuation, try_build_unless,
@@ -42,8 +47,8 @@ use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface, TaggedObjectConstraint,
     TaggedOpbjectRelation,
 };
-use crate::zone::Zone;
 use crate::types::CardType;
+use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 use std::cell::OnceCell;
 use winnow::Parser as _;
@@ -70,7 +75,7 @@ pub(crate) fn parse_quantified_token_creation_with_embedded_rules(
     if outer_tokens == full_tokens {
         return Ok(None);
     }
-    let words = crate::token_word_refs(&full_tokens);
+    let words = crate::lexer::token_word_refs(&full_tokens);
     if !matches!(
         words.as_slice(),
         ["each", "opponent" | "player", ..] | ["for", "each", "opponent" | "player", ..]
@@ -108,13 +113,13 @@ pub(crate) fn parse_quantified_token_creation_with_embedded_rules(
 /// tag still prove the exact same-mana-value relation here.
 fn preserve_revealed_same_mana_value_as_another_iterator(
     tokens: &[OwnedLexToken],
-    effects: &mut Vec<EffectAst>,
+    effects: &mut [EffectAst],
 ) {
     let sentences = split_lexed_sentences(tokens);
     let Some(comparison_sentence) = sentences.last().copied() else {
         return;
     };
-    let words = crate::token_word_refs(comparison_sentence);
+    let words = crate::lexer::token_word_refs(comparison_sentence);
     const PREFIX: &[&str] = &[
         "for", "each", "of", "those", "cards", "that", "has", "the", "same", "mana", "value", "as",
         "another", "card", "revealed", "this", "way",
@@ -424,14 +429,14 @@ fn preserve_fully_scoped_leading_duration_coordination(effects: Vec<EffectAst>) 
 }
 
 fn should_apply_leading_duration_become_shortcut(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if words
         .first()
         .is_some_and(|word| matches!(*word, "at" | "when" | "whenever"))
     {
         return false;
     }
-    if words.iter().any(|word| *word == "if") {
+    if words.contains(&"if") {
         return false;
     }
     if find_window_by(&words, 2, |window| {
@@ -456,7 +461,7 @@ fn summarize_effects(effects: &[EffectAst]) -> String {
         .map(|effect| {
             let debug = format!("{effect:?}");
             debug
-                .split(|ch: char| ch == ' ' || ch == '{' || ch == '(')
+                .split([' ', '{', '('])
                 .next()
                 .unwrap_or("Effect")
                 .to_string()
@@ -575,18 +580,15 @@ fn apply_trailing_counter_constraint_to_destroy_all(
     };
 
     for effect in effects {
-        match effect {
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::DestroyAll { filter, .. }
-                    | SubjectVerbActionAst::ExileAll { filter, .. },
-                ..
-            }) => {
-                if filter.with_counter.is_none() {
-                    filter.with_counter = Some(counter_constraint);
-                }
-            }
-            _ => {}
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::DestroyAll { filter, .. }
+                | SubjectVerbActionAst::ExileAll { filter, .. },
+            ..
+        }) = effect
+            && filter.with_counter.is_none()
+        {
+            filter.with_counter = Some(counter_constraint);
         }
     }
 }
@@ -1440,9 +1442,7 @@ fn numeric_result_branch_line(
     sentence_effects: &[EffectAst],
     sentence_tokens: &[OwnedLexToken],
 ) -> Option<usize> {
-    if split_leading_result_prefix_lexed(sentence_tokens).is_none() {
-        return None;
-    }
+    split_leading_result_prefix_lexed(sentence_tokens)?;
     match sentence_effects {
         [
             EffectAst::IfResult {
@@ -1668,7 +1668,7 @@ pub(crate) fn with_where_x_surface_hints(
     mut value: Value,
     binding_tokens: &[OwnedLexToken],
 ) -> Value {
-    let words = crate::token_word_refs(binding_tokens);
+    let words = crate::lexer::token_word_refs(binding_tokens);
     let explicit_count_surface = words.contains(&"number")
         && words.iter().any(|word| {
             matches!(
@@ -1987,18 +1987,16 @@ fn parse_effect_sentences_from_sentence_inputs(
                     effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens)
                         .map(|shape| shape.where_tokens)
                 })?;
-        let binding_tokens =
-            crate::util::trim_edge_punctuation_tokens(
-                binding_tokens,
-            );
+        let binding_tokens = crate::util::trim_edge_punctuation_tokens(binding_tokens);
         if let Some(value) =
-            crate::families::keyword_static::parse_where_x_is_aggregate_filter_value(
-                binding_tokens,
-            )
+            crate::keyword_static::parse_where_x_is_aggregate_filter_value(binding_tokens)
         {
             return Some(with_where_x_surface_hints(value, tokens));
         }
-        if let Some(value) = crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(binding_tokens)
+        if let Some(value) =
+            crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
+                binding_tokens,
+            )
         {
             return Some(with_where_x_surface_hints(value, tokens));
         }
@@ -2008,9 +2006,7 @@ fn parse_effect_sentences_from_sentence_inputs(
         // found among creatures you control" is the distinct ability set,
         // not the creatures that carry those abilities.
         if let Some(value) =
-            crate::families::keyword_static::parse_where_x_is_number_of_filter_value(
-                binding_tokens,
-            )
+            crate::keyword_static::parse_where_x_is_number_of_filter_value(binding_tokens)
         {
             return Some(with_where_x_surface_hints(value, tokens));
         }
@@ -2109,7 +2105,7 @@ fn parse_effect_sentences_from_sentence_inputs(
                 )
             })?;
         let quoted_ability_tokens = &tokens[first_quote + 1..second_quote];
-        let clause_words = crate::token_word_refs(tokens);
+        let clause_words = crate::lexer::token_word_refs(tokens);
         let (abilities, _) = super::gain_ability::parse_granted_abilities_for_gain_clause(
             quoted_ability_tokens,
             &clause_words,
@@ -2196,6 +2192,20 @@ fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
+        // Counter-unless is one typed verb phrase. The generic sentence
+        // planner splits `unless` alternatives before subject/verb
+        // primitives run, which can expose only the counter prefix and later
+        // reinterpret the payment as a modal choice. Claim the complete
+        // authored sentence while the counter target and payment are still
+        // correlated.
+        let authored_words = crate::lexer::parser_token_word_refs(authored_sentence);
+        if authored_words.first() == Some(&"counter") && authored_words.contains(&"unless") {
+            let authored_clause = trim_edge_punctuation(authored_sentence);
+            effects.push(super::verb_handlers::parse_counter(&authored_clause[1..])?);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
         // A complete target declaration can contain a historical `put`
         // relative clause. The outer single-sentence entrypoint gives that
         // declaration first refusal, but a multi-sentence program reaches
@@ -2235,8 +2245,8 @@ fn parse_effect_sentences_from_sentence_inputs(
             let consumes_nonwinner_sentence = sentences
                 .get(sentence_idx + 1)
                 .is_some_and(|sentence| is_subgame_half_life_nonwinner_sentence(sentence.lexed()));
-            let nonwinner_effects = consumes_nonwinner_sentence
-                .then(|| {
+            let nonwinner_effects = if consumes_nonwinner_sentence {
+                {
                     vec![EffectAst::subject_verb(
                         SubjectVerbRoleAst::AffectedPlayer,
                         PlayerAst::That,
@@ -2244,8 +2254,10 @@ fn parse_effect_sentences_from_sentence_inputs(
                             amount: Value::HalfLifeTotalRoundedUp(PlayerFilter::IteratedPlayer),
                         },
                     )]
-                })
-                .unwrap_or_default();
+                }
+            } else {
+                Default::default()
+            };
             effects.push(EffectAst::PlaySubgame { nonwinner_effects });
             carried_context = None;
             sentence_idx += if consumes_nonwinner_sentence { 2 } else { 1 };
@@ -2257,7 +2269,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
-        let sentence_text = crate::token_word_refs(sentence).join(" ");
+        let sentence_text = crate::lexer::token_word_refs(sentence).join(" ");
         let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
 
         // A paid-cost conditional can also be a token-entry follow-up. Bind
@@ -2276,15 +2288,14 @@ fn parse_effect_sentences_from_sentence_inputs(
         // later verb and discard the gate. Reuse the exact predicate proof
         // from the chain dispatcher rather than matching Gift (or any other
         // optional cost) by surface text.
-        if super::chain_carry::leading_condition_is_paid_label(sentence) {
-            if let Ok(parsed) = super::parse_effect_chain_lexed(sentence)
-                && let Some(conditional) = into_exact_single_conditional(parsed)
-            {
-                effects.push(conditional);
-                carried_context = None;
-                sentence_idx += 1;
-                continue;
-            }
+        if super::chain_carry::leading_condition_is_paid_label(sentence)
+            && let Ok(parsed) = super::parse_effect_chain_lexed(sentence)
+            && let Some(conditional) = into_exact_single_conditional(parsed)
+        {
+            effects.push(conditional);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
         }
 
         let leading_unless_tokens = trim_edge_punctuation(sentence);
@@ -2341,8 +2352,7 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
 
         let direct_for_each_tokens = trim_edge_punctuation(sentence);
-        let direct_for_each_words =
-            crate::token_word_refs(&direct_for_each_tokens);
+        let direct_for_each_words = crate::lexer::token_word_refs(&direct_for_each_tokens);
         let direct_other_player_stack_copy = direct_for_each_words
             .starts_with(&["each", "other", "player", "may", "copy"])
             && direct_for_each_words
@@ -2389,10 +2399,79 @@ fn parse_effect_sentences_from_sentence_inputs(
             }
         }
 
-        // Strip a token blueprint's quoted rule before parsing the outer
-        // statement. The untouched `sentence` is retained so the quoted rule
-        // can be attached afterward.
+        // Strip a token blueprint's quoted rule before broad sequence
+        // recognition. A nested activated rule has its own colon and verbs;
+        // allowing the outer sequence registry to inspect those tokens can
+        // claim or reject the create sentence before the dedicated create
+        // parser gets the rule-free token definition. The untouched `sentence`
+        // is retained below so the quoted rule can be attached afterward.
         let embedded_rule_free_sentence = strip_embedded_token_rules_text(sentence);
+        let stripped_embedded_rule = embedded_rule_free_sentence.as_slice() != sentence;
+        let conditional_token_entry_boundary =
+            is_conditional_token_entry_followup_sentence(authored_sentence)
+                || sentences
+                    .get(sentence_idx + 1)
+                    .is_some_and(|next| is_conditional_token_entry_followup_sentence(next.lexed()));
+        if !stripped_embedded_rule
+            && !conditional_token_entry_boundary
+            && let Some(mut matched) =
+                try_parse_subject_verb_sequence_rule(&sentences, sentence_idx)?
+        {
+            let sequence_where_x = (0..matched.consumed_sentences).find_map(|offset| {
+                sentences
+                    .get(sentence_idx + offset)
+                    .and_then(|sentence| where_x_value_from_tokens(sentence.lowered()))
+            });
+            if let Some(where_value) = sequence_where_x.as_ref() {
+                let mut sequence_words = Vec::new();
+                for offset in 0..matched.consumed_sentences {
+                    if let Some(sentence) = sentences.get(sentence_idx + offset) {
+                        sequence_words.extend(crate::lexer::token_word_refs(sentence.lowered()));
+                    }
+                }
+                replace_unbound_x_in_effects_anywhere(
+                    &mut matched.effects,
+                    where_value,
+                    &sequence_words.join(" "),
+                )?;
+            }
+            super::chain_carry::bind_adjacent_shared_x_life_stat_values(
+                &mut matched.effects,
+                sentence,
+            );
+            super::chain_carry::dedupe_shared_target_player_draw_lose_x(
+                &mut matched.effects,
+                sentence,
+            );
+            preserve_leading_result_prefix_for_sequence(sentence, &mut matched.effects);
+            let stage = if let Some(feature_tag) = matched.feature_tag {
+                format!(
+                    "parse_effect_sentences:subject-verb-sequence:{}:{feature_tag}",
+                    matched.name
+                )
+            } else {
+                format!(
+                    "parse_effect_sentences:subject-verb-sequence:{}",
+                    matched.name
+                )
+            };
+            parser_trace(stage.as_str(), sentence);
+            parse_trace::event(format!(
+                "sequence subject/verb rule: {} -> {}",
+                matched.name,
+                summarize_effects(&matched.effects)
+            ));
+            parse_trace::event(format!(
+                "effect-route: {}",
+                subject_verb_sequence_route(matched.name)
+            ));
+            if let Some(where_value) = sequence_where_x {
+                carried_where_x = Some(where_value);
+            }
+            effects.append(&mut matched.effects);
+            sentence_idx += matched.consumed_sentences;
+            continue;
+        }
         if let Some(mut exact_type_effects) =
             parse_tagged_exact_type_with_quoted_ability_sentence(sentence)?
         {
@@ -2414,8 +2493,7 @@ fn parse_effect_sentences_from_sentence_inputs(
 
         let mut sentence_tokens = embedded_rule_free_sentence;
         sentence_tokens = trim_effect_sentence_edge_punctuation(&sentence_tokens);
-        if sentence_tokens.is_empty()
-            || crate::token_word_refs(&sentence_tokens).is_empty()
+        if sentence_tokens.is_empty() || crate::lexer::token_word_refs(&sentence_tokens).is_empty()
         {
             sentence_idx += 1;
             continue;
@@ -2536,7 +2614,37 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
-        let mut parse_plan = SentenceParsePlan::new(sentence_tokens.clone());
+        let mut parse_plan = {
+            let mut state = SentenceDispatchState {
+                effects: &mut effects,
+                carried_context: &mut carried_context,
+            };
+            match run_pre_parse_followup_registry(
+                &mut state,
+                &sentences,
+                sentence_idx,
+                &sentence_tokens,
+            )? {
+                Some(PreParseFollowupResult::Handled {
+                    consumed_sentences,
+                    route,
+                }) => {
+                    parse_trace::event(format!(
+                        "pre-parse followup handled sentence(s): {consumed_sentences}"
+                    ));
+                    parse_trace::event(format!(
+                        "effect-route: {}",
+                        route.unwrap_or(
+                            "subject-verb verb=Do subject=implicit recognizer=pre-parse-followup",
+                        )
+                    ));
+                    sentence_idx += consumed_sentences;
+                    continue;
+                }
+                Some(PreParseFollowupResult::Plan(plan)) => plan,
+                None => SentenceParsePlan::new(sentence_tokens.clone()),
+            }
+        };
         parser_trace("parse_effect_sentences:sentence", &parse_plan.tokens);
         let sentence_where_x = where_x_value_from_tokens(&parse_plan.tokens);
 
@@ -2556,7 +2664,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             &mut sentence_effects,
         );
         preserve_plural_counter_antecedent(&parse_plan.tokens, &mut sentence_effects);
-        let sentence_words = crate::token_word_refs(&parse_plan.tokens);
+        let sentence_words = crate::lexer::token_word_refs(&parse_plan.tokens);
         if sentence_words.contains(&"then") {
             annotate_counter_followup_surface(
                 &mut sentence_effects,
@@ -2600,13 +2708,13 @@ fn parse_effect_sentences_from_sentence_inputs(
             replace_unbound_x_in_effects_anywhere(
                 &mut sentence_effects,
                 where_value,
-                &crate::token_word_refs(&parse_plan.tokens).join(" "),
+                &crate::lexer::token_word_refs(&parse_plan.tokens).join(" "),
             )?;
         } else if let Some(where_value) = carried_where_x.as_ref() {
             replace_unbound_x_in_effects_anywhere(
                 &mut sentence_effects,
                 where_value,
-                &crate::token_word_refs(&parse_plan.tokens).join(" "),
+                &crate::lexer::token_word_refs(&parse_plan.tokens).join(" "),
             )?;
         }
         super::chain_carry::bind_adjacent_shared_x_life_stat_values(
@@ -2629,7 +2737,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             &mut sentence_effects,
             &sentence_tokens,
         );
-        if crate::token_word_refs(&parse_plan.tokens)
+        if crate::lexer::token_word_refs(&parse_plan.tokens)
             .first()
             .copied()
             == Some("you")
@@ -2642,7 +2750,7 @@ fn parse_effect_sentences_from_sentence_inputs(
         {
             return Err(CardTextError::ParseError(format!(
                 "sentence parsed to no semantic effects (clause: '{}')",
-                crate::token_word_refs(&parse_plan.tokens).join(" ")
+                crate::lexer::token_word_refs(&parse_plan.tokens).join(" ")
             )));
         }
         for effect in &mut sentence_effects {
@@ -2691,7 +2799,7 @@ fn parse_effect_sentences_from_sentence_inputs(
                 );
             }
         }
-        let sentence_words = crate::token_word_refs(&parse_plan.tokens);
+        let sentence_words = crate::lexer::token_word_refs(&parse_plan.tokens);
         let is_if_player_does = sentence_words
             .get(..4)
             .is_some_and(|prefix| prefix == ["if", "a", "player", "does"]);
@@ -2712,6 +2820,27 @@ fn parse_effect_sentences_from_sentence_inputs(
                 predicate: None,
                 result_predicate: predicate,
             };
+        }
+        {
+            let mut state = SentenceDispatchState {
+                effects: &mut effects,
+                carried_context: &mut carried_context,
+            };
+            if let Some(PostParseFollowupResult::Handled { consumed_sentences }) =
+                run_post_parse_followup_registry(
+                    &mut state,
+                    &sentences,
+                    sentence_idx,
+                    &parse_plan.tokens,
+                    &mut sentence_effects,
+                )?
+            {
+                parse_trace::event(format!(
+                    "post-parse followup handled sentence(s): {consumed_sentences}"
+                ));
+                sentence_idx += consumed_sentences;
+                continue;
+            }
         }
         scope_partitioned_prior_metric_followup(
             &effects,
@@ -2754,9 +2883,7 @@ fn is_outside_game_art_rating_sentence(tokens: &[OwnedLexToken]) -> bool {
     effect_grammar::dispatch_entry_shapes::is_outside_game_art_rating_tokens(tokens)
 }
 
-fn parse_delegated_categorical_library_choice(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
+fn parse_delegated_categorical_library_choice(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let source_words = crate::lexer::parser_token_word_refs(tokens);
     const CATEGORIES: &[&str] = &[
         "an",
@@ -2781,13 +2908,14 @@ fn parse_delegated_categorical_library_choice(
     // bucket. Keep those as three executable choices that append to one
     // result tag; a union would select only one card and make the first two
     // categories an impossible type intersection.
-    let complete_program = source_words.starts_with(&[
-        "reveal", "the", "cards", "in", "your", "library",
-    ])
+    let complete_program = source_words
+        .starts_with(&["reveal", "the", "cards", "in", "your", "library"])
         && source_words.ends_with(&[
             "you", "put", "the", "chosen", "cards", "into", "your", "hand", "then", "shuffle",
         ])
-        && source_words.windows(CATEGORIES.len()).any(|words| words == CATEGORIES);
+        && source_words
+            .windows(CATEGORIES.len())
+            .any(|words| words == CATEGORIES);
     if !complete_program
         && !source_words.ends_with(CATEGORIES)
         && !source_words.ends_with(&[
@@ -2941,22 +3069,47 @@ fn parse_complete_delegated_search_partition(tokens: &[OwnedLexToken]) -> Option
         ["an", "opponent", "chooses", "two", "of", "those", "cards"] => false,
         _ => return None,
     };
-    let movement_words =
-        crate::lexer::parser_token_word_refs(movement_sentence);
+    let movement_words = crate::lexer::parser_token_word_refs(movement_sentence);
     let chosen_to_hand = match movement_words.as_slice() {
         [
-            "put", "the", "chosen", "cards", "into", "your", "hand", "and", "shuffle",
-            "the", "rest", "into", "your", "library",
+            "put",
+            "the",
+            "chosen",
+            "cards",
+            "into",
+            "your",
+            "hand",
+            "and",
+            "shuffle",
+            "the",
+            "rest",
+            "into",
+            "your",
+            "library",
         ] => true,
         [
-            "shuffle", "the", "chosen", "cards", "into", "your", "library", "and", "put",
-            "the", "rest", "into", "your", "hand",
+            "shuffle",
+            "the",
+            "chosen",
+            "cards",
+            "into",
+            "your",
+            "library",
+            "and",
+            "put",
+            "the",
+            "rest",
+            "into",
+            "your",
+            "hand",
         ] => false,
         _ => return None,
     };
     let first_words = crate::lexer::parser_token_word_refs(search_sentence);
     if !first_words.starts_with(&["search", "your", "library"])
-        || !first_words.iter().any(|word| matches!(*word, "reveal" | "reveals"))
+        || !first_words
+            .iter()
+            .any(|word| matches!(*word, "reveal" | "reveals"))
     {
         return None;
     }
@@ -2996,9 +3149,8 @@ fn parse_complete_delegated_search_partition(tokens: &[OwnedLexToken]) -> Option
             None,
         )
     };
-    let library_move = |target| {
-        EffectAst::subject_verb_shuffle_objects_into_library(PlayerAst::You, target)
-    };
+    let library_move =
+        |target| EffectAst::subject_verb_shuffle_objects_into_library(PlayerAst::You, target);
     let (first_move, second_move) = if chosen_to_hand {
         (hand_move(chosen_target), library_move(rest))
     } else {
@@ -3024,7 +3176,7 @@ mod delegated_categorical_library_choice_tests {
 
     #[test]
     fn full_sentence_keeps_three_choices_in_one_shared_result_collection() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "An opponent chooses from among them a creature card, a land card, and a noncreature, nonland card.",
             0,
         )
@@ -3043,18 +3195,56 @@ mod delegated_categorical_library_choice_tests {
 pub(crate) fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        let sentences = split_lexed_sentences(tokens);
+        if let [exile, upkeep] = sentences.as_slice()
+            && effect_grammar::parse_collection_scoped_each_upkeep_return_shape(exile, upkeep)
+                .is_some()
+            && let Some(effects) = super::bundle_rules::parse_typed_effect_bundle_lexed(tokens)
+        {
+            return Ok(effects);
+        }
         let source_words = crate::lexer::parser_token_word_refs(tokens);
+        // A period can terminate both an embedded quoted token rule and the
+        // outer create-token sentence. The general sentence splitter quite
+        // correctly ignores periods inside quotes, so make that outer
+        // boundary explicit only when a new `put` instruction begins after a
+        // balanced quoted rule. Parsing the reconstructed two-sentence stream
+        // lets the ordinary carry machinery bind `it` to the created token.
+        if let Some(effects) = parse_quoted_token_rule_then_linked_counter_followup(tokens)? {
+            return Ok(effects);
+        }
+        if let Some(effects) = parse_reveal_hand_then_put_same_name_as_permanent(tokens) {
+            return Ok(effects);
+        }
         if matches!(
             source_words.as_slice(),
             [
-                "exile", "that", "card", "with", "a", _, "counter", "on", "it", "instead",
-                "of", "putting", "it", "into", "your", "graveyard", "as", "it", "resolves",
+                "exile",
+                "that",
+                "card",
+                "with",
+                "a",
+                _,
+                "counter",
+                "on",
+                "it",
+                "instead",
+                "of",
+                "putting",
+                "it",
+                "into",
+                "your",
+                "graveyard",
+                "as",
+                "it",
+                "resolves",
             ]
         ) {
             let view = crate::lexer::TokenWordView::new(tokens);
             if let Some(range) = view.token_span_for_words(5, 6)
-                && let Some(counter_type) = crate::grammar::filters::parse_counter_type_from_tokens(&tokens[range])
+                && let Some(counter_type) =
+                    crate::grammar::filters::parse_counter_type_from_tokens(&tokens[range])
             {
                 return Ok(vec![
                     EffectAst::subject_verb_register_zone_replacement_with_counters(
@@ -3068,18 +3258,37 @@ pub(crate) fn parse_effect_sentences_lexed(
                 ]);
             }
         }
-        if source_words.as_slice()
-            == [
-                "you", "may", "cast", "a", "spell", "from", "among", "cards", "you", "own", "in",
-                "exile", "with", "dream", "counters", "on", "them", "without", "paying", "its",
-                "mana", "cost",
-            ]
+        if let [
+            "you",
+            "may",
+            "cast",
+            "a",
+            "spell",
+            "from",
+            "among",
+            "cards",
+            "you",
+            "own",
+            "in",
+            "exile",
+            tail @ ..,
+        ] = source_words.as_slice()
+            && matches!(
+                tail,
+                ["without", "paying", "its", "mana", "cost"]
+                    | [
+                        "with", "dream", "counters", "on", "them", "without", "paying", "its",
+                        "mana", "cost",
+                    ]
+            )
         {
             let tag = TagKey::from("chosen_countered_exile_spell");
-            let filter = ObjectFilter::default()
+            let mut filter = ObjectFilter::default()
                 .owned_by(PlayerFilter::You)
-                .in_zone(Zone::Exile)
-                .with_counter_type(crate::object::CounterType::Dream);
+                .in_zone(Zone::Exile);
+            if tail.starts_with(&["with", "dream", "counters"]) {
+                filter = filter.with_counter_type(crate::object::CounterType::Dream);
+            }
             return Ok(vec![EffectAst::May {
                 effects: vec![
                     EffectAst::ChooseObjects {
@@ -3106,7 +3315,7 @@ pub(crate) fn parse_effect_sentences_lexed(
         if let Some(effects) = parse_complete_delegated_search_partition(tokens) {
             return Ok(effects);
         }
-        if source_words.iter().any(|word| *word == "create")
+        if source_words.contains(&"create")
             && source_words.windows(3).any(|words| {
                 matches!(
                     words,
@@ -3220,7 +3429,185 @@ pub(crate) fn parse_effect_sentences_lexed(
             }
         }
         Ok(effects)
+    })
+}
+
+fn parse_quoted_token_rule_then_linked_counter_followup(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if !words.contains(&"create") || !words.iter().any(|word| matches!(*word, "token" | "tokens")) {
+        return Ok(None);
     }
+    let Some(opening_quote) = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Quote)
+    else {
+        return Ok(None);
+    };
+    let Some(closing_quote) = tokens
+        .iter()
+        .enumerate()
+        .skip(opening_quote + 1)
+        .find_map(|(idx, token)| (token.kind == TokenKind::Quote).then_some(idx))
+    else {
+        return Ok(None);
+    };
+    if !tokens[opening_quote + 1..closing_quote]
+        .iter()
+        .any(|token| token.kind == TokenKind::Period)
+    {
+        return Ok(None);
+    }
+    let trailing = &tokens[closing_quote + 1..];
+    let trailing_words = crate::lexer::parser_token_word_refs(trailing);
+    if trailing_words.first() != Some(&"put") {
+        return Ok(None);
+    }
+    let clauses = super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![trailing]);
+    let [first_counter_tokens, second_counter_tokens] = clauses.as_slice() else {
+        return Ok(None);
+    };
+    let mut first_counter = match parse_put_counters(first_counter_tokens) {
+        Ok(effect) => effect,
+        Err(_) => return Ok(None),
+    };
+    let second_counter = match parse_put_counters(second_counter_tokens) {
+        Ok(effect) => effect,
+        Err(_) => return Ok(None),
+    };
+    let first_action = match &mut first_counter {
+        EffectAst::SubjectVerb(effect) => &mut effect.action,
+        _ => return Ok(None),
+    };
+    let second_action = match &second_counter {
+        EffectAst::SubjectVerb(effect) => &effect.action,
+        _ => return Ok(None),
+    };
+    let (
+        SubjectVerbActionAst::PutCounters {
+            counter_type: crate::object::CounterType::PlusOnePlusOne,
+            count,
+            target: first_target,
+            target_count: None,
+            distributed: false,
+        },
+        SubjectVerbActionAst::PutCounters {
+            counter_type: source_counter_type,
+            count: Value::Fixed(1),
+            target: TargetAst::Source(_),
+            target_count: None,
+            distributed: false,
+        },
+    ) = (first_action, second_action)
+    else {
+        return Ok(None);
+    };
+    let Value::CountersOn(source, Some(counted_counter_type)) = count.unhinted() else {
+        return Ok(None);
+    };
+    if counted_counter_type != source_counter_type || !matches!(source.base(), ChooseSpec::Source) {
+        return Ok(None);
+    }
+
+    let mut create_effects = parse_effect_sentence_lexed(&tokens[..=closing_quote])?;
+    let [create_effect] = create_effects.as_mut_slice() else {
+        return Ok(None);
+    };
+    if !matches!(
+        create_effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
+    let created_tag = crate::util::helper_tag_for_tokens(tokens, "created_token");
+    *first_target = TargetAst::Tagged(created_tag.clone(), span_from_tokens(first_counter_tokens));
+
+    Ok(Some(vec![
+        EffectAst::TagAffected {
+            effect: Box::new(create_effect.clone()),
+            tag: created_tag,
+        },
+        first_counter,
+        second_counter,
+    ]))
+}
+
+fn parse_reveal_hand_then_put_same_name_as_permanent(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let remainder =
+        words.strip_prefix(&["reveal", "a", "card", "in", "your", "hand", "then", "put"])?;
+    let remainder = remainder
+        .strip_prefix(&["that", "card"])
+        .or_else(|| remainder.strip_prefix(&["it"]))?;
+    if remainder
+        != [
+            "onto",
+            "the",
+            "battlefield",
+            "if",
+            "it",
+            "has",
+            "the",
+            "same",
+            "name",
+            "as",
+            "a",
+            "permanent",
+        ]
+    {
+        return None;
+    }
+
+    let selected_tag = crate::util::helper_tag_for_tokens(tokens, "revealed_hand_card");
+    let comparison_tag = crate::util::helper_tag_for_tokens(tokens, "same_name_permanents");
+    let mut selected_filter = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .owned_by(PlayerFilter::You);
+    selected_filter.set_explicit_card_noun(true);
+    let mut same_name_filter = ObjectFilter::default();
+    same_name_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: comparison_tag.clone(),
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+
+    Some(vec![
+        EffectAst::ChooseObjects {
+            filter: selected_filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: selected_tag.clone(),
+        },
+        EffectAst::subject_verb_reveal_tagged(selected_tag.clone()),
+        EffectAst::subject_verb_tag_matching_objects(
+            ObjectFilter::permanent(),
+            vec![Zone::Battlefield],
+            comparison_tag,
+        ),
+        EffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(selected_tag.clone(), same_name_filter),
+            if_true: vec![EffectAst::ForEachTagged {
+                tag: selected_tag,
+                effects: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Battlefield,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            }],
+            if_false: Vec::new(),
+        },
+    ])
 }
 
 fn contains_tagged_battlefield_partition(effect: &EffectAst) -> bool {
@@ -3493,7 +3880,7 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
         return;
     }
 
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     let has_trailing_that_name = words
         .windows(3)
         .any(|window| window == ["with", "that", "name"]);
@@ -3624,14 +4011,14 @@ fn preserve_tapped_this_way_group_for_later_distribution(
 ) {
     const TAPPED_GROUP_ALIAS: &str = "tapped_this_way_group";
 
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if !words
         .windows(3)
         .any(|window| window == ["tapped", "this", "way"])
         || !words
             .windows(4)
             .any(|window| window == ["any", "number", "of", "those"])
-        || !words.iter().any(|word| *word == "divided")
+        || !words.contains(&"divided")
     {
         return;
     }
@@ -3697,7 +4084,7 @@ fn apply_mana_usage_restriction_to_previous_effect(
     let Some(previous) = effects.pop() else {
         return Err(CardTextError::ParseError(format!(
             "mana restriction has no preceding mana effect (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     };
 
@@ -3705,7 +4092,7 @@ fn apply_mana_usage_restriction_to_previous_effect(
         effects.push(previous);
         return Err(CardTextError::ParseError(format!(
             "mana restriction does not follow a mana-producing effect (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -3817,7 +4204,7 @@ fn parse_next_batch_enter_with_counters(
 #[cfg(test)]
 mod next_batch_enter_with_counters_tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
     use crate::types::CardType;
 
     #[test]
@@ -3900,7 +4287,7 @@ mod next_batch_enter_with_counters_tests {
 #[cfg(test)]
 mod resolving_card_countered_exile_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn resolving_card_countered_exile_and_free_cast_are_typed() {
@@ -3928,24 +4315,27 @@ mod resolving_card_countered_exile_tests {
         )
         .unwrap();
         let parsed = parse_effect_sentences_lexed(&permission).unwrap();
-        assert!(matches!(
-            parsed.as_slice(),
-            [EffectAst::May { effects }]
-                if matches!(effects.as_slice(), [
-                    EffectAst::ChooseObjects { filter, tag, .. },
-                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::CastTagged {
-                            tag: cast_tag,
-                            without_paying_mana_cost: true,
+        assert!(
+            matches!(
+                parsed.as_slice(),
+                [EffectAst::May { effects }]
+                    if matches!(effects.as_slice(), [
+                        EffectAst::ChooseObjects { filter, tag, .. },
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            action: SubjectVerbActionAst::CastTagged {
+                                tag: cast_tag,
+                                without_paying_mana_cost: true,
+                                ..
+                            },
                             ..
-                        },
-                        ..
-                    })
-                ] if filter.with_counter
-                    == Some(crate::filter::CounterConstraint::Typed(
-                        crate::object::CounterType::Dream,
-                    )) && tag == cast_tag)
-        ), "{parsed:#?}");
+                        })
+                    ] if filter.with_counter
+                        == Some(crate::filter::CounterConstraint::Typed(
+                            crate::object::CounterType::Dream,
+                        )) && tag == cast_tag)
+            ),
+            "{parsed:#?}"
+        );
     }
 
     #[test]
@@ -4018,8 +4408,7 @@ fn parse_effect_sentences_lexed_inner(
 
     // The full as-though permission must win before the broad `spells ... have
     // shroud` gain-ability route can reinterpret the source/controller words.
-    if let Some(effect) =
-        super::clause_dispatch::parse_hexproof_targeting_override_clause(tokens)?
+    if let Some(effect) = super::clause_dispatch::parse_hexproof_targeting_override_clause(tokens)?
     {
         return Ok(vec![effect]);
     }
@@ -4030,16 +4419,13 @@ fn parse_effect_sentences_lexed_inner(
     let words = crate::lexer::parser_token_word_refs(tokens);
     if words.starts_with(&["until", "your", "next", "turn", "you", "may", "cast"])
         && let Some(split) = tokens.windows(3).position(|window| {
-            window[0].is_comma()
-                && window[1].is_word("and")
-                && window[2].is_word("each")
+            window[0].is_comma() && window[1].is_word("and") && window[2].is_word("each")
         })
         && let Some(prefix_comma) = tokens.iter().position(OwnedLexToken::is_comma)
     {
         let permission_tokens = &tokens[..split];
         let replacement_tokens = &tokens[split + 2..];
-        let replacement_words =
-            crate::lexer::parser_token_word_refs(replacement_tokens);
+        let replacement_words = crate::lexer::parser_token_word_refs(replacement_tokens);
         if replacement_words.starts_with(&["each", "creature", "you", "control", "enters"])
             && let Some(permission) =
                 super::super::permission_helpers::parse_cast_spells_as_though_they_had_flash_clause(
@@ -4049,8 +4435,7 @@ fn parse_effect_sentences_lexed_inner(
             let mut duration_replacement = tokens[..=prefix_comma].to_vec();
             duration_replacement.extend_from_slice(replacement_tokens);
             let mut effects = vec![permission];
-            let mut replacement =
-                parse_effect_sentences_lexed_inner(&duration_replacement)?;
+            let mut replacement = parse_effect_sentences_lexed_inner(&duration_replacement)?;
             if !replacement.is_empty() {
                 effects.append(&mut replacement);
                 return Ok(effects);
@@ -4062,9 +4447,7 @@ fn parse_effect_sentences_lexed_inner(
     // is two coordinated effects. Parse the permission independently so the
     // leading `may` cannot incorrectly wrap (or replace) the delayed grant.
     if let Some(split) = tokens.windows(3).position(|window| {
-        window[0].is_comma()
-            && window[1].is_word("and")
-            && window[2].is_word("whenever")
+        window[0].is_comma() && window[1].is_word("and") && window[2].is_word("whenever")
     }) {
         let permission_tokens = &tokens[..split];
         let grant_tokens = &tokens[split + 2..];
@@ -4089,6 +4472,63 @@ fn parse_effect_sentences_lexed_inner(
     }
 
     let sentence_parts = split_lexed_sentences(tokens);
+    if let [create, exile_created, sacrifice_source] = sentence_parts.as_slice()
+        && crate::grammar::trigger_subjects::parse_token_lifecycle_sentence_tokens(exile_created)
+            == Some(
+                crate::grammar::trigger_subjects::TokenLifecycleSentenceKind::ExileCreatedTokenWhenSourceLeaves,
+            )
+        && crate::grammar::trigger_subjects::parse_token_lifecycle_sentence_tokens(
+            sacrifice_source,
+        ) == Some(
+            crate::grammar::trigger_subjects::TokenLifecycleSentenceKind::SacrificeSourceWhenCreatedTokenLeaves,
+        )
+    {
+        // These two follow-ups form one reciprocal lifecycle around the token
+        // produced by the first sentence. Parse the producer independently,
+        // then bind both grammar-proven references before the broad sequence
+        // registry can consume the exile sentence as an unrelated suffix.
+        let create_effect = super::parse_create(create, None)?;
+        if !matches!(
+            &create_effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                ..
+            })
+        ) {
+            return Err(CardTextError::ParseError(
+                "created-token lifecycle producer was not a token creation".to_string(),
+            ));
+        }
+        let mut effects = vec![create_effect];
+        let exile = parse_sentence_exile_that_token_when_source_leaves(
+            exile_created,
+            effects.as_slice(),
+        )
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "created-token lifecycle lost its token producer before exile".to_string(),
+            )
+        })?;
+        effects.push(exile);
+        let sacrifice = parse_sentence_sacrifice_source_when_that_token_leaves(
+            sacrifice_source,
+            effects.as_slice(),
+        )
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "created-token lifecycle lost its token producer before sacrifice".to_string(),
+            )
+        })?;
+        effects.push(sacrifice);
+        return Ok(effects
+            .into_iter()
+            .map(|effect| EffectAst::SourceSentence {
+                effects: vec![effect],
+                leading_then: false,
+                starting_with_controller: false,
+            })
+            .collect());
+    }
     if let [choose, return_them, draw] = sentence_parts.as_slice()
         && crate::lexer::parser_token_word_refs(choose).starts_with(&[
             "choose",
@@ -4282,8 +4722,7 @@ fn parse_effect_sentences_lexed_inner(
         return Ok(effects);
     }
 
-    let sentence_words =
-        crate::grammar::primitives::TokenWordView::new(tokens).to_word_refs();
+    let sentence_words = crate::grammar::primitives::TokenWordView::new(tokens).to_word_refs();
     if sentence_parts.len() == 1
         && effect_grammar::gain_ability_shapes::parse_leading_gain_duration_shape(&sentence_words)
             .is_some()
@@ -4355,7 +4794,7 @@ fn parse_turn_scoped_enter_tapped_replacement(
     else {
         return Ok(None);
     };
-    let tail_words = crate::token_word_refs(&tokens[enter_index + 1..]);
+    let tail_words = crate::lexer::token_word_refs(&tokens[enter_index + 1..]);
     if tail_words.as_slice() != ["tapped", "this", "turn"] {
         return Ok(None);
     }
@@ -4403,7 +4842,7 @@ fn parse_tapped_land_mana_replacement(tokens: &[OwnedLexToken]) -> Option<Effect
 fn parse_temporary_per_blocker_tax(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if words.as_slice()
         != [
             "this",
@@ -4562,7 +5001,7 @@ fn parse_restart_game_sentence(
 }
 
 fn is_play_magic_subgame_sentence(tokens: &[OwnedLexToken]) -> bool {
-    crate::token_word_refs(tokens).as_slice()
+    crate::lexer::token_word_refs(tokens).as_slice()
         == [
             "players",
             "play",
@@ -4579,16 +5018,16 @@ fn is_play_magic_subgame_sentence(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_subgame_half_life_nonwinner_sentence(tokens: &[OwnedLexToken]) -> bool {
-    crate::token_word_refs(tokens).as_slice()
+    crate::lexer::token_word_refs(tokens).as_slice()
         == [
             "each", "player", "who", "doesn't", "win", "the", "subgame", "loses", "half", "their",
             "life", "rounded", "up",
         ]
 }
 
-fn split_leading_amass_comma_then_sentences<'a>(
-    segments: Vec<&'a [OwnedLexToken]>,
-) -> Vec<&'a [OwnedLexToken]> {
+fn split_leading_amass_comma_then_sentences(
+    segments: Vec<&[OwnedLexToken]>,
+) -> Vec<&[OwnedLexToken]> {
     let mut result = Vec::new();
     for segment in segments {
         if segment
@@ -4683,18 +5122,14 @@ pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken])
     effect_grammar::followup_shapes::parse_cant_be_regenerated_followup(tokens).is_some()
 }
 
-pub(crate) fn apply_cant_be_regenerated_to_last_destroy_effect(
-    effects: &mut Vec<EffectAst>,
-) -> bool {
+pub(crate) fn apply_cant_be_regenerated_to_last_destroy_effect(effects: &mut [EffectAst]) -> bool {
     let Some(last) = effects.last_mut() else {
         return false;
     };
     apply_cant_be_regenerated_to_effect(last)
 }
 
-pub(crate) fn apply_cant_be_regenerated_to_last_destroy_group(
-    effects: &mut Vec<EffectAst>,
-) -> bool {
+pub(crate) fn apply_cant_be_regenerated_to_last_destroy_group(effects: &mut [EffectAst]) -> bool {
     let Some(last) = effects.last_mut() else {
         return false;
     };
@@ -4816,9 +5251,7 @@ mod tests {
     };
     use crate::effect::{Value, ValueComparisonOperator};
     use crate::filter::TaggedOpbjectRelation;
-    use crate::runtime_backend::model::effect_ast_traversal::{
-        TerminalResultProducer, terminal_result_producer,
-    };
+    use crate::model::visit::{TerminalResultProducer, terminal_result_producer};
     use crate::target::PlayerFilter;
 
     use super::super::super::grammar::structure::split_lexed_sentences;
@@ -4826,6 +5259,7 @@ mod tests {
     use super::super::super::permission_helpers::parse_until_end_of_turn_may_play_tagged_clause;
     use super::super::super::util::{parse_subject, trim_commas};
     use super::super::chain_carry::Verb;
+    use super::super::parse_typed_effect_bundle_lexed;
     use super::super::zone_handlers::parse_exile_top_library_clause;
     use super::super::{parse_effect_chain, parse_effect_sentence_lexed};
     use super::{
@@ -4836,7 +5270,7 @@ mod tests {
         parse_effect_sentences_lexed_inner, parse_if_you_dont_sentence,
         parse_looked_card_reveal_filter,
         parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
-        parse_top_cards_view_sentence, parse_typed_effect_bundle_lexed,
+        parse_top_cards_view_sentence,
     };
 
     #[test]
@@ -4854,7 +5288,7 @@ mod tests {
         assert!(debug.contains("GrantBySpec"), "{debug}");
         assert!(debug.contains("Flash"), "{debug}");
         assert!(
-            debug.contains("GrantToTarget") || debug.contains("ApplyContinuous"),
+            debug.contains("GrantAbilitiesToTarget") || debug.contains("ApplyContinuous"),
             "{debug}"
         );
     }
@@ -4968,9 +5402,9 @@ mod tests {
             "quoted token rule escaped into the outer action: {ast_debug}"
         );
 
-        let (lowered, _) = crate::runtime_backend::compile_support::compile_effects(
+        let (lowered, _) = crate::compile_support::compile_effects(
             &parsed,
-            &mut crate::runtime_backend::EffectLoweringContext::new(),
+            &mut crate::model::facts::EffectLoweringContext::new(),
         )
         .expect("quantified token creation should lower");
         let lowered_debug = format!("{lowered:#?}");
@@ -5016,6 +5450,27 @@ mod tests {
             !near_miss_debug.contains("MustAttack"),
             "a missing quoted rule must not be invented: {near_miss_debug}"
         );
+    }
+
+    #[test]
+    fn three_sentence_created_token_lifecycle_stays_one_effect_program() {
+        for text in [
+            "Create a 1/1 colorless Construct artifact creature token. Exile that token when this leaves the battlefield. Sacrifice this when that token leaves the battlefield.",
+            "Create Stangg Twin, a legendary 3/4 red and green Human Warrior creature token. Exile that token when this leaves the battlefield. Sacrifice this when that token leaves the battlefield.",
+        ] {
+            let tokens = lex_line(text, 0).expect("created-token lifecycle should lex");
+            let effects = parse_effect_sentences_lexed(&tokens)
+                .expect("created-token lifecycle should parse through the public sentence route");
+            let debug = format!("{effects:#?}");
+
+            assert_eq!(effects.len(), 3, "{text}: {debug}");
+            assert!(debug.contains("CreateTokenWithMods"), "{text}: {debug}");
+            assert!(debug.contains("ExileWhenSourceLeaves"), "{text}: {debug}");
+            assert!(
+                debug.contains("SacrificeSourceWhenLeaves"),
+                "{text}: {debug}"
+            );
+        }
     }
 
     #[test]
@@ -5071,15 +5526,11 @@ mod tests {
             return Some(subject_verb.subject.player);
         }
         let mut found = None;
-        crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effects(
-            effect,
-            true,
-            |nested| {
-                if found.is_none() {
-                    found = nested.iter().find_map(empty_mana_pool_player);
-                }
-            },
-        );
+        crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+            if found.is_none() {
+                found = nested.iter().find_map(empty_mana_pool_player);
+            }
+        });
         found
     }
 
@@ -5445,19 +5896,19 @@ mod tests {
             0,
         )
         .expect("ability aggregate creation should lex");
-        let binding = crate::runtime_backend::front_end::grammar::effects::dispatch_entry_shapes::
-            parse_where_x_usage_shape_tokens(&tokens)
-            .expect("create count should expose its where-X binding");
-        let direct = crate::runtime_backend::families::keyword_static::
-            parse_where_x_is_number_of_filter_value(
-                crate::runtime_backend::front_end::shared::util::
-                    trim_edge_punctuation_tokens(binding.binding_tokens),
+        let binding =
+            crate::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(
+                &tokens,
             )
-            .expect("typed number-of binding should parse");
+            .expect("create count should expose its where-X binding");
+        let direct = crate::keyword_static::parse_where_x_is_number_of_filter_value(
+            crate::util::trim_edge_punctuation_tokens(binding.binding_tokens),
+        )
+        .expect("typed number-of binding should parse");
         assert!(
             matches!(direct.unhinted(), Value::StaticAbilitiesAmong { .. }),
             "typed binding was reduced before effect parsing: {direct:#?}; tokens: {:?}",
-            crate::runtime_backend::token_word_refs(binding.binding_tokens)
+            crate::lexer::token_word_refs(binding.binding_tokens)
         );
         let effects = super::parse_effect_sentences_lexed(&tokens)
             .expect("ability aggregate creation should parse");
@@ -6453,7 +6904,7 @@ mod tests {
             )
         )));
 
-        let lowered = crate::runtime_backend::compile_support::compile_statement_effects(&parsed)
+        let lowered = crate::compile_support::compile_statement_effects(&parsed)
             .expect("typed clash result branch should lower normally");
         let lowered_debug = format!("{lowered:#?}");
         assert!(
@@ -6678,12 +7129,11 @@ mod tests {
         assert_eq!(if_false.len(), 1, "{if_false:#?}");
         assert!(!attach_to_previous_ability);
 
-        let lowered =
-            crate::runtime_backend::compile_support::compile_statement_effects_with_imports(
-                &parsed,
-                &crate::runtime_backend::reference_model::ReferenceImports::default(),
-            )
-            .expect("lower typed prior-token replacement");
+        let lowered = crate::compile_support::compile_statement_effects_with_imports(
+            &parsed,
+            &crate::model::reference_state::ReferenceImports::default(),
+        )
+        .expect("lower typed prior-token replacement");
         let debug = format!("{lowered:#?}");
         assert!(debug.contains("self_replacements"), "{debug}");
         assert!(debug.contains("CreatureDiedThisTurn"), "{debug}");
@@ -6727,11 +7177,8 @@ mod tests {
                 "replacement must follow fight's secondary target for {text:?}: {parsed:#?}"
             );
 
-            let lowered =
-                crate::runtime_backend::compile_support::compile_statement_effects(&parsed)
-                    .unwrap_or_else(|error| {
-                        panic!("lower fight replacement for {text:?}: {error}")
-                    });
+            let lowered = crate::compile_support::compile_statement_effects(&parsed)
+                .unwrap_or_else(|error| panic!("lower fight replacement for {text:?}: {error}"));
             assert!(
                 format!("{lowered:#?}").contains("RegisterZoneReplacementEffect"),
                 "expected event-layer replacement for {text:?}: {lowered:#?}"
@@ -7905,7 +8352,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             }
             SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { ability, .. } => {
                 replace_values_in_granted_abilities(
-                    std::slice::from_mut(ability),
+                    std::slice::from_mut(ability.as_mut()),
                     replacement,
                     clause,
                     false,
@@ -7932,8 +8379,8 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
 
 pub(crate) fn parse_exact_where_x_value_expression(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation(tokens);
-    if let Some(value) = crate::grammar::shared_util::value_semantics::
-        parse_mana_symbol_spent_to_cast_value(&tokens)
+    if let Some(value) =
+        crate::grammar::shared_util::value_semantics::parse_mana_symbol_spent_to_cast_value(&tokens)
     {
         return Some(value);
     }
@@ -7948,14 +8395,10 @@ pub(crate) fn parse_exact_where_x_value_expression(tokens: &[OwnedLexToken]) -> 
     ) {
         return Some(Value::CardTypesInGraveyard(PlayerFilter::You));
     }
-    let word_view =
-        crate::grammar::primitives::TokenWordView::new(tokens.as_slice());
+    let word_view = crate::grammar::primitives::TokenWordView::new(tokens.as_slice());
     let words = word_view.word_refs();
     let body = words.strip_prefix(&["where", "x", "is"])?;
-    let (value, used) =
-        crate::grammar::shared_util::value_expr::parse_value_expr_words(
-            body,
-        )?;
+    let (value, used) = crate::grammar::shared_util::value_expr::parse_value_expr_words(body)?;
     (used == body.len()).then_some(value)
 }
 
@@ -7968,16 +8411,20 @@ pub(crate) fn apply_where_x_to_damage_amounts(
     else {
         return Ok(());
     };
-    let binding_tokens =
-        crate::util::trim_edge_punctuation_tokens(
-            shape.binding_tokens,
-        );
-    let Some(where_value) = crate::families::keyword_static::parse_where_x_is_aggregate_filter_value(binding_tokens)
-        .or_else(|| crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(binding_tokens))
-        .or_else(|| crate::families::keyword_static::parse_where_x_is_number_of_filter_value(binding_tokens))
-        .or_else(|| parse_exact_where_x_value_expression(binding_tokens))
-        .or_else(|| parse_value_binding_clause(binding_tokens))
-        .map(|value| with_where_x_surface_hints(value, tokens))
+    let binding_tokens = crate::util::trim_edge_punctuation_tokens(shape.binding_tokens);
+    let Some(where_value) =
+        crate::keyword_static::parse_where_x_is_aggregate_filter_value(binding_tokens)
+            .or_else(|| {
+                crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
+                    binding_tokens,
+                )
+            })
+            .or_else(|| {
+                crate::keyword_static::parse_where_x_is_number_of_filter_value(binding_tokens)
+            })
+            .or_else(|| parse_exact_where_x_value_expression(binding_tokens))
+            .or_else(|| parse_value_binding_clause(binding_tokens))
+            .map(|value| with_where_x_surface_hints(value, tokens))
     else {
         return Ok(());
     };
@@ -7994,17 +8441,16 @@ pub(crate) fn apply_where_x_to_damage_amounts(
 
 pub(crate) fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAst) {
     match effect {
-        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::DealDamage {
+        EffectAst::SubjectVerb(subject_verb) => {
+            if let SubjectVerbActionAst::DealDamage {
                 target: damage_target,
                 ..
-            } => {
-                if target_references_it(damage_target) {
-                    *damage_target = target.clone();
-                }
+            } = &mut subject_verb.action
+                && target_references_it(damage_target)
+            {
+                *damage_target = target.clone();
             }
-            _ => {}
-        },
+        }
         _ => for_each_nested_effects_mut(effect, true, |nested| {
             replace_it_damage_target_in_effects(nested, target);
         }),
@@ -8376,10 +8822,10 @@ pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(
 pub(crate) fn strip_otherwise_sentence_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
-    if !tokens
+    if tokens
         .first()
         .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| word == OTHERWISE_WORD)
+        .is_none_or(|word| word != OTHERWISE_WORD)
     {
         return None;
     }
@@ -8631,7 +9077,7 @@ pub(crate) fn parse_token_granted_ability_followup_sentence_lexed(
     else {
         return Ok(None);
     };
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let (abilities, is_choice) =
         super::parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?;
     if is_choice || abilities.is_empty() {

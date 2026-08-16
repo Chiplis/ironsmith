@@ -4,7 +4,7 @@
 //! family remains responsible for turning these facts into grants and effects.
 
 use crate::effect::{Value, ValueComparisonOperator};
-use crate::front_end::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 
 use winnow::combinator::{alt, eof, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
@@ -908,7 +908,7 @@ fn sentence_body_tokens<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexT
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

@@ -38,7 +38,7 @@ impl EffectExecutor for HauntExileEffect {
         // Verify the haunted creature is still on the battlefield.
         if game
             .object(haunted_creature_id)
-            .map_or(true, |obj| obj.zone != Zone::Battlefield)
+            .is_none_or(|obj| obj.zone != Zone::Battlefield)
         {
             return Ok(EffectOutcome::resolved());
         }

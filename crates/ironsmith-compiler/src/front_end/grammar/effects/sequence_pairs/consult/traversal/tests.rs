@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::front_end::lexer::lex_line;
+use crate::lexer::lex_line;
 
 fn lex(raw: &str) -> Vec<OwnedLexToken> {
     lex_line(raw, 0).unwrap()

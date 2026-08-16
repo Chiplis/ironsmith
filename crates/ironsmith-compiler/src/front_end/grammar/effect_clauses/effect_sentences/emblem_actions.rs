@@ -2,28 +2,30 @@ use super::super::clause_dispatch;
 use super::*;
 
 use crate::activation_and_restrictions::parse_activated_line;
-use crate::model::ast::{EmblemAbilityAst, EmblemDescriptionAst};
-use crate::clause_support::{
-    parse_static_ability_ast_line_lexed, parse_triggered_line_lexed,
-};
+use crate::clause_support::{parse_static_ability_ast_line_lexed, parse_triggered_line_lexed};
 use crate::grammar::effects::emblem_shapes;
-use crate::grammar::{
-    activated_lines, clause_support as clause_grammar, trigger_surface,
-};
+use crate::grammar::{activated_lines, clause_support as clause_grammar, trigger_surface};
 use crate::lexer::{render_token_slice, split_lexed_sentences};
+use crate::model::ast::{EmblemAbilityAst, EmblemDescriptionAst};
 use crate::model::compiler_semantic::LineAst;
 
 fn parse_emblem_ability_tokens(tokens: &[OwnedLexToken]) -> Option<EmblemAbilityAst> {
-    let tokens = tokens
+    let tokens = if tokens
         .first()
         .is_some_and(|token| token.kind == TokenKind::Quote)
-        .then(|| &tokens[1..])
-        .unwrap_or(tokens);
-    let tokens = tokens
+    {
+        &tokens[1..]
+    } else {
+        tokens
+    };
+    let tokens = if tokens
         .last()
         .is_some_and(|token| token.kind == TokenKind::Quote)
-        .then(|| &tokens[..tokens.len().saturating_sub(1)])
-        .unwrap_or(tokens);
+    {
+        &tokens[..tokens.len().saturating_sub(1)]
+    } else {
+        tokens
+    };
     if clause_grammar::parse_trigger_intro_tokens(tokens).body_first > 0
         && let Ok(LineAst::Triggered {
             trigger,
@@ -149,17 +151,13 @@ pub(crate) fn parse_quoted_emblem_then_action(tokens: &[OwnedLexToken]) -> Optio
         return None;
     }
     let emblem = parse_emblem_action(&tokens[..=close_quote], None)?;
-    let trailing = crate::lexer::trim_lexed_commas(
-        after_quote.get(then_offset + 1..).unwrap_or_default(),
-    );
+    let trailing =
+        crate::lexer::trim_lexed_commas(after_quote.get(then_offset + 1..).unwrap_or_default());
     if trailing.is_empty() {
         return None;
     }
     let mut effects = vec![emblem];
-    effects.extend(
-        crate::sentences::effect_sentences::parse_effect_chain_lexed(&trailing)
-            .ok()?,
-    );
+    effects.extend(crate::effect_sentences::parse_effect_chain_lexed(trailing).ok()?);
     (effects.len() > 1).then_some(EffectAst::Sequence { effects })
 }
 
@@ -172,7 +170,7 @@ pub(crate) fn parse_unquoted_emblem_action(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Option<EffectAst> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if !words.starts_with(&["an", "emblem", "with"]) || tokens.len() <= 3 {
         return None;
     }

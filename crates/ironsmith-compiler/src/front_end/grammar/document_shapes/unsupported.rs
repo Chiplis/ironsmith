@@ -553,7 +553,7 @@ fn parse_legendary_copy_exception(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn classifies_prefix_exact_contains_and_composed_unsupported_shapes() {

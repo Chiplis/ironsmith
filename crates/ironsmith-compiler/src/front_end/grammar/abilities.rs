@@ -365,10 +365,9 @@ pub(crate) fn parse_reveal_first_card_you_draw_each_turn_spec_lexed(
             tokens
         };
 
-        if let Some(((), [])) = primitives::parse_prefix(
-            &remainder,
-            parse_reveal_first_card_you_draw_each_turn_suffix,
-        ) {
+        if let Some(((), [])) =
+            primitives::parse_prefix(remainder, parse_reveal_first_card_you_draw_each_turn_suffix)
+        {
             return Some(RevealFirstCardYouDrawEachTurnSpec {
                 optional,
                 your_turns_only: false,
@@ -376,7 +375,7 @@ pub(crate) fn parse_reveal_first_card_you_draw_each_turn_spec_lexed(
         }
 
         if let Some(((), [])) = primitives::parse_prefix(
-            &remainder,
+            remainder,
             parse_reveal_first_card_you_draw_on_your_turns_suffix,
         ) {
             return Some(RevealFirstCardYouDrawEachTurnSpec {
@@ -592,8 +591,8 @@ pub(crate) fn is_additional_cost_choice_line_lexed(tokens: &[OwnedLexToken]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::TokenWordView;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::TokenWordView;
+    use crate::lexer::lex_line;
 
     #[test]
     fn untap_each_other_players_untap_step_extracts_subject_tokens() {
@@ -938,11 +937,7 @@ pub(crate) fn split_if_this_spell_costs_line_lexed(
     if condition_tokens.is_empty() || tail_tokens.is_empty() {
         return None;
     }
-    if primitives::parse_prefix(tail_tokens, primitives::phrase(&["this", "spell", "costs"]))
-        .is_none()
-    {
-        return None;
-    }
+    primitives::parse_prefix(tail_tokens, primitives::phrase(&["this", "spell", "costs"]))?;
 
     Some(IfThisSpellCostsSplitSpec {
         condition_tokens,
@@ -1077,10 +1072,9 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line_lexed(
             primitives::phrase(&["this", "creature"]),
             parse_assign_combat_damage_using_toughness_suffix,
         ),
-    ) {
-        if remainder.is_empty() {
-            return Some(CombatDamageUsingToughnessSubject::ThisCreature);
-        }
+    ) && remainder.is_empty()
+    {
+        return Some(CombatDamageUsingToughnessSubject::ThisCreature);
     }
 
     if let Some((((), ()), remainder)) = primitives::parse_prefix(
@@ -1089,10 +1083,9 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line_lexed(
             primitives::phrase(&["each", "creature", "you", "control"]),
             parse_assign_combat_damage_using_toughness_suffix,
         ),
-    ) {
-        if remainder.is_empty() {
-            return Some(CombatDamageUsingToughnessSubject::EachCreatureYouControl);
-        }
+    ) && remainder.is_empty()
+    {
+        return Some(CombatDamageUsingToughnessSubject::EachCreatureYouControl);
     }
 
     if let Some((((), ()), remainder)) = primitives::parse_prefix(
@@ -1101,10 +1094,9 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line_lexed(
             primitives::phrase(&["each", "creature"]),
             parse_assign_combat_damage_using_toughness_suffix,
         ),
-    ) {
-        if remainder.is_empty() {
-            return Some(CombatDamageUsingToughnessSubject::EachCreature);
-        }
+    ) && remainder.is_empty()
+    {
+        return Some(CombatDamageUsingToughnessSubject::EachCreature);
     }
 
     None
@@ -1113,7 +1105,7 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line_lexed(
 pub(crate) fn is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     const EXPECTED: &[&str] = &[
         "rather",
         "than",

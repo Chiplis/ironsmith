@@ -41,7 +41,7 @@ fn wyleth_draw(
             let draw = triggered
                 .effects
                 .flattened_default_effects()
-                .into_iter()
+                .iter()
                 .find_map(|effect| effect.downcast_ref::<DrawCardsEffect>())?;
             Some((trigger, draw))
         })

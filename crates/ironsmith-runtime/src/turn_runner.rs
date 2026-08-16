@@ -2626,7 +2626,7 @@ mod tests {
         let gibbering_descent = gibbering_descent_definition();
         game.create_object_from_definition(&gibbering_descent, alice, Zone::Battlefield);
         for idx in 0..hand_size {
-            let card = CardBuilder::new(CardId::new(), &format!("Hand Card {idx}"))
+            let card = CardBuilder::new(CardId::new(), format!("Hand Card {idx}"))
                 .card_types(vec![CardType::Creature])
                 .build();
             game.create_object_from_card(&card, alice, Zone::Hand);
@@ -2687,7 +2687,7 @@ mod tests {
             .build();
         let dredger_id = game.create_object_from_definition(&dredger, alice, Zone::Graveyard);
         for idx in 0..2 {
-            let card = CardBuilder::new(CardId::new(), &format!("Library Creature {idx}"))
+            let card = CardBuilder::new(CardId::new(), format!("Library Creature {idx}"))
                 .card_types(vec![CardType::Creature])
                 .build();
             game.create_object_from_card(&card, alice, Zone::Library);
@@ -2739,7 +2739,7 @@ mod tests {
         game.turn.active_player = alice;
         game.turn.turn_number = 2;
         for index in 0..2 {
-            let card = CardBuilder::new(CardId::new(), &format!("Skip Probe {index}"))
+            let card = CardBuilder::new(CardId::new(), format!("Skip Probe {index}"))
                 .card_types(vec![CardType::Creature])
                 .build();
             game.create_object_from_card(&card, alice, Zone::Library);
@@ -2807,7 +2807,7 @@ mod tests {
             Zone::Graveyard,
         );
         for idx in 0..4 {
-            let card = CardBuilder::new(CardId::new(), &format!("Library Card {idx}"))
+            let card = CardBuilder::new(CardId::new(), format!("Library Card {idx}"))
                 .card_types(vec![CardType::Creature])
                 .build();
             game.create_object_from_card(&card, alice, Zone::Library);
@@ -2884,7 +2884,7 @@ mod tests {
             .build();
         let dredger_id = game.create_object_from_definition(&dredger, alice, Zone::Graveyard);
         for idx in 0..2 {
-            let card = CardBuilder::new(CardId::new(), &format!("Library Card {idx}"))
+            let card = CardBuilder::new(CardId::new(), format!("Library Card {idx}"))
                 .card_types(vec![CardType::Creature])
                 .build();
             game.create_object_from_card(&card, alice, Zone::Library);
@@ -3185,7 +3185,7 @@ mod tests {
             Some(&vec![bob_blocker]),
             "Bob's complete CR 509.1 declaration must publish before Charlie starts"
         );
-        assert!(runner.combat.blockers.get(&attacks_charlie).is_none());
+        assert!(!runner.combat.blockers.contains_key(&attacks_charlie));
 
         let TurnAction::Decision(DecisionContext::Blockers(charlie_context)) = runner
             .advance(&mut game, &mut tq)
@@ -3337,7 +3337,7 @@ mod tests {
             runner.combat.blockers.get(&attacks_bob),
             Some(&vec![bob_blocker])
         );
-        assert!(runner.combat.blockers.get(&attacks_charlie).is_none());
+        assert!(!runner.combat.blockers.contains_key(&attacks_charlie));
         assert_eq!(game.player(bob).expect("Bob exists").mana_pool.total(), 0);
 
         let TurnAction::Decision(DecisionContext::Blockers(charlie_context)) = runner
@@ -3916,7 +3916,7 @@ mod tests {
         game.turn.phase = Phase::Beginning;
         game.turn.step = Some(Step::Upkeep);
         for index in 0..2 {
-            let draw = CardBuilder::new(CardId::new(), &format!("Ordered Draw {index}")).build();
+            let draw = CardBuilder::new(CardId::new(), format!("Ordered Draw {index}")).build();
             game.create_object_from_card(&draw, alice, Zone::Library);
         }
 

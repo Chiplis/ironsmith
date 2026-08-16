@@ -73,6 +73,10 @@ pub enum ManaPaymentPurpose {
 
 /// A composable predicate over the complete transaction a mana unit would pay.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "mana predicates intentionally retain value-semantic object filters"
+)]
 pub enum ManaPaymentPredicate {
     Any,
     Purpose(ManaPaymentPurpose),
@@ -101,6 +105,10 @@ pub struct ManaSpendPayload<E> {
 impl<E: PartialEq> Eq for ManaSpendPayload<E> {}
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "mana restrictions are a shared value model and retain typed filters inline"
+)]
 pub enum ManaUsageRestriction<E> {
     CastSpell {
         card_types: Vec<CardType>,
@@ -858,18 +866,18 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
     /// "X can't be 0."; keeping it on the ability lets the decision flow
     /// enforce the restriction while retaining the authored surface.
     pub fn activation_x_minimum(&self) -> u32 {
-        self.additional_restrictions
-            .iter()
-            .any(|restriction| {
-                let normalized = restriction
-                    .trim()
-                    .trim_end_matches('.')
-                    .replace('’', "'")
-                    .to_ascii_lowercase();
-                matches!(normalized.as_str(), "x can't be 0" | "x cant be 0")
-            })
-            .then_some(1)
-            .unwrap_or(0)
+        if self.additional_restrictions.iter().any(|restriction| {
+            let normalized = restriction
+                .trim()
+                .trim_end_matches('.')
+                .replace('’', "'")
+                .to_ascii_lowercase();
+            matches!(normalized.as_str(), "x can't be 0" | "x cant be 0")
+        }) {
+            1
+        } else {
+            0
+        }
     }
 
     pub fn max_activations_per_turn(&self) -> Option<u32> {
@@ -993,10 +1001,12 @@ fn parse_activation_max_times_per_turn(restriction: &str) -> Option<u32> {
 
     if each_turn_pos >= 4 {
         for idx in 0..=each_turn_pos - 4 {
-            if words[idx] == "no" && words[idx + 1] == "more" && words[idx + 2] == "than" {
-                if let Some(parsed) = parse_named_count_word(words[idx + 3]) {
-                    return Some(parsed);
-                }
+            if words[idx] == "no"
+                && words[idx + 1] == "more"
+                && words[idx + 2] == "than"
+                && let Some(parsed) = parse_named_count_word(words[idx + 3])
+            {
+                return Some(parsed);
             }
         }
     }

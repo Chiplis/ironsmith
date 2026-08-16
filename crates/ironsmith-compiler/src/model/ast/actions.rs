@@ -867,11 +867,11 @@ pub(crate) enum SubjectVerbActionAst {
     },
     GrantToTarget {
         target: TargetAst,
-        grantable: crate::grant::Grantable,
+        grantable: Box<crate::grant::Grantable>,
         duration: crate::grant::GrantDuration,
     },
     GrantBySpec {
-        spec: crate::grant::GrantSpec,
+        spec: Box<crate::grant::GrantSpec>,
         player: PlayerAst,
         duration: crate::grant::GrantDuration,
     },
@@ -1062,7 +1062,7 @@ pub(crate) enum SubjectVerbActionAst {
         copy_reference_plural: bool,
     },
     GrantAbilityToSource {
-        ability: ParsedAbility,
+        ability: Box<ParsedAbility>,
         duration: Until,
     },
     DealDamage {
@@ -1354,7 +1354,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     GrantNextSpellAbilityThisTurn {
         filter: ObjectFilter,
-        ability: GrantedAbilityAst,
+        ability: Box<GrantedAbilityAst>,
     },
     RingTemptsYou,
     VentureIntoDungeon {

@@ -585,7 +585,7 @@ pub(super) fn create_reprocess_permanent(
 #[cfg(ironsmith_runtime_parser_tests)]
 pub(super) fn add_reprocess_library_cards(game: &mut GameState, owner: PlayerId, count: usize) {
     for idx in 0..count {
-        let card = CardBuilder::new(CardId::new(), &format!("Reprocess Draw Card {}", idx + 1))
+        let card = CardBuilder::new(CardId::new(), format!("Reprocess Draw Card {}", idx + 1))
             .card_types(vec![CardType::Sorcery])
             .build();
         game.create_object_from_card(&card, owner, Zone::Library);
@@ -2400,7 +2400,7 @@ pub(super) fn lost_monarch_of_ifnir_second_main_trigger_requires_zombie_combat_d
     game.create_object_from_definition(&monarch, alice, Zone::Battlefield);
     let non_zombie = create_typed_creature(&mut game, "Combat Human", alice, vec![Subtype::Human]);
     for idx in 0..3 {
-        let card = CardBuilder::new(CardId::new(), &format!("Library Card {idx}"))
+        let card = CardBuilder::new(CardId::new(), format!("Library Card {idx}"))
             .card_types(vec![CardType::Instant])
             .build();
         game.create_object_from_card(&card, alice, Zone::Library);
@@ -2450,7 +2450,7 @@ pub(super) fn lost_monarch_of_ifnir_second_main_trigger_mills_and_may_return_cre
     game.create_object_from_definition(&monarch, alice, Zone::Battlefield);
     let zombie = create_typed_creature(&mut game, "Combat Zombie", alice, vec![Subtype::Zombie]);
     for idx in 0..3 {
-        let card = CardBuilder::new(CardId::new(), &format!("Mill Card {idx}"))
+        let card = CardBuilder::new(CardId::new(), format!("Mill Card {idx}"))
             .card_types(vec![CardType::Instant])
             .build();
         game.create_object_from_card(&card, alice, Zone::Library);
@@ -2499,7 +2499,7 @@ pub(super) fn lost_monarch_of_ifnir_second_main_return_is_optional() {
     game.create_object_from_definition(&monarch, alice, Zone::Battlefield);
     let zombie = create_typed_creature(&mut game, "Combat Zombie", alice, vec![Subtype::Zombie]);
     for idx in 0..3 {
-        let card = CardBuilder::new(CardId::new(), &format!("Decline Mill Card {idx}"))
+        let card = CardBuilder::new(CardId::new(), format!("Decline Mill Card {idx}"))
             .card_types(vec![CardType::Instant])
             .build();
         game.create_object_from_card(&card, alice, Zone::Library);

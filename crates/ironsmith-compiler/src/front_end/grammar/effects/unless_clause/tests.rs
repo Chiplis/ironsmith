@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::lexer::{TokenWordView, lex_line};
+use crate::lexer::{TokenWordView, lex_line};
 
 #[test]
 fn leading_unless_split_handles_comma_and_payment_search_surfaces() {

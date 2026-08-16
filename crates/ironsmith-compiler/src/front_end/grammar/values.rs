@@ -468,9 +468,9 @@ pub(crate) fn parse_mana_cost_tokens(tokens: &[OwnedLexToken]) -> Result<ManaCos
     super::leaf::parse_leaf_mana_cost_tokens(tokens)
 }
 
-pub(crate) fn parse_value_comparison_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(ValueComparisonOperator, &'a [OwnedLexToken])> {
+pub(crate) fn parse_value_comparison_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(ValueComparisonOperator, &[OwnedLexToken])> {
     for (phrase, operator) in [
         (&["is", "exactly"][..], ValueComparisonOperator::Equal),
         (&["exactly"][..], ValueComparisonOperator::Equal),
@@ -804,25 +804,23 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
 
     let parse_power_or_toughness_segment =
         |segment: &[&str], segment_clause: LexedClause<'_>| -> Option<Value> {
-            if segment.last().copied() == Some(POWER_WORD) {
-                if let Some(surface) =
+            if segment.last().copied() == Some(POWER_WORD)
+                && let Some(surface) =
                     source_reference_surface_for_possessive_words(&segment[..segment.len() - 1])
-                {
-                    return Some(Value::PowerOf(Box::new(
-                        ChooseSpec::Source
-                            .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
-                    )));
-                }
+            {
+                return Some(Value::PowerOf(Box::new(
+                    ChooseSpec::Source
+                        .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+                )));
             }
-            if segment.last().copied() == Some(TOUGHNESS_WORD) {
-                if let Some(surface) =
+            if segment.last().copied() == Some(TOUGHNESS_WORD)
+                && let Some(surface) =
                     source_reference_surface_for_possessive_words(&segment[..segment.len() - 1])
-                {
-                    return Some(Value::ToughnessOf(Box::new(
-                        ChooseSpec::Source
-                            .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
-                    )));
-                }
+            {
+                return Some(Value::ToughnessOf(Box::new(
+                    ChooseSpec::Source
+                        .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+                )));
             }
 
             parse_value_stat_segment(segment_clause)

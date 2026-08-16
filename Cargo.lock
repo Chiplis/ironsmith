@@ -1326,6 +1326,7 @@ dependencies = [
  "ark-serialize",
  "ark-std",
  "console_error_panic_hook",
+ "getrandom 0.4.2",
  "ironsmith-compiler",
  "ironsmith-core",
  "ironsmith-registry",

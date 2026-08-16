@@ -253,7 +253,7 @@ fn test_conditional_spell_keyword_active_by_mana_values() {
     for (idx, mv) in [1u8, 2, 3, 4, 5].into_iter().enumerate() {
         let card = crate::card::CardBuilder::new(
             crate::ids::CardId::from_raw(800 + idx as u32),
-            &format!("MV{mv}"),
+            format!("MV{mv}"),
         )
         .card_types(vec![crate::types::CardType::Instant])
         .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
@@ -307,7 +307,7 @@ fn test_maximum_hand_size_seven_minus_card_types_applies_only_at_threshold() {
     {
         let card = crate::card::CardBuilder::new(
             crate::ids::CardId::from_raw(900 + idx as u32),
-            &format!("Type{idx}"),
+            format!("Type{idx}"),
         )
         .card_types(vec![card_type])
         .build();
@@ -1961,14 +1961,13 @@ fn test_umbra_armor_replaces_destroy_effect() {
         0,
         "umbra armor should clear marked damage"
     );
-    assert_eq!(
+    assert!(
         game.player(alice)
             .expect("alice exists")
             .graveyard
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| obj.name == "Umbra Shell"),
-        true,
         "umbra armor aura should be destroyed"
     );
 }

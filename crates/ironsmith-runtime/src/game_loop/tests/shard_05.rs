@@ -833,35 +833,30 @@ pub(super) fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_th
             .any(|&id| game.object(id).is_some_and(|object| object.name == name))
     };
 
-    assert_eq!(
+    assert!(
         zone_has_name(
             &game.player(alice).expect("alice exists").library,
             "Library Alpha"
         ),
-        true,
         "the chosen library card should return to the library"
     );
-    assert_eq!(
+    assert!(
         zone_has_name(
             &game.player(alice).expect("alice exists").library,
             "Graveyard Alpha"
         ),
-        true,
         "the chosen graveyard card should also return to the library"
     );
-    assert_eq!(
+    assert!(
         zone_has_name(&game.battlefield, "Library Beta"),
-        true,
         "the unchosen library card should go onto the battlefield"
     );
-    assert_eq!(
+    assert!(
         zone_has_name(&game.battlefield, "Graveyard Beta"),
-        true,
         "the unchosen graveyard card should go onto the battlefield"
     );
-    assert_eq!(
+    assert!(
         zone_has_name(&game.exile, "Ecological Appreciation"),
-        true,
         "Ecological Appreciation should exile itself after resolving"
     );
 }

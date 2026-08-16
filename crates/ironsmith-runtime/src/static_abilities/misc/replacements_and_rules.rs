@@ -1744,11 +1744,23 @@ impl StaticAbilityKind for ConditionalDrawReplacement {
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
         let mut combined = self.clone();
         combined.condition = Condition::And(Box::new(condition), Box::new(combined.condition));
-        combined.display = format!(
-            "{} {}",
-            combined.display,
-            super::super::describe_static_condition(&combined.condition)
-        );
+        // Some authored optional draw replacements already carry the complete
+        // leading static condition in their typed display (for example
+        // "As long as this enchantment has six or more ...").  Re-wrapping
+        // those must strengthen executable matching without appending a
+        // second debug-style condition sentence.
+        if !combined
+            .display
+            .trim_start()
+            .to_ascii_lowercase()
+            .starts_with("as long as ")
+        {
+            combined.display = format!(
+                "{} {}",
+                combined.display,
+                super::super::describe_static_condition(&combined.condition)
+            );
+        }
         Some(StaticAbility::new(combined))
     }
 

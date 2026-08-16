@@ -11,8 +11,8 @@ use super::super::zone_counter_helpers::parse_half_starting_life_total_value;
 use super::helpers::render_lower_words;
 use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value};
-use crate::host::{CardTextError, EffectAst, IT_TAG, PredicateAst, TagKey, TargetAst};
 use crate::grammar::effects::become_shapes as become_grammar;
+use crate::host::{CardTextError, EffectAst, IT_TAG, PredicateAst, TagKey, TargetAst};
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::types::{CardType, SubtypeFamily};
 
@@ -149,8 +149,7 @@ pub(crate) fn parse_become_clause(
     let subject = parse_subject(subject_tokens);
     let become_surface = become_grammar::parse_become_body_surface_shape(&become_tokens);
     let become_body_tokens = become_surface.body_tokens;
-    let become_words_vec =
-        crate::front_end::lexer::parser_token_word_refs(become_body_tokens);
+    let become_words_vec = crate::lexer::parser_token_word_refs(become_body_tokens);
     let become_words = &become_words_vec[..];
 
     if let Some(player) = extract_subject_player(Some(subject)) {
@@ -407,10 +406,7 @@ pub(crate) fn parse_become_clause(
                         if grants_all_creature_types {
                             subtype_families.push(SubtypeFamily::Creature);
                         }
-                        let suffix_words =
-                            crate::front_end::lexer::parser_token_word_refs(
-                                ability_tokens,
-                            );
+                        let suffix_words = crate::lexer::parser_token_word_refs(ability_tokens);
                         if ability_tokens.is_empty() {
                             (
                                 grants_all_creature_types,
@@ -617,10 +613,9 @@ mod quoted_duration_tests {
     use super::*;
 
     fn animation_pt_surface(text: &str) -> ironsmith_core::AnimationPtSurface {
-        let subject = crate::runtime_backend::lexer::lex_line("target artifact", 0)
-            .expect("animation subject should lex");
-        let animation = crate::runtime_backend::lexer::lex_line(text, 0)
-            .expect("animation predicate should lex");
+        let subject =
+            crate::lexer::lex_line("target artifact", 0).expect("animation subject should lex");
+        let animation = crate::lexer::lex_line(text, 0).expect("animation predicate should lex");
         let effect = parse_become_clause(&subject, &animation)
             .expect("animation should parse through the generic become clause");
         let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
@@ -651,9 +646,9 @@ mod quoted_duration_tests {
 
     #[test]
     fn triggering_spell_color_protection_becomes_exact_color_gated_grants() {
-        let subject = crate::runtime_backend::lexer::lex_line("this enchantment", 0)
-            .expect("animation subject should lex");
-        let body = crate::runtime_backend::lexer::lex_line(
+        let subject =
+            crate::lexer::lex_line("this enchantment", 0).expect("animation subject should lex");
+        let body = crate::lexer::lex_line(
             "a 4/4 Giant creature with protection from each of that spell's colors",
             0,
         )
@@ -708,17 +703,14 @@ mod quoted_duration_tests {
     #[test]
     fn leading_and_trailing_animation_durations_remain_distinct() {
         let leading_subject =
-            crate::runtime_backend::lexer::lex_line("until end of turn target land you control", 0)
+            crate::lexer::lex_line("until end of turn target land you control", 0)
                 .expect("leading-duration animation subject should lex");
-        let trailing_subject =
-            crate::runtime_backend::lexer::lex_line("target land you control", 0)
-                .expect("trailing-duration animation subject should lex");
-        let leading_body = crate::runtime_backend::lexer::lex_line(
-            "a 4/4 Dinosaur creature with reach and haste",
-            0,
-        )
-        .expect("leading-duration animation body should lex");
-        let trailing_body = crate::runtime_backend::lexer::lex_line(
+        let trailing_subject = crate::lexer::lex_line("target land you control", 0)
+            .expect("trailing-duration animation subject should lex");
+        let leading_body =
+            crate::lexer::lex_line("a 4/4 Dinosaur creature with reach and haste", 0)
+                .expect("leading-duration animation body should lex");
+        let trailing_body = crate::lexer::lex_line(
             "a 4/4 Dinosaur creature with reach and haste until end of turn",
             0,
         )
@@ -754,7 +746,7 @@ mod quoted_duration_tests {
 
     #[test]
     fn duration_inside_unclosed_sentence_quote_is_not_taken_as_outer_duration() {
-        let tokens = crate::runtime_backend::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "a 2/4 Wizard creature with \"Whenever you cast an instant or sorcery spell, this creature gets +1/+0 until end of turn.",
             0,
         )
@@ -770,7 +762,7 @@ mod quoted_duration_tests {
 
     #[test]
     fn duration_after_balanced_quote_remains_the_outer_duration() {
-        let tokens = crate::runtime_backend::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "a 1/1 Skeleton creature with \"{B}: Regenerate this creature.\" until end of turn",
             0,
         )
@@ -786,8 +778,8 @@ mod quoted_duration_tests {
 
     #[test]
     fn aura_animation_preserves_balanced_quoted_ability_grant() {
-        let subject = crate::runtime_backend::lexer::lex_line("it", 0).expect("lex subject");
-        let body = crate::runtime_backend::lexer::lex_line(
+        let subject = crate::lexer::lex_line("it", 0).expect("lex subject");
+        let body = crate::lexer::lex_line(
             "an Aura enchantment with enchant creature you control and \"{G}{W}: Enchanted creature gains indestructible until end of turn,\"",
             0,
         )
@@ -808,11 +800,9 @@ mod quoted_duration_tests {
         assert_eq!(attachment_filter, ObjectFilter::creature().you_control());
         assert_eq!(granted_abilities.len(), 1, "{granted_abilities:#?}");
 
-        let plain_body = crate::runtime_backend::lexer::lex_line(
-            "an Aura enchantment with enchant creature you control",
-            0,
-        )
-        .expect("lex plain Aura animation");
+        let plain_body =
+            crate::lexer::lex_line("an Aura enchantment with enchant creature you control", 0)
+                .expect("lex plain Aura animation");
         let plain = parse_become_clause(&subject, &plain_body).expect("parse plain Aura animation");
         assert!(matches!(
             plain,
@@ -829,10 +819,9 @@ mod quoted_duration_tests {
 
     #[test]
     fn unclosed_sentence_quote_keeps_animation_descriptor_and_granted_trigger() {
-        let subject =
-            crate::runtime_backend::lexer::lex_line("until end of turn enchanted Plains", 0)
-                .expect("animation subject should lex");
-        let body = crate::runtime_backend::lexer::lex_line(
+        let subject = crate::lexer::lex_line("until end of turn enchanted Plains", 0)
+            .expect("animation subject should lex");
+        let body = crate::lexer::lex_line(
             "a 2/5 white Spirit creature with \"Whenever this creature deals damage, its controller gains that much life",
             0,
         )

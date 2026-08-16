@@ -1,5 +1,5 @@
 use crate::PtValue;
-use crate::front_end::lexer::{OwnedLexToken, TokenKind, parser_token_word_refs};
+use crate::lexer::{OwnedLexToken, TokenKind, parser_token_word_refs};
 use crate::model::token_definition::{
     EquipmentDamageGrantShape, EquipmentGrantCountShape, EquipmentRuleLineShape,
     EquipmentRulesShape, EquipmentScaledPowerToughnessShape, TokenKeywordShape,
@@ -64,14 +64,14 @@ use scaled_grants::scaled_equipment_grant_tokens;
 pub(crate) fn parse_equipment_rules_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EquipmentRulesShape> {
-    let words = parser_token_word_refs(&tokens);
+    let words = parser_token_word_refs(tokens);
     if !common::phrase_present(&words, &["equipped", "creature"]) {
         return None;
     }
 
     let mut lines = Vec::new();
     let mut typed_lines = Vec::new();
-    if let Some(ability_tokens) = granted_ability_tokens(&tokens)
+    if let Some(ability_tokens) = granted_ability_tokens(tokens)
         && token_kind_present(ability_tokens, TokenKind::Colon)
     {
         let mut granted_text = rules::rendered_unquoted(ability_tokens);

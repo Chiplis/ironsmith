@@ -7,12 +7,12 @@ use crate::cards::builders::{IT_TAG, TagKey};
 use crate::effect::{EventValueSpec, Value};
 use crate::filter::TaggedOpbjectRelation;
 use crate::grammar::{filters, leaf, primitives, values};
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
+use crate::target::{ChooseSpec, PlayerFilter};
 use crate::util::{
     source_choose_spec_for_surface, source_reference_surface_for_words,
     trim_edge_punctuation_tokens,
 };
-use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
 
 use super::super::ReturnTimingShape;
@@ -509,18 +509,16 @@ pub(crate) fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Opti
     let mut for_each_words = vec!["for", "each"];
     for_each_words.extend(words.iter().copied());
     if let Some((value @ Value::PendingPriorEffectMetric(_), used)) =
-        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
-            &for_each_words,
-        )
+        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(&for_each_words)
         && used == for_each_words.len()
     {
         return Some(value);
     }
     if put_into_graveyard
         && let Some((Value::Count(mut filter), used)) =
-        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
-            &for_each_words,
-        )
+            crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
+                &for_each_words,
+            )
         && used == for_each_words.len()
     {
         filter.zone = Some(Zone::Graveyard);
@@ -723,7 +721,7 @@ pub(crate) fn same_name_graveyard_count_value() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn tokens(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()

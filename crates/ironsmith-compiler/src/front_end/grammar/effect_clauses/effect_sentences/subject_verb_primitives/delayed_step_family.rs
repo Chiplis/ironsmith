@@ -219,9 +219,7 @@ pub(crate) fn parse_sentence_delayed_timing_suffix(
     // the preceding sibling rather than looking for a result inside a fresh
     // delayed-effect sequence.
     let leading_result =
-        crate::grammar::structure::split_leading_result_prefix_lexed(
-            action_tokens.tokens(),
-        );
+        crate::grammar::structure::split_leading_result_prefix_lexed(action_tokens.tokens());
     let action_body = leading_result
         .as_ref()
         .map(|prefix| prefix.trailing_tokens)
@@ -256,18 +254,14 @@ pub(crate) fn parse_sentence_delayed_timing_suffix(
     immediate_effects.push(delayed);
     let effect = match leading_result {
         Some(prefix) => match prefix.kind {
-            crate::grammar::structure::LeadingResultPrefixKind::If => {
-                EffectAst::IfResult {
-                    predicate: prefix.predicate,
-                    effects: immediate_effects,
-                }
-            }
-            crate::grammar::structure::LeadingResultPrefixKind::When => {
-                EffectAst::WhenResult {
-                    predicate: prefix.predicate,
-                    effects: immediate_effects,
-                }
-            }
+            crate::grammar::structure::LeadingResultPrefixKind::If => EffectAst::IfResult {
+                predicate: prefix.predicate,
+                effects: immediate_effects,
+            },
+            crate::grammar::structure::LeadingResultPrefixKind::When => EffectAst::WhenResult {
+                predicate: prefix.predicate,
+                effects: immediate_effects,
+            },
         },
         None => return Ok(Some(immediate_effects)),
     };
@@ -600,6 +594,7 @@ fn normalize_unless_payment_clause_tokens(
     let normalized_first = match first {
         "pay" | "pays" => "pay",
         "sacrifice" | "sacrifices" => "sacrifice",
+        "put" | "puts" => "put",
         _ => return None,
     };
 
@@ -610,18 +605,65 @@ fn normalize_unless_payment_clause_tokens(
     Some(payment_clause)
 }
 
+fn parse_unless_put_counters_clause_as_cost(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<crate::cost::TotalCost>, CardTextError> {
+    let payment_clause = clause
+        .split_once_on_word_trimmed("before")
+        .map(|(payment_clause, _)| payment_clause.trimmed())
+        .unwrap_or_else(|| clause.trimmed());
+    let Ok(effects) = parse_effect_chain(payment_clause.tokens()) else {
+        return Ok(None);
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PutCounters {
+                    counter_type,
+                    count: Value::Fixed(count),
+                    target,
+                    target_count,
+                    distributed: false,
+                },
+            ..
+        }),
+    ] = effects.as_slice()
+    else {
+        return Ok(None);
+    };
+    if *count <= 0 {
+        return Ok(None);
+    }
+    let TargetAst::Object(filter, _, _) = target else {
+        return Ok(None);
+    };
+    let mut target = crate::target::ChooseSpec::Object(filter.clone());
+    if let Some(count) = target_count {
+        target = target.with_count(count.clone());
+    }
+    Ok(Some(crate::cost::TotalCost::from_cost(
+        crate::costs::Cost::validated_effect(crate::effect::Effect::put_counters(
+            *counter_type,
+            *count,
+            target,
+        )),
+    )))
+}
+
 fn parse_unless_payment_clause_as_cost(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<crate::cost::TotalCost>, CardTextError> {
+    if let Some(cost) = parse_unless_put_counters_clause_as_cost(clause)? {
+        return Ok(Some(cost));
+    }
     let Some(payment_tokens) = normalize_unless_payment_clause_tokens(clause) else {
         return Ok(None);
     };
     let referential_sacrifice =
         delayed_grammar::delayed_referential_sacrifice_shape(payment_tokens.tokens());
-    let Some(mut cost) =
-        crate::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
-            payment_tokens.tokens(),
-        )?
+    let Some(mut cost) = crate::activation_and_restrictions::parse_payment_clause_as_total_cost(
+        payment_tokens.tokens(),
+    )?
     else {
         return Ok(None);
     };
@@ -665,9 +707,7 @@ fn parse_unless_sacrifice_or_pay_cost(
     };
     let action_clause = action_clause.trimmed();
     let Some(or_idx) =
-        crate::families::activation_and_restrictions::find_payment_alternative_or(
-            action_clause.tokens(),
-        )
+        crate::activation_and_restrictions::find_payment_alternative_or(action_clause.tokens())
     else {
         return Ok(None);
     };
@@ -828,73 +868,72 @@ pub(crate) fn try_build_unless(
     // Prefer the action-only slice for explicit-player clauses like
     // "unless that player discards ... or sacrifices ...". Parsing the full
     // clause first can flatten the trailing "or" branch into the first action.
-    if let Ok(mut alternative) = parse_effect_chain(action_clause.tokens()) {
-        if !alternative.is_empty() {
-            for effect in &mut alternative {
-                bind_unless_player_context(effect, player);
-            }
-            return Ok(Some(EffectAst::UnlessAction {
-                effects,
-                alternative,
-                player,
-            }));
+    if let Ok(mut alternative) = parse_effect_chain(action_clause.tokens())
+        && !alternative.is_empty()
+    {
+        for effect in &mut alternative {
+            bind_unless_player_context(effect, player);
         }
+        return Ok(Some(EffectAst::UnlessAction {
+            effects,
+            alternative,
+            player,
+        }));
     }
 
     // Fall back to the full clause when the action-only parse needs the
     // explicit player prefix to succeed.
-    if let Ok(mut alternative) = parse_effect_chain(after_clause.tokens()) {
-        if !alternative.is_empty() {
-            for effect in &mut alternative {
-                bind_unless_player_context(effect, player);
-            }
-            return Ok(Some(EffectAst::UnlessAction {
-                effects,
-                alternative,
-                player,
-            }));
+    if let Ok(mut alternative) = parse_effect_chain(after_clause.tokens())
+        && !alternative.is_empty()
+    {
+        for effect in &mut alternative {
+            bind_unless_player_context(effect, player);
         }
+        return Ok(Some(EffectAst::UnlessAction {
+            effects,
+            alternative,
+            player,
+        }));
     }
 
-    if let Ok(mut alternative) = parse_effect_sentence_lexed(after_clause.tokens()) {
-        if !alternative.is_empty() {
-            for effect in &mut alternative {
-                bind_unless_player_context(effect, player);
-            }
-            return Ok(Some(EffectAst::UnlessAction {
-                effects,
-                alternative,
-                player,
-            }));
+    if let Ok(mut alternative) = parse_effect_sentence_lexed(after_clause.tokens())
+        && !alternative.is_empty()
+    {
+        for effect in &mut alternative {
+            bind_unless_player_context(effect, player);
         }
+        return Ok(Some(EffectAst::UnlessAction {
+            effects,
+            alternative,
+            player,
+        }));
     }
 
-    if let Ok(mut alternative) = parse_effect_sentence_lexed(action_clause.tokens()) {
-        if !alternative.is_empty() {
-            for effect in &mut alternative {
-                bind_unless_player_context(effect, player);
-            }
-            return Ok(Some(EffectAst::UnlessAction {
-                effects,
-                alternative,
-                player,
-            }));
+    if let Ok(mut alternative) = parse_effect_sentence_lexed(action_clause.tokens())
+        && !alternative.is_empty()
+    {
+        for effect in &mut alternative {
+            bind_unless_player_context(effect, player);
         }
+        return Ok(Some(EffectAst::UnlessAction {
+            effects,
+            alternative,
+            player,
+        }));
     }
 
     if let Ok(mut alternative) =
         parse_effect_clause(action_clause.tokens()).map(|effect| vec![effect])
+        && !alternative.is_empty()
     {
-        if !alternative.is_empty() {
-            for effect in &mut alternative {
-                bind_unless_player_context(effect, player);
-            }
-            return Ok(Some(EffectAst::UnlessAction {
-                effects,
-                alternative,
-                player,
-            }));
+        for effect in &mut alternative {
+            bind_unless_player_context(effect, player);
         }
+        return Ok(Some(EffectAst::UnlessAction {
+            effects,
+            alternative,
+            player,
+        }));
     }
 
     if delayed_clause_starts_with_action(
@@ -915,308 +954,6 @@ pub(crate) fn try_build_unless(
     }
 
     Ok(None)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::runtime_backend::lexer::lex_line;
-
-    #[test]
-    fn effect_sentence_routes_action_first_draw_step_unless_before_broad_verb_parsing() {
-        let tokens = lex_line(
-            "That player loses 1 life at the beginning of their next draw step unless they pay {1} before that draw step.",
-            0,
-        )
-        .expect("delayed draw-step life loss should lex");
-        let effects =
-            crate::runtime_backend::effect_sentences::parse_effect_sentence_lexed(&tokens)
-                .expect("complete delayed sentence should parse");
-
-        assert!(matches!(
-            effects.as_slice(),
-            [EffectAst::DelayedUntilNextDrawStep {
-                player: PlayerAst::That,
-                effects,
-            }] if matches!(
-                effects.as_slice(),
-                [EffectAst::UnlessPays {
-                    player: PlayerAst::That,
-                    effects,
-                    ..
-                }] if matches!(
-                    effects.as_slice(),
-                    [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::LoseLife {
-                            amount: Value::Fixed(1),
-                        },
-                        ..
-                    })]
-                )
-            )
-        ));
-    }
-
-    #[test]
-    fn referential_unless_sacrifice_cost_keeps_the_it_antecedent() {
-        let tokens = lex_line("sacrifices it.", 0).expect("sacrifice cost should lex");
-        let cost = parse_unless_payment_clause_as_cost(SubjectVerbPrimitiveClause::new(&tokens))
-            .expect("sacrifice cost should parse")
-            .expect("sacrifice should be a total cost");
-        let [component] = cost.costs() else {
-            panic!("expected one sacrifice component: {cost:#?}");
-        };
-        match component {
-            crate::costs::Cost::Sacrifice(filter) => {
-                assert!(
-                    !filter.source
-                        && filter.tagged_constraints.iter().any(|constraint| {
-                            constraint.relation
-                                == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                                && constraint.tag.as_str() == IT_TAG
-                        }),
-                    "the pronoun must survive until lowering can bind it: {filter:#?}"
-                );
-            }
-            crate::costs::Cost::Effect(effect) => {
-                let sacrifice = effect
-                    .downcast_ref::<crate::effects::SacrificeTargetEffect>()
-                    .expect("effect-backed cost should be a target sacrifice");
-                assert!(
-                    matches!(
-                        sacrifice.target.base(),
-                        crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
-                    ),
-                    "the pronoun must survive until lowering can bind it: {sacrifice:#?}"
-                );
-            }
-            other => panic!("expected a referential sacrifice cost: {other:#?}"),
-        }
-    }
-
-    #[test]
-    fn end_of_combat_suffix_wraps_generic_actions_in_delayed_effects() {
-        for text in [
-            "Remove a +1/+1 counter from it at end of combat.",
-            "Put a -1/-1 counter on it at end of combat.",
-            "Put it on top of its owner's library at end of combat.",
-        ] {
-            let tokens = lex_line(text, 0).expect("end-of-combat action should lex");
-            let effects =
-                parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
-                    .expect("end-of-combat action should parse")
-                    .expect("end-of-combat suffix should match");
-            let [EffectAst::DelayedUntilEndOfCombat { effects: delayed }] = effects.as_slice()
-            else {
-                panic!("expected only a delayed end-of-combat action for {text}: {effects:#?}");
-            };
-            assert_eq!(
-                delayed.len(),
-                1,
-                "expected one delayed payload for {text}: {delayed:#?}"
-            );
-        }
-    }
-
-    #[test]
-    fn cleanup_step_suffix_wraps_sacrifice_in_delayed_effect() {
-        let tokens = lex_line(
-            "Sacrifice this Aura at the beginning of the next cleanup step.",
-            0,
-        )
-        .expect("cleanup-step action should lex");
-        let effects =
-            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
-                .expect("cleanup-step action should parse")
-                .expect("cleanup-step suffix should match");
-        let [
-            EffectAst::DelayedUntilNextCleanupStep {
-                player: PlayerFilter::Any,
-                effects: delayed,
-            },
-        ] = effects.as_slice()
-        else {
-            panic!("expected one delayed cleanup-step action: {effects:#?}");
-        };
-        assert_eq!(delayed.len(), 1);
-    }
-
-    #[test]
-    fn delayed_suffix_keeps_result_gate_outside_scheduled_action() {
-        let tokens = lex_line(
-            "If you do, unattach it at the beginning of the next end step.",
-            0,
-        )
-        .expect("conditional delayed action should lex");
-
-        let effects =
-            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
-                .expect("conditional delayed action should parse")
-                .expect("delayed timing suffix should match");
-        let [
-            EffectAst::IfResult {
-                predicate: IfResultPredicate::Did,
-                effects: gated,
-            },
-        ] = effects.as_slice()
-        else {
-            panic!("expected the result gate to remain outermost: {effects:#?}");
-        };
-        let [
-            EffectAst::DelayedUntilNextEndStep {
-                effects: delayed, ..
-            },
-        ] = gated.as_slice()
-        else {
-            panic!("expected the gated action to be delayed: {gated:#?}");
-        };
-        assert!(
-            matches!(
-                delayed.as_slice(),
-                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Unattach { .. },
-                    ..
-                })]
-            ),
-            "expected only the unattach action inside the delayed queue: {delayed:#?}"
-        );
-    }
-
-    #[test]
-    fn delayed_suffix_schedules_only_the_final_coordinated_action() {
-        let tokens = lex_line(
-            "You gain 2 life, and you return this card from your graveyard to your hand at the beginning of the next end step.",
-            0,
-        )
-        .expect("coordinated delayed action should lex");
-
-        let effects =
-            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
-                .expect("coordinated delayed action should parse")
-                .expect("delayed timing suffix should match");
-        let [
-            immediate,
-            EffectAst::DelayedUntilNextEndStep {
-                effects: delayed, ..
-            },
-        ] = effects.as_slice()
-        else {
-            panic!("expected an immediate action followed by one delayed action: {effects:#?}");
-        };
-        assert!(
-            !matches!(immediate, EffectAst::DelayedUntilNextEndStep { .. }),
-            "the leading life gain must resolve immediately: {immediate:#?}"
-        );
-        assert_eq!(delayed.len(), 1, "only the return should be delayed");
-    }
-
-    #[test]
-    fn delayed_suffix_keeps_a_leading_game_condition_outside_the_schedule() {
-        let tokens = lex_line(
-            "If the gift wasn't promised, return that card to the battlefield under its owner's control with a +1/+1 counter on it at the beginning of the next end step.",
-            0,
-        )
-        .expect("conditional delayed action should lex");
-
-        let effects =
-            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
-                .expect("conditional delayed action should parse")
-                .expect("delayed timing suffix should match");
-        let [
-            EffectAst::Conditional {
-                if_true, if_false, ..
-            },
-        ] = effects.as_slice()
-        else {
-            panic!("expected the gift condition to remain outermost: {effects:#?}");
-        };
-        assert!(if_false.is_empty(), "unexpected gift-condition else branch");
-        assert!(
-            matches!(
-                if_true.as_slice(),
-                [EffectAst::DelayedUntilNextEndStep { .. }]
-            ),
-            "only the conditioned return should be scheduled: {if_true:#?}"
-        );
-    }
-
-    #[test]
-    fn try_build_unless_prefers_action_only_parse_for_explicit_player_or_choice() {
-        let tokens = lex_line(
-            "Target opponent loses 5 life unless that player discards two cards or sacrifices a creature or planeswalker of their choice.",
-            0,
-        )
-        .expect("rewrite lexer should classify explicit-player unless choice");
-        let clause = SubjectVerbPrimitiveClause::new(&tokens);
-        let unless_idx = clause.find_token_word("unless").expect("unless token");
-        let effects = parse_effect_chain(&tokens[..unless_idx])
-            .expect("lead effect should parse before unless clause");
-
-        let unless_effect = try_build_unless(effects, clause, unless_idx)
-            .expect("unless choice should parse")
-            .expect("unless choice should lower");
-        let debug = format!("{unless_effect:?}");
-
-        assert!(
-            debug.contains("Discard"),
-            "expected explicit-player unless choice to keep the discard branch, got {debug}"
-        );
-        assert!(
-            debug.contains("Sacrifice"),
-            "expected explicit-player unless choice to keep the sacrifice branch, got {debug}"
-        );
-        assert!(
-            debug.contains("TargetOpponent"),
-            "expected explicit-player unless choice to bind the target opponent context, got {debug}"
-        );
-    }
-
-    #[test]
-    fn try_build_unless_parses_sacrifice_or_pay_as_one_payment_choice() {
-        let tokens = lex_line(
-            "Draw a card unless target opponent sacrifices a creature of their choice or pays 3 life.",
-            0,
-        )
-        .expect("unless sacrifice-or-pay text should lex");
-        let clause = SubjectVerbPrimitiveClause::new(&tokens);
-        let unless_idx = clause.find_token_word("unless").expect("unless token");
-        let effects = parse_effect_chain(&tokens[..unless_idx])
-            .expect("lead effect should parse before unless clause");
-
-        let unless_effect = try_build_unless(effects, clause, unless_idx)
-            .expect("unless sacrifice-or-pay should parse")
-            .expect("unless sacrifice-or-pay should lower");
-        let debug = format!("{unless_effect:?}");
-
-        assert!(debug.contains("UnlessPays"), "{debug}");
-        assert!(debug.contains("TargetOpponent"), "{debug}");
-        assert!(debug.contains("OneOf"), "{debug}");
-        assert!(debug.contains("Sacrifice"), "{debug}");
-        assert!(debug.contains("Creature"), "{debug}");
-        assert!(debug.contains("Life"), "{debug}");
-    }
-
-    #[test]
-    fn effect_chain_keeps_target_opponent_sacrifice_or_life_as_one_payment_choice() {
-        let tokens = lex_line(
-            "Draw a card unless target opponent sacrifices a creature of their choice or pays 3 life.",
-            0,
-        )
-        .expect("unless sacrifice-or-pay text should lex");
-
-        let effects = parse_effect_chain(&tokens).expect("full effect chain should parse");
-        let [
-            EffectAst::UnlessPays {
-                player: PlayerAst::TargetOpponent,
-                cost,
-                ..
-            },
-        ] = effects.as_slice()
-        else {
-            panic!("expected one target-opponent UnlessPays branch, got {effects:#?}");
-        };
-        assert_eq!(cost.as_one_of().map(<[_]>::len), Some(2), "{cost:#?}");
-    }
 }
 
 pub(crate) fn parse_sentence_fallback_mechanic_marker(
@@ -1559,4 +1296,305 @@ pub(crate) fn parse_sentence_lose_draw_clash_repeat_process(
         continue_effect_index: 2,
         continue_predicate: IfResultPredicate::WonClash,
     }]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::lex_line;
+
+    #[test]
+    fn effect_sentence_routes_action_first_draw_step_unless_before_broad_verb_parsing() {
+        let tokens = lex_line(
+            "That player loses 1 life at the beginning of their next draw step unless they pay {1} before that draw step.",
+            0,
+        )
+        .expect("delayed draw-step life loss should lex");
+        let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+            .expect("complete delayed sentence should parse");
+
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::DelayedUntilNextDrawStep {
+                player: PlayerAst::That,
+                effects,
+            }] if matches!(
+                effects.as_slice(),
+                [EffectAst::UnlessPays {
+                    player: PlayerAst::That,
+                    effects,
+                    ..
+                }] if matches!(
+                    effects.as_slice(),
+                    [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::LoseLife {
+                            amount: Value::Fixed(1),
+                        },
+                        ..
+                    })]
+                )
+            )
+        ));
+    }
+
+    #[test]
+    fn referential_unless_sacrifice_cost_keeps_the_it_antecedent() {
+        let tokens = lex_line("sacrifices it.", 0).expect("sacrifice cost should lex");
+        let cost = parse_unless_payment_clause_as_cost(SubjectVerbPrimitiveClause::new(&tokens))
+            .expect("sacrifice cost should parse")
+            .expect("sacrifice should be a total cost");
+        let [component] = cost.costs() else {
+            panic!("expected one sacrifice component: {cost:#?}");
+        };
+        match component {
+            crate::costs::Cost::Sacrifice(filter) => {
+                assert!(
+                    !filter.source
+                        && filter.tagged_constraints.iter().any(|constraint| {
+                            constraint.relation
+                                == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                                && constraint.tag.as_str() == IT_TAG
+                        }),
+                    "the pronoun must survive until lowering can bind it: {filter:#?}"
+                );
+            }
+            crate::costs::Cost::Effect(effect) => {
+                let sacrifice = effect
+                    .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+                    .expect("effect-backed cost should be a target sacrifice");
+                assert!(
+                    matches!(
+                        sacrifice.target.base(),
+                        crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+                    ),
+                    "the pronoun must survive until lowering can bind it: {sacrifice:#?}"
+                );
+            }
+            other => panic!("expected a referential sacrifice cost: {other:#?}"),
+        }
+    }
+
+    #[test]
+    fn end_of_combat_suffix_wraps_generic_actions_in_delayed_effects() {
+        for text in [
+            "Remove a +1/+1 counter from it at end of combat.",
+            "Put a -1/-1 counter on it at end of combat.",
+            "Put it on top of its owner's library at end of combat.",
+        ] {
+            let tokens = lex_line(text, 0).expect("end-of-combat action should lex");
+            let effects =
+                parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
+                    .expect("end-of-combat action should parse")
+                    .expect("end-of-combat suffix should match");
+            let [EffectAst::DelayedUntilEndOfCombat { effects: delayed }] = effects.as_slice()
+            else {
+                panic!("expected only a delayed end-of-combat action for {text}: {effects:#?}");
+            };
+            assert_eq!(
+                delayed.len(),
+                1,
+                "expected one delayed payload for {text}: {delayed:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cleanup_step_suffix_wraps_sacrifice_in_delayed_effect() {
+        let tokens = lex_line(
+            "Sacrifice this Aura at the beginning of the next cleanup step.",
+            0,
+        )
+        .expect("cleanup-step action should lex");
+        let effects =
+            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("cleanup-step action should parse")
+                .expect("cleanup-step suffix should match");
+        let [
+            EffectAst::DelayedUntilNextCleanupStep {
+                player: PlayerFilter::Any,
+                effects: delayed,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one delayed cleanup-step action: {effects:#?}");
+        };
+        assert_eq!(delayed.len(), 1);
+    }
+
+    #[test]
+    fn delayed_suffix_keeps_result_gate_outside_scheduled_action() {
+        let tokens = lex_line(
+            "If you do, unattach it at the beginning of the next end step.",
+            0,
+        )
+        .expect("conditional delayed action should lex");
+
+        let effects =
+            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("conditional delayed action should parse")
+                .expect("delayed timing suffix should match");
+        let [
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: gated,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected the result gate to remain outermost: {effects:#?}");
+        };
+        let [
+            EffectAst::DelayedUntilNextEndStep {
+                effects: delayed, ..
+            },
+        ] = gated.as_slice()
+        else {
+            panic!("expected the gated action to be delayed: {gated:#?}");
+        };
+        assert!(
+            matches!(
+                delayed.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Unattach { .. },
+                    ..
+                })]
+            ),
+            "expected only the unattach action inside the delayed queue: {delayed:#?}"
+        );
+    }
+
+    #[test]
+    fn delayed_suffix_schedules_only_the_final_coordinated_action() {
+        let tokens = lex_line(
+            "You gain 2 life, and you return this card from your graveyard to your hand at the beginning of the next end step.",
+            0,
+        )
+        .expect("coordinated delayed action should lex");
+
+        let effects =
+            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("coordinated delayed action should parse")
+                .expect("delayed timing suffix should match");
+        let [
+            immediate,
+            EffectAst::DelayedUntilNextEndStep {
+                effects: delayed, ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected an immediate action followed by one delayed action: {effects:#?}");
+        };
+        assert!(
+            !matches!(immediate, EffectAst::DelayedUntilNextEndStep { .. }),
+            "the leading life gain must resolve immediately: {immediate:#?}"
+        );
+        assert_eq!(delayed.len(), 1, "only the return should be delayed");
+    }
+
+    #[test]
+    fn delayed_suffix_keeps_a_leading_game_condition_outside_the_schedule() {
+        let tokens = lex_line(
+            "If the gift wasn't promised, return that card to the battlefield under its owner's control with a +1/+1 counter on it at the beginning of the next end step.",
+            0,
+        )
+        .expect("conditional delayed action should lex");
+
+        let effects =
+            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("conditional delayed action should parse")
+                .expect("delayed timing suffix should match");
+        let [
+            EffectAst::Conditional {
+                if_true, if_false, ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected the gift condition to remain outermost: {effects:#?}");
+        };
+        assert!(if_false.is_empty(), "unexpected gift-condition else branch");
+        assert!(
+            matches!(
+                if_true.as_slice(),
+                [EffectAst::DelayedUntilNextEndStep { .. }]
+            ),
+            "only the conditioned return should be scheduled: {if_true:#?}"
+        );
+    }
+
+    #[test]
+    fn try_build_unless_prefers_action_only_parse_for_explicit_player_or_choice() {
+        let tokens = lex_line(
+            "Target opponent loses 5 life unless that player discards two cards or sacrifices a creature or planeswalker of their choice.",
+            0,
+        )
+        .expect("rewrite lexer should classify explicit-player unless choice");
+        let clause = SubjectVerbPrimitiveClause::new(&tokens);
+        let unless_idx = clause.find_token_word("unless").expect("unless token");
+        let effects = parse_effect_chain(&tokens[..unless_idx])
+            .expect("lead effect should parse before unless clause");
+
+        let unless_effect = try_build_unless(effects, clause, unless_idx)
+            .expect("unless choice should parse")
+            .expect("unless choice should lower");
+        let debug = format!("{unless_effect:?}");
+
+        assert!(
+            debug.contains("Discard"),
+            "expected explicit-player unless choice to keep the discard branch, got {debug}"
+        );
+        assert!(
+            debug.contains("Sacrifice"),
+            "expected explicit-player unless choice to keep the sacrifice branch, got {debug}"
+        );
+        assert!(
+            debug.contains("TargetOpponent"),
+            "expected explicit-player unless choice to bind the target opponent context, got {debug}"
+        );
+    }
+
+    #[test]
+    fn try_build_unless_parses_sacrifice_or_pay_as_one_payment_choice() {
+        let tokens = lex_line(
+            "Draw a card unless target opponent sacrifices a creature of their choice or pays 3 life.",
+            0,
+        )
+        .expect("unless sacrifice-or-pay text should lex");
+        let clause = SubjectVerbPrimitiveClause::new(&tokens);
+        let unless_idx = clause.find_token_word("unless").expect("unless token");
+        let effects = parse_effect_chain(&tokens[..unless_idx])
+            .expect("lead effect should parse before unless clause");
+
+        let unless_effect = try_build_unless(effects, clause, unless_idx)
+            .expect("unless sacrifice-or-pay should parse")
+            .expect("unless sacrifice-or-pay should lower");
+        let debug = format!("{unless_effect:?}");
+
+        assert!(debug.contains("UnlessPays"), "{debug}");
+        assert!(debug.contains("TargetOpponent"), "{debug}");
+        assert!(debug.contains("OneOf"), "{debug}");
+        assert!(debug.contains("Sacrifice"), "{debug}");
+        assert!(debug.contains("Creature"), "{debug}");
+        assert!(debug.contains("Life"), "{debug}");
+    }
+
+    #[test]
+    fn effect_chain_keeps_target_opponent_sacrifice_or_life_as_one_payment_choice() {
+        let tokens = lex_line(
+            "Draw a card unless target opponent sacrifices a creature of their choice or pays 3 life.",
+            0,
+        )
+        .expect("unless sacrifice-or-pay text should lex");
+
+        let effects = parse_effect_chain(&tokens).expect("full effect chain should parse");
+        let [
+            EffectAst::UnlessPays {
+                player: PlayerAst::TargetOpponent,
+                cost,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one target-opponent UnlessPays branch, got {effects:#?}");
+        };
+        assert_eq!(cost.as_one_of().map(<[_]>::len), Some(2), "{cost:#?}");
+    }
 }

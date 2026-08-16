@@ -399,6 +399,15 @@ pub(crate) fn parse_add_mana(
                 clause_words.join(" ")
             )));
         }
+        if mana.len() == 1
+            && let Some(Value::Fixed(amount)) = parse_add_mana_amount(tokens)
+            && amount > 1
+        {
+            return Ok(EffectAst::subject_verb_add_mana(
+                player,
+                std::iter::repeat_n(mana[0], amount as usize).collect(),
+            ));
+        }
         return Ok(EffectAst::subject_verb_add_mana(player, mana));
     }
 

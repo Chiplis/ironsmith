@@ -109,16 +109,17 @@ impl EffectExecutor for CastSourceEffect {
         } else {
             None
         };
-        if self.cast_as_suspend && suspend_alternative_index.is_none() {
-            if let Some(obj) = game.object_mut(source_id) {
-                suspend_alternative_index = Some(obj.alternative_casts.len());
-                obj.alternative_casts.push(
-                    crate::alternative_cast::AlternativeCastingMethod::Suspend {
-                        cost: crate::mana::ManaCost::new(),
-                        time: 0,
-                    },
-                );
-            }
+        if self.cast_as_suspend
+            && suspend_alternative_index.is_none()
+            && let Some(obj) = game.object_mut(source_id)
+        {
+            suspend_alternative_index = Some(obj.alternative_casts.len());
+            obj.alternative_casts.push(
+                crate::alternative_cast::AlternativeCastingMethod::Suspend {
+                    cost: crate::mana::ManaCost::new(),
+                    time: 0,
+                },
+            );
         }
         let casting_method = CastingMethod::PlayFrom {
             source: source_id,

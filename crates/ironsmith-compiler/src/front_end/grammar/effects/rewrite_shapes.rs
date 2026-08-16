@@ -174,7 +174,7 @@ pub(crate) fn parse_cant_blocked_base_power_toughness_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, render_token_slice};
+    use crate::lexer::{lex_line, render_token_slice};
 
     #[test]
     fn parses_each_player_and_controlled_creatures_damage() {

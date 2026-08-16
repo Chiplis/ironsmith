@@ -4,7 +4,7 @@ use winnow::combinator::alt;
 use winnow::prelude::*;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{OwnedLexToken, trim_lexed_commas};
 
 const INLINE_CREATURE_TYPE_CHOICES: &[&[&str]] = &[
     &["of", "the", "creature", "type", "of", "your", "choice"],
@@ -222,7 +222,7 @@ pub(crate) fn parse_return_creature_type_choice_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()

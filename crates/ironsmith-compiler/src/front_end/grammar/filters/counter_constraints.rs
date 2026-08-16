@@ -7,8 +7,8 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::filter::{CounterConstraint, ObjectFilter};
-use crate::object::CounterType;
 use crate::lexer::{OwnedLexToken, parser_token_word_refs};
+use crate::object::CounterType;
 
 use super::super::{leaf, primitives};
 
@@ -244,7 +244,7 @@ pub(crate) fn intern_counter_name(word: &str) -> &'static str {
     let map = INTERNER.get_or_init(|| Mutex::new(HashMap::new()));
     let mut map = map.lock().expect("counter name interner lock poisoned");
     if let Some(existing) = map.get(word) {
-        return *existing;
+        return existing;
     }
 
     let leaked: &'static str = Box::leak(word.to_string().into_boxed_str());
@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn token_adapter_accepts_full_counter_phrases_and_captured_descriptors() {
-        use crate::runtime_backend::lexer::lex_line;
+        use crate::lexer::lex_line;
 
         let full = lex_line("a +1/+1 counter", 0).unwrap();
         assert_eq!(

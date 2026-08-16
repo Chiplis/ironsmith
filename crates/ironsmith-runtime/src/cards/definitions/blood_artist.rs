@@ -263,7 +263,7 @@ mod tests {
         // Blood Artist should trigger for its own death
         // The triggered ability should fire from the snapshot information
         assert!(
-            triggered.len() >= 1,
+            !triggered.is_empty(),
             "Blood Artist should trigger when it dies"
         );
     }

@@ -112,11 +112,7 @@ pub(super) fn stored_emblem_rules_text(
         .lines()
         .map(str::trim)
         .filter(|ability| !ability.is_empty())
-        .map(|ability| {
-            capitalize_first(
-                ability.trim_end_matches(|character| matches!(character, '.' | '!' | '?')),
-            )
-        })
+        .map(|ability| capitalize_first(ability.trim_end_matches(['.', '!', '?'])))
         .collect::<Vec<_>>();
     if abilities.len() == 1 {
         abilities[0] = ensure_trailing_period(&abilities[0]);

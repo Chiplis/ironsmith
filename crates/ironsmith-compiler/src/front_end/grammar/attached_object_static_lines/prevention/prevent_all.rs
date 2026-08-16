@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 
 use super::super::subjects::{semantic_finish, semantic_phrase};
 
@@ -95,7 +95,7 @@ fn parse_attached_prevent_all_lexed<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_single_and_combined_attached_prevention_shapes() {

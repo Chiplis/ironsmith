@@ -1,9 +1,7 @@
 use crate::filter::PowerToughnessRelation;
 use crate::grammar::primitives;
 use crate::lexer::{OwnedLexToken, trim_lexed_commas};
-use crate::util::{
-    comparison_to_strict_at_least_threshold, parse_quantity_comparison_prefix,
-};
+use crate::util::{comparison_to_strict_at_least_threshold, parse_quantity_comparison_prefix};
 
 const CONTROL_PREFIXES: &[&[&str]] = &[&["you", "control"], &["you", "controlled"]];
 const CAST_OR_TURN_MARKERS: &[&[&str]] =
@@ -145,7 +143,7 @@ pub(crate) fn parse_combat_control_predicate_shape_lexed(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::lexer::{lex_line, parser_token_word_refs};
+    use crate::lexer::{lex_line, parser_token_word_refs};
 
     use super::*;
 

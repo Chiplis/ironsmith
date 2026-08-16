@@ -104,7 +104,7 @@ pub(crate) fn parse_lose_life(
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let life_shape = cca_shapes::parse_life_surface_shape(tokens);
 
     if let Some(cca_shapes::ExactLifeSurface::Fixed(amount)) = life_shape.exact {
@@ -244,7 +244,7 @@ pub(crate) fn parse_gain_life(
         if life_shape.unsupported_shuffle_graveyard {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing life-gain shuffle-graveyard clause (clause: '{}')",
-                crate::token_word_refs(tokens).join(" ")
+                crate::lexer::token_word_refs(tokens).join(" ")
             )));
         }
         if let Some(resolved) = parse_life_amount_from_trailing(&amount, &trailing)? {
@@ -281,7 +281,7 @@ pub(crate) fn parse_gain_life(
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing life-gain clause (clause: '{}')",
-            crate::token_word_refs(tokens).join(" ")
+            crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -298,7 +298,7 @@ pub(crate) fn parse_gain_control(
 ) -> Result<EffectAst, CardTextError> {
     let explicit_triggering_source_controller =
         matches!(subject, Some(SubjectAst::TriggeringSourceController));
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let shape = cca_shapes::parse_gain_control_clause_shape(tokens)
         .ok_or_else(|| CardTextError::ParseError("missing control keyword".to_string()))?;
     if shape.dynamic_power_bound {
@@ -554,7 +554,7 @@ fn parse_exiled_with_source_move_surface_inner(
                 .enumerate()
                 .skip(subject_token_start)
                 .find_map(|(idx, token)| token.is_word("exiled").then_some(idx))?;
-            let rendered = crate::front_end::lexer::render_token_slice(
+            let rendered = crate::lexer::render_token_slice(
                 &tokens[subject_token_start..exiled_token],
             );
             let rendered = rendered.trim();
@@ -647,7 +647,7 @@ fn parse_put_destination_choice(
     };
     let left_tokens = &tokens[..or_idx];
     let right_tokens = &tokens[or_idx + 1..];
-    let right_words = crate::token_word_refs(right_tokens);
+    let right_words = crate::lexer::token_word_refs(right_tokens);
     let right_words: Vec<&str> = right_words
         .iter()
         .copied()
@@ -682,13 +682,13 @@ fn parse_put_destination_choice(
     }
     let left_display = format!(
         "Put {}",
-        crate::front_end::lexer::render_token_slice(
+        crate::lexer::render_token_slice(
             left_tokens.get(1..).unwrap_or(left_tokens),
         )
     );
     let right_display = format!(
         "Put it {}",
-        crate::front_end::lexer::render_token_slice(right_tokens),
+        crate::lexer::render_token_slice(right_tokens),
     );
     Ok(Some(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
@@ -706,14 +706,14 @@ pub(crate) fn parse_put_into_hand(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    if let Some(choice) = parse_put_destination_choice(tokens, subject.clone())? {
+    if let Some(choice) = parse_put_destination_choice(tokens, subject)? {
         return Ok(choice);
     }
     fn parse_put_into_hand_delayed_timing(
         tokens: &[OwnedLexToken],
     ) -> Option<DelayedReturnTimingAst> {
         let tail_tokens = cca_shapes::parse_delayed_hand_tail(tokens)?;
-        let tail_words = crate::token_word_refs(&tail_tokens);
+        let tail_words = crate::lexer::token_word_refs(tail_tokens);
         parse_delayed_return_timing_words(&tail_words)
     }
 
@@ -751,7 +751,7 @@ pub(crate) fn parse_put_into_hand(
             target = base;
         }
 
-        let target_words = crate::token_word_refs(target_tokens);
+        let target_words = crate::lexer::token_word_refs(target_tokens);
         let owner = target_words.windows(2).any(|window| {
             window[0].eq_ignore_ascii_case("your")
                 && (window[1].eq_ignore_ascii_case("hand")
@@ -807,7 +807,7 @@ pub(crate) fn parse_put_into_hand(
     }
 
     fn apply_explicit_source_location(target: &mut TargetAst, tokens: &[OwnedLexToken]) {
-        let words = crate::token_word_refs(tokens);
+        let words = crate::lexer::token_word_refs(tokens);
         let location = if words
             .windows(3)
             .any(|window| window == ["from", "your", "hand"])
@@ -837,7 +837,7 @@ pub(crate) fn parse_put_into_hand(
 
         apply_source_zone_constraint(target, zone);
         if let Some(owner) = owner
-            && let Some(filter) = crate::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(target)
+            && let Some(filter) = crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(target)
         {
             filter.owner = Some(owner);
         }
@@ -856,7 +856,7 @@ pub(crate) fn parse_put_into_hand(
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let exiled_with_source_surface = parse_exiled_with_source_move_surface(tokens);
 
     if let Some(shape) = cca_shapes::parse_revealed_remainder_shape(tokens) {
@@ -894,7 +894,7 @@ pub(crate) fn parse_put_into_hand(
             tokens,
             "partition_chosen",
         );
-        let owner = crate::families::activation_and_restrictions::controller_filter_for_token_player(player)
+        let owner = crate::activation_and_restrictions::controller_filter_for_token_player(player)
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "battlefield collection partition has no resolvable player (clause: '{}')",
@@ -1438,9 +1438,9 @@ pub(crate) fn parse_put_into_hand(
 
         if let Some(rest_target_tokens) = destination_shape.rest_graveyard_target.as_deref() {
             let primary_target = if cca_shapes::is_tagged_object_reference(target_tokens) {
-                TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens))
+                TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens))
             } else {
-                parse_target_phrase(&target_tokens)?
+                parse_target_phrase(target_tokens)?
             };
             let primary_effect = EffectAst::subject_verb_move_to_zone_with_attacking(
                 primary_target,
@@ -1453,7 +1453,7 @@ pub(crate) fn parse_put_into_hand(
                 attached_to_target.clone(),
             )
             .with_exiled_with_source_surface(exiled_with_source_surface.clone());
-            let rest_target = parse_target_phrase(&rest_target_tokens)?;
+            let rest_target = parse_target_phrase(rest_target_tokens)?;
             let rest_effect = if cca_shapes::starts_with_all_or_each(rest_target_tokens) {
                 EffectAst::subject_verb_move_all_to_zone(
                     rest_target,
@@ -1507,7 +1507,7 @@ pub(crate) fn parse_put_into_hand(
             let chooser = match choice_shape.actor {
                 PossessiveObjectChoiceActor::You => Some(PlayerAst::You),
                 PossessiveObjectChoiceActor::SubjectPlayer => {
-                    extract_subject_player(subject.clone())
+                    extract_subject_player(subject)
                 }
                 PossessiveObjectChoiceActor::Opponent => Some(PlayerAst::Opponent),
                 // An object-controller phrase needs a previously established
@@ -1537,8 +1537,8 @@ pub(crate) fn parse_put_into_hand(
                         )));
                     }
                 };
-                if let Some(choice_owner) = crate::families::activation_and_restrictions::controller_filter_for_token_player(
-                    chooser.clone(),
+                if let Some(choice_owner) = crate::activation_and_restrictions::controller_filter_for_token_player(
+                    chooser,
                 ) {
                     if filter.owner == Some(PlayerFilter::IteratedPlayer) {
                         filter.owner = Some(choice_owner.clone());
@@ -1629,16 +1629,16 @@ pub(crate) fn parse_put_into_hand(
         }
 
         let mut target = if cca_shapes::is_tagged_object_reference(target_tokens) {
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens))
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens))
         } else {
-            parse_target_phrase(&target_tokens)?
+            parse_target_phrase(target_tokens)?
         };
         target = expand_graveyard_or_hand_disjunction(target, target_tokens);
         apply_explicit_source_location(&mut target, target_tokens);
         if !cca_shapes::target_names_unowned_shared_zone(target_tokens)
-            && let Some(filter) = crate::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
+            && let Some(filter) = crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
         {
-            crate::sentences::effect_sentences::zone_counter_helpers::apply_exile_subject_owner_context(filter, subject);
+            crate::effect_sentences::zone_counter_helpers::apply_exile_subject_owner_context(filter, subject);
         }
         if destination_shape.source_from_command {
             apply_source_zone_constraint(&mut target, Zone::Command);
@@ -1688,7 +1688,7 @@ mod looked_card_count_tests {
 
     #[test]
     fn life_loss_handler_wraps_delayed_draw_step_unless_payment() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "1 life at the beginning of their next draw step unless they pay {1} before that draw step.",
             0,
         )
@@ -1724,7 +1724,7 @@ mod looked_card_count_tests {
     #[test]
     fn explicit_that_source_controller_keeps_the_triggering_source_reference() {
         let tokens =
-            crate::runtime_backend::front_end::lexer::lex_line("control of this creature.", 0)
+            crate::lexer::lex_line("control of this creature.", 0)
                 .expect("lex triggering-source controller clause");
         let effect = parse_gain_control(&tokens, Some(SubjectAst::TriggeringSourceController))
             .expect("parse triggering-source controller clause");
@@ -1744,7 +1744,7 @@ mod looked_card_count_tests {
 
     #[test]
     fn gain_control_target_keeps_distinct_combat_damage_controller_history() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "control of target nonland permanent controlled by a player who was dealt combat damage by three or more Pirates this turn.",
             0,
         )
@@ -1777,7 +1777,7 @@ mod looked_card_count_tests {
 
     #[test]
     fn gain_control_of_opponents_choice_declares_a_delegated_target() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "control of target creature of an opponent's choice they control.",
             0,
         )
@@ -1792,7 +1792,7 @@ mod looked_card_count_tests {
 
     #[test]
     fn source_exiled_move_surface_preserves_typed_subjects_and_onto_marker() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Put target creature card with mana value X exiled with this creature onto the battlefield under your control.",
             0,
         )
@@ -1831,7 +1831,7 @@ mod looked_card_count_tests {
             }) if text == "target creature card with mana value X"
         ));
 
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Return all cards you own exiled with this artifact to your hand.",
             0,
         )
@@ -1847,7 +1847,7 @@ mod looked_card_count_tests {
             ironsmith_core::ExiledWithSourceSubjectSurface::Custom("all cards you own".to_string())
         );
 
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Put all cards exiled with this enchantment on the bottom of their library in a random order.",
             0,
         )
@@ -1881,7 +1881,7 @@ mod looked_card_count_tests {
             })
         ));
 
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "They put all cards exiled with this enchantment on the bottom of their library in a random order.",
             0,
         )
@@ -1896,7 +1896,7 @@ mod looked_card_count_tests {
 
     #[test]
     fn source_exiled_return_tail_preserves_other_card_surface_without_a_verb() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "each other card exiled with this Vehicle to the battlefield under its owner's control",
             0,
         )
@@ -1921,7 +1921,7 @@ mod looked_card_count_tests {
             ironsmith_core::ExiledWithSourceDestinationSurface::ItsOwner
         );
 
-        let unrelated = crate::runtime_backend::front_end::lexer::lex_line(
+        let unrelated = crate::lexer::lex_line(
             "each other Vehicle to the battlefield under its owner's control",
             0,
         )
@@ -1931,7 +1931,7 @@ mod looked_card_count_tests {
 
     #[test]
     fn singular_source_exiled_move_preserves_exactly_one_choice() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Put a card exiled with this creature into its owner's hand.",
             0,
         )
@@ -1961,7 +1961,7 @@ mod looked_card_count_tests {
 
     #[test]
     fn standalone_tagged_hand_move_preserves_exact_choice_count() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Put one of those cards into your hand.",
             0,
         )
@@ -1993,7 +1993,7 @@ mod looked_card_count_tests {
 
     #[test]
     fn same_hand_cards_can_move_to_top_or_bottom_as_one_typed_choice() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Put two cards from your hand both on top of your library or both on the bottom of your library.",
             0,
         )
@@ -2019,7 +2019,7 @@ mod looked_card_count_tests {
                             ..
                         },
                     ..
-                }) => (*zone, *to_top, count.clone()),
+                }) => (*zone, *to_top, *count),
                 other => panic!("expected a counted library move: {other:#?}"),
             })
             .collect::<Vec<_>>();
@@ -2034,7 +2034,7 @@ mod looked_card_count_tests {
 
     #[test]
     fn explicit_you_revealed_collection_binds_the_reveal_producer() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Put the cards you revealed this way on the bottom of your library in any order.",
             0,
         )

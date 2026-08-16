@@ -1,6 +1,6 @@
 use super::frequency::parse_do_this_only_each_turn_limit_tokens;
 use super::*;
-use crate::runtime_backend::front_end::lexer::lex_line;
+use crate::lexer::lex_line;
 
 fn tokens(text: &str) -> Vec<OwnedLexToken> {
     lex_line(text, 0).unwrap()

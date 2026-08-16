@@ -39,7 +39,7 @@ pub(super) fn test_convoke_taps_creatures_on_cast() {
     // Create 4 red creatures (enough to pay the entire cost with Convoke)
     let mut creature_ids = Vec::new();
     for i in 0..4 {
-        let creature = CardBuilder::new(CardId::new(), &format!("Red Creature {}", i))
+        let creature = CardBuilder::new(CardId::new(), format!("Red Creature {}", i))
             .card_types(vec![CardType::Creature])
             .color_indicator(ColorSet::RED)
             .power_toughness(PowerToughness::fixed(1, 1))
@@ -301,7 +301,7 @@ pub(super) fn test_improvise_reduces_mana_cost_with_artifacts() {
 
     // Create 3 untapped artifacts on battlefield
     for i in 0..3 {
-        let artifact = CardBuilder::new(CardId::new(), &format!("Artifact {}", i))
+        let artifact = CardBuilder::new(CardId::new(), format!("Artifact {}", i))
             .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&artifact, alice, Zone::Battlefield);
@@ -367,7 +367,7 @@ pub(super) fn test_improvise_taps_artifacts_on_cast() {
     // Create 3 untapped artifacts
     let mut artifact_ids = Vec::new();
     for i in 0..3 {
-        let artifact = CardBuilder::new(CardId::new(), &format!("Artifact {}", i))
+        let artifact = CardBuilder::new(CardId::new(), format!("Artifact {}", i))
             .card_types(vec![CardType::Artifact])
             .build();
         let id = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
@@ -433,7 +433,7 @@ pub(super) fn test_improvise_only_pays_generic_mana() {
 
     // Create 5 untapped artifacts (more than enough)
     for i in 0..5 {
-        let artifact = CardBuilder::new(CardId::new(), &format!("Artifact {}", i))
+        let artifact = CardBuilder::new(CardId::new(), format!("Artifact {}", i))
             .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&artifact, alice, Zone::Battlefield);
@@ -477,7 +477,7 @@ pub(super) fn test_improvise_already_tapped_artifacts_cannot_be_used() {
 
     // Create 3 artifacts - 2 tapped, 1 untapped
     for i in 0..3 {
-        let artifact = CardBuilder::new(CardId::new(), &format!("Artifact {}", i))
+        let artifact = CardBuilder::new(CardId::new(), format!("Artifact {}", i))
             .card_types(vec![CardType::Artifact])
             .build();
         let id = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
@@ -536,7 +536,7 @@ pub(super) fn test_search_library_finds_matching_card() {
 
     // Also add some non-Plains cards to make the search interesting
     for i in 0..3 {
-        let card = CardBuilder::new(CardId::new(), &format!("Random Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Random Card {}", i))
             .card_types(vec![CardType::Creature])
             .build();
         game.create_object_from_card(&card, alice, Zone::Library);
@@ -618,7 +618,7 @@ pub(super) fn test_search_library_no_matching_cards() {
 
     // Add only non-Plains cards to library (no basic Plains)
     for i in 0..3 {
-        let card = CardBuilder::new(CardId::new(), &format!("Non-Plains Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Non-Plains Card {}", i))
             .card_types(vec![CardType::Creature])
             .build();
         game.create_object_from_card(&card, alice, Zone::Library);
@@ -647,10 +647,10 @@ pub(super) fn test_search_library_no_matching_cards() {
     assert!(result.is_ok(), "Search should complete without error");
 
     // Result should indicate nothing was found
-    if let Ok(outcome) = result {
-        if let crate::effect::OutcomeValue::Count(n) = outcome.value {
-            assert_eq!(n, 0, "Should find 0 cards when no Plains in library");
-        }
+    if let Ok(outcome) = result
+        && let crate::effect::OutcomeValue::Count(n) = outcome.value
+    {
+        assert_eq!(n, 0, "Should find 0 cards when no Plains in library");
     }
 
     // Hand size should be unchanged
@@ -718,13 +718,13 @@ pub(super) fn test_search_library_fail_to_find() {
     assert!(result.is_ok(), "Search should complete without error");
 
     // Result should indicate nothing was found (player chose to fail)
-    if let Ok(outcome) = result {
-        if let crate::effect::OutcomeValue::Count(n) = outcome.value {
-            assert_eq!(
-                n, 0,
-                "Should report 0 cards found when player fails to find"
-            );
-        }
+    if let Ok(outcome) = result
+        && let crate::effect::OutcomeValue::Count(n) = outcome.value
+    {
+        assert_eq!(
+            n, 0,
+            "Should report 0 cards found when player fails to find"
+        );
     }
 
     // Hand size should be unchanged (player declined to take the Plains)
@@ -998,7 +998,7 @@ pub(super) fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_
 
     let mut trigger_queue = TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
-    let mut dm = DeclineMayDecisionMaker::default();
+    let mut dm = DeclineMayDecisionMaker;
 
     let activate = PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
         source: door_id,

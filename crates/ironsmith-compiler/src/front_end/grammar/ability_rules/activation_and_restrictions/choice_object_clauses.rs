@@ -29,7 +29,7 @@ pub(crate) fn parse_target_player_choose_objects_clause(
 pub(crate) fn parse_target_player_choose_objects_clause_with_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount, Option<Value>)>, CardTextError> {
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let parsed = match parse_typed_target_player_choice_tokens(tokens) {
         Ok(Some(parsed)) => parsed,
         Ok(None) => return Ok(None),
@@ -215,7 +215,7 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
 pub(crate) fn parse_you_choose_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, PlayerFilter, bool, usize)>, CardTextError> {
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let trimmed_tokens = trim_edge_punctuation(tokens);
     let parsed = match parse_choice_player_clause_tokens(&trimmed_tokens) {
         Ok(Some(parsed)) => parsed,
@@ -249,7 +249,7 @@ pub(crate) fn parse_target_player_chooses_then_other_cant_block(
         choose_filter.card_types.push(CardType::Creature);
     }
 
-    let second_words = crate::token_word_refs(second);
+    let second_words = crate::lexer::token_word_refs(second);
     let shape = match parse_typed_chosen_cant_block_tokens(second) {
         Ok(Some(shape)) => shape,
         Ok(None) => return Ok(None),
@@ -659,8 +659,8 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_words = crate::token_word_refs(first);
-    let second_words = crate::token_word_refs(second);
+    let first_words = crate::lexer::token_word_refs(first);
+    let second_words = crate::lexer::token_word_refs(second);
     let Some(shape) = parse_choice_card_type_reveal_shape_words(&first_words, &second_words) else {
         return Ok(None);
     };
@@ -696,10 +696,8 @@ fn compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(
     let modes = card_type_modes
         .into_iter()
         .map(|(label, card_type)| {
-            let looked_tag = crate::util::helper_tag_for_tokens(
-                first,
-                &format!("revealed_{label}"),
-            );
+            let looked_tag =
+                crate::util::helper_tag_for_tokens(first, &format!("revealed_{label}"));
             let mut card_type_filter = ObjectFilter::default();
             card_type_filter.card_types.push(card_type);
 
@@ -820,8 +818,8 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_words = crate::token_word_refs(first);
-    let second_words = crate::token_word_refs(second);
+    let first_words = crate::lexer::token_word_refs(first);
+    let second_words = crate::lexer::token_word_refs(second);
     let shape = match parse_typed_choice_become_shape(first, second) {
         Ok(Some(shape)) => shape,
         Ok(None) => return Ok(None),
@@ -977,7 +975,7 @@ mod result_choice_tests {
 
     #[test]
     fn implicit_choice_actor_is_preserved_for_enclosing_sentence_binding() {
-        let tokens = crate::runtime_backend::lex_line("Choose a nonland card exiled this way.", 0)
+        let tokens = crate::lexer::lex_line("Choose a nonland card exiled this way.", 0)
             .expect("lex choice");
         let (chooser, filter, count, _) = parse_you_choose_objects_clause_with_count_value(&tokens)
             .expect("parse choice")
@@ -992,11 +990,9 @@ mod result_choice_tests {
 
     #[test]
     fn up_to_prior_amount_choice_preserves_count_and_value_source() {
-        let tokens = crate::runtime_backend::lex_line(
-            "Choose up to that many target creatures you control.",
-            0,
-        )
-        .expect("lex choice");
+        let tokens =
+            crate::lexer::lex_line("Choose up to that many target creatures you control.", 0)
+                .expect("lex choice");
         let (_, _, count, count_value) = parse_you_choose_objects_clause_with_count_value(&tokens)
             .expect("parse choice")
             .expect("match choice");
@@ -1010,11 +1006,9 @@ mod result_choice_tests {
 
     #[test]
     fn for_each_choice_count_lowers_to_a_typed_dynamic_value() {
-        let tokens = crate::runtime_backend::lex_line(
-            "Choose a permanent for each card in their graveyard.",
-            0,
-        )
-        .expect("lex choice");
+        let tokens =
+            crate::lexer::lex_line("Choose a permanent for each card in their graveyard.", 0)
+                .expect("lex choice");
         let (_, _, count, count_value) = parse_you_choose_objects_clause_with_count_value(&tokens)
             .expect("parse choice")
             .expect("match choice");
@@ -1031,7 +1025,7 @@ mod result_choice_tests {
 
     #[test]
     fn that_player_for_each_choice_keeps_its_dynamic_count_basis() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "That player chooses a permanent for each card in their graveyard.",
             0,
         )
@@ -1055,20 +1049,17 @@ mod result_choice_tests {
 
     #[test]
     fn participant_choice_only_restricts_control_when_oracle_says_so() {
-        let unrestricted =
-            crate::runtime_backend::lex_line("That player chooses up to two Plains.", 0)
-                .expect("lex unrestricted choice");
+        let unrestricted = crate::lexer::lex_line("That player chooses up to two Plains.", 0)
+            .expect("lex unrestricted choice");
         let (_, unrestricted_filter, _, _) =
             parse_target_player_choose_objects_clause_with_count_value(&unrestricted)
                 .expect("parse unrestricted choice")
                 .expect("match unrestricted choice");
         assert_eq!(unrestricted_filter.controller, None);
 
-        let controlled = crate::runtime_backend::lex_line(
-            "That player chooses up to two Plains they control.",
-            0,
-        )
-        .expect("lex controlled choice");
+        let controlled =
+            crate::lexer::lex_line("That player chooses up to two Plains they control.", 0)
+                .expect("lex controlled choice");
         let (_, controlled_filter, _, _) =
             parse_target_player_choose_objects_clause_with_count_value(&controlled)
                 .expect("parse controlled choice")
@@ -1078,7 +1069,7 @@ mod result_choice_tests {
             Some(PlayerFilter::IteratedPlayer)
         );
 
-        let negative_tag_only = crate::runtime_backend::lex_line(
+        let negative_tag_only = crate::lexer::lex_line(
             "That player chooses a permanent that hasn't been chosen this way.",
             0,
         )

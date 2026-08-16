@@ -75,7 +75,7 @@ mod tests {
 
     fn add_library_cards(game: &mut GameState, owner: PlayerId, count: usize) {
         for idx in 0..count {
-            let card = CardBuilder::new(CardId::new(), &format!("Library Card {}", idx + 1))
+            let card = CardBuilder::new(CardId::new(), format!("Library Card {}", idx + 1))
                 .card_types(vec![CardType::Sorcery])
                 .build();
             game.create_object_from_card(&card, owner, Zone::Library);

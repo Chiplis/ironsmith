@@ -48,15 +48,15 @@ fn vivien_hidden_choice_and_creature_permission_share_one_exiled_tag() {
     let effects = activated.effects.flattened_default_effects();
     let choose = effects
         .iter()
-        .find_map(|effect| find_nested::<crate::effects::ChooseObjectsEffect>(effect))
+        .find_map(find_nested::<crate::effects::ChooseObjectsEffect>)
         .expect("one looked-card choice");
     let exile = effects
         .iter()
-        .find_map(|effect| find_nested::<crate::effects::ExileEffect>(effect))
+        .find_map(find_nested::<crate::effects::ExileEffect>)
         .expect("face-down exile");
     let grant = effects
         .iter()
-        .find_map(|effect| find_nested::<crate::effects::GrantPlayTaggedEffect>(effect))
+        .find_map(find_nested::<crate::effects::GrantPlayTaggedEffect>)
         .expect("while-exiled cast permission");
     assert!(choose.count.is_single());
     assert!(exile.face_down);
@@ -82,7 +82,7 @@ fn agonizing_remorse_keeps_the_revealed_hand_and_target_opponents_graveyard_disj
     let effects = program.flattened_default_effects();
     let choose = effects
         .iter()
-        .find_map(|effect| find_nested::<crate::effects::ChooseObjectsEffect>(effect))
+        .find_map(find_nested::<crate::effects::ChooseObjectsEffect>)
         .expect("cross-zone choice");
     assert!(choose.count.is_single());
     assert!(matches!(
@@ -114,7 +114,7 @@ fn agonizing_remorse_keeps_the_revealed_hand_and_target_opponents_graveyard_disj
 
     let exile = effects
         .iter()
-        .find_map(|effect| find_nested::<crate::effects::MoveToZoneEffect>(effect))
+        .find_map(find_nested::<crate::effects::MoveToZoneEffect>)
         .expect("chosen card exile");
     assert_eq!(exile.zone, Zone::Exile);
     assert!(matches!(
@@ -123,7 +123,7 @@ fn agonizing_remorse_keeps_the_revealed_hand_and_target_opponents_graveyard_disj
     ));
     let lose = effects
         .iter()
-        .find_map(|effect| find_nested::<crate::effects::LoseLifeEffect>(effect))
+        .find_map(find_nested::<crate::effects::LoseLifeEffect>)
         .expect("one-life instruction");
     assert_eq!(lose.player, ChooseSpec::Player(PlayerFilter::You));
     assert_eq!(lose.amount.unhinted(), &crate::effect::Value::Fixed(1));

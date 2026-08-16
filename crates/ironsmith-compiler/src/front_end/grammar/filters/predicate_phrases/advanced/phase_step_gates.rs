@@ -691,8 +691,7 @@ fn parse_source_exiled_card_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
 }
 
 fn parse_exact_cards_in_hand_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let condition =
-        crate::grammar::conditions::parse_player_cards_in_hand_condition(tokens)?;
+    let condition = crate::grammar::conditions::parse_player_cards_in_hand_condition(tokens)?;
     let crate::effect::Comparison::Equal(amount) = condition.comparison else {
         return None;
     };
@@ -810,7 +809,7 @@ fn parse_all_controlled_objects_share_color_gate(tokens: &[OwnedLexToken]) -> Op
     let objects = matched.capture_clause("objects", clause)?;
     let mut filter = parse_object_filter(objects.tokens(), false).ok()?;
     filter.controller = Some(PlayerFilter::You);
-    filter = filter.without_colors(color.into());
+    filter = filter.without_colors(color);
     Some(PredicateAst::PlayerControlsNo {
         player: PlayerAst::You,
         filter,
@@ -1071,6 +1070,60 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
 
 fn parse_existing_zone_history_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
+
+    // Keep the object descriptor owned by the shared filter grammar.  The
+    // history clause only owns the passive zone-change frame, so card-type
+    // unions and ordinary permanent descriptors do not need one-off entries
+    // here.
+    let words = clause.word_refs();
+    if let Some(put_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "was" | "were"))
+    {
+        let graveyard_owner = match &words[put_idx..] {
+            [
+                "was" | "were",
+                "put",
+                "into",
+                "a" | "the",
+                "graveyard",
+                "from",
+                "the",
+                "battlefield",
+                "this",
+                "turn",
+            ] => None,
+            [
+                "was" | "were",
+                "put",
+                "into",
+                "your",
+                "graveyard",
+                "from",
+                "the",
+                "battlefield",
+                "this",
+                "turn",
+            ] => Some(PlayerFilter::You),
+            _ => return parse_existing_zone_history_gate_exact(clause),
+        };
+        let subject = clause.before_word(put_idx)?;
+        if let Ok(mut filter) = parse_object_filter_lexed(subject.tokens(), false)
+            && filter != ObjectFilter::default()
+        {
+            if graveyard_owner.is_some() {
+                filter.owner = graveyard_owner;
+            }
+            return Some(PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
+                filter,
+            ));
+        }
+    }
+
+    parse_existing_zone_history_gate_exact(clause)
+}
+
+fn parse_existing_zone_history_gate_exact(clause: LexedClause<'_>) -> Option<PredicateAst> {
     if surface::exact(
         clause,
         &[
@@ -1147,8 +1200,7 @@ fn parse_existing_zone_history_gate(tokens: &[OwnedLexToken]) -> Option<Predicat
 }
 
 fn parse_player_counter_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let condition =
-        crate::grammar::conditions::parse_player_counter_condition(tokens)?;
+    let condition = crate::grammar::conditions::parse_player_counter_condition(tokens)?;
     if condition.counter_type != CounterType::Poison {
         return None;
     }
@@ -1170,7 +1222,7 @@ fn parse_world_status_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(text: &str) -> PredicateAst {
         let tokens = lex_line(text, 0).expect("lex predicate");
@@ -1318,10 +1370,9 @@ mod tests {
             ),
         ] {
             let tokens = lex_line(text, 0).expect("lex triggered line");
-            let split = crate::runtime_backend::grammar::structure::split_triggered_conditional_clause_lexed(
-                &tokens, 1,
-            )
-            .unwrap_or_else(|| panic!("trigger condition was swallowed: {text}"));
+            let split =
+                crate::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
+                    .unwrap_or_else(|| panic!("trigger condition was swallowed: {text}"));
             let debug = format!("{:?}", split.predicate);
             assert!(debug.contains(expected_debug), "{text}: {debug}");
         }

@@ -1,9 +1,7 @@
 use super::*;
-use crate::runtime_backend::activation_helpers::{
-    parse_any_combination_mana_colors, parse_or_mana_color_choices,
-};
-use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
-use crate::runtime_backend::util::tokenize_line;
+use crate::activation_helpers::{parse_any_combination_mana_colors, parse_or_mana_color_choices};
+use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
+use crate::util::tokenize_line;
 
 #[test]
 fn parse_graveyard_owner_prefix_handles_shared_phrases() {
@@ -92,7 +90,7 @@ fn split_exile_face_down_suffix_keeps_face_down_before_then_clauses() {
 
     assert!(face_down);
     assert_eq!(
-        crate::runtime_backend::token_word_refs(prefix),
+        crate::lexer::token_word_refs(prefix),
         vec!["all", "cards", "from", "your", "library"]
     );
 }

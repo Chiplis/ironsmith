@@ -158,6 +158,13 @@ mod tests {
                     original: "Draw a card.".to_string(),
                     normalized: "Draw a card.".to_string(),
                     char_map: (0..12).collect(),
+                    source_map: crate::front_end::NormalizedSourceMap {
+                        segments: vec![crate::front_end::NormalizedSourceSegment {
+                            normalized_bytes: 0..12,
+                            source_bytes: 0..12,
+                        }],
+                        omitted_source_bytes: Vec::new(),
+                    },
                 },
             },
             chunks: vec!["draw".to_string()],

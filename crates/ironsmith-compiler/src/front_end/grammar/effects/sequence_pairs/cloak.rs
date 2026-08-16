@@ -6,7 +6,7 @@ use winnow::token::any;
 use crate::cards::builders::PlayerAst;
 use crate::effect::Value;
 use crate::grammar::{leaf, primitives};
-use crate::front_end::lexer::{LexStream, OwnedLexToken, TokenWordView};
+use crate::lexer::{LexStream, OwnedLexToken, TokenWordView};
 
 use super::super::parse_exile_library_owner_shape;
 
@@ -123,7 +123,7 @@ pub(crate) fn parse_cloak_pile_sequence_shape<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_typed_cloak_pile_sequence() {

@@ -1,6 +1,6 @@
 use super::*;
 #[cfg(test)]
-use crate::runtime_backend::ir::RewriteSemanticDocument;
+use crate::ir::RewriteSemanticDocument;
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct RewriteNormalizationState {
@@ -12,9 +12,9 @@ impl RewriteNormalizationState {
     fn statement_reference_imports(&self) -> ReferenceImports {
         let additional_cost_imports = self.latest_additional_cost_exports.to_imports();
         if !additional_cost_imports.is_empty() {
-            return additional_cost_imports.into();
+            return additional_cost_imports;
         }
-        self.latest_spell_exports.to_imports().into()
+        self.latest_spell_exports.to_imports()
     }
 }
 
@@ -170,6 +170,47 @@ fn normalize_rewrite_line_chunk(
         }
         LineAst::Statement { effects } => {
             let mut imports = state.statement_reference_imports();
+            if let Some(cost_tag) = imports.last_object_tag.as_ref()
+                && let Some(cost_index) = cost_tag.as_str().strip_prefix("tapped_")
+            {
+                let alias = format!("tap_cost_{cost_index}");
+                if effects
+                    .iter()
+                    .any(|effect| effect_references_tag(effect, &alias))
+                {
+                    // A later effect in this statement may advance the ordinary
+                    // last-object reference before the cost-linked reference is
+                    // lowered. Snapshot the explicit additional-cost alias now.
+                    imports
+                        .snapshot_tag_aliases
+                        .retain(|(existing, _)| existing != &alias);
+                    imports
+                        .snapshot_tag_aliases
+                        .push((alias, cost_tag.as_str().to_string()));
+                }
+            }
+            if let Some(cost_tag) = imports.last_object_tag.as_ref()
+                && (cost_tag.as_str().starts_with("sacrifice_cost_")
+                    || effects
+                        .iter()
+                        .any(|effect| effect_references_tag(effect, ADDITIONAL_COST_OBJECT_TAG)))
+            {
+                // Bind the cost export before annotating any body effect. The
+                // ordinary last-object reference is intentionally free to
+                // advance through damage, destroy, create, and return effects;
+                // this alias must remain attached to the paid cost object.
+                // Preserve a chosen sacrifice set proactively: a later plural
+                // demonstrative can initially carry the generic `it` marker
+                // and only become recognizable as cost-linked after an
+                // intervening source move advances ordinary object memory.
+                imports
+                    .snapshot_tag_aliases
+                    .retain(|(alias, _)| alias != ADDITIONAL_COST_OBJECT_TAG);
+                imports.snapshot_tag_aliases.push((
+                    ADDITIONAL_COST_OBJECT_TAG.to_string(),
+                    cost_tag.as_str().to_string(),
+                ));
+            }
             let prepared = rewrite_prepare_statement_effects_for_lowering(&effects, imports)?;
             state.latest_spell_exports = prepared.exports.clone();
             NormalizedLineChunk::Statement {
@@ -178,6 +219,7 @@ fn normalize_rewrite_line_chunk(
             }
         }
         LineAst::AdditionalCost { effects } => {
+            let effects = rewrite_normalize_selected_sacrifice_tags(effects);
             let prepared = rewrite_prepare_additional_cost_effects_for_lowering(
                 &effects,
                 ReferenceImports::default(),

@@ -1,10 +1,10 @@
+use crate::activation_and_restrictions::parse_payment_clause_as_total_cost;
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::builders::CardTextError;
-use crate::mana::ManaCost;
-use crate::families::activation_and_restrictions::parse_payment_clause_as_total_cost;
 use crate::grammar::{leaf, permission_shapes};
 use crate::keyword_static::parse_this_spell_cost_condition;
 use crate::lexer::{OwnedLexToken, TokenWordView, lex_line, render_token_slice};
+use crate::mana::ManaCost;
 use crate::static_abilities::ThisSpellCostCondition;
 
 pub(crate) fn parse_self_free_cast(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {

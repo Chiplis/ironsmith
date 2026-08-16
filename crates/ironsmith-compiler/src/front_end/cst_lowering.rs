@@ -14,11 +14,11 @@ use super::parser_support::split_tokens_for_parse;
 use super::util::join_sentences_with_period;
 
 #[path = "cst_lowering/activation_costs.rs"]
-mod activation_costs;
+pub(crate) mod activation_costs;
 pub(crate) use activation_costs::{lower_activation_cost_cst, recognize_activation_cost_cst};
 
 fn parsed_line_item(
-    info: super::shared_types::LineInfo,
+    info: crate::model::facts::LineInfo,
     chunks: Vec<crate::cards::builders::LineAst>,
     restrictions: ParsedRestrictions,
 ) -> RewriteSemanticItem {
@@ -118,11 +118,10 @@ fn lower_activated_line(
             return Err(err);
         }
     };
-    let cost = crate::lowering::cost_materialization::materialize_compiler_total_cost(
-        &compiler_cost,
-    )?;
+    let cost =
+        crate::lowering::cost_materialization::materialize_compiler_total_cost(&compiler_cost)?;
     let info = activated.info;
-    let parsed = super::semantic_line_parsing::parse_activated_line(
+    let parsed = crate::semantic_line_parsing::parse_activated_line(
         info.clone(),
         cost,
         compiler_cost,
@@ -157,11 +156,11 @@ fn lower_triggered_line(triggered: TriggeredLineCst) -> Result<RewriteSemanticIt
         effects: compiler_ability.effects,
         max_triggers_per_turn: triggered.max_triggers_per_turn,
     };
-    let chunk = super::semantic_line_parsing::apply_explicit_intervening_if_to_triggered_chunk(
+    let chunk = crate::semantic_line_parsing::apply_explicit_intervening_if_to_triggered_chunk(
         chunk,
         compiler_ability.intervening_if,
     )?;
-    let chunk = super::semantic_line_parsing::apply_chosen_option_to_triggered_chunk(
+    let chunk = crate::semantic_line_parsing::apply_chosen_option_to_triggered_chunk(
         chunk,
         &triggered.full_text,
         &info.semantic_facts.triggered_ability,
@@ -179,6 +178,10 @@ fn lower_triggered_line(triggered: TriggeredLineCst) -> Result<RewriteSemanticIt
 fn lower_static_line(static_line: StaticLineCst) -> Result<RewriteSemanticItem, CardTextError> {
     let info = static_line.info;
     if let Some(parsed) = static_line.parsed {
+        let parsed = crate::semantic_line_parsing::wrap_chosen_option_static_chunk(
+            parsed,
+            static_line.chosen_option.as_ref(),
+        )?;
         return Ok(parsed_line_item(
             info,
             vec![parsed],
@@ -191,14 +194,14 @@ fn lower_static_line(static_line: StaticLineCst) -> Result<RewriteSemanticItem, 
             Vec::new()
         } else {
             let parsed_tokens = join_sentences_with_period(&parsed_sentences);
-            vec![super::semantic_line_parsing::parse_static_line(
+            vec![crate::semantic_line_parsing::parse_static_line(
                 info.clone(),
                 &parsed_tokens,
                 static_line.chosen_option.as_ref(),
             )?]
         }
     } else {
-        vec![super::semantic_line_parsing::parse_static_line(
+        vec![crate::semantic_line_parsing::parse_static_line(
             info.clone(),
             &static_line.parse_tokens,
             static_line.chosen_option.as_ref(),
@@ -211,7 +214,7 @@ fn lower_statement_line(
     statement_line: StatementLineCst,
 ) -> Result<RewriteSemanticItem, CardTextError> {
     let info = statement_line.info;
-    let chunks = super::semantic_line_parsing::parse_statement_token_groups_to_chunks(
+    let chunks = crate::semantic_line_parsing::parse_statement_token_groups_to_chunks(
         info.clone(),
         &statement_line.parse_tokens,
         &statement_line.parse_groups,

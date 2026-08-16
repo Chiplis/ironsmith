@@ -341,7 +341,7 @@ pub(super) fn parse_oracle_selective_adaptation_keyword_bundle_regression() {
         .as_ref()
         .expect("Selective Adaptation should have a spell effect")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .filter_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
         .collect::<Vec<_>>();
     assert_eq!(
@@ -3449,7 +3449,7 @@ pub(super) fn souls_majesty_draws_equal_to_target_power_including_zero_power_bra
 
     for i in 0..8 {
         game.create_object_from_card(
-            &crate::card::CardBuilder::new(CardId::from_raw(10 + i), &format!("Library {i}"))
+            &crate::card::CardBuilder::new(CardId::from_raw(10 + i), format!("Library {i}"))
                 .card_types(vec![CardType::Creature])
                 .build(),
             alice,

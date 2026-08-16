@@ -2251,21 +2251,11 @@ fn describe_source_sacrifice_then_coordinated_suffix(effects: &[Effect]) -> Opti
         // the sacrifice's surface hint. The typed source identity is still
         // authoritative for the anaphoric "it".
         let action = match rest.split_once(' ') {
-            Some((noun, action))
-                if matches!(
-                    noun,
-                    "creature"
-                        | "artifact"
-                        | "enchantment"
-                        | "land"
-                        | "permanent"
-                        | "source"
-                        | "card"
-                        | "spell"
-                ) =>
-            {
-                action
-            }
+            Some((
+                "creature" | "artifact" | "enchantment" | "land" | "permanent" | "source" | "card"
+                | "spell",
+                action,
+            )) => action,
             _ => rest,
         };
         trailing_text = format!("it {action}");
@@ -2388,6 +2378,11 @@ pub(super) fn describe_typed_coordinated_result_branch(effects: &[Effect]) -> Op
         return Some(compact);
     }
     if let Some(compact) = describe_damage_and_you_scry(&sequence.effects) {
+        return Some(compact);
+    }
+    if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+        && let Some(compact) = describe_you_life_change_and_create_token(&sequence.effects)
+    {
         return Some(compact);
     }
     if let Some(compact) = describe_source_sacrifice_then_coordinated_suffix(&sequence.effects) {
@@ -2865,7 +2860,7 @@ mod target_player_choice_chain_tests {
             ObjectFilter::permanent_card()
                 .in_zone(Zone::Battlefield)
                 .controlled_by(choose.chooser.clone()),
-            choose.count.clone(),
+            choose.count,
             choose.chooser.clone(),
             choose.tag.clone(),
         ));
@@ -3223,9 +3218,9 @@ fn describe_comma_then_sequence(sequence: &crate::effects::SequenceEffect) -> Op
         .iter()
         .map(structural_unwrap_render_wrappers)
         .filter(|effect| {
-            !effect
+            effect
                 .downcast_ref::<crate::effects::TargetOnlyEffect>()
-                .is_some_and(|target| !target.explicit_declaration)
+                .is_none_or(|target| target.explicit_declaration)
         })
         .collect::<Vec<_>>();
     if let Some(compact) = describe_reveal_hand_choose_discard_inline(&visible) {
@@ -3716,6 +3711,12 @@ pub(super) fn describe_coordinated_sequence(
                 leading_duration: true
             }
     );
+    if let Some(rendered) = describe_next_turn_pt_modifier_and_activation_lock(sequence) {
+        return Some(rendered);
+    }
+    if let Some(rendered) = describe_shared_target_end_of_turn_modifications(sequence) {
+        return Some(rendered);
+    }
     // A target-damage + correlated fanout pair is more specific than the
     // broad action-fanout and coordinated-damage renderers below. Prove the
     // shared target tag and amount before either child is rendered alone,
@@ -3982,6 +3983,11 @@ pub(super) fn describe_coordinated_sequence(
     if let Some(compact) = describe_damage_and_you_scry(&sequence.effects) {
         return Some(compact);
     }
+    if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+        && let Some(compact) = describe_you_life_change_and_create_token(&sequence.effects)
+    {
+        return Some(compact);
+    }
     if let [first, second] = sequence.effects.as_slice() {
         if std::env::var("IRONSMITH_SEQ_TRACE").is_ok() {
             eprintln!(
@@ -4092,9 +4098,230 @@ pub(super) fn describe_coordinated_sequence(
         .or_else(|| describe_typed_coordinated_clause_fallback(&sequence.effects))
 }
 
+fn describe_next_turn_pt_modifier_and_activation_lock(
+    sequence: &crate::effects::SequenceEffect,
+) -> Option<String> {
+    if sequence.surface != ironsmith_core::SequenceSurface::CoordinatedLeadingDuration {
+        return None;
+    }
+    let [modifier_effect, target_effect, restriction_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let modifier_tagged = modifier_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let modifier = modifier_tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let target = modifier.target_spec.as_ref()?;
+    let ChooseSpec::Object(target_filter) = target.base() else {
+        return None;
+    };
+    let mut semantic_target_filter = target_filter.clone();
+    semantic_target_filter.set_explicit_card_type_noun(None);
+    if semantic_target_filter != ObjectFilter::creature()
+        || !target.is_target()
+        || target.count() != crate::effect::ChoiceCount::up_to(1)
+        || modifier.until != Until::YourNextTurn
+        || modifier.condition.is_some()
+        || modifier.modification.is_some()
+        || !modifier.additional_modifications.is_empty()
+        || !matches!(
+            modifier.runtime_modifications.as_slice(),
+            [crate::effects::continuous::RuntimeModification::ModifyPowerToughness { .. }]
+        )
+        || modifier.source_type.is_some()
+        || modifier.source_reference_surface.is_some()
+        || modifier.set_quantifier_surface.is_some()
+        || modifier.type_retention_surface.is_some()
+        || modifier.animation_pt_surface.is_some()
+        || modifier.animation_duration_surface.is_some()
+        || modifier.lock_filter_at_resolution
+        || modifier.resolve_set_pt_values_at_resolution
+        || !modifier.require_creature_target
+    {
+        return None;
+    }
+
+    let target_tagged = target_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let target_only = target_tagged
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if target_only.chooser.is_some()
+        || target_only.explicit_declaration
+        || !matches!(
+            target_only.target.unhinted(),
+            ChooseSpec::Tagged(tag) if tag == &modifier_tagged.tag
+        )
+    {
+        return None;
+    }
+
+    let restriction = restriction_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    let crate::effect::Restriction::ActivateAbilitiesOf(restricted_filter) =
+        &restriction.restriction
+    else {
+        return None;
+    };
+    if !filter_is_exactly_tagged(restricted_filter, &modifier_tagged.tag)
+        || restriction.duration != Until::YourNextTurn
+        || restriction.start != crate::effect::RestrictionStart::Immediate
+        || restriction.duration_surface
+            != crate::effect::RestrictionDurationSurface::LeadingUntilYourNextTurn
+    {
+        return None;
+    }
+
+    let modifier_text = describe_effect(modifier_effect);
+    let modifier_text = modifier_text
+        .trim()
+        .trim_end_matches('.')
+        .strip_suffix(" until your next turn")?;
+    Some(format!(
+        "Until your next turn, {} and its activated abilities can't be activated",
+        lowercase_first(modifier_text)
+    ))
+}
+
+fn describe_shared_target_end_of_turn_modifications(
+    sequence: &crate::effects::SequenceEffect,
+) -> Option<String> {
+    if !matches!(
+        sequence.surface,
+        ironsmith_core::SequenceSurface::Coordinated
+            | ironsmith_core::SequenceSurface::CoordinatedLeadingDuration
+    ) || sequence.effects.len() < 2
+    {
+        return None;
+    }
+    let first_tagged = sequence.effects[0].downcast_ref::<crate::effects::TaggedEffect>()?;
+    let first = first_tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let target = first.target_spec.as_ref()?;
+    if !matches!(target.unhinted(), ChooseSpec::Target(_))
+        || first.until != Until::EndOfTurn
+        || first.condition.is_some()
+    {
+        return None;
+    }
+    for effect in &sequence.effects[1..] {
+        let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let apply = tagged
+            .effect
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if apply.target_spec.as_ref().map(ChooseSpec::unhinted)
+            != Some(ChooseSpec::Tagged(first_tagged.tag.clone()).unhinted())
+            || apply.until != Until::EndOfTurn
+            || apply.condition.is_some()
+        {
+            return None;
+        }
+    }
+
+    let strip_duration = |text: String| {
+        let text = text.trim().trim_end_matches('.');
+        text.strip_suffix(" until end of turn")
+            .or_else(|| text.strip_prefix("Until end of turn, "))
+            .unwrap_or(text)
+            .to_string()
+    };
+    let mut clauses = Vec::with_capacity(sequence.effects.len());
+    let first_clause = strip_duration(describe_effect(&sequence.effects[0]));
+    let mut first_chars = first_clause.chars();
+    let first_char = first_chars.next()?.to_lowercase().collect::<String>();
+    clauses.push(format!("{first_char}{}", first_chars.as_str()));
+    for effect in &sequence.effects[1..] {
+        let clause = strip_duration(describe_effect(effect));
+        let clause = clause
+            .strip_prefix("It ")
+            .or_else(|| clause.strip_prefix("it "))
+            .unwrap_or(&clause);
+        let clause = clause
+            .strip_prefix("gains can attack ")
+            .map(|tail| format!("can attack {tail}"))
+            .unwrap_or_else(|| clause.to_string());
+        clauses.push(clause);
+    }
+    if clauses.len() >= 2 {
+        let penultimate = clauses.len() - 2;
+        if clauses[penultimate].starts_with("gains \"") && clauses[penultimate].ends_with(".\"") {
+            let shortened_len = clauses[penultimate].len() - 2;
+            clauses[penultimate].truncate(shortened_len);
+            clauses[penultimate].push_str(",\"");
+        }
+    }
+    let final_clause = clauses.pop()?;
+    Some(format!(
+        "Until end of turn, {}, and {final_clause}",
+        clauses.join(", ")
+    ))
+}
+
 #[cfg(test)]
 mod coordinated_sequence_tests {
     use super::*;
+
+    fn next_turn_modifier_and_activation_lock(
+        modifier_tag: &str,
+        restriction_tag: &str,
+        duration: Until,
+    ) -> Effect {
+        let mut creature = ObjectFilter::creature();
+        creature.set_explicit_card_type_noun(Some(CardType::Creature));
+        let target = ChooseSpec::target(ChooseSpec::Object(creature))
+            .with_count(crate::effect::ChoiceCount::up_to(1));
+        let modifier = Effect::new(
+            crate::effects::ApplyContinuousEffect::with_spec_runtime(
+                target,
+                crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                    power: Value::Fixed(-3),
+                    toughness: Value::Fixed(0),
+                },
+                Until::YourNextTurn,
+            )
+            .require_creature_target(),
+        )
+        .tag(modifier_tag);
+        let target_only = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::Tagged(
+            TagKey::from(modifier_tag),
+        )))
+        .tag("targeted_1");
+        let restriction = Effect::new(
+            crate::effects::CantEffect::new(
+                crate::effect::Restriction::activate_abilities_of(ObjectFilter::tagged(
+                    restriction_tag,
+                )),
+                duration,
+            )
+            .with_duration_surface(
+                crate::effect::RestrictionDurationSurface::LeadingUntilYourNextTurn,
+            ),
+        );
+        Effect::new(
+            crate::effects::SequenceEffect::coordinated_with_leading_duration(vec![
+                modifier,
+                target_only,
+                restriction,
+            ]),
+        )
+    }
+
+    #[test]
+    fn next_turn_modifier_and_activation_lock_requires_one_correlated_target() {
+        let exact =
+            next_turn_modifier_and_activation_lock("pumped_0", "pumped_0", Until::YourNextTurn);
+        assert_eq!(
+            describe_effect(&exact),
+            "Until your next turn, up to one target creature gets -3/-0 and its activated abilities can't be activated"
+        );
+
+        let wrong_tag =
+            next_turn_modifier_and_activation_lock("pumped_0", "another_0", Until::YourNextTurn);
+        assert_ne!(describe_effect(&wrong_tag), describe_effect(&exact));
+
+        let wrong_duration =
+            next_turn_modifier_and_activation_lock("pumped_0", "pumped_0", Until::EndOfTurn);
+        assert_ne!(describe_effect(&wrong_duration), describe_effect(&exact));
+    }
 
     fn tagged_power(tag: &str) -> Value {
         Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::TagKey::from(tag))))
@@ -6713,10 +6940,9 @@ pub(crate) fn describe_reveal_top_then_if_put_into_hand(
         if matches!(
             reveal_top.player,
             PlayerFilter::Defending | PlayerFilter::Attacking | PlayerFilter::DamagedPlayer
-        ) {
-            if let Some(rest) = reveal_subject.strip_prefix("the ") {
-                reveal_subject = rest.to_string();
-            }
+        ) && let Some(rest) = reveal_subject.strip_prefix("the ")
+        {
+            reveal_subject = rest.to_string();
         }
         let verb = player_verb(&reveal_subject, "reveal", "reveals");
         format!("{reveal_subject} {verb} the top card of their library")
@@ -10145,7 +10371,7 @@ fn describe_optional_self_exile_collect_evidence_then_return(
         .and_then(|constraint| {
             (constraint.metric == crate::effect::ChoiceAggregateMetric::ManaValue
                 && matches!(constraint.maximum.unhinted(), Value::Fixed(i32::MAX)))
-            .then(|| constraint.minimum.as_ref())
+            .then_some(constraint.minimum.as_ref())
             .flatten()
         })?;
     let Value::Fixed(minimum) = minimum.unhinted() else {
@@ -10892,7 +11118,7 @@ fn describe_control_tagged_artifact_then_attach_if_equipment(
         || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
         || !conditional.if_false.is_empty()
         || filter.zone.is_some()
-        || filter.card_types.len() != 0
+        || !filter.card_types.is_empty()
         || filter.subtypes.as_slice() != [Subtype::Equipment]
         || filter.union_surface.demonstrative_antecedent()
             != Some(ironsmith_core::DemonstrativeAntecedentSurface::Artifact)
@@ -13630,20 +13856,20 @@ pub(super) fn describe_trigger_intervening_condition(
     {
         return "it was kicked".to_string();
     }
-    if let Condition::SourceHasNoCounter(counter_type) = condition {
-        if let Some(subject) = self_subject {
-            if subject == "this creature" {
-                return format!(
-                    "this creature doesn't have {} on it",
-                    with_indefinite_article(&format!("{} counter", counter_type.description()))
-                );
-            }
-            if subject == "this enchantment" {
-                return format!(
-                    "this enchantment has no {} counters on it",
-                    counter_type.description()
-                );
-            }
+    if let Condition::SourceHasNoCounter(counter_type) = condition
+        && let Some(subject) = self_subject
+    {
+        if subject == "this creature" {
+            return format!(
+                "this creature doesn't have {} on it",
+                with_indefinite_article(&format!("{} counter", counter_type.description()))
+            );
+        }
+        if subject == "this enchantment" {
+            return format!(
+                "this enchantment has no {} counters on it",
+                counter_type.description()
+            );
         }
     }
     if let Condition::TriggeringObjectHadCounters {
@@ -14548,11 +14774,11 @@ pub(super) fn normalize_modal_named_source_etb_surface(
     }
     let subtype = format!("{:?}", zone_trigger.object_filter.subtypes[0]);
     let prefix = format!("Whenever a {subtype} enters,");
-    if let Some(start) = line.find(&prefix) {
-        if start == 0 || line[..start].ends_with(": ") {
-            let rest = &line[start + prefix.len()..];
-            return format!("{}When this creature enters,{rest}", &line[..start]);
-        }
+    if let Some(start) = line.find(&prefix)
+        && (start == 0 || line[..start].ends_with(": "))
+    {
+        let rest = &line[start + prefix.len()..];
+        return format!("{}When this creature enters,{rest}", &line[..start]);
     }
     line
 }

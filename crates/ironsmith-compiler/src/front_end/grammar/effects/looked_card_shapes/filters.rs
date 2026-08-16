@@ -1,16 +1,14 @@
 use crate::cards::builders::{ObjectFilter, TagKey, TextSpan};
-use crate::front_end::lexer::{
-    OwnedLexToken, parser_token_word_refs, trim_lexed_commas,
-};
+use crate::lexer::{OwnedLexToken, parser_token_word_refs, trim_lexed_commas};
 use crate::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
 };
+use crate::target::TaggedOpbjectRelation;
+use crate::types::{CardType, Supertype};
 use crate::util::{
     non_article_word_refs, parse_choice_count_token_prefix_consumed,
     strip_leading_article_word_refs,
 };
-use crate::target::TaggedOpbjectRelation;
-use crate::types::{CardType, Supertype};
 use winnow::combinator::alt;
 use winnow::prelude::*;
 
@@ -37,11 +35,7 @@ fn is_card_word(word: &str) -> bool {
 }
 
 fn push_excluded_type(filter: &mut ObjectFilter, card_type: CardType) {
-    if !filter
-        .excluded_card_types
-        .iter()
-        .any(|existing| *existing == card_type)
-    {
+    if !filter.excluded_card_types.contains(&card_type) {
         filter.excluded_card_types.push(card_type);
     }
 }
@@ -135,8 +129,8 @@ fn split_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
 }
 
 fn parse_disjunction_qualifiers(words: &[&str]) -> LookedDisjunctionQualifiers {
-    let explicit_and_or = words.iter().any(|word| *word == "and/or")
-        || permission_shapes::find_words(words, &["and", "or"]).is_some();
+    let explicit_and_or =
+        words.contains(&"and/or") || permission_shapes::find_words(words, &["and", "or"]).is_some();
     LookedDisjunctionQualifiers {
         distinct_names: permission_shapes::find_words(words, &["with", "different", "names"])
             .is_some(),
@@ -486,7 +480,7 @@ pub(crate) fn strip_up_to_one_looked_card_choice_tokens(
 mod tests {
     use super::*;
     use crate::Subtype;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn comma_separated_negated_characteristics_are_conjunctive() {

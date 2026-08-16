@@ -328,7 +328,7 @@ fn parse_number_word<'a>(input: &mut &'a str) -> WResult<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn fixed_prefix(raw: &str) -> LeafNumberPrefix {
         let tokens = lex_line(raw, 0).unwrap();

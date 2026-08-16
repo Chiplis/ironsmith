@@ -1,5 +1,5 @@
 use crate::color::ColorSet;
-use crate::front_end::lexer::{
+use crate::lexer::{
     OwnedLexToken, parser_token_word_positions, parser_token_word_refs, render_token_slice,
     trim_lexed_commas,
 };
@@ -237,10 +237,7 @@ fn parse_structured_become_copy_exception_shape(
             return None;
         }
         let name_words = parser_token_word_refs(name_tokens);
-        parsed.name_override_surface =
-            crate::util::source_reference_surface_for_words(
-                &name_words,
-            );
+        parsed.name_override_surface = crate::util::source_reference_surface_for_words(&name_words);
         parsed.name_override = Some(render_token_slice(name_tokens).trim().to_string());
         match kind {
             CopyExceptionFollowupKind::Copula => (trim_lexed_commas(&name_tail[end..]), None),
@@ -436,10 +433,9 @@ pub(crate) fn parse_become_copy_exception_shape(
         if rendered_name.is_empty() {
             return None;
         }
-        parsed.name_override_surface =
-            crate::util::source_reference_surface_for_words(
-                &parser_token_word_refs(trim_lexed_commas(&name_tokens[..intro_index])),
-            );
+        parsed.name_override_surface = crate::util::source_reference_surface_for_words(
+            &parser_token_word_refs(trim_lexed_commas(&name_tokens[..intro_index])),
+        );
         parsed.name_override = Some(rendered_name);
         parsed.set_base_power_toughness = Some((power, toughness));
 
@@ -497,10 +493,7 @@ pub(crate) fn parse_become_copy_exception_shape(
     if rendered_name.is_empty() {
         return None;
     }
-    parsed.name_override_surface =
-        crate::util::source_reference_surface_for_words(
-            &name_words,
-        );
+    parsed.name_override_surface = crate::util::source_reference_surface_for_words(&name_words);
     parsed.name_override = Some(rendered_name);
     Some(parsed)
 }
@@ -655,7 +648,7 @@ pub(crate) fn parse_become_attack_color(words: &[&str]) -> Option<ColorSet> {
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

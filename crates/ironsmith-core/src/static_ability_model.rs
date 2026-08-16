@@ -1090,6 +1090,10 @@ where
             })
         }
 
+        #[expect(
+            clippy::type_complexity,
+            reason = "the generic mapping boundary preserves every semantic model parameter"
+        )]
         fn map_ability<T, E, C, Cond, T2, E2, C2, Err, FT, FE, FC>(
             ability: Ability<StaticAbility<T, E, C, Cond>, T, E, C>,
             map_trigger: &mut FT,
@@ -1201,6 +1205,10 @@ where
             })
         }
 
+        #[expect(
+            clippy::type_complexity,
+            reason = "the generic mapping boundary preserves every semantic model parameter"
+        )]
         fn map_grantable<T, E, C, Cond, T2, E2, C2, Err, FT, FE, FC>(
             grantable: Grantable<StaticAbility<T, E, C, Cond>, E, C, Cond>,
             map_trigger: &mut FT,
@@ -1232,6 +1240,10 @@ where
             })
         }
 
+        #[expect(
+            clippy::type_complexity,
+            reason = "the generic mapping boundary preserves every semantic model parameter"
+        )]
         fn map_grant_spec<T, E, C, Cond, T2, E2, C2, Err, FT, FE, FC>(
             spec: GrantSpec<StaticAbility<T, E, C, Cond>, E, C, Cond>,
             map_trigger: &mut FT,
@@ -1312,12 +1324,12 @@ where
             }
             StaticAbilityPayload::Splice(spec) => StaticAbilityPayload::Splice(SpliceSpec {
                 quality: spec.quality,
-                cost: spec.cost.try_map(|cost| map_cost(cost))?,
+                cost: spec.cost.try_map(&mut *map_cost)?,
                 cost_surface: spec.cost_surface,
             }),
             StaticAbilityPayload::Escalate(spec) => {
                 StaticAbilityPayload::Escalate(EscalateSpec {
-                    cost: spec.cost.try_map(|cost| map_cost(cost))?,
+                    cost: spec.cost.try_map(&mut *map_cost)?,
                     cost_surface: spec.cost_surface,
                 })
             }
@@ -1643,7 +1655,7 @@ where
                 display,
             } => StaticAbilityPayload::DuplicateMatchingTriggeredAbilities {
                 source_filter,
-                event_matcher: event_matcher.map(|matcher| map_trigger(matcher)).transpose()?,
+                event_matcher: event_matcher.map(&mut *map_trigger).transpose()?,
                 count,
                 display,
             },
@@ -1653,7 +1665,7 @@ where
                 display,
             } => StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
                 source_filter,
-                event_matcher: event_matcher.map(|matcher| map_trigger(matcher)).transpose()?,
+                event_matcher: event_matcher.map(&mut *map_trigger).transpose()?,
                 display,
             },
             StaticAbilityPayload::ExertAttack {
@@ -1945,7 +1957,7 @@ where
                 transforms_into,
                 presentation_label,
             } => StaticAbilityPayload::AsEntersEffectProgram {
-                program: program.try_map_effects(|effect| map_effect(effect))?,
+                program: program.try_map_effects(&mut *map_effect)?,
                 subject,
                 also_turns_face_up,
                 turns_face_up_only,

@@ -298,7 +298,7 @@ fn title_case(words: &[&str]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_fixed_cast_restriction() {

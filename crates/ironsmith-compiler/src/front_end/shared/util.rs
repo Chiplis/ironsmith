@@ -125,15 +125,11 @@ pub(crate) fn sacrificed_object_kind_for_span(
     None
 }
 
-pub(crate) fn record_sacrificed_object_kind(
-    _span: Option<TextSpan>,
-    _kind: SacrificedObjectKind,
-) {
-}
+pub(crate) fn record_sacrificed_object_kind(_span: Option<TextSpan>, _kind: SacrificedObjectKind) {}
 
 #[cfg(test)]
 fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
-    crate::runtime_backend::legacy_source_reference_bridge::aliases_for_name(name)
+    leaf::parse_leaf_source_reference_aliases_for_name(name)
 }
 
 #[cfg(test)]
@@ -141,7 +137,22 @@ fn canonical_source_reference_surface(
     aliases: &[SourceReferenceAlias],
     surface: SourceReferenceSurface,
 ) -> SourceReferenceSurface {
-    crate::legacy_source_reference_bridge::canonical_surface(aliases, surface)
+    let surface_text = match &surface {
+        SourceReferenceSurface::FullName(text) | SourceReferenceSurface::ShortName(text) => text,
+        SourceReferenceSurface::ThisPermanentType(_) => return surface,
+    };
+    aliases
+        .iter()
+        .find_map(|alias| match &alias.surface {
+            SourceReferenceSurface::FullName(alias_text)
+            | SourceReferenceSurface::ShortName(alias_text)
+                if alias_text.eq_ignore_ascii_case(surface_text) =>
+            {
+                Some(alias.surface.clone())
+            }
+            _ => None,
+        })
+        .unwrap_or(surface)
 }
 
 pub(crate) fn source_reference_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
@@ -372,7 +383,7 @@ fn activation_cost_object_reference(cost: &TotalCost) -> Option<ActivationCostOb
         ironsmith_core::TotalCostKind::All(costs) => costs
             .iter()
             .filter_map(activation_cost_component_object_reference)
-            .last(),
+            .next_back(),
         ironsmith_core::TotalCostKind::OneOf(branches) => {
             let mut references = branches.iter().map(activation_cost_object_reference);
             let first = references.next()??;
@@ -578,7 +589,7 @@ pub(crate) fn parser_trace(stage: &str, tokens: &[OwnedLexToken]) {
     }
     eprintln!(
         "[parser-flow] stage={stage} clause='{}'",
-        crate::token_word_refs(tokens).join(" ")
+        crate::lexer::token_word_refs(tokens).join(" ")
     );
 }
 
@@ -588,7 +599,7 @@ pub(crate) fn parser_trace_stack(stage: &str, tokens: &[OwnedLexToken]) {
     }
     eprintln!(
         "[parser-trace] stage={stage} clause='{}'",
-        crate::token_word_refs(tokens).join(" ")
+        crate::lexer::token_word_refs(tokens).join(" ")
     );
     eprintln!("{}", std::backtrace::Backtrace::force_capture());
 }
@@ -613,7 +624,7 @@ pub(crate) fn map_span_to_original(
         return span;
     }
     let start_orig = char_map[start_char];
-    let end_orig = if end_char == 0 || end_char - 1 >= char_map.len() {
+    let end_orig = if end_char == 0 || end_char > char_map.len() {
         start_orig
     } else {
         let last_char_idx = end_char - 1;
@@ -1002,7 +1013,7 @@ pub(crate) fn parse_choice_count_before_target_prefix(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn source_surface_recording_restores_canonical_alias_casing_only_for_exact_aliases() {
@@ -1599,8 +1610,7 @@ fn restore_distinct_combat_damage_controller_target(
     let Some(filter_tokens) = head.tokens().get(head.prefix.consumed..) else {
         return;
     };
-    let Ok(authored_filter) =
-        crate::object_filters::parse_object_filter(filter_tokens, false)
+    let Ok(authored_filter) = crate::object_filters::parse_object_filter(filter_tokens, false)
     else {
         return;
     };
@@ -1640,7 +1650,7 @@ pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
     // belongs to the object filter, not to the surrounding action chain.
     // Preserve this exact target envelope before the generic target-head
     // parser can expose that verb as a second effect clause.
-    let historical_words = crate::token_word_refs(tokens);
+    let historical_words = crate::lexer::token_word_refs(tokens);
     if matches!(
         historical_words.as_slice(),
         [
@@ -1697,7 +1707,7 @@ pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
     // that authored quantifier on the filter so action lowering can retain
     // complete-set semantics even when the phrase also references a chosen
     // player (for example, "each creature target player controls").
-    let leading_set_quantifier = match crate::token_word_refs(tokens).first() {
+    let leading_set_quantifier = match crate::lexer::token_word_refs(tokens).first() {
         Some(&"each") => Some(ironsmith_core::SetQuantifierSurface::Each),
         Some(&"all") => Some(ironsmith_core::SetQuantifierSurface::All),
         _ => None,
@@ -2125,18 +2135,16 @@ pub(crate) fn parse_flashback_line(
     let total_cost = match parse_leading_mana_and_payment_total_cost(cost_tokens)? {
         Some(total_cost) => total_cost,
         None => match parse_activation_cost(cost_tokens) {
-        Ok(total_cost) => total_cost,
-        Err(_) => {
-            crate::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
-                cost_tokens,
-            )?
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported flashback cost (clause: '{}')",
-                    words(cost_tokens).join(" ")
-                ))
-            })?
-        }
+            Ok(total_cost) => total_cost,
+            Err(_) => {
+                crate::activation_and_restrictions::parse_payment_clause_as_total_cost(cost_tokens)?
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported flashback cost (clause: '{}')",
+                            words(cost_tokens).join(" ")
+                        ))
+                    })?
+            }
         },
     };
 
@@ -2159,9 +2167,7 @@ fn parse_leading_mana_and_payment_total_cost(
         return Ok(None);
     }
     let Some(nonmana) =
-        crate::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
-            &tail,
-        )?
+        crate::activation_and_restrictions::parse_payment_clause_as_total_cost(&tail)?
     else {
         return Ok(None);
     };
@@ -2441,19 +2447,15 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line_lexed(
 
 pub(crate) fn parse_additional_cost_choice_options(
     tokens: &[OwnedLexToken],
-) -> Result<
-    Option<Vec<AdditionalCostChoiceOptionAst<crate::model::ast::EffectAst>>>,
-    CardTextError,
-> {
+) -> Result<Option<Vec<AdditionalCostChoiceOptionAst<crate::model::ast::EffectAst>>>, CardTextError>
+{
     additional_cost_choices::parse_additional_cost_choices(tokens)
 }
 
 pub(crate) fn parse_additional_cost_choice_options_lexed(
     tokens: &[OwnedLexToken],
-) -> Result<
-    Option<Vec<AdditionalCostChoiceOptionAst<crate::model::ast::EffectAst>>>,
-    CardTextError,
-> {
+) -> Result<Option<Vec<AdditionalCostChoiceOptionAst<crate::model::ast::EffectAst>>>, CardTextError>
+{
     parse_additional_cost_choice_options(tokens)
 }
 

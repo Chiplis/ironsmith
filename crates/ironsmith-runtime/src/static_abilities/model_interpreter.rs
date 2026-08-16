@@ -1451,7 +1451,7 @@ impl StaticAbilityModelInterpreter {
                 display,
             } => StaticAbility::reveal_from_hand_as_enters(
                 filter.clone(),
-                count.clone(),
+                *count,
                 *optional,
                 display.clone(),
             ),

@@ -2848,7 +2848,7 @@ pub(super) fn rakdos_the_muscle_trigger_exiles_mana_value_cards_and_grants_next_
         .expect("Rakdos should have a sacrifice trigger");
     let effects = triggered.effects.flattened_default_effects();
     let target_requirements =
-        super::targeting::extract_target_requirements(&game, &effects, alice, Some(rakdos_id));
+        super::targeting::extract_target_requirements(&game, effects, alice, Some(rakdos_id));
     assert_eq!(
         target_requirements.len(),
         1,

@@ -202,6 +202,51 @@ impl EffectExecutor for PutCountersEffect {
     }
 }
 
+impl CostExecutableEffect for PutCountersEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        if self.target.is_target() {
+            return Err(crate::effects::CostValidationError::Other(
+                "a cost object must be chosen, not targeted".to_string(),
+            ));
+        }
+        match self.target.base() {
+            ChooseSpec::Source => {
+                if game
+                    .object(source)
+                    .is_some_and(|obj| obj.zone == crate::zone::Zone::Battlefield)
+                {
+                    Ok(())
+                } else {
+                    Err(crate::effects::CostValidationError::Other(
+                        "source must be on the battlefield".to_string(),
+                    ))
+                }
+            }
+            ChooseSpec::Object(filter) => {
+                let filter_ctx = FilterContext::new(controller).with_source(source);
+                if game.battlefield.iter().copied().any(|object_id| {
+                    game.object(object_id)
+                        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                }) {
+                    Ok(())
+                } else {
+                    Err(crate::effects::CostValidationError::Other(
+                        "no valid object for the counter cost".to_string(),
+                    ))
+                }
+            }
+            _ => Err(crate::effects::CostValidationError::Other(
+                "put-counters cost supports only source or one chosen object".to_string(),
+            )),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,50 +362,5 @@ mod tests {
         assert_eq!(outcome.as_count(), Some(1));
         assert_eq!(game.counter_count(target, CounterType::MinusOneMinusOne), 1);
         assert_eq!(game.counter_count(source, CounterType::MinusOneMinusOne), 0);
-    }
-}
-
-impl CostExecutableEffect for PutCountersEffect {
-    fn can_execute_as_cost(
-        &self,
-        game: &GameState,
-        source: crate::ids::ObjectId,
-        controller: crate::ids::PlayerId,
-    ) -> Result<(), crate::effects::CostValidationError> {
-        if self.target.is_target() {
-            return Err(crate::effects::CostValidationError::Other(
-                "a cost object must be chosen, not targeted".to_string(),
-            ));
-        }
-        match self.target.base() {
-            ChooseSpec::Source => {
-                if game
-                    .object(source)
-                    .is_some_and(|obj| obj.zone == crate::zone::Zone::Battlefield)
-                {
-                    Ok(())
-                } else {
-                    Err(crate::effects::CostValidationError::Other(
-                        "source must be on the battlefield".to_string(),
-                    ))
-                }
-            }
-            ChooseSpec::Object(filter) => {
-                let filter_ctx = FilterContext::new(controller).with_source(source);
-                if game.battlefield.iter().copied().any(|object_id| {
-                    game.object(object_id)
-                        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
-                }) {
-                    Ok(())
-                } else {
-                    Err(crate::effects::CostValidationError::Other(
-                        "no valid object for the counter cost".to_string(),
-                    ))
-                }
-            }
-            _ => Err(crate::effects::CostValidationError::Other(
-                "put-counters cost supports only source or one chosen object".to_string(),
-            )),
-        }
     }
 }

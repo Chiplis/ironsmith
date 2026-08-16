@@ -628,9 +628,11 @@ fn object_characteristic_signature(
     let subtype_signature = sorted_name_signature(subtypes, |subtype| subtype.display_name());
     let supertype_signature =
         sorted_name_signature(supertypes, |supertype| supertype.name().to_string());
-    let attachment_part = include_attachments
-        .then(|| attachment_signature(game, obj))
-        .unwrap_or_else(|| "-".to_string());
+    let attachment_part = if include_attachments {
+        attachment_signature(game, obj)
+    } else {
+        "-".to_string()
+    };
 
     [
         format!("owner:{}", obj.owner.0),
@@ -665,8 +667,8 @@ fn object_characteristic_signature(
                 .map_or_else(|| "-".to_string(), |defense| defense.to_string())
         ),
         format!("counters:{}", counter_signature_for_group(obj)),
-        format!("abilities:{}", ability_signature(&abilities)),
-        format!("static:{}", static_ability_signature(&static_abilities)),
+        format!("abilities:{}", ability_signature(abilities)),
+        format!("static:{}", static_ability_signature(static_abilities)),
         format!("attached_to:{}", attached_to_signature(game, obj)),
         format!("attachments:{attachment_part}"),
     ]
@@ -1026,9 +1028,11 @@ fn build_zone_card_snapshot(
         mana_cost: visible
             .then(|| object.mana_cost.as_ref().map(|mc| mc.to_oracle()))
             .flatten(),
-        oracle_text: visible
-            .then(|| object.compiled_card_text.to_string())
-            .unwrap_or_default(),
+        oracle_text: if visible {
+            object.compiled_card_text.to_string()
+        } else {
+            String::new()
+        },
         power_toughness,
         loyalty: visible.then(|| object.loyalty()).flatten(),
         defense: visible.then(|| object.defense()).flatten(),

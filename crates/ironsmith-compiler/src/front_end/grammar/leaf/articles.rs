@@ -75,7 +75,7 @@ pub(crate) fn parse_leaf_leading_selected_tokens<'a>(
             let Ok(word) = primitives::word_parser_text.parse_next(&mut probe) else {
                 break;
             };
-            if !accepted.iter().any(|accepted_word| word == *accepted_word) {
+            if !accepted.contains(&word) {
                 break;
             }
             *input = probe;
@@ -135,9 +135,7 @@ fn parse_indefinite_article_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Leaf
     .parse_next(input)
 }
 
-fn parse_article_word_slice<'slice, 'word>(
-    input: &mut &'slice [&'word str],
-) -> WResult<LeafArticle> {
+fn parse_article_word_slice(input: &mut &[&str]) -> WResult<LeafArticle> {
     let Some((word, rest)) = input.split_first() else {
         return Err(primitives::backtrack_err("article", "a, an, or the"));
     };

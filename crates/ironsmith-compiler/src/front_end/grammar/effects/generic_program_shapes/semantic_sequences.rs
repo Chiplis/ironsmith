@@ -1,5 +1,5 @@
 use super::{PermissionCaptureKind, PermissionCaptureRole, PermissionSequence, permission_shapes};
-use crate::front_end::lexer::{LexedClause, OwnedLexToken};
+use crate::lexer::{LexedClause, OwnedLexToken};
 use crate::target::PlayerFilter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,7 +113,7 @@ pub(crate) fn parse_any_player_may_sacrifice_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn choose_then_exile_returns_a_typed_reference_binding() {

@@ -345,7 +345,7 @@ pub(crate) fn split_search_library_count_value_clause_lexed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn generic_where_x_search_count_keeps_dynamic_subtraction() {

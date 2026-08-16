@@ -118,7 +118,7 @@ impl EffectExecutor for DestroyEffect {
                 game,
                 ctx,
                 &self.spec,
-                |game, ctx, object_id| Self::destroy_object(game, ctx, object_id),
+                Self::destroy_object,
             );
         }
 

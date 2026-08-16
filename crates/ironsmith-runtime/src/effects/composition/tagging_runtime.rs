@@ -210,7 +210,7 @@ pub(crate) fn apply_tagged_runtime_state(
             .filter_map(|id| {
                 game.object(*id).and_then(|obj| {
                     expected_zone
-                        .map_or(true, |zone| obj.zone == zone)
+                        .is_none_or(|zone| obj.zone == zone)
                         .then(|| ObjectSnapshot::from_object(obj, game))
                 })
             })

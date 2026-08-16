@@ -16,6 +16,12 @@ pub struct YouGainLifeTrigger {
     pub cause_filter: Option<ObjectFilter>,
 }
 
+impl Default for YouGainLifeTrigger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl YouGainLifeTrigger {
     pub fn new() -> Self {
         Self {

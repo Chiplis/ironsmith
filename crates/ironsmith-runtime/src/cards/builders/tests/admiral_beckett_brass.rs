@@ -69,7 +69,7 @@ fn admiral_beckett_brass_keeps_distinct_pirate_damage_controller_targeting() {
         .effects
         .flattened_default_effects()
         .iter()
-        .find_map(|effect| nested_control_effect(effect))
+        .find_map(nested_control_effect)
         .expect("the trigger should have a targeted control effect");
     let target_spec = control
         .target_spec

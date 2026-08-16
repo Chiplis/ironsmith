@@ -77,11 +77,10 @@ mod tests {
                 terminal_period: true,
             })
         );
-        assert_eq!(
-            parse_preprocess_sentence_list("Draw a card")
+        assert!(
+            !parse_preprocess_sentence_list("Draw a card")
                 .unwrap()
-                .terminal_period,
-            false
+                .terminal_period
         );
     }
 }

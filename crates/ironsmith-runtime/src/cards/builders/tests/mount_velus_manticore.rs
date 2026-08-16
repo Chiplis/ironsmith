@@ -43,7 +43,7 @@ fn mount_velus_manticore_counts_card_types_on_the_discard_result() {
     let damage = triggered
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(find_damage)
         .expect("the reflexive trigger should deal damage");
     let crate::effect::Value::PriorEffectMetric { effect_id, query } = damage.amount.unhinted()

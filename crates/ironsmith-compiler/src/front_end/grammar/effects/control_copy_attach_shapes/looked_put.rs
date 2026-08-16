@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use crate::cards::builders::LibraryBottomOrderAst;
 use crate::effect::ChoiceCount;
 use crate::grammar::{leaf, permission_shapes, primitives};
-use crate::front_end::lexer::{OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{OwnedLexToken, trim_lexed_commas};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RestDestinationShape {
@@ -378,7 +378,7 @@ pub(crate) fn is_reorder_tagged_cards(tokens: &[OwnedLexToken]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_tagged_and_from_among_put_shapes() {

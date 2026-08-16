@@ -7,9 +7,7 @@ use crate::ConditionExpr;
 use crate::effect::Until;
 use crate::grammar::primitives::WordSliceInput;
 use crate::grammar::{filters, leaf, primitives};
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas,
-};
+use crate::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct GainAbilityDurationShape {
@@ -369,7 +367,7 @@ pub(crate) fn parse_quoted_gain_duration_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_turn_conditional_and_quoted_durations() {

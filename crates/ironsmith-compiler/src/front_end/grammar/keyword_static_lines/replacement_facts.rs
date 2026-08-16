@@ -132,14 +132,30 @@ fn parse_learn_return_from_graveyard_replacement_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<KeywordActionReplacementShape<'a>> {
     primitives::phrase(&[
-        "as", "long", "as", "this", "card", "is", "in", "your", "graveyard",
+        "as",
+        "long",
+        "as",
+        "this",
+        "card",
+        "is",
+        "in",
+        "your",
+        "graveyard",
     ])
     .parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
     primitives::phrase(&["if", "you", "would", "learn"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
     primitives::phrase(&[
-        "you", "may", "instead", "return", "this", "card", "to", "the", "battlefield",
+        "you",
+        "may",
+        "instead",
+        "return",
+        "this",
+        "card",
+        "to",
+        "the",
+        "battlefield",
     ])
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
@@ -286,7 +302,7 @@ fn parse_assemble_rigger_replacement_lexed<'a>(
 #[cfg(test)]
 mod learn_replacement_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(text: &str) -> Option<KeywordActionReplacementShape<'_>> {
         let tokens = Box::leak(Box::new(lex_line(text, 0).expect("line should lex")));
@@ -296,7 +312,9 @@ mod learn_replacement_tests {
     #[test]
     fn graveyard_learn_replacement_is_exact_and_optional_surface_is_required() {
         assert!(matches!(
-            parse("As long as this card is in your graveyard, if you would learn, you may instead return this card to the battlefield."),
+            parse(
+                "As long as this card is in your graveyard, if you would learn, you may instead return this card to the battlefield."
+            ),
             Some(KeywordActionReplacementShape::LearnReturnThisFromGraveyard)
         ));
         for near_miss in [

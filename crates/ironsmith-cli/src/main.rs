@@ -274,9 +274,7 @@ fn oracle_text_for_card(card: &CardJson, query: &str) -> Option<String> {
         return Some(text.clone());
     }
 
-    let Some(faces) = card.card_faces.as_ref() else {
-        return None;
-    };
+    let faces = card.card_faces.as_ref()?;
 
     if let Some(face) = faces.iter().find(|face| {
         face.name

@@ -96,7 +96,7 @@ fn target_for_tag<'a>(
 ) -> Option<&'a ChooseSpec> {
     let mut matching = declarations
         .iter()
-        .filter(|declaration| declaration.tags.iter().any(|candidate| *candidate == tag));
+        .filter(|declaration| declaration.tags.contains(&tag));
     let target = matching.next()?.target;
     matching.next().is_none().then_some(target)
 }

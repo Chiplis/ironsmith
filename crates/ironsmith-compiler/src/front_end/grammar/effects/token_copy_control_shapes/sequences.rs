@@ -311,7 +311,7 @@ pub(crate) fn parse_destroy_land_damage_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_return_same_subtypes_and_return_create() {

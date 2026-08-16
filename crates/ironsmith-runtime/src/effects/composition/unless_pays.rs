@@ -385,8 +385,8 @@ impl EffectExecutor for UnlessPaysEffect {
                 false
             };
 
-            if wants_to_pay {
-                if pay_total_cost_with_choice_in_context(
+            if wants_to_pay
+                && pay_total_cost_with_choice_in_context(
                     game,
                     paying_player,
                     ctx.source,
@@ -395,9 +395,8 @@ impl EffectExecutor for UnlessPaysEffect {
                     ctx,
                 )
                 .is_ok()
-                {
-                    return Ok(EffectOutcome::declined());
-                }
+            {
+                return Ok(EffectOutcome::declined());
             }
         }
 
@@ -582,6 +581,46 @@ mod tests {
 
         assert_ne!(result.status, crate::effect::OutcomeStatus::Declined);
         assert_eq!(game.player(alice).expect("alice exists").life, 15);
+    }
+
+    #[test]
+    fn effect_backed_unless_cost_resolves_you_relative_to_the_payer() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let alice_creature = add_creature_with_mana_value(&mut game, alice, 1);
+        let bob_creature = add_creature_with_mana_value(&mut game, bob, 1);
+        let source = game.new_object_id();
+        let counter_target = crate::target::ChooseSpec::Object(
+            crate::filter::ObjectFilter::creature().controlled_by(PlayerFilter::You),
+        )
+        .with_count(crate::effect::ChoiceCount::exactly(1));
+        let counter_cost = Cost::try_effect(Effect::new(
+            crate::effects::PutCountersEffect::minus_one_counters(1, counter_target),
+        ))
+        .expect("putting a counter is executable as an effect-backed cost");
+        let effect = UnlessPaysEffect::new_total_cost(
+            vec![Effect::lose_life(5)],
+            PlayerFilter::Specific(bob),
+            TotalCost::from_cost(counter_cost),
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("the designated player should be able to pay the counter cost");
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::Declined);
+        assert_eq!(game.player(alice).expect("alice exists").life, 20);
+        assert_eq!(
+            game.counter_count(alice_creature, crate::object::CounterType::MinusOneMinusOne),
+            0
+        );
+        assert_eq!(
+            game.counter_count(bob_creature, crate::object::CounterType::MinusOneMinusOne),
+            1
+        );
     }
 
     #[test]

@@ -277,10 +277,11 @@ fn compact_repeated_life_value_basis(line: &str) -> Option<String> {
     Some(format!(
         "{prefix} loses X life and you gain X life, where X is {}{}",
         basis.trim(),
-        line.trim_end()
-            .ends_with('.')
-            .then_some('.')
-            .unwrap_or_default()
+        if line.trim_end().ends_with('.') {
+            '.'
+        } else {
+            Default::default()
+        }
     ))
 }
 
@@ -289,10 +290,11 @@ fn restore_source_power_life_pair(line: &str) -> Option<String> {
         .split_once(", where X is that creature's power and you gain life equal to it's power")?;
     Some(format!(
         "{prefix} and you gain X life, where X is this creature's power{}",
-        line.trim_end()
-            .ends_with('.')
-            .then_some('.')
-            .unwrap_or_default()
+        if line.trim_end().ends_with('.') {
+            '.'
+        } else {
+            Default::default()
+        }
     ))
 }
 
@@ -304,10 +306,11 @@ fn restore_malformed_source_power_damage_pair(line: &str) -> Option<String> {
     }
     Some(format!(
         "{trigger_subject} leaves the battlefield, it deals damage equal to its power to target player and you gain X life, where X is this creature's power{}",
-        line.trim_end()
-            .ends_with('.')
-            .then_some('.')
-            .unwrap_or_default()
+        if line.trim_end().ends_with('.') {
+            '.'
+        } else {
+            Default::default()
+        }
     ))
 }
 
@@ -603,10 +606,11 @@ fn restore_shared_token_creation(line: &str) -> Option<String> {
     {
         return Some(format!(
             "{prefix}you and target opponent each create {first}{}",
-            line.trim_end()
-                .ends_with('.')
-                .then_some('.')
-                .unwrap_or_default()
+            if line.trim_end().ends_with('.') {
+                '.'
+            } else {
+                Default::default()
+            }
         ));
     }
     None
@@ -642,10 +646,11 @@ fn restore_same_target_compound_action(line: &str) -> Option<String> {
         {
             return Some(format!(
                 "{replacement}{}",
-                line.trim_end()
-                    .ends_with('.')
-                    .then_some('.')
-                    .unwrap_or_default()
+                if line.trim_end().ends_with('.') {
+                    '.'
+                } else {
+                    Default::default()
+                }
             ));
         }
     }
@@ -875,7 +880,7 @@ fn remove_leading_synthetic_target_choice(line: &str) -> Option<String> {
                 || remainder.contains(&format!("{target}'s hand")))
             || remainder.starts_with(&format!("you search {target}'s library"));
         let independent_action = remainder.starts_with("draw ")
-            && remainder.contains(&format!("target opponent discards "));
+            && remainder.contains(&"target opponent discards ".to_string());
         if direct || library_action || independent_action {
             return Some(capitalize_first(&line[marker.len()..]));
         }
@@ -895,10 +900,11 @@ fn compact_shared_token_creation_with_target_opponent(line: &str) -> Option<Stri
     Some(format!(
         "{}You and target opponent each create {first_token}{}",
         &line[..start],
-        line.trim_end()
-            .ends_with('.')
-            .then_some('.')
-            .unwrap_or_default()
+        if line.trim_end().ends_with('.') {
+            '.'
+        } else {
+            Default::default()
+        }
     ))
 }
 
@@ -1152,6 +1158,11 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized
         .replace("you may you attach ", "You may attach ")
         .replace("You may you attach ", "You may attach ");
+    // A search effect already owns its terminal shuffle. When a following
+    // discard is preserved as a separate sequential effect, generic joining
+    // can introduce two consecutive `then` connectors. Oracle keeps the
+    // search's comma list and reserves `then` for the final discard.
+    normalized = normalized.replace(", then shuffle, then discard ", ", shuffle, then discard ");
     normalized = normalized
         .replace(
             "you don't control another dinosaur",
@@ -2550,12 +2561,21 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "it can attack this turn as though it didn't have defender",
         )
         .replace(
-            "until end of turn. It can attack this turn as though",
-            "until end of turn and can attack this turn as though",
-        )
-        .replace(
             "until end of turn, then it can attack this turn as though",
             "until end of turn and can attack this turn as though",
+        );
+    normalized = normalized.replace(
+        "When this creature enters, that creature deals",
+        "When this creature enters, it deals",
+    );
+    normalized = normalized
+        .replace(
+            "Tap the chosen cards, then you may sacrifice",
+            "Tap it, then you may sacrifice",
+        )
+        .replace(
+            "Tap the chosen cards. You may sacrifice",
+            "Tap it, then you may sacrifice",
         );
     if let Some(defender_attack) =
         normalize_this_creature_gets_gains_can_attack_surface(&normalized)
@@ -2992,11 +3012,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if lower_compact.starts_with("enters with a ") && lower_compact.contains(" counter on it.") {
         return lowercase_first(&normalized);
     }
-    if lower_compact
-        == "creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this."
-        || lower_compact.contains("creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this")
-    {
-    }
     if lower_compact.contains(", exile renew variant:") {
         normalized = normalized.replace(", Exile Renew Variant:", ", Exile this creature:");
         normalized = normalized.replace(", exile renew variant:", ", exile this creature:");
@@ -3028,9 +3043,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if lower_compact == "you may play an additional land this turn. draw a card." {
         return "You may play an additional land this turn. draw a card.".to_string();
     }
-    if lower_compact.starts_with("whenever you cast a creature spell, create x ")
-        && lower_compact.contains("where x is a card in your hand's mana value")
-    {}
     if lower_compact == "draw a card for each creature you control." {
         return "draw a card for each creature you control.".to_string();
     }
@@ -3634,7 +3646,7 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         normalized = format!(
             "{}, each opponent sacrifices {} of their choice unless they pay {}",
-            prefix.trim_end_matches(|c| c == ',' || c == ' '),
+            prefix.trim_end_matches([',', ' ']),
             sacrifice_tail.trim_end_matches('.'),
             pay_tail.trim_end_matches('.')
         );
@@ -5698,15 +5710,15 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "When this creature enters and whenever another {subject} you control is put into a graveyard from the battlefield,{effect_clause}"
         );
     }
-    if let Some((left, right)) = normalized.split_once(" or Whenever another ") {
-        if left.starts_with("Whenever ") {
-            return format!("{left} or another {right}");
-        }
+    if let Some((left, right)) = normalized.split_once(" or Whenever another ")
+        && left.starts_with("Whenever ")
+    {
+        return format!("{left} or another {right}");
     }
-    if let Some((left, right)) = normalized.split_once(" or whenever another ") {
-        if left.starts_with("whenever ") {
-            return format!("{left} or another {right}");
-        }
+    if let Some((left, right)) = normalized.split_once(" or whenever another ")
+        && left.starts_with("whenever ")
+    {
+        return format!("{left} or another {right}");
     }
     if let Some(rest) = lower.strip_prefix("whenever this creature or whenever another ") {
         return format!("Whenever this creature or another {rest}");
@@ -6252,7 +6264,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("the tagged object 'triggering'", "that object")
         .replace(" that player controls of their choice", " of their choice")
         .replace(" that player controls unless that player pays ", " unless that player pays ")
-        .replace("target opponent exiles a card from their hand", "target opponent exiles a card from their hand")
         .replace("casts creature spell", "casts a creature spell")
         .replace("casts colorless spell", "casts a colorless spell")
         .replace(

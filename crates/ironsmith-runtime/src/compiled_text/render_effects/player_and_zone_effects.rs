@@ -413,7 +413,7 @@ pub(crate) fn describe_for_players_reveal_top_mana_value_life_then_put_into_hand
 pub(super) fn describe_for_players_shuffle_then_conditional_consult(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
-    fn unwrap_tagged<'a>(effect: &'a Effect) -> &'a Effect {
+    fn unwrap_tagged(effect: &Effect) -> &Effect {
         if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
             return unwrap_tagged(&tagged.effect);
         }
@@ -1149,6 +1149,24 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         Value::CountPlayers(PlayerFilter::Opponent) => Some("opponent you have".to_string()),
         Value::CountPlayers(PlayerFilter::Any) => Some("player".to_string()),
         Value::CountPlayers(PlayerFilter::NotYou) => Some("player other than you".to_string()),
+        Value::CommanderCastCount(PlayerFilter::You) => Some(format!(
+            "time you've cast {} commander from the command zone this game",
+            if value.has_surface_hint(ValueSurfaceHint::IndefiniteCommanderReference) {
+                "a"
+            } else {
+                "your"
+            }
+        )),
+        Value::CommanderCastCount(PlayerFilter::Opponent) => Some(
+            "time an opponent has cast their commander from the command zone this game".to_string(),
+        ),
+        Value::CommanderCastCount(PlayerFilter::Any) => Some(
+            "time a player has cast their commander from the command zone this game".to_string(),
+        ),
+        Value::CommanderCastCount(player) => Some(format!(
+            "time {} has cast their commander from the command zone this game",
+            describe_player_filter(player)
+        )),
         Value::KickCount => Some("time it was kicked".to_string()),
         Value::SpellsCastThisTurn(player) => Some(describe_spells_cast_this_turn_each(player)),
         Value::SpellsCastThisTurnMatching {
@@ -1844,11 +1862,11 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         return format!("{plural} one at a time until each {singular} has been chosen");
     }
     if choose.top_only {
-        if let Some(exact) = choose_exact_count(choose) {
-            if exact > 1 {
-                let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
-                return format!("the top {count_text} cards");
-            }
+        if let Some(exact) = choose_exact_count(choose)
+            && exact > 1
+        {
+            let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
+            return format!("the top {count_text} cards");
         }
         let mut ordinary_choice = choose.clone();
         ordinary_choice.top_only = false;
@@ -4786,11 +4804,11 @@ pub(crate) fn for_each_reveals_tag(
     )
 }
 
-pub(crate) fn for_each_tagged_for_compaction<'a>(
-    effect: &'a Effect,
+pub(crate) fn for_each_tagged_for_compaction(
+    effect: &Effect,
 ) -> Option<(
-    Option<&'a crate::effects::WithIdEffect>,
-    &'a crate::effects::ForEachTaggedEffect,
+    Option<&crate::effects::WithIdEffect>,
+    &crate::effects::ForEachTaggedEffect,
 )> {
     if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
         return Some((None, for_each));
@@ -4855,7 +4873,7 @@ pub(crate) fn filter_is_membership_test_for_chosen(
                 constraint.relation,
                 crate::filter::TaggedOpbjectRelation::SameStableId
             )
-    }) && chosen_tag.len() > 0
+    }) && !chosen_tag.is_empty()
 }
 
 pub(crate) fn for_each_moves_unselected_to_zone(

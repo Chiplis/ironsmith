@@ -385,15 +385,15 @@ mod tests {
             .iter()
             .find(|a| matches!(a.kind, AbilityKind::Activated(_)));
 
-        if let Some(ability) = equip_ability {
-            if let AbilityKind::Activated(activated) = &ability.kind {
-                // Equip {0} should have no mana cost
-                assert!(
-                    activated.mana_cost.mana_cost().is_none()
-                        || activated.mana_cost.mana_cost().unwrap().mana_value() == 0,
-                    "Equip cost should be 0"
-                );
-            }
+        if let Some(ability) = equip_ability
+            && let AbilityKind::Activated(activated) = &ability.kind
+        {
+            // Equip {0} should have no mana cost
+            assert!(
+                activated.mana_cost.mana_cost().is_none()
+                    || activated.mana_cost.mana_cost().unwrap().mana_value() == 0,
+                "Equip cost should be 0"
+            );
         }
     }
 
@@ -464,16 +464,14 @@ mod tests {
             } else {
                 false
             }
-        }) {
-            if let AbilityKind::Static(s) = &ability.kind {
-                if let Some(abilities) = s.equipment_grant_abilities() {
-                    // Verify shroud is one of the granted abilities
-                    assert!(
-                        abilities.iter().any(|a| a.has_shroud()),
-                        "Equipment should grant shroud"
-                    );
-                }
-            }
+        }) && let AbilityKind::Static(s) = &ability.kind
+            && let Some(abilities) = s.equipment_grant_abilities()
+        {
+            // Verify shroud is one of the granted abilities
+            assert!(
+                abilities.iter().any(|a| a.has_shroud()),
+                "Equipment should grant shroud"
+            );
         }
     }
 
@@ -494,16 +492,14 @@ mod tests {
             } else {
                 false
             }
-        }) {
-            if let AbilityKind::Static(s) = &ability.kind {
-                if let Some(abilities) = s.equipment_grant_abilities() {
-                    // Verify haste is one of the granted abilities
-                    assert!(
-                        abilities.iter().any(|a| a.has_haste()),
-                        "Equipment should grant haste"
-                    );
-                }
-            }
+        }) && let AbilityKind::Static(s) = &ability.kind
+            && let Some(abilities) = s.equipment_grant_abilities()
+        {
+            // Verify haste is one of the granted abilities
+            assert!(
+                abilities.iter().any(|a| a.has_haste()),
+                "Equipment should grant haste"
+            );
         }
     }
 

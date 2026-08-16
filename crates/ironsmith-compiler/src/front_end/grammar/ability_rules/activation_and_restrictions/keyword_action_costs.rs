@@ -10,9 +10,7 @@ use crate::grammar::keyword_action_costs::{
     parse_normalized_keyword_words_tokens, parse_payment_alternative_split_tokens,
     parse_single_graveyard_bottom_payment_tokens, parse_special_ability_phrase_words,
 };
-use crate::grammar::leaf::{
-    LeafManaCostPrefix, parse_leaf_mana_cost_prefix_tokens,
-};
+use crate::grammar::leaf::{LeafManaCostPrefix, parse_leaf_mana_cost_prefix_tokens};
 use crate::grammar::shared_util::value_semantics::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
 };
@@ -464,12 +462,11 @@ fn parse_payment_clause_as_effects(
         Ok(ast) => ast,
         Err(_) => return Ok(None),
     };
-    let mut ctx = crate::EffectLoweringContext::new();
-    let (effects, choices) =
-        match crate::compile_support::compile_effects(&ast, &mut ctx) {
-            Ok(compiled) => compiled,
-            Err(_) => return Ok(None),
-        };
+    let mut ctx = crate::model::facts::EffectLoweringContext::new();
+    let (effects, choices) = match crate::compile_support::compile_effects(&ast, &mut ctx) {
+        Ok(compiled) => compiled,
+        Err(_) => return Ok(None),
+    };
     if choices.is_empty() && !effects.is_empty() {
         Ok(Some(effects))
     } else {
@@ -812,10 +809,11 @@ where
     if let Some(cost) = surface.mana_cost {
         return Some(build(cost));
     }
-    if fallback.allows_marker_text() && surface.has_payload {
-        if let Some(display) = marker_keyword_display(tokens) {
-            return Some(KeywordAction::MarkerText(display));
-        }
+    if fallback.allows_marker_text()
+        && surface.has_payload
+        && let Some(display) = marker_keyword_display(tokens)
+    {
+        return Some(KeywordAction::MarkerText(display));
     }
     Some(KeywordAction::Marker(keyword))
 }
@@ -992,107 +990,12 @@ fn parse_exact_ability_phrase(words: &[&str]) -> Option<KeywordAction> {
         .find_map(|(phrase, kind)| (*phrase == words).then(|| exact_ability_phrase_action(*kind)))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn lex(raw: &str) -> Vec<OwnedLexToken> {
-        crate::runtime_backend::lexer::lex_line(raw, 0).expect("test text should lex")
-    }
-
-    #[test]
-    fn cumulative_upkeep_accepts_single_graveyard_bottom_library_payment() {
-        let tokens = crate::runtime_backend::lexer::lex_line(
-            "Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
-            0,
-        )
-        .expect("line should lex");
-
-        let action = parse_ability_phrase(&tokens).expect("cumulative upkeep should parse");
-        let KeywordAction::CumulativeUpkeep { total_cost, .. } = action else {
-            panic!("expected cumulative upkeep action, got {action:?}");
-        };
-        let payment = crate::costs::total_cost_to_payment_effects(&total_cost);
-        let debug = format!("{payment:?}");
-        assert!(debug.contains("MoveToZoneEffect"), "{debug}");
-        assert!(debug.contains("single_graveyard: true"), "{debug}");
-
-        let actions =
-            crate::runtime_backend::families::clause_support::parse_ability_line_lexed(&tokens)
-                .expect("cumulative upkeep line should parse through ability-line facade");
-        assert!(
-            matches!(actions.as_slice(), [KeywordAction::CumulativeUpkeep { .. }]),
-            "{actions:?}"
-        );
-    }
-
-    #[test]
-    fn activation_cost_accepts_owned_graveyard_bottom_library_payment() {
-        let total_cost = parse_payment_clause_as_total_cost(&lex(
-            "Put three cards from your graveyard on the bottom of your library",
-        ))
-        .unwrap()
-        .expect("owned graveyard payment should parse");
-        let payment = crate::costs::total_cost_to_payment_effects(&total_cost);
-        let [effect] = payment.as_slice() else {
-            panic!("expected one payment effect, got {payment:#?}");
-        };
-        let moved = effect
-            .downcast_ref::<crate::effects::MoveToZoneEffect>()
-            .expect("payment should move the selected cards");
-        assert_eq!(moved.zone, Zone::Library);
-        assert!(!moved.to_top);
-        assert_eq!(moved.target.count(), ChoiceCount::exactly(3));
-        let ChooseSpec::Object(filter) = moved.target.base() else {
-            panic!("expected an object choice, got {moved:#?}");
-        };
-        assert_eq!(filter.zone, Some(Zone::Graveyard));
-        assert_eq!(filter.owner, Some(PlayerFilter::You));
-        assert!(!filter.single_graveyard);
-    }
-
-    #[test]
-    fn dynamic_mana_and_life_payment_requires_a_complete_life_tail() {
-        let total_cost = parse_payment_clause_as_total_cost(&lex("{2} and three life"))
-            .unwrap()
-            .expect("mana-and-life payment should parse");
-        assert!(matches!(
-            total_cost.costs(),
-            [
-                crate::costs::Cost::Mana(_),
-                crate::costs::Cost::Life(Value::Fixed(3))
-            ]
-        ));
-
-        assert!(
-            parse_payment_clause_as_total_cost(&lex("{2} and three life quickly"))
-                .unwrap()
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn typed_keyword_heads_drive_cost_and_damage_subject_parsing() {
-        let action =
-            parse_ability_phrase(&lex("Unearth {2}{B}")).expect("typed cost keyword should parse");
-        let KeywordAction::Unearth(cost) = action else {
-            panic!("expected unearth action, got {action:?}");
-        };
-        assert_eq!(cost.to_oracle(), "{2}{B}");
-
-        let damage = lex("This creature deals three damage");
-        let stripped = maybe_strip_leading_damage_subject_tokens(&damage)
-            .expect("typed source subject should be stripped");
-        assert!(stripped.first().is_some_and(|token| token.is_word("deals")));
-    }
-}
-
 pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     // "can't be blocked by more than N creature(s)" — a grantable blocking
     // restriction that rides in keyword lists ("trample and can't be blocked
     // by more than one creature").
     {
-        let words = crate::token_word_refs(tokens);
+        let words = crate::lexer::token_word_refs(tokens);
         let tail = match words.as_slice() {
             ["cant", "be", "blocked", "by", "more", "than", tail @ ..] => Some(tail),
             ["can", "t", "be", "blocked", "by", "more", "than", tail @ ..] => Some(tail),
@@ -1612,10 +1515,10 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
 
     // Casualty N - "as you cast this spell, you may sacrifice a creature with power N or greater"
     if keyword_head_is(head, "casualty") {
-        if words.len() == 2 {
-            if let Some(power) = parse_named_number(words[1]) {
-                return Some(KeywordAction::Casualty(power));
-            }
+        if words.len() == 2
+            && let Some(power) = parse_named_number(words[1])
+        {
+            return Some(KeywordAction::Casualty(power));
         }
         if words.len() == 1 {
             return Some(KeywordAction::Casualty(1));
@@ -1630,10 +1533,10 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
 
     // Amplify N - "as this enters, reveal any number of matching creature-type cards..."
     if keyword_head_is(head, "amplify") {
-        if words.len() == 2 {
-            if let Some(amount) = parse_named_number(words[1]) {
-                return Some(KeywordAction::Amplify(amount));
-            }
+        if words.len() == 2
+            && let Some(amount) = parse_named_number(words[1])
+        {
+            return Some(KeywordAction::Amplify(amount));
         }
         if words.len() == 1 {
             return Some(KeywordAction::Amplify(1));
@@ -1643,10 +1546,10 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
 
     // Devour N - "as this enters, you may sacrifice any number of creatures..."
     if keyword_head_is(head, "devour") {
-        if words.len() == 2 {
-            if let Some(multiplier) = parse_named_number(words[1]) {
-                return Some(KeywordAction::Devour(multiplier));
-            }
+        if words.len() == 2
+            && let Some(multiplier) = parse_named_number(words[1])
+        {
+            return Some(KeywordAction::Devour(multiplier));
         }
         if words.len() == 1 {
             return Some(KeywordAction::Devour(1));
@@ -1744,10 +1647,102 @@ pub(crate) fn maybe_strip_leading_damage_subject_tokens(
                 .iter()
                 .map(String::as_str)
                 .collect::<Vec<_>>();
-            crate::util::is_source_reference_words(
-                &words[..word_count],
-            )
-            .then_some(&tokens[split.action_first..])
+            crate::util::is_source_reference_words(&words[..word_count])
+                .then_some(&tokens[split.action_first..])
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lex(raw: &str) -> Vec<OwnedLexToken> {
+        crate::lexer::lex_line(raw, 0).expect("test text should lex")
+    }
+
+    #[test]
+    fn cumulative_upkeep_accepts_single_graveyard_bottom_library_payment() {
+        let tokens = crate::lexer::lex_line(
+            "Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+            0,
+        )
+        .expect("line should lex");
+
+        let action = parse_ability_phrase(&tokens).expect("cumulative upkeep should parse");
+        let KeywordAction::CumulativeUpkeep { total_cost, .. } = action else {
+            panic!("expected cumulative upkeep action, got {action:?}");
+        };
+        let payment = crate::costs::total_cost_to_payment_effects(&total_cost);
+        let debug = format!("{payment:?}");
+        assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+        assert!(debug.contains("single_graveyard: true"), "{debug}");
+
+        let actions = crate::clause_support::parse_ability_line_lexed(&tokens)
+            .expect("cumulative upkeep line should parse through ability-line facade");
+        assert!(
+            matches!(actions.as_slice(), [KeywordAction::CumulativeUpkeep { .. }]),
+            "{actions:?}"
+        );
+    }
+
+    #[test]
+    fn activation_cost_accepts_owned_graveyard_bottom_library_payment() {
+        let total_cost = parse_payment_clause_as_total_cost(&lex(
+            "Put three cards from your graveyard on the bottom of your library",
+        ))
+        .unwrap()
+        .expect("owned graveyard payment should parse");
+        let payment = crate::costs::total_cost_to_payment_effects(&total_cost);
+        let [effect] = payment.as_slice() else {
+            panic!("expected one payment effect, got {payment:#?}");
+        };
+        let moved = effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .expect("payment should move the selected cards");
+        assert_eq!(moved.zone, Zone::Library);
+        assert!(!moved.to_top);
+        assert_eq!(moved.target.count(), ChoiceCount::exactly(3));
+        let ChooseSpec::Object(filter) = moved.target.base() else {
+            panic!("expected an object choice, got {moved:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert!(!filter.single_graveyard);
+    }
+
+    #[test]
+    fn dynamic_mana_and_life_payment_requires_a_complete_life_tail() {
+        let total_cost = parse_payment_clause_as_total_cost(&lex("{2} and three life"))
+            .unwrap()
+            .expect("mana-and-life payment should parse");
+        assert!(matches!(
+            total_cost.costs(),
+            [
+                crate::costs::Cost::Mana(_),
+                crate::costs::Cost::Life(Value::Fixed(3))
+            ]
+        ));
+
+        assert!(
+            parse_payment_clause_as_total_cost(&lex("{2} and three life quickly"))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn typed_keyword_heads_drive_cost_and_damage_subject_parsing() {
+        let action =
+            parse_ability_phrase(&lex("Unearth {2}{B}")).expect("typed cost keyword should parse");
+        let KeywordAction::Unearth(cost) = action else {
+            panic!("expected unearth action, got {action:?}");
+        };
+        assert_eq!(cost.to_oracle(), "{2}{B}");
+
+        let damage = lex("This creature deals three damage");
+        let stripped = maybe_strip_leading_damage_subject_tokens(&damage)
+            .expect("typed source subject should be stripped");
+        assert!(stripped.first().is_some_and(|token| token.is_word("deals")));
     }
 }

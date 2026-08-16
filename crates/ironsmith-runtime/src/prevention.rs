@@ -6,9 +6,9 @@
 //! Key rules:
 //! - Rule 615.1: Prevention effects are replacement effects
 //! - Rule 615.7: "Prevent the next N damage" creates a shield that tracks remaining prevention
-//!               and is allocated by the affected player across simultaneous sources
+//!   and is allocated by the affected player across simultaneous sources
 //! - Rule 615.12: Prevention effects still apply once to unpreventable damage, prevent zero,
-//!                retain their shields, and perform any additional effects
+//!   retain their shields, and perform any additional effects
 
 use crate::color::Color;
 use crate::effect::{Effect, Until};

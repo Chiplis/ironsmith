@@ -2,7 +2,7 @@ use super::super::zone_handlers::parse_return;
 use super::*;
 use crate::grammar::effects::combat_damage_family_shapes as combat_shapes;
 use crate::grammar::effects::delayed_step_shapes as delayed_shapes;
-use crate::front_end::lexer::trim_lexed_commas;
+use crate::lexer::trim_lexed_commas;
 const TRANSFORM_WORD: &str = "transform";
 const CONVERT_WORD: &str = "convert";
 const DISTRIBUTE_WORD: &str = "distribute";
@@ -54,18 +54,16 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
     if let Some(mut gain_effects) = parse_gain_ability_sentence(gain_candidate_clause.tokens())? {
         let mut patched = false;
         for effect in &mut gain_effects {
-            match effect {
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action:
-                        SubjectVerbActionAst::PumpAll { filter, .. }
-                        | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
-                        | SubjectVerbActionAst::GrantAbilitiesChoiceAll { filter, .. },
-                    ..
-                }) => {
-                    filter.chosen_creature_type = true;
-                    patched = true;
-                }
-                _ => {}
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::PumpAll { filter, .. }
+                    | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
+                    | SubjectVerbActionAst::GrantAbilitiesChoiceAll { filter, .. },
+                ..
+            }) = effect
+            {
+                filter.chosen_creature_type = true;
+                patched = true;
             }
         }
         if patched {
@@ -165,7 +163,7 @@ pub(crate) fn parse_sentence_must_attack_creature_type_of_choice(
         EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
         EffectAst::subject_verb_grant_abilities_all(
             filter,
-            vec![crate::GrantedAbilityAst::MustAttack],
+            vec![crate::cards::builders::GrantedAbilityAst::MustAttack],
             Until::EndOfTurn,
         ),
     ]))
@@ -383,14 +381,13 @@ pub(crate) fn parse_sentence_return_multiple_targets(
             segment.extend_from_slice(&shared_suffix);
             facts = combat_shapes::parse_return_segment_facts(segment.tokens());
         }
-        if let Some(quantifier) = shared_quantifier {
-            if facts.quantifier.is_none()
-                && !facts.starts_like_target_reference
-                && !facts.mentions_target
-            {
-                segment.insert_leading_word(quantifier.as_str());
-                facts = combat_shapes::parse_return_segment_facts(segment.tokens());
-            }
+        if let Some(quantifier) = shared_quantifier
+            && facts.quantifier.is_none()
+            && !facts.starts_like_target_reference
+            && !facts.mentions_target
+        {
+            segment.insert_leading_word(quantifier.as_str());
+            facts = combat_shapes::parse_return_segment_facts(segment.tokens());
         }
         if facts.quantifier.is_some() {
             if segment.len() < 2 {
@@ -492,9 +489,9 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
 pub(crate) fn parse_distribute_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if !clause
+    if clause
         .first_word()
-        .is_some_and(|word| word == DISTRIBUTE_WORD)
+        .is_none_or(|word| word != DISTRIBUTE_WORD)
     {
         return Ok(None);
     }
@@ -596,9 +593,7 @@ pub(crate) fn parse_sentence_transform_with_followup(
 
     let target_clause = head_clause.from(1).trimmed();
     let trailing_if =
-        crate::grammar::structure::split_trailing_if_clause_lexed(
-            target_clause.tokens(),
-        );
+        crate::grammar::structure::split_trailing_if_clause_lexed(target_clause.tokens());
     let transform_target_tokens = trailing_if
         .as_ref()
         .map(|condition| condition.leading_tokens)
@@ -748,7 +743,7 @@ pub(super) fn delayed_next_step_marker(
 #[cfg(test)]
 mod coordinated_return_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn preserves_distinct_destinations_and_controller_in_coordinated_return() {

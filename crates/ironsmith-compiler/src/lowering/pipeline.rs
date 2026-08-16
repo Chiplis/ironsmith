@@ -23,7 +23,7 @@ pub(crate) fn parse_text_to_semantic_document_with_context(
 pub(crate) fn parse_semantic_document(
     doc: RewriteSemanticDocument,
 ) -> Result<ParsedCardAst, CardTextError> {
-    super::semantic_document::parse_semantic_document(doc)
+    crate::semantic_document::parse_semantic_document(doc)
 }
 
 pub(crate) fn prepare_parsed_document(
@@ -44,8 +44,20 @@ pub(crate) fn parse_text_with_annotations_lowered(
     text: String,
     allow_unsupported: bool,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    let lowered = parse_text_with_annotations_lowered_with_facts(builder, text, allow_unsupported)?;
+    let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+    let lowered =
+        parse_text_with_annotations_lowered_with_facts_context(&mut context, builder, text)?;
     Ok((lowered.definition, lowered.annotations))
+}
+
+#[cfg(test)]
+fn parse_text_to_semantic_document(
+    builder: CardDefinitionBuilder,
+    text: String,
+    allow_unsupported: bool,
+) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
+    let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+    parse_text_to_semantic_document_with_context(&mut context, builder, text)
 }
 
 pub(crate) fn parse_text_with_annotations_lowered_with_facts_context(
@@ -53,9 +65,7 @@ pub(crate) fn parse_text_with_annotations_lowered_with_facts_context(
     builder: CardDefinitionBuilder,
     text: String,
 ) -> Result<LoweredCardDocument, CardTextError> {
-    let parsed = crate::canonical_pipeline::parse_card_ast_with_context(
-        context, builder, text,
-    )?;
+    let parsed = crate::canonical_pipeline::parse_card_ast_with_context(context, builder, text)?;
     crate::lowering::lower_card_ast(&mut RuntimeCardAstMaterializer, parsed)
 }
 
@@ -65,10 +75,7 @@ impl CardAstMaterializer for RuntimeCardAstMaterializer {
     type RuntimeDocument = LoweredCardDocument;
     type Error = CardTextError;
 
-    fn materialize(
-        &mut self,
-        ast: ParsedCardAst,
-    ) -> Result<Self::RuntimeDocument, Self::Error> {
+    fn materialize(&mut self, ast: ParsedCardAst) -> Result<Self::RuntimeDocument, Self::Error> {
         let prepared = {
             let _scope = parse_trace::scope("prepare lowering input");
             prepare_parsed_document(ast)?
@@ -84,8 +91,8 @@ mod tests {
     use crate::CardId;
     use crate::ability::AbilityKind;
     use crate::alternative_cast::AlternativeCastingMethod;
-    use crate::runtime_backend::effect_pipeline::NormalizedCardItem;
-    use crate::runtime_backend::semantic::ParsedCardItem;
+    use crate::effect_pipeline::NormalizedCardItem;
+    use crate::model::compiler_semantic::ParsedCardItem;
     use crate::types::CardType;
     use crate::zone::Zone;
 

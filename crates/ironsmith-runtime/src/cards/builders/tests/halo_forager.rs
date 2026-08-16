@@ -21,7 +21,7 @@ fn halo_forager_keeps_the_reflexive_targeted_graveyard_cast_and_replacement() {
     let reflexive = trigger
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>())
         .expect("the paid X result should create a reflexive trigger");
     let [choice] = reflexive.choices.as_slice() else {

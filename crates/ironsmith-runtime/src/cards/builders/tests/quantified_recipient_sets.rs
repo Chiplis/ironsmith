@@ -78,7 +78,7 @@ fn program_goad(
 ) -> Option<&crate::effects::GoadEffect> {
     program
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(find_goad)
 }
 
@@ -87,7 +87,7 @@ fn program_phase_out(
 ) -> Option<&crate::effects::PhaseOutEffect> {
     program
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(find_phase_out)
 }
 
@@ -96,7 +96,7 @@ fn program_destroy(
 ) -> Option<&crate::effects::DestroyEffect> {
     program
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(find_destroy)
 }
 
@@ -221,7 +221,7 @@ fn droning_bureaucrats_restricts_every_creature_with_the_announced_mana_value() 
     let cant = activated
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::CantEffect>())
         .expect("the activation should register a restriction");
     let crate::effect::Restriction::AttackOrBlock(filter) = &cant.restriction else {

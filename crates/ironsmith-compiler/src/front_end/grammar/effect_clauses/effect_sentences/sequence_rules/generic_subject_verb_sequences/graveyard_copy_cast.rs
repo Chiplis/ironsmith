@@ -1,13 +1,13 @@
 use super::super::SentenceInput;
+use crate::activation_and_restrictions::{
+    build_may_cast_tagged_effect, parse_may_cast_it_sentence,
+};
 use crate::cards::builders::{
     CardTextError, EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
     SubjectVerbSubjectAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
 use crate::effect_sentences;
-use crate::families::activation_and_restrictions::{
-    build_may_cast_tagged_effect, parse_may_cast_it_sentence,
-};
 use crate::util::helper_tag_for_tokens;
 use crate::zone::Zone;
 
@@ -264,10 +264,7 @@ pub(crate) fn parse_graveyard_exile_if_copy_then_may_cast_copy(
     };
     if copy_reference_tag.as_str() != crate::cards::builders::IT_TAG
         && copy_reference_tag != exiled_tag
-        && !crate::util::is_sentence_helper_tag(
-            copy_reference_tag.as_str(),
-            "exiled",
-        )
+        && !crate::util::is_sentence_helper_tag(copy_reference_tag.as_str(), "exiled")
     {
         return Ok(None);
     }
@@ -292,7 +289,7 @@ pub(crate) fn parse_graveyard_exile_if_copy_then_may_cast_copy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, split_lexed_sentences};
+    use crate::lexer::{lex_line, split_lexed_sentences};
 
     fn registry_match(text: &str) -> super::super::super::SequenceRuleMatch {
         let tokens = lex_line(text, 0).expect("graveyard copy/cast fixture should lex");

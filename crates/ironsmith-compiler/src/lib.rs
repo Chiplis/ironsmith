@@ -1,3 +1,40 @@
+#![expect(
+    dead_code,
+    reason = "the canonical compiler AST intentionally models grammar vocabulary beyond the currently exercised corpus"
+)]
+#![expect(
+    clippy::large_enum_variant,
+    reason = "compiler AST nodes remain value-semantic until the single lowering boundary"
+)]
+#![expect(
+    clippy::type_complexity,
+    reason = "typed grammar recognizers expose complete compositional match facts"
+)]
+#![expect(
+    clippy::too_many_arguments,
+    reason = "parser boundaries carry explicit context, provenance, scope, and authored token slices"
+)]
+#![expect(
+    clippy::field_reassign_with_default,
+    reason = "grammar filters are assembled incrementally from independently recognized clauses"
+)]
+#![expect(
+    clippy::enum_variant_names,
+    reason = "grammar fact enums repeat their semantic family name to stay unambiguous at use sites"
+)]
+#![expect(
+    clippy::wrong_self_convention,
+    reason = "recognizer method names describe authored-token provenance rather than conversion ownership"
+)]
+#![expect(
+    clippy::result_large_err,
+    reason = "structured parse diagnostics retain committed spans, rule paths, and source context"
+)]
+#![expect(
+    clippy::vec_box,
+    reason = "recursive nested-ability nodes use stable indirection at each child boundary"
+)]
+
 //! Compiler crate for parser/front-end ownership in the split workspace.
 //!
 //! The compiler crate owns oracle-text recognition, canonical compiler ASTs,
@@ -33,9 +70,9 @@ pub mod parse_loss;
 pub mod parse_trace;
 pub mod payload;
 pub mod pipeline;
-pub mod resolution;
 pub mod recognition;
 pub mod registry;
+pub mod resolution;
 mod slice_primitives;
 pub mod static_abilities;
 mod string_primitives;
@@ -52,6 +89,8 @@ pub(crate) mod activation_and_restrictions;
 pub(crate) mod activation_helpers;
 #[path = "lowering/battlefield_entry_counter_fusion.rs"]
 pub(crate) mod battlefield_entry_counter_fusion;
+#[path = "front_end/canonical_pipeline.rs"]
+pub(crate) mod canonical_pipeline;
 #[path = "front_end/grammar/ability_rules/clause_support.rs"]
 pub(crate) mod clause_support;
 #[path = "lowering/compile_support.rs"]
@@ -60,17 +99,17 @@ pub(crate) mod compile_support;
 pub(crate) mod condition_antecedent;
 #[path = "front_end/cst.rs"]
 pub(crate) mod cst;
-#[path = "front_end/canonical_pipeline.rs"]
-pub(crate) mod canonical_pipeline;
 #[path = "front_end/cst_lowering.rs"]
 pub(crate) mod cst_lowering;
 #[path = "front_end/document/mod.rs"]
 pub(crate) mod document_parser;
-#[path = "lowering/effect_pipeline.rs"]
-pub(crate) mod effect_pipeline;
 #[path = "model/effect_ast_normalization.rs"]
 pub(crate) mod effect_ast_normalization;
+#[path = "lowering/effect_pipeline.rs"]
+pub(crate) mod effect_pipeline;
 pub(crate) use model::visit as effect_ast_traversal;
+#[path = "lowering/pipeline.rs"]
+pub(crate) mod compiler_pipeline;
 #[path = "front_end/grammar/effect_clauses/effect_sentences/mod.rs"]
 pub(crate) mod effect_sentences;
 #[path = "front_end/grammar/mod.rs"]
@@ -101,8 +140,6 @@ pub(crate) mod object_filters;
 pub(crate) mod parser_support;
 #[path = "front_end/grammar/ability_rules/permission_helpers.rs"]
 pub(crate) mod permission_helpers;
-#[path = "lowering/pipeline.rs"]
-pub(crate) mod compiler_pipeline;
 #[path = "front_end/semantic_preprocess.rs"]
 pub(crate) mod preprocess;
 #[path = "model/reference_helpers.rs"]
@@ -192,12 +229,12 @@ pub use front_end::{
     StatementLineCst, StaticLineCst, StructuralLineKind, StructuralNode, StructuralNodeKind,
     TokenKind, TokenWordPiece, TokenWordView, TriggerIntroCst, TriggeredLineCst,
     TurnDurationPhrase, UnsupportedLineCst, classify_document_structure,
-    clone_sentence_chunk_tokens, contains_sequence,
-    contains_token_word, contains_token_word_sequence, contains_window,
-    extract_parenthetical_sentences, find_any_token_word_sequence_span, find_index,
-    find_token_any_word, find_token_word, find_token_word_sequence, find_token_word_sequence_span,
-    find_token_word_sequence_value, find_window_by, find_window_index, is_at_trigger_intro_lexed,
-    iter_contains, lex_line, lexed_head_words, lexed_tokens_contain_non_prefix_instead,
+    clone_sentence_chunk_tokens, contains_sequence, contains_token_word,
+    contains_token_word_sequence, contains_window, extract_parenthetical_sentences,
+    find_any_token_word_sequence_span, find_index, find_token_any_word, find_token_word,
+    find_token_word_sequence, find_token_word_sequence_span, find_token_word_sequence_value,
+    find_window_by, find_window_index, is_at_trigger_intro_lexed, iter_contains, lex_line,
+    lexed_head_words, lexed_tokens_contain_non_prefix_instead,
     looks_like_reflexive_followup_intro_lexed, looks_like_spell_resolution_followup_intro_lexed,
     make_line_info, normalize_restriction_text, normalize_trimmed_line, parse_common_sentence_head,
     parse_leading_may_action_lexed, parse_metadata_line, parse_turn_duration_prefix,
@@ -231,6 +268,16 @@ pub use ironsmith_core::{
     Condition as ConditionExpr, PermanentLeftBattlefieldControlSurface,
     SourceCounterThresholdSurface, WorkspaceSplitMarker,
 };
+pub use model::provenance::{
+    DashStyle, ProvenanceId, ProvenanceRecord, ProvenanceStore, ProvenanceView, Provenanced,
+    PunctuationKind, QuoteStyle, ReminderTextDecision, RenderingHint, SemanticProvenance,
+    SourcePosition, SourceSliceKind, SourceSpan, SourceUnit,
+};
+pub use model::symbols::{
+    Cardinality, ObjectDomain, ReferenceQuery, ReferenceRole, SymbolBinding, SymbolId,
+    SymbolReference, SymbolResolutionError, SymbolScope, SymbolScopeId, SymbolScopeKind,
+    SymbolTable,
+};
 pub use model::{
     AdditionalCostChoiceOptionAst, AnnotatedEffect, AnnotatedEffectSequence, ClashOpponentAst,
     CompilerAbility, CompilerAbilityKind, CompilerAbilityPayload, CompilerActivatedAbility,
@@ -251,16 +298,6 @@ pub use model::{
     RewriteTriggeredLine, RewriteUnsupportedLine, SearchLibrarySlotAst, SharedTypeConstraintAst,
     TargetAst, ZoneReplacementDurationAst,
 };
-pub use model::provenance::{
-    DashStyle, ProvenanceId, ProvenanceRecord, ProvenanceStore, ProvenanceView, Provenanced,
-    PunctuationKind, QuoteStyle, ReminderTextDecision, RenderingHint, SemanticProvenance,
-    SourcePosition, SourceSliceKind, SourceSpan, SourceUnit,
-};
-pub use model::symbols::{
-    Cardinality, ObjectDomain, ReferenceQuery, ReferenceRole, SymbolBinding, SymbolId,
-    SymbolReference, SymbolResolutionError, SymbolScope, SymbolScopeId, SymbolScopeKind,
-    SymbolTable,
-};
 pub use object::{AuraAttachmentFilter, CounterType};
 pub use oracle_grammar::{
     OracleGrammarDocument, OracleGrammarLevelItem, OracleGrammarLine, OracleGrammarLineInfo,
@@ -270,17 +307,17 @@ pub use parse_context::{
     CardFaceMetadata, ContextDiagnostic, ParseArenaId, ParseArenas, ParseContext, ParseContextView,
     ParseDiagnosticSink, ParseFeatures, ParseScopeId, ParseScopeKind, SourceIdentity, SourceUnitId,
 };
+pub use payload::{IfResultPredicate, KeywordAction};
+pub use pipeline::{LoweringPipeline, PostpassProcessor};
 pub use recognition::{
     ParseDiagnostic, ParseDiagnosticKind, ParseExpectation, ParseMatch, ParseOutcome, RuleId,
     RuleMatch, UnsupportedReason,
 };
 pub use registry::{
     HeadDiscriminator, LegacyCompatibilityRule, LegacyOrderRank, RegistryCandidate,
-    RegistryRuleMetadata, SemanticEquivalenceKey, SourceSpanPolicy,
-    furthest_committed_diagnostic, resolve_registry_candidates,
+    RegistryRuleMetadata, SemanticEquivalenceKey, SourceSpanPolicy, furthest_committed_diagnostic,
+    resolve_registry_candidates,
 };
-pub use payload::{IfResultPredicate, KeywordAction};
-pub use pipeline::{LoweringPipeline, PostpassProcessor};
 pub use tag::TagKey;
 pub use target::{
     ChooseSpec, ObjectCharacteristic, ObjectCharacteristicRelation,

@@ -126,17 +126,17 @@ pub(crate) fn parse_choose_then_do_same_for_filter_sentence(
 
     let mut effects = vec![EffectAst::ChooseObjects {
         filter: base_filter.clone(),
-        count: count.clone(),
+        count,
         count_value: None,
-        player: player.clone(),
+        player,
         tag: tag.clone(),
     }];
     for filter in followup_filters {
         effects.push(EffectAst::ChooseObjects {
             filter,
-            count: count.clone(),
+            count,
             count_value: None,
-            player: player.clone(),
+            player,
             tag: tag.clone(),
         });
     }
@@ -192,7 +192,7 @@ pub(crate) fn parse_choose_then_choose_objects_sentence(
         filter: first_filter,
         count: first_count,
         count_value: None,
-        player: first_player.clone(),
+        player: first_player,
         tag: TagKey::from(IT_TAG),
     };
 
@@ -214,7 +214,7 @@ pub(crate) fn parse_choose_then_choose_objects_sentence(
     preserve_choose_clause_it_reference(shape.tail_references_prior_choice, &mut second_filter);
 
     if second_player == PlayerAst::Implicit {
-        second_player = first_player.clone();
+        second_player = first_player;
     }
 
     Ok(Some(vec![
@@ -599,7 +599,7 @@ pub(crate) fn find_color_choice_phrase(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn targeted_graveyard_exile_accepts_a_named_counter_payload() {

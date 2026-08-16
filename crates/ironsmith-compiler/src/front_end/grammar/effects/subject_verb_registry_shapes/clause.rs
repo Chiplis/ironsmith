@@ -2,7 +2,7 @@ use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RegistryWordSplit<'a> {
@@ -34,7 +34,7 @@ pub(crate) fn split_registry_clause_at_word(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn parses_word_boundaries() {

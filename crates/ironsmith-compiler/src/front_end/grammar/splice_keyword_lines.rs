@@ -89,7 +89,8 @@ mod tests {
 
     #[test]
     fn rejects_unknown_subjects_but_preserves_non_mana_cost_tokens() {
-        for text in ["Splice onto creature {1}{G}"] {
+        {
+            let text = "Splice onto creature {1}{G}";
             let tokens = lex_line(text, 0).expect("lex unsupported splice line");
             assert!(
                 parse_splice_keyword_line_tokens(&tokens)

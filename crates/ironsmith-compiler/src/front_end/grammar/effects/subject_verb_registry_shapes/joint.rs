@@ -5,7 +5,7 @@ use winnow::token::any;
 
 use crate::cards::builders::PlayerAst;
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 
 #[derive(Debug, Clone)]
 pub(crate) struct JointDrawShape<'a> {
@@ -181,7 +181,7 @@ pub(crate) fn parse_attacking_player_draw_lose_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn parses_joint_player_actions() {

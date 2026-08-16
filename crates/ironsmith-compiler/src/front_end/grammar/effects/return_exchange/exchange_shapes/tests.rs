@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::front_end::lexer::{lex_line, render_token_slice};
+use crate::lexer::{lex_line, render_token_slice};
 
 #[test]
 fn parses_life_total_partner_shape() {
@@ -47,37 +47,31 @@ fn parses_value_operand_shapes() {
 
 #[test]
 fn parses_named_possessive_source_value_operand() {
-    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-        "Evra, Halcyon Witness",
-        || {
-            let tokens =
-                lex_line("your life total with Evra's power.", 0).expect("exchange should lex");
-            let (left, right) = parse_exchange_value_operands(&tokens).expect("operands");
-            assert!(matches!(
-                left,
-                ExchangeValueOperandShape::LifeTotal(PlayerAst::You)
-            ));
-            assert!(matches!(
-                right,
-                ExchangeValueOperandShape::SourceStat {
-                    kind: ExchangeValueKindShape::Power,
-                    ..
-                }
-            ));
-        },
-    );
+    crate::util::with_source_reference_context("Evra, Halcyon Witness", || {
+        let tokens =
+            lex_line("your life total with Evra's power.", 0).expect("exchange should lex");
+        let (left, right) = parse_exchange_value_operands(&tokens).expect("operands");
+        assert!(matches!(
+            left,
+            ExchangeValueOperandShape::LifeTotal(PlayerAst::You)
+        ));
+        assert!(matches!(
+            right,
+            ExchangeValueOperandShape::SourceStat {
+                kind: ExchangeValueKindShape::Power,
+                ..
+            }
+        ));
+    });
 }
 
 #[test]
 fn rejects_unrelated_named_possessive_source_value_operand() {
-    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-        "Evra, Halcyon Witness",
-        || {
-            let tokens =
-                lex_line("your life total with Gerrard's power.", 0).expect("exchange should lex");
-            assert!(parse_exchange_value_operands(&tokens).is_none());
-        },
-    );
+    crate::util::with_source_reference_context("Evra, Halcyon Witness", || {
+        let tokens =
+            lex_line("your life total with Gerrard's power.", 0).expect("exchange should lex");
+        assert!(parse_exchange_value_operands(&tokens).is_none());
+    });
 }
 
 #[test]

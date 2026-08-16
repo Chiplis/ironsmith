@@ -597,11 +597,7 @@ pub(super) fn comma_boundary_facts(
     let inline_token_rules = (is_token_creation_context_tokens(before)
         || has_inline_token_rules_context(before))
         && (starts_with_inline_token_rules_tail_tokens(after)
-            || first_word(after).is_some_and(|word| {
-                INLINE_CONTINUATION_WORDS
-                    .iter()
-                    .any(|expected| word == *expected)
-            }));
+            || first_word(after).is_some_and(|word| INLINE_CONTINUATION_WORDS.contains(&word)));
     let named_token_appositive =
         is_create_named_token_prefix(before) && starts_like_named_token_appositive(after);
     let filter_keyword_list =
@@ -778,11 +774,8 @@ fn starts_with_nonverb_effect_head(tokens: &[OwnedLexToken]) -> bool {
             &["after", "this", "phase"],
             &["after", "this", "main", "phase"],
         ],
-    ) || first_word(tokens).is_some_and(|word| {
-        NONVERB_EFFECT_HEAD_WORDS
-            .iter()
-            .any(|expected| word == *expected)
-    }) || contains_any(tokens, KEYWORD_ACTION_WORDS)
+    ) || first_word(tokens).is_some_and(|word| NONVERB_EFFECT_HEAD_WORDS.contains(&word))
+        || contains_any(tokens, KEYWORD_ACTION_WORDS)
 }
 
 fn is_cant_restriction(tokens: &[OwnedLexToken]) -> bool {
@@ -1018,7 +1011,7 @@ fn is_zone_word(word: &str) -> bool {
 }
 
 fn is_card_type_word(word: &str) -> bool {
-    CARD_TYPE_WORDS.iter().any(|expected| word == *expected)
+    CARD_TYPE_WORDS.contains(&word)
 }
 
 fn is_color_word(word: &str) -> bool {

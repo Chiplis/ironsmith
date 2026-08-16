@@ -246,10 +246,7 @@ fn first_word(words: &[&str], expected: &[&str]) -> Option<WordBoundary> {
         let word = initial_len.saturating_sub(input.len());
         let parsed: WResult<&str> = any.parse_next(&mut input);
         let candidate = parsed.ok()?;
-        if expected
-            .iter()
-            .any(|expected_word| candidate == *expected_word)
-        {
+        if expected.contains(&candidate) {
             return Some(WordBoundary { word });
         }
     }

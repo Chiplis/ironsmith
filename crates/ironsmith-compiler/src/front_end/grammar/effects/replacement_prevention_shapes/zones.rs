@@ -274,7 +274,7 @@ pub(crate) fn parse_exile_each_target_type_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_split_all_and_preserves_exclusions() {

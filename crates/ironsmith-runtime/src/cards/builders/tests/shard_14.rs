@@ -2842,7 +2842,7 @@ pub(super) fn contextual_it_explores_does_not_gain_a_proper_name_surface() {
     let explore = triggered
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ExploreEffect>())
         .expect("the probe should retain an executable ExploreEffect");
     assert_eq!(

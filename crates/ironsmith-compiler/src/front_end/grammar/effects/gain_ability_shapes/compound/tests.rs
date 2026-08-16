@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+use crate::lexer::{TokenWordView, lex_line};
 
 fn words(tokens: &[OwnedLexToken]) -> Vec<&str> {
     TokenWordView::new(tokens).word_refs()

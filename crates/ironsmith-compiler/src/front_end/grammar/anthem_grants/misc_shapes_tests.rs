@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::front_end::lexer::{lex_line, render_token_slice};
+use crate::lexer::{lex_line, render_token_slice};
 
 fn lex(text: &str) -> Vec<OwnedLexToken> {
     lex_line(text, 0).expect("lex fixture")

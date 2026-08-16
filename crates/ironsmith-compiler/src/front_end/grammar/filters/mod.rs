@@ -33,8 +33,8 @@ use crate::color::{Color, ColorSet};
 use crate::effect::Value;
 use crate::effects::VOTE_WINNERS_TAG;
 use crate::filter::TaggedObjectConstraint;
-use crate::mana::ManaSymbol;
 use crate::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
+use crate::mana::ManaSymbol;
 use crate::target::{
     ObjectFilter, ObjectRef, PlayerFilter, SourceReferenceSurface, TaggedOpbjectRelation,
     TargetabilityConstraint,

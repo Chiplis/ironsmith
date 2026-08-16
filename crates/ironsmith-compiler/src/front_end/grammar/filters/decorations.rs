@@ -356,7 +356,7 @@ fn parse_with_keyword_decoration(input: &mut WordInput<'_>) -> WResult<FilterTai
 }
 
 fn parse_counter_constraint(input: &mut WordInput<'_>) -> WResult<CounterConstraint> {
-    let Some((constraint, consumed)) = parse_filter_counter_constraint_words(*input) else {
+    let Some((constraint, consumed)) = parse_filter_counter_constraint_words(input) else {
         return Err(primitives::backtrack_err(
             "filter tail decoration",
             "counter constraint",
@@ -373,7 +373,7 @@ fn parse_counter_constraint(input: &mut WordInput<'_>) -> WResult<CounterConstra
 }
 
 fn parse_keyword_constraint(input: &mut WordInput<'_>) -> WResult<FilterKeywordConstraint> {
-    let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(*input) else {
+    let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(input) else {
         return Err(primitives::backtrack_err(
             "filter tail decoration",
             "keyword constraint",
@@ -552,7 +552,7 @@ fn parse_exact_word(input: &mut WordInput<'_>, expected: &str) -> WResult<()> {
 mod tests {
     use super::*;
     use crate::CardType;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn envelope_preserves_vote_then_different_name_normalization() {
@@ -650,9 +650,7 @@ mod tests {
             0,
         )
         .unwrap();
-        let filter =
-            crate::runtime_backend::object_filters::parse_object_filter_lexed(&tokens, false)
-                .unwrap();
+        let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false).unwrap();
         assert_eq!(filter.card_types, vec![CardType::Creature]);
         assert!(!filter.tagged_constraints.iter().any(|constraint| {
             constraint.tag.as_str() == VOTE_WINNERS_TAG

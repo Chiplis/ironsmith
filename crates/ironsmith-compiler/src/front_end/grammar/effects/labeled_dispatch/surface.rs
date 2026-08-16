@@ -1,4 +1,4 @@
-use crate::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
+use crate::lexer::{OwnedLexToken, parser_token_word_refs};
 use winnow::prelude::*;
 
 use super::super::super::primitives;
@@ -50,15 +50,14 @@ fn mana_value_or_less_bound(tokens: &[OwnedLexToken]) -> Option<u32> {
         let (_, _, tail) = primitives::find_prefix(search_tokens, || {
             primitives::phrase(&["mana", "value"]).void()
         })?;
-        if let Some((count, _)) =
-            crate::util::parse_less_than_or_equal_quantity_prefix(
-                tail,
-                false,
-                false,
-                "mana value bound",
-            )
-            .ok()
-            .flatten()
+        if let Some((count, _)) = crate::util::parse_less_than_or_equal_quantity_prefix(
+            tail,
+            false,
+            false,
+            "mana value bound",
+        )
+        .ok()
+        .flatten()
         {
             return Some(count);
         }
@@ -139,7 +138,7 @@ pub(crate) fn parse_labeled_dispatch_shape(tokens: &[OwnedLexToken]) -> LabeledD
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     use super::*;
 

@@ -3,9 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::front_end::lexer::{
-    LexStream, OwnedLexToken, parser_token_word_refs, render_token_slice,
-};
+use crate::lexer::{LexStream, OwnedLexToken, parser_token_word_refs, render_token_slice};
 
 use super::super::{leaf, primitives};
 use super::common;
@@ -185,10 +183,7 @@ fn title_case_phrase_preserving_punctuation(phrase: &str) -> String {
             .filter(|ch| ch.is_ascii_alphabetic())
             .map(|ch| ch.to_ascii_lowercase())
             .collect();
-        let keep_lowercase = idx > 0
-            && TITLE_LOWERCASE_WORDS
-                .iter()
-                .any(|candidate| *candidate == letters_only.as_str());
+        let keep_lowercase = idx > 0 && TITLE_LOWERCASE_WORDS.contains(&letters_only.as_str());
         if keep_lowercase {
             return word.to_string();
         }
@@ -384,7 +379,7 @@ pub(super) fn leading_comma_name(tokens: &[OwnedLexToken]) -> Option<String> {
             let starts_appositive = suffix_words
                 .first()
                 .is_some_and(|word| matches!(*word, "a" | "an"));
-            let describes_token = suffix_words.iter().any(|word| *word == "token");
+            let describes_token = suffix_words.contains(&"token");
             (starts_appositive && describes_token).then_some(idx)
         })
         .next()?;
@@ -423,7 +418,7 @@ pub(super) fn leading_comma_name(tokens: &[OwnedLexToken]) -> Option<String> {
 }
 
 pub(super) fn referenced_card_name(tokens: &[OwnedLexToken]) -> Option<String> {
-    let (_, name_tokens, _) = primitives::find_prefix(tokens, || parse_referenced_card_name())?;
+    let (_, name_tokens, _) = primitives::find_prefix(tokens, parse_referenced_card_name)?;
     let raw_name = render_token_slice(&name_tokens);
     let titled = title_case_phrase_preserving_punctuation(raw_name.as_str());
     (!titled.is_empty()).then_some(titled)
@@ -481,9 +476,7 @@ pub(super) fn leading_explicit_name(words: &[&str]) -> Option<String> {
 pub(super) fn leading_name_phrase(words: &[&str]) -> Option<String> {
     let mut name_words = Vec::new();
     for word in words {
-        if LEADING_NAME_STOP_WORDS
-            .iter()
-            .any(|candidate| *candidate == *word)
+        if LEADING_NAME_STOP_WORDS.contains(word)
             || is_token_pt(word)
             || is_card_type(word)
             || !simple_name_word(word)

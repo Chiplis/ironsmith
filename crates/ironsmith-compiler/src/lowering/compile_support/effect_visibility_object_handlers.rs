@@ -47,7 +47,7 @@ fn record_exiled_collection_choice(
         return;
     }
     let appends_to_existing = ctx.last_exiled_collection_tag.as_deref() == Some(tag.as_str());
-    let current_choice_is_plural = count.max.map_or(true, |max| max > 1);
+    let current_choice_is_plural = count.max.is_none_or(|max| max > 1);
     ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
     ctx.last_exiled_collection_is_plural = if appends_to_existing {
         true
@@ -146,8 +146,6 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let mut resolved_filter =
                 if references_revealed_hand && ctx.last_player_filter.is_some() {
                     subject.bind_revealed_hand_choice_filter(filter, ctx)?
-                } else if chooses_tagged_object_pool(filter) {
-                    subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
                 } else {
                     subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
                 };
@@ -273,9 +271,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 effects = mark_choose_effects_reveal(effects);
             }
             ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
-            if tag.as_str()
-                != crate::condition_antecedent::CONDITION_COLLECTION_CHOICE_TAG
-            {
+            if tag.as_str() != crate::condition_antecedent::CONDITION_COLLECTION_CHOICE_TAG {
                 ctx.last_object_tag = Some(tag.as_str().to_string());
             }
             record_exiled_collection_choice(ctx, tag, count);
@@ -419,7 +415,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             if !matches!(chooser, PlayerFilter::ChosenPlayer) {
                 preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
             }
-            if zones.iter().any(|zone| *zone == Zone::Battlefield)
+            if zones.contains(&Zone::Battlefield)
                 && resolved_filter.controller.is_none()
                 && resolved_filter.owner.is_none()
                 && resolved_filter.tagged_constraints.is_empty()
@@ -429,8 +425,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let followup_player = choose_followup_player_filter(&resolved_filter, &chooser)
                 .unwrap_or_else(|| chooser.clone());
             let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
-            let default_search =
-                zones.iter().any(|zone| *zone == Zone::Library) && !chooses_tagged_pool;
+            let default_search = zones.contains(&Zone::Library) && !chooses_tagged_pool;
             let count_value = count_value
                 .as_ref()
                 .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))

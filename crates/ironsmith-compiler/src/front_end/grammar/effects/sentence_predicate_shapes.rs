@@ -1,8 +1,8 @@
 use super::*;
 
 use crate::filter::CounterConstraint;
-use crate::object::CounterType;
 use crate::grammar::{filters, leaf};
+use crate::object::CounterType;
 use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectMetricQuery};
 use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
@@ -436,7 +436,7 @@ fn parse_apostrophe_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a 
     Ok(segment)
 }
 
-fn aura_ability_tokens<'a>(tail_tokens: &'a [OwnedLexToken]) -> Vec<&'a [OwnedLexToken]> {
+fn aura_ability_tokens(tail_tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     let Some((_, ability_tokens)) = primitives::parse_prefix(
         tail_tokens,
         repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), primitives::kw("has")).void(),
@@ -1195,16 +1195,15 @@ fn parse_prior_effect_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Wher
                     .iter()
                     .any(|word| matches!(*word, "counter" | "counters" | "damage"))
             {
-                let mut filter = crate::object_filters::parse_object_filter_words(
-                    filter_words,
-                    false,
-                )
-                .map_err(|_| {
-                    primitives::backtrack_err(
-                        "prior effect filter",
-                        "object filter over remembered objects",
-                    )
-                })?;
+                let mut filter =
+                    crate::object_filters::parse_object_filter_words(filter_words, false).map_err(
+                        |_| {
+                            primitives::backtrack_err(
+                                "prior effect filter",
+                                "object filter over remembered objects",
+                            )
+                        },
+                    )?;
                 if filter_words
                     .iter()
                     .any(|word| matches!(*word, "card" | "cards"))

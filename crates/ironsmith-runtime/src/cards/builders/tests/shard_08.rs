@@ -1651,7 +1651,7 @@ pub(super) fn parse_until_end_of_turn_whenever_clause_as_temporary_grant() {
     let schedule = activated
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>())
         .expect("temporary whenever clause should schedule a delayed trigger");
     assert!(schedule.until_end_of_turn);
@@ -3837,11 +3837,9 @@ pub(super) fn parse_reveal_hand_clause_with_trailing_effect_keeps_tagged_same_na
         "expected a tagged reveal followed by a typed same-name battlefield move, got {debug}"
     );
     let rendered = unprocessed_compiled_lines(&def).join(" ");
-    assert!(
-        rendered.contains(
-            "reveal it, then put it onto the battlefield if it has the same name as a permanent"
-        ),
-        "expected the supported reveal and conditional move to render, got {rendered}"
+    assert_eq!(
+        rendered,
+        "Reveal a card in your hand, then put that card onto the battlefield if it has the same name as a permanent.",
     );
 }
 

@@ -2243,12 +2243,10 @@ impl GameState {
         for component in &merged.components {
             let commander_identity = component.object.stable_id.object_id();
             let is_commander = component.is_commander
-                || self.players.iter().any(|player| {
-                    player
-                        .commanders
-                        .iter()
-                        .any(|identity| *identity == commander_identity)
-                });
+                || self
+                    .players
+                    .iter()
+                    .any(|player| player.commanders.contains(&commander_identity));
             if !is_commander {
                 destinations.push(requested_zone);
                 continue;

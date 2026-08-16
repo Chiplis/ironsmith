@@ -468,12 +468,12 @@ mod tests {
             "regenerated attacker should be removed from combat"
         );
         assert!(
-            game.combat
+            !game
+                .combat
                 .as_ref()
                 .expect("combat")
                 .blockers
-                .get(&attacker_id)
-                .is_none(),
+                .contains_key(&attacker_id),
             "attacker should no longer have blockers assigned after regeneration"
         );
     }

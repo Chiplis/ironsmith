@@ -537,13 +537,13 @@ pub(crate) fn parse_branch_scoped_object_filter_union_lexed(
         comma_segments
             .into_iter()
             .map(|segment| {
-                segment
-                    .first()
-                    .is_some_and(|token| {
-                        token.is_word("and") || token.is_word("or") || token.is_word("and/or")
-                    })
-                    .then(|| segment.get(1..).unwrap_or_default())
-                    .unwrap_or(segment)
+                if segment.first().is_some_and(|token| {
+                    token.is_word("and") || token.is_word("or") || token.is_word("and/or")
+                }) {
+                    segment.get(1..).unwrap_or_default()
+                } else {
+                    segment
+                }
             })
             .collect()
     } else if has_plain_or {
@@ -565,17 +565,22 @@ pub(crate) fn parse_branch_scoped_object_filter_union_lexed(
         .into_iter()
         .enumerate()
         .map(|(index, segment)| {
-            let segment = segment
+            let segment = if segment
                 .first()
                 .is_some_and(|token| token.is_word("all") || token.is_word("each"))
-                .then(|| segment.get(1..).unwrap_or_default())
-                .unwrap_or(segment);
+            {
+                segment.get(1..).unwrap_or_default()
+            } else {
+                segment
+            };
             let authored_other = segment
                 .first()
                 .is_some_and(|token| token.is_word("another") || token.is_word("other"));
-            let segment = authored_other
-                .then(|| segment.get(1..).unwrap_or_default())
-                .unwrap_or(segment);
+            let segment = if authored_other {
+                segment.get(1..).unwrap_or_default()
+            } else {
+                segment
+            };
             // Some trigger families consume a leading `another` before they
             // delegate to the object-filter grammar. Start with it on the
             // first arm; once all arms are parsed, the shared-suffix analysis
@@ -670,10 +675,7 @@ fn parse_in_zone_at(
         return None;
     }
     let first = tokens.get(start + 1)?;
-    if let Some(zone) = first
-        .as_word()
-        .and_then(crate::util::parse_zone_word)
-    {
+    if let Some(zone) = first.as_word().and_then(crate::util::parse_zone_word) {
         return Some((zone, None, start + 2));
     }
     let owner = possessive_zone_owner(first)?;
@@ -852,11 +854,11 @@ pub(crate) fn parse_domain_union_object_filter_lexed(
     let branches = segments
         .into_iter()
         .map(|segment| {
-            let segment = segment
-                .first()
-                .is_some_and(|token| token.is_word("each"))
-                .then(|| segment.get(1..).unwrap_or_default())
-                .unwrap_or(segment);
+            let segment = if segment.first().is_some_and(|token| token.is_word("each")) {
+                segment.get(1..).unwrap_or_default()
+            } else {
+                segment
+            };
             parse_simple_object_filter_lexed(segment, other)
         })
         .collect::<Option<Vec<_>>>()?;
@@ -926,7 +928,7 @@ pub(crate) fn parse_repeated_selector_domain_union_lexed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
     use crate::{CardType, ColorSet, Subtype};
 
     #[test]
@@ -1262,12 +1264,10 @@ mod tests {
     #[test]
     fn mirrored_owner_or_controller_scope_keeps_one_shared_object_noun() {
         let tokens = lex_line("permanent you own or control", 0).unwrap();
-        let filter =
-            crate::runtime_backend::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
-                &tokens,
-                false,
-            )
-            .unwrap();
+        let filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            &tokens, false,
+        )
+        .unwrap();
 
         assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
         assert_eq!(filter.description(), "a permanent you own or control");
@@ -1576,9 +1576,7 @@ mod tests {
             0,
         )
         .unwrap();
-        let filter =
-            crate::runtime_backend::object_filters::parse_object_filter_lexed(&tokens, false)
-                .unwrap();
+        let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false).unwrap();
 
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert_eq!(

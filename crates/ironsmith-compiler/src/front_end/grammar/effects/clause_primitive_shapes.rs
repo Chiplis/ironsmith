@@ -6,7 +6,7 @@ use winnow::token::any;
 use crate::cards::builders::{CardTextError, ClashOpponentAst, PlayerAst};
 use crate::effect::Value;
 use crate::grammar::primitives;
-use crate::front_end::lexer::{OwnedLexToken, TokenKind, TokenWordView};
+use crate::lexer::{OwnedLexToken, TokenKind, TokenWordView};
 
 #[path = "clause_primitive_shapes/combat_and_duration.rs"]
 mod combat_and_duration;
@@ -157,9 +157,7 @@ pub(crate) fn parse_stack_retarget_filter_shape(
     })
 }
 
-fn choose_name_prefix<'a>(
-    input: &mut crate::lexer::LexStream<'a>,
-) -> WResult<PlayerAst> {
+fn choose_name_prefix<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<PlayerAst> {
     alt((
         primitives::phrase(&["that", "player", "chooses"]).value(PlayerAst::That),
         primitives::phrase(&["you", "choose"]).value(PlayerAst::You),
@@ -391,16 +389,14 @@ pub(crate) fn parse_power_damage_shape(
     let (amount, used_words) = if word_refs.starts_with(&["its", "power"])
         || word_refs.starts_with(&["its", "toughness"])
     {
-        let Some((value, used)) = crate::util::parse_value_expr_words(&word_refs)
-        else {
+        let Some((value, used)) = crate::util::parse_value_expr_words(&word_refs) else {
             return Ok(None);
         };
         if !value_references_power_or_toughness(&value) {
             return Ok(None);
         }
         (bind_damage_source_possessive_characteristic(value), used)
-    } else if let Some((value, used)) =
-        crate::util::parse_value_expr_words(&word_refs)
+    } else if let Some((value, used)) = crate::util::parse_value_expr_words(&word_refs)
         && value_references_power_or_toughness(&value)
     {
         (value, used)
@@ -473,9 +469,7 @@ pub(crate) fn parse_fight_shape(tokens: &[OwnedLexToken]) -> Option<FightShape<'
     })
 }
 
-fn clash_opponent<'a>(
-    input: &mut crate::lexer::LexStream<'a>,
-) -> WResult<ClashOpponentAst> {
+fn clash_opponent<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<ClashOpponentAst> {
     opt(alt((
         primitives::kw("a"),
         primitives::kw("an"),

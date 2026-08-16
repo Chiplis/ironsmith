@@ -50,6 +50,7 @@ pub(super) enum EntryShape<'a> {
         object_tokens: &'a [OwnedLexToken],
         window: EntryWindowShape,
         other: bool,
+        you_had_surface: bool,
     },
 }
 
@@ -245,11 +246,18 @@ fn parse_object_entry_last_turn(tokens: &[OwnedLexToken]) -> Option<EntryShape<'
         object_tokens,
         window: EntryWindowShape::LastTurn,
         other: has_other_prefix(object_tokens),
+        you_had_surface: true,
     })
 }
 
 fn parse_object_entry_this_turn(tokens: &[OwnedLexToken]) -> Option<EntryShape<'_>> {
     let mut input = LexStream::new(tokens);
+    // Some conditions phrase the same controller-relative history as
+    // "you had another ... enter". Consume that grammatical subject before
+    // capturing the object phrase so `another` remains the filter head.
+    let you_had_surface = opt(primitives::phrase(&["you", "had"]))
+        .parse_next(&mut input)
+        .ok()?;
     let object_tokens = take_until_entry_verb(&mut input).ok()?;
     parse_entry_verb(&mut input).ok()?;
     opt(primitives::kw("the")).parse_next(&mut input).ok()?;
@@ -261,6 +269,7 @@ fn parse_object_entry_this_turn(tokens: &[OwnedLexToken]) -> Option<EntryShape<'
         object_tokens,
         window: EntryWindowShape::ThisTurn,
         other: has_other_prefix(object_tokens),
+        you_had_surface: you_had_surface.is_some(),
     })
 }
 
@@ -363,7 +372,7 @@ fn trim_clause(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("lex fixture")
@@ -385,5 +394,24 @@ mod tests {
         };
         assert!(other);
         assert_eq!(window, EntryWindowShape::ThisTurn);
+
+        let had_entry =
+            lex("You had another creature enter the battlefield under your control this turn.");
+        let EntryShape::Object {
+            object_tokens,
+            other,
+            window,
+            you_had_surface,
+        } = parse_entry(&had_entry).expect("entry shape with explicit history subject")
+        else {
+            panic!("expected object entry");
+        };
+        assert!(other);
+        assert!(you_had_surface);
+        assert_eq!(window, EntryWindowShape::ThisTurn);
+        assert_eq!(
+            crate::lexer::parser_token_word_refs(object_tokens),
+            ["another", "creature"]
+        );
     }
 }

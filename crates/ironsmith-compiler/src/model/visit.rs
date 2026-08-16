@@ -12,9 +12,7 @@ use crate::model::control_flow::{
 };
 use crate::model::coordination::CarriedFactAst;
 use crate::model::costs::CompilerTotalCost;
-use crate::model::document_program::{
-    CompilerDocumentProgramAst, CompilerStatementEdgeKindAst,
-};
+use crate::model::document_program::{CompilerDocumentProgramAst, CompilerStatementEdgeKindAst};
 use crate::model::interaction_clauses::{
     CompilerCounterAmountAst, CompilerInteractionClauseAst, CompilerPreventionClauseAst,
 };
@@ -1327,8 +1325,7 @@ pub(crate) fn visit_effect_tree<V: SemanticVisitor + ?Sized>(
                     | CompilerStatementEdgeKindAst::Result => {
                         visitor.visit_reference(reference)?;
                     }
-                    CompilerStatementEdgeKindAst::Ordered
-                    | CompilerStatementEdgeKindAst::Then => {}
+                    CompilerStatementEdgeKindAst::Ordered | CompilerStatementEdgeKindAst::Then => {}
                 }
             }
         }
@@ -1606,7 +1603,7 @@ pub(crate) fn fold_clause_tree<F: SemanticFolder + ?Sized>(
         .condition
         .map(|condition| fold_clause_condition(folder, condition));
     for binding in &mut clause.bindings {
-        binding.reference = folder.fold_reference(binding.reference.clone());
+        binding.reference = folder.fold_reference(binding.reference);
     }
     clause.complements = clause
         .complements
@@ -1667,12 +1664,10 @@ fn fold_permission_clause<F: SemanticFolder + ?Sized>(
         .qualification
         .map(|qualification| fold_compiler_filter(folder, qualification));
     permission.origin = match permission.origin {
-        CompilerCastingOriginAst::Zones { zones, owner } => {
-            CompilerCastingOriginAst::Zones {
-                zones,
-                owner: owner.map(|owner| fold_clause_actor(folder, owner)),
-            }
-        }
+        CompilerCastingOriginAst::Zones { zones, owner } => CompilerCastingOriginAst::Zones {
+            zones,
+            owner: owner.map(|owner| fold_clause_actor(folder, owner)),
+        },
         CompilerCastingOriginAst::TopOfLibrary { owner } => {
             CompilerCastingOriginAst::TopOfLibrary {
                 owner: owner.map(|owner| fold_clause_actor(folder, owner)),
@@ -2277,7 +2272,7 @@ pub(crate) fn fold_effect_tree<F: SemanticFolder + ?Sized>(
         }
     });
     effect = match effect {
-        EffectAst::Clause(clause) => EffectAst::Clause(fold_clause_tree(folder, clause)),
+        EffectAst::Clause(clause) => EffectAst::Clause(Box::new(fold_clause_tree(folder, *clause))),
         EffectAst::Coordination(mut coordination) => {
             for member in &mut coordination.members {
                 for reference in member.imports.iter_mut().chain(&mut member.exports) {
@@ -2310,7 +2305,8 @@ pub(crate) fn fold_effect_tree<F: SemanticFolder + ?Sized>(
         EffectAst::Iteration(iteration) => {
             EffectAst::Iteration(Box::new(fold_iteration_tree(folder, *iteration)))
         }
-        EffectAst::Vote(mut vote) => {
+        EffectAst::Vote(vote) => {
+            let mut vote = *vote;
             vote.options = fold_choice_domain(folder, vote.options);
             vote.votes_per_voter.min = fold_compiler_value_tree(folder, vote.votes_per_voter.min);
             vote.votes_per_voter.max = vote
@@ -2319,11 +2315,11 @@ pub(crate) fn fold_effect_tree<F: SemanticFolder + ?Sized>(
                 .map(|maximum| fold_compiler_value_tree(folder, maximum));
             vote.choices = folder.fold_reference(vote.choices);
             vote.tally = folder.fold_reference(vote.tally);
-            EffectAst::Vote(vote)
+            EffectAst::Vote(Box::new(vote))
         }
-        EffectAst::DocumentProgram(program) => EffectAst::DocumentProgram(Box::new(
-            fold_document_program_tree(folder, *program),
-        )),
+        EffectAst::DocumentProgram(program) => {
+            EffectAst::DocumentProgram(Box::new(fold_document_program_tree(folder, *program)))
+        }
         effect => effect,
     };
     folder.fold_effect(effect)

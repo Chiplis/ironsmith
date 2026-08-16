@@ -591,17 +591,34 @@ pub(crate) fn alternative_cast_method_matches_kind(
     use crate::alternative_cast::AlternativeCastingMethod;
     use crate::filter::AlternativeCastKind;
 
-    match (kind, method) {
-        (AlternativeCastKind::Blitz, AlternativeCastingMethod::Blitz { .. }) => true,
-        (AlternativeCastKind::Dash, AlternativeCastingMethod::Dash { .. }) => true,
-        (AlternativeCastKind::Flashback, AlternativeCastingMethod::Flashback { .. }) => true,
-        (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart { .. }) => true,
-        (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. }) => true,
-        (AlternativeCastKind::Madness, AlternativeCastingMethod::Madness { .. }) => true,
-        (AlternativeCastKind::Miracle, AlternativeCastingMethod::Miracle { .. }) => true,
-        (AlternativeCastKind::Suspend, AlternativeCastingMethod::Suspend { .. }) => true,
-        _ => false,
-    }
+    matches!(
+        (kind, method),
+        (
+            AlternativeCastKind::Blitz,
+            AlternativeCastingMethod::Blitz { .. }
+        ) | (
+            AlternativeCastKind::Dash,
+            AlternativeCastingMethod::Dash { .. }
+        ) | (
+            AlternativeCastKind::Flashback,
+            AlternativeCastingMethod::Flashback { .. }
+        ) | (
+            AlternativeCastKind::JumpStart,
+            AlternativeCastingMethod::JumpStart { .. }
+        ) | (
+            AlternativeCastKind::Escape,
+            AlternativeCastingMethod::Escape { .. }
+        ) | (
+            AlternativeCastKind::Madness,
+            AlternativeCastingMethod::Madness { .. }
+        ) | (
+            AlternativeCastKind::Miracle,
+            AlternativeCastingMethod::Miracle { .. }
+        ) | (
+            AlternativeCastKind::Suspend,
+            AlternativeCastingMethod::Suspend { .. }
+        )
+    )
 }
 
 pub(crate) fn casting_method_matches_alternative_kind(
@@ -827,7 +844,7 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
             .unwrap_or_else(|| {
                 let mut spell_for_filter = spell.clone();
                 if let Some(chars) = view.current_characteristics_arc(spell_id) {
-                    spell_for_filter.name = chars.name.clone().into();
+                    spell_for_filter.name = chars.name.clone();
                     spell_for_filter.card_types = chars.card_types.to_vec().into();
                     spell_for_filter.subtypes = chars.subtypes.to_vec().into();
                     spell_for_filter.supertypes = chars.supertypes.to_vec().into();
@@ -2140,7 +2157,7 @@ fn spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_vie
                 return legal;
             }
             spell_has_legal_targets_for_cast_with_view(
-                &hypothetical,
+                hypothetical,
                 proposal,
                 spell_id,
                 program_override,
@@ -3959,7 +3976,7 @@ pub(crate) fn apply_spell_cost_modifiers(
         match &reduction.optional_life_additional_cost {
             Some(optional) => spell
                 .optional_costs_paid
-                .was_paid_label(&optional_life_cost_reduction_label(optional, source)),
+                .was_paid_label(optional_life_cost_reduction_label(optional, source)),
             None => true,
         }
     }
@@ -4013,8 +4030,8 @@ pub(crate) fn apply_spell_cost_modifiers(
                 }
             }
         }
-        if let Some(reduction) = static_ability.this_spell_cost_reduction_mana_cost() {
-            if crate::static_abilities::this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
+        if let Some(reduction) = static_ability.this_spell_cost_reduction_mana_cost()
+            && crate::static_abilities::this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
                 game,
                 spell.id,
                 &reduction.condition,
@@ -4030,7 +4047,6 @@ pub(crate) fn apply_spell_cost_modifiers(
                     reduction_pips.extend(reduction.reduction.pips().iter().cloned());
                 }
             }
-        }
         if !functions_in_current_zone {
             continue;
         }
@@ -4252,7 +4268,7 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
         match &reduction.optional_life_additional_cost {
             Some(optional) => spell
                 .optional_costs_paid
-                .was_paid_label(&optional_life_cost_reduction_label(optional, source)),
+                .was_paid_label(optional_life_cost_reduction_label(optional, source)),
             None => true,
         }
     }
@@ -4544,13 +4560,12 @@ pub(crate) fn resolve_this_spell_cost_reduction_value(
             crate::static_abilities::ThisSpellCostCondition::LifeTotalLessThanStarting,
             crate::effect::Value::X
         )
-    ) {
-        if let Some(player_state) = game.player(player) {
-            return player_state
-                .starting_life
-                .saturating_sub(player_state.life)
-                .max(0);
-        }
+    ) && let Some(player_state) = game.player(player)
+    {
+        return player_state
+            .starting_life
+            .saturating_sub(player_state.life)
+            .max(0);
     }
 
     resolve_cost_modifier_value(game, player, spell, &reduction.reduction)

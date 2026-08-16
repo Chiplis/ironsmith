@@ -1,7 +1,7 @@
 use crate::diagnostics::TextSpan;
+use crate::lexer::{OwnedLexToken, TokenWordView};
 use crate::model::ClauseVerbAst;
 use crate::recognition::{ParseDiagnostic, ParseExpectation, ParseOutcome, RuleId};
-use crate::front_end::lexer::{OwnedLexToken, TokenWordView};
 
 const TYPED_CLAUSE_HEAD_RULE: RuleId = RuleId::new("typed-effect-clause-head");
 

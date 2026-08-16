@@ -122,7 +122,7 @@ fn dynamic_word<'a, 'p>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn permission_surfaces_are_winnow_parsed() {

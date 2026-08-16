@@ -86,14 +86,14 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
         run: LineFamilyRuleHandler::Legacy(run_trailing_keyword_activation_line_family),
     },
     LineFamilyRuleDef {
-        id: RuleId::new("labeled-line"),
-        head: HeadDiscriminator::words(&[]),
-        run: LineFamilyRuleHandler::Legacy(run_labeled_line_family),
-    },
-    LineFamilyRuleDef {
         id: RuleId::new("max-speed-labeled-line"),
         head: HeadDiscriminator::words(&[]),
         run: LineFamilyRuleHandler::Legacy(run_max_speed_labeled_line_family),
+    },
+    LineFamilyRuleDef {
+        id: RuleId::new("labeled-line"),
+        head: HeadDiscriminator::words(&[]),
+        run: LineFamilyRuleHandler::Legacy(run_labeled_line_family),
     },
     LineFamilyRuleDef {
         id: RuleId::new("triggered-line"),
@@ -143,7 +143,9 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
     LineFamilyRuleDef {
         id: RuleId::new("assign-damage-as-unblocked-enchanted-creature-controller"),
         head: HeadDiscriminator::words(&["enchanted"]),
-        run: LineFamilyRuleHandler::Legacy(run_assign_damage_as_unblocked_enchanted_creature_controller_line_family),
+        run: LineFamilyRuleHandler::Legacy(
+            run_assign_damage_as_unblocked_enchanted_creature_controller_line_family,
+        ),
     },
     LineFamilyRuleDef {
         id: RuleId::new("champion-line"),
@@ -267,14 +269,12 @@ fn triggered_program_from_line_ast(
         LineAst::Triggered {
             trigger, effects, ..
         } => Some((trigger, effects)),
-        LineAst::Multiple(lines) => lines
-            .into_iter()
-            .find_map(triggered_program_from_line_ast),
+        LineAst::Multiple(lines) => lines.into_iter().find_map(triggered_program_from_line_ast),
         _ => None,
     }
 }
 
-fn attach_compiler_trigger_facts(
+pub(super) fn attach_compiler_trigger_facts(
     context: ParseContextView<'_>,
     dispatch: &mut LineDispatchResult,
 ) -> Result<(), CardTextError> {
@@ -338,6 +338,13 @@ fn attach_compiler_trigger_facts(
 fn dispatch_line_family_registry(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
+    // Sticker-sheet ticket rows are presentation data even when the text to
+    // the right of the dash looks like a trigger, activation, or keyword.
+    // Claim them before every ordinary line-family rule.
+    if let Some(dispatch) = super::line_family_handlers::sticker_sheet_ticket_marker_result(ctx) {
+        return ParseOutcome::matched(dispatch, span_from_tokens(&ctx.line.tokens));
+    }
+
     // Borrow preprocessing expands a removed-from-draft `The same is true`
     // ladder into independent leading-condition sentences. Preserve that
     // complete typed program before keyword discovery can claim consequence
@@ -345,7 +352,7 @@ fn dispatch_line_family_registry(
     match ParseOutcome::from_legacy_result_option(
         RuleId::new("removed-draft-leading-conditional-static-chain"),
         span_from_tokens(&ctx.line.tokens),
-        crate::families::keyword_static::parse_removed_draft_leading_conditional_static_sentence_chain(
+        crate::keyword_static::parse_removed_draft_leading_conditional_static_sentence_chain(
             &ctx.line.tokens,
         ),
     ) {
@@ -394,20 +401,32 @@ fn dispatch_line_family_registry(
             }
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => {
-                parse_trace::event(format!(
-                    "line-family: {} errored: {diagnostic:?}",
-                    rule.id
-                ));
+                parse_trace::event(format!("line-family: {} errored: {diagnostic:?}", rule.id));
                 diagnostics.push(diagnostic);
             }
         }
     }
 
-    match resolve_registry_candidates(
-        RuleId::new("line-family-registry"),
-        candidates,
-        diagnostics,
-    ) {
+    // `statement-probe`, `static-line`, and `statement-line` are deliberately
+    // broad terminal fallbacks. A typed line-family recognizer that accepts
+    // the complete line owns it; retaining a fallback interpretation beside
+    // that typed result turns ordinary specialization into a false semantic
+    // ambiguity. Ambiguities between two typed families remain strict.
+    let fallback_rule = |id: RuleId| {
+        matches!(
+            id.as_str(),
+            "statement-probe" | "static-line" | "statement-line"
+        )
+    };
+    if candidates
+        .iter()
+        .any(|candidate| !fallback_rule(candidate.metadata.id))
+    {
+        candidates.retain(|candidate| !fallback_rule(candidate.metadata.id));
+    }
+
+    match resolve_registry_candidates(RuleId::new("line-family-registry"), candidates, diagnostics)
+    {
         ParseOutcome::Match(matched) => {
             let rule_match = matched.value;
             let mut dispatch = rule_match.value;
@@ -455,9 +474,7 @@ fn dispatch_line_family_registry(
             ),
         )),
         ParseOutcome::Error(diagnostic) => {
-            parse_trace::event(format!(
-                "line-family: unsupported errored: {diagnostic:?}"
-            ));
+            parse_trace::event(format!("line-family: unsupported errored: {diagnostic:?}"));
             ParseOutcome::Error(diagnostic)
         }
     }

@@ -943,11 +943,11 @@ pub(super) fn resolve_stack_entry_full(
         && obj
             .as_ref()
             .is_some_and(|obj| obj.zone == Zone::Stack && obj.is_bestow_overlay_active());
-    if bestow_resolves_as_creature_after_illegal_target {
-        if let Some(stack_obj) = game.object_mut(entry.object_id) {
-            stack_obj.end_bestow_cast_overlay();
-            obj = Some(stack_obj.clone());
-        }
+    if bestow_resolves_as_creature_after_illegal_target
+        && let Some(stack_obj) = game.object_mut(entry.object_id)
+    {
+        stack_obj.end_bestow_cast_overlay();
+        obj = Some(stack_obj.clone());
     }
 
     // CR 702.140b: an illegally targeted mutating creature spell does not
@@ -959,27 +959,27 @@ pub(super) fn resolve_stack_entry_full(
     // If the spell/ability had targets and ALL are now invalid, it fizzles.
     // Bestow and Mutate are keyword-specific exceptions: each stops using its
     // alternative permanent behavior and continues resolving as a creature.
-    if !entry.targets.is_empty() && all_targets_invalid {
-        if !bestow_resolves_as_creature_after_illegal_target
-            && !mutate_resolves_as_creature_after_illegal_target
+    if !entry.targets.is_empty()
+        && all_targets_invalid
+        && !bestow_resolves_as_creature_after_illegal_target
+        && !mutate_resolves_as_creature_after_illegal_target
+    {
+        // Spell fizzles - move to graveyard without executing effects
+        if let Some(obj) = &obj
+            && obj.zone == Zone::Stack
+            && !entry.is_ability
         {
-            // Spell fizzles - move to graveyard without executing effects
-            if let Some(obj) = &obj
-                && obj.zone == Zone::Stack
-                && !entry.is_ability
-            {
-                // Move spell to owner's graveyard (via replacement effects)
-                let _ = crate::effects::zones::apply_zone_change(
-                    game,
-                    entry.object_id,
-                    Zone::Stack,
-                    Zone::Graveyard,
-                    crate::events::cause::EventCause::from_game_rule(),
-                    &mut *decision_maker,
-                );
-            }
-            return Ok(());
+            // Move spell to owner's graveyard (via replacement effects)
+            let _ = crate::effects::zones::apply_zone_change(
+                game,
+                entry.object_id,
+                Zone::Stack,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_game_rule(),
+                &mut *decision_maker,
+            );
         }
+        return Ok(());
     }
 
     if let Some(trigger_identity) = entry.trigger_identity {
@@ -1281,10 +1281,14 @@ pub(super) fn resolve_stack_entry_full(
                 }
                 // If this is an Aura, attach it to its target as it enters
                 if obj.subtypes.contains(&Subtype::Aura) {
-                    let attached = entry.targets.iter().find_map(|target| match target {
-                        Target::Object(id) => Some(crate::object::AttachmentTarget::Object(*id)),
-                        Target::Player(id) => Some(crate::object::AttachmentTarget::Player(*id)),
-                    });
+                    let attached = entry
+                        .targets
+                        .iter()
+                        .map(|target| match target {
+                            Target::Object(id) => crate::object::AttachmentTarget::Object(*id),
+                            Target::Player(id) => crate::object::AttachmentTarget::Player(*id),
+                        })
+                        .next();
                     if let Some(target) = attached
                         && game.attach_object_to_target(result.new_id, target)
                     {

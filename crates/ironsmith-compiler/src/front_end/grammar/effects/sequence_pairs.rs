@@ -52,7 +52,7 @@ pub(super) fn sequence_phrase<'a>(
 ) -> impl Parser<LexStream<'a>, (), winnow::error::ErrMode<winnow::error::ContextError>> {
     move |input: &mut LexStream<'a>| {
         for word in expected {
-            sequence_word(*word).parse_next(input)?;
+            sequence_word(word).parse_next(input)?;
         }
         Ok(())
     }

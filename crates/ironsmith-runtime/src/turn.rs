@@ -677,9 +677,11 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
                     && chars.static_abilities.iter().any(|static_ability| {
                         static_ability.id() == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
                     });
-                let untap_player = controlled_by_active
-                    .then_some(controller)
-                    .unwrap_or(active_player);
+                let untap_player = if controlled_by_active {
+                    controller
+                } else {
+                    active_player
+                };
                 let blocked_by_restriction = !game.can_untap_during_step(id, untap_player);
                 if has_doesnt_untap || blocked_by_restriction {
                     None

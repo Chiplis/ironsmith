@@ -1090,19 +1090,19 @@ pub(super) fn test_geist_of_saint_traft_attack_trigger() {
     });
     assert!(trigger.is_some());
 
-    if let Some(ability) = trigger {
-        if let AbilityKind::Triggered(triggered) = &ability.kind {
-            // Verify the effect creates a token
-            assert!(!triggered.effects.is_empty());
-            let has_token_effect = triggered
-                .effects
-                .iter()
-                .any(|e| format!("{:?}", e).contains("CreateToken"));
-            assert!(
-                has_token_effect,
-                "Geist's trigger should create a token with modifications"
-            );
-        }
+    if let Some(ability) = trigger
+        && let AbilityKind::Triggered(triggered) = &ability.kind
+    {
+        // Verify the effect creates a token
+        assert!(!triggered.effects.is_empty());
+        let has_token_effect = triggered
+            .effects
+            .iter()
+            .any(|e| format!("{:?}", e).contains("CreateToken"));
+        assert!(
+            has_token_effect,
+            "Geist's trigger should create a token with modifications"
+        );
     }
 }
 
@@ -1121,21 +1121,21 @@ pub(super) fn test_geist_token_has_correct_modifications() {
         .find(|a| matches!(a.kind, AbilityKind::Triggered(_)));
     assert!(trigger.is_some());
 
-    if let Some(ability) = trigger {
-        if let AbilityKind::Triggered(triggered) = &ability.kind {
-            // Find the token creation effect
-            let token_effect = triggered
-                .effects
-                .iter()
-                .find(|e| format!("{:?}", e).contains("CreateToken"));
-            assert!(
-                token_effect.is_some(),
-                "Should have a token creation effect"
-            );
+    if let Some(ability) = trigger
+        && let AbilityKind::Triggered(triggered) = &ability.kind
+    {
+        // Find the token creation effect
+        let token_effect = triggered
+            .effects
+            .iter()
+            .find(|e| format!("{:?}", e).contains("CreateToken"));
+        assert!(
+            token_effect.is_some(),
+            "Should have a token creation effect"
+        );
 
-            // The actual token properties are tested via integration tests
-            // that create the token and verify its characteristics
-        }
+        // The actual token properties are tested via integration tests
+        // that create the token and verify its characteristics
     }
 }
 
@@ -1549,7 +1549,7 @@ pub(super) fn test_cleanup_discard_decision() {
 
     // Add 9 cards to hand (2 over max hand size of 7)
     for i in 0..9 {
-        let card = CardBuilder::new(CardId::new(), &format!("Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Card {}", i))
             .card_types(vec![CardType::Sorcery])
             .build();
         game.create_object_from_card(&card, alice, Zone::Hand);
@@ -1605,7 +1605,7 @@ pub(super) fn necropotence_cleanup_discard_exiles_discarded_card() {
 
     let mut hand_ids = Vec::new();
     for idx in 0..8 {
-        let card = CardBuilder::new(CardId::new(), &format!("Cleanup Card {idx}"))
+        let card = CardBuilder::new(CardId::new(), format!("Cleanup Card {idx}"))
             .card_types(vec![CardType::Sorcery])
             .build();
         hand_ids.push(game.create_object_from_card(&card, alice, Zone::Hand));
@@ -1788,7 +1788,7 @@ pub(super) fn test_may_effect_with_callback() {
 
     // Add some cards to library so draw can succeed
     for i in 0..3 {
-        let card = CardBuilder::new(CardId::new(), &format!("Library Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Library Card {}", i))
             .card_types(vec![CardType::Sorcery])
             .build();
         game.create_object_from_card(&card, alice, Zone::Library);
@@ -3533,8 +3533,7 @@ pub(super) fn demilich_casts_from_graveyard_by_exiling_four_instant_or_sorcery_c
         game.player(alice)
             .expect("Alice exists")
             .graveyard
-            .iter()
-            .any(|id| *id == artifact_id),
+            .contains(&artifact_id),
         "the artifact card should remain in the graveyard because it is not a legal Demilich cost card"
     );
 }

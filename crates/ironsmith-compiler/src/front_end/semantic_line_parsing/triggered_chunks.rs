@@ -5,13 +5,13 @@
 //! text or token shapes.
 
 use super::*;
-use crate::model::ast::TriggerIntroSurfaceAst;
 use crate::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
     bind_condition_counter_antecedent_in_effects,
     bind_random_count_condition_antecedent_in_effects, predicate_object_filter_antecedent,
     predicate_source_counter_antecedent, retarget_it_animations_to_source,
 };
+use crate::model::ast::TriggerIntroSurfaceAst;
 use crate::model::facts::TriggeredLineSemanticFacts;
 
 fn merge_optional_predicates(
@@ -300,7 +300,7 @@ pub(crate) fn infer_triggered_ability_functional_zones_from_facts(
         _ => vec![Zone::Battlefield],
     };
     if let Some(explicit_zone) = &facts.explicit_zone {
-        zones = vec![explicit_zone.clone()];
+        zones = vec![*explicit_zone];
     }
     if facts.returns_self_from_graveyard && !trigger_references_attached_object(trigger) {
         zones = vec![Zone::Graveyard];

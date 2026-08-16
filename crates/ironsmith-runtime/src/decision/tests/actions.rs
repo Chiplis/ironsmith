@@ -333,7 +333,7 @@ fn test_can_cast_spell_uses_conditional_spell_flash_threshold() {
     for (idx, mv) in [1u8, 2, 3, 4].into_iter().enumerate() {
         let card = CardBuilder::new(
             CardId::from_raw(1300 + idx as u32),
-            &format!("MV{mv} Graveyard Card"),
+            format!("MV{mv} Graveyard Card"),
         )
         .card_types(vec![CardType::Instant])
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mv)]]))
@@ -380,11 +380,10 @@ fn conditional_flash_model_is_inactive_until_its_typed_condition_is_true() {
             .with_type(CardType::Artifact)
             .you_control(),
     );
-    let modeled = crate::static_abilities::CompiledStaticAbility::flash()
-        .with_labeled_condition(
-            condition,
-            "As long as you control an artifact, you may cast this spell as though it had flash",
-        );
+    let modeled = crate::static_abilities::CompiledStaticAbility::flash().with_labeled_condition(
+        condition,
+        "As long as you control an artifact, you may cast this spell as though it had flash",
+    );
     game.object_mut(spell_id)
         .expect("spell should exist")
         .abilities_mut()
@@ -803,7 +802,7 @@ fn test_commander_tax_applies_to_recasts_from_command_zone() {
     for idx in 0..2 {
         let land = CardBuilder::new(
             CardId::from_raw(2100 + idx),
-            &format!("Green Source {}", idx),
+            format!("Green Source {}", idx),
         )
         .card_types(vec![CardType::Land])
         .build();
@@ -836,7 +835,7 @@ fn test_commander_tax_applies_to_recasts_from_command_zone() {
     for idx in 0..2 {
         let land = CardBuilder::new(
             CardId::from_raw(2200 + idx),
-            &format!("Extra Green Source {}", idx),
+            format!("Extra Green Source {}", idx),
         )
         .card_types(vec![CardType::Land])
         .build();

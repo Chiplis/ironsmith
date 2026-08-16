@@ -54,12 +54,12 @@ use super::lexer::{
     LexStream, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView, lex_line,
     locate_token_word, render_token_slice, token_word_refs, trim_lexed_commas,
 };
+#[cfg(test)]
+use super::preprocess::preprocess_document;
 use super::preprocess::{
-    PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
-    preprocess_document_with_provenance,
+    PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document_with_provenance,
     strip_parenthetical_segments,
 };
-use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
 use super::token_primitives::{
     clone_sentence_chunk_tokens, lexed_head_words, locate_index as locate_token_index,
     strip_leading_if_you_do_lexed,
@@ -69,8 +69,6 @@ use super::util::{
     parse_saga_chapter_prefix, parse_subtype_flexible, parser_trace, parser_trace_enabled,
     span_from_tokens,
 };
-use std::sync::LazyLock;
-
 const TOKEN_NAME_SUFFIX_WORD: &str = "twin";
 const LESS_THAN_ONE_MANA_REDUCTION_REMINDER: &str =
     "this effect can't reduce the mana in that cost to less than one mana.";
@@ -541,15 +539,14 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
     });
     let is_nonpermanent_spell =
         builder_has_nonpermanent_spell_type || metadata_has_nonpermanent_spell_type;
-    if crate::grammar::abilities::is_shuffle_into_library_from_graveyard_line_lexed(
-        tokens,
-    ) {
+    if crate::grammar::abilities::is_shuffle_into_library_from_graveyard_line_lexed(tokens) {
         return false;
     }
-    let is_effect_redirect = crate::grammar::effects::clause_pattern_shapes::parse_redirect_next_damage_tokens(tokens).is_some();
-    let has_statement_family =
-        crate::grammar::structure::classify_statement_line_family_lexed(tokens)
+    let is_effect_redirect =
+        crate::grammar::effects::clause_pattern_shapes::parse_redirect_next_damage_tokens(tokens)
             .is_some();
+    let has_statement_family =
+        crate::grammar::structure::classify_statement_line_family_lexed(tokens).is_some();
     is_nonpermanent_spell
         && (document_grammar::parse_nonpermanent_statement_surface(tokens).is_some()
             || is_effect_redirect
@@ -745,8 +742,7 @@ fn should_parse_delayed_trigger_line_as_spell_effect(
 fn looks_like_activation_cost_prefix(tokens: &[OwnedLexToken]) -> bool {
     matches!(
         document_grammar::recognize_activation_cost_head(tokens),
-        crate::recognition::ParseOutcome::Match(_)
-            | crate::recognition::ParseOutcome::Error(_)
+        crate::recognition::ParseOutcome::Match(_) | crate::recognition::ParseOutcome::Error(_)
     )
 }
 
@@ -769,7 +765,7 @@ fn looks_like_static_line_tokens(tokens: &[OwnedLexToken]) -> bool {
 
 fn looks_like_static_line_lexed(line: &PreprocessedLine) -> bool {
     if let Some(tokens) = tokens_after_non_keyword_label_prefix(line) {
-        return looks_like_static_line_tokens(&tokens);
+        return looks_like_static_line_tokens(tokens);
     }
     looks_like_static_line_tokens(&line.tokens)
 }
@@ -1079,43 +1075,37 @@ fn normalize_named_source_sentence_for_builder(
     let subject = if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Creature)
+        .contains(&crate::types::CardType::Creature)
     {
         "this creature"
     } else if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Land)
+        .contains(&crate::types::CardType::Land)
     {
         "this land"
     } else if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Artifact)
+        .contains(&crate::types::CardType::Artifact)
     {
         "this artifact"
     } else if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Enchantment)
+        .contains(&crate::types::CardType::Enchantment)
     {
         "this enchantment"
     } else if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Planeswalker)
+        .contains(&crate::types::CardType::Planeswalker)
     {
         "this planeswalker"
     } else if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Battle)
+        .contains(&crate::types::CardType::Battle)
     {
         "this battle"
     } else {
@@ -1319,43 +1309,37 @@ fn named_source_subject_for_builder(builder: &CardDefinitionBuilder) -> &'static
     if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Creature)
+        .contains(&crate::types::CardType::Creature)
     {
         "this creature"
     } else if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Land)
+        .contains(&crate::types::CardType::Land)
     {
         "this land"
     } else if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Artifact)
+        .contains(&crate::types::CardType::Artifact)
     {
         "this artifact"
     } else if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Enchantment)
+        .contains(&crate::types::CardType::Enchantment)
     {
         "this enchantment"
     } else if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Planeswalker)
+        .contains(&crate::types::CardType::Planeswalker)
     {
         "this planeswalker"
     } else if builder
         .card_builder
         .card_types_ref()
-        .iter()
-        .any(|card_type| *card_type == crate::types::CardType::Battle)
+        .contains(&crate::types::CardType::Battle)
     {
         "this battle"
     } else {
@@ -1555,23 +1539,31 @@ struct SourceAliasWordPiece<'a> {
     text: &'a str,
     span: TextSpan,
     possessive: bool,
+    sentence: usize,
 }
 
 fn source_alias_word_pieces(tokens: &[OwnedLexToken]) -> Vec<SourceAliasWordPiece<'_>> {
-    tokens
-        .iter()
-        .flat_map(|token| {
-            let possessive = token.slice.contains('\'') || token.slice.contains('’');
+    let mut sentence = 0usize;
+    let mut pieces = Vec::new();
+    for token in tokens {
+        if token.kind == TokenKind::Period {
+            sentence += 1;
+            continue;
+        }
+        let possessive = token.slice.contains('\'') || token.slice.contains('’');
+        pieces.extend(
             token
                 .parser_word_pieces()
                 .iter()
-                .map(move |piece: &TokenWordPiece| SourceAliasWordPiece {
+                .map(|piece: &TokenWordPiece| SourceAliasWordPiece {
                     text: piece.text.as_str(),
                     span: piece.span,
                     possessive,
-                })
-        })
-        .collect()
+                    sentence,
+                }),
+        );
+    }
+    pieces
 }
 
 fn source_alias_word_span_matches(
@@ -1715,8 +1707,14 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
             .is_some_and(|piece| piece.text == "control")
         && matches!(previous_word, Some("gain" | "gains" | "lose" | "loses"))
         && next_word == Some("of");
+    let is_combat_damage_rules_term = end_word == start_word + 1
+        && pieces
+            .get(start_word)
+            .is_some_and(|piece| piece.text == "combat")
+        && next_word == Some("damage");
 
     is_control_action_noun
+        || is_combat_damage_rules_term
         || next_word == Some(TOKEN_NAME_SUFFIX_WORD)
         // A named vote option remains option data in later references such as
         // "cards equal to the number of truth votes". It cannot denote the
@@ -1788,6 +1786,9 @@ fn source_alias_occurrence_is_created_token_name_lexed(
     start_word: usize,
     end_word: usize,
 ) -> bool {
+    let Some(sentence) = pieces.get(start_word).map(|piece| piece.sentence) else {
+        return false;
+    };
     let previous_word = start_word
         .checked_sub(1)
         .and_then(|idx| pieces.get(idx))
@@ -1796,7 +1797,7 @@ fn source_alias_occurrence_is_created_token_name_lexed(
         || pieces[..start_word]
             .iter()
             .rev()
-            .take_while(|piece| !matches!(piece.text, "and" | "then"))
+            .take_while(|piece| piece.sentence == sentence && !matches!(piece.text, "and" | "then"))
             .take(12)
             .any(|piece| matches!(piece.text, "create" | "creates"));
     follows_create
@@ -1804,7 +1805,7 @@ fn source_alias_occurrence_is_created_token_name_lexed(
             .get(end_word..)
             .unwrap_or_default()
             .iter()
-            .take(8)
+            .take_while(|piece| piece.sentence == sentence)
             .any(|piece| matches!(piece.text, "token" | "tokens"))
 }
 
@@ -1939,6 +1940,1719 @@ fn looks_like_numeric_result_prefix_text(text: &str) -> bool {
         .is_ok_and(|tokens| document_grammar::parse_numeric_result_prefix_tokens(&tokens).is_some())
 }
 
+fn is_named_ability_label(label: &str) -> bool {
+    matches!(
+        label.to_ascii_lowercase().as_str(),
+        "alliance"
+            | "astral projection"
+            | "bigby's hand"
+            | "body-print"
+            | "boast"
+            | "catch"
+            | "cohort"
+            | "devouring monster"
+            | "diana"
+            | "exhaust"
+            | "gooooaaaalll!"
+            | "hero's sundering"
+            | "hunt for heresy"
+            | "machina"
+            | "mage hand"
+            | "megamorph"
+            | "morph"
+            | "psychic blades"
+            | "raid"
+            | "renew"
+            | "rope dart"
+            | "scorching ray"
+            | "share"
+            | "shieldwall"
+            | "sleight of hand"
+            | "smear campaign"
+            | "stunning strike"
+            | "teleport"
+            | "trance"
+            | "throw"
+            | "throw ..."
+            | "valiant"
+            | "waterbend"
+            | "... catch"
+    )
+}
+
+fn looks_like_ability_word_label(
+    label_tokens: &[OwnedLexToken],
+    preserve_as_choice_label: bool,
+) -> bool {
+    if preserve_as_choice_label {
+        return false;
+    }
+    !label_tokens.is_empty()
+        && !label_tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::Colon))
+        && token_word_refs(label_tokens).len() <= 4
+}
+
+/// Build the labeled public-route CST for the source-qualified
+/// ability-trigger event directly from its two independently typed halves.
+///
+/// The generic triggered-line probe also speculates across every comma in a
+/// line.  In a clause such as "a creature entering ... causes a triggered
+/// ability ... to trigger", those probes can let the complete effect body be
+/// claimed as a statement after the label is removed even though both the
+/// trigger and resolution have already parsed exactly.  Restrict this fast
+/// path to the qualified `AbilityTriggered` model so ordinary labeled
+/// triggers retain the existing ambiguity handling.
+fn parse_labeled_qualified_ability_trigger_cst(
+    line: &PreprocessedLine,
+) -> Option<TriggeredLineCst> {
+    let (trigger_with_intro, effect_tokens) = grammar::split_lexed_once_on_comma(&line.tokens)?;
+    let trigger_tokens = trigger_with_intro.get(1..)?;
+    let trigger = crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens))
+        .0
+        .ok()?;
+    if !matches!(
+        trigger,
+        crate::model::ast::TriggerSpec::AbilityTriggered {
+            source_filter: Some(_),
+            caused_by_source_entering: true,
+            ..
+        }
+    ) {
+        return None;
+    }
+    let effects = crate::parse_loss::capture(|| parse_effect_sentences_lexed(effect_tokens))
+        .0
+        .ok()?;
+    if effects.is_empty() {
+        return None;
+    }
+    let candidate = render_triggered_split_candidate(trigger_tokens, effect_tokens, None, None)?;
+    Some(candidate.into_cst(line, &line.tokens))
+}
+
+fn normalize_activation_cost_tokens_for_builder(
+    builder: &CardDefinitionBuilder,
+    line: &PreprocessedLine,
+    cost_tokens: Vec<OwnedLexToken>,
+) -> Result<Vec<OwnedLexToken>, CardTextError> {
+    let cost_text = render_token_slice(&cost_tokens);
+    if !normalized_line_mentions_source_alias(builder, cost_text.as_str()) {
+        return Ok(cost_tokens);
+    }
+    // Keep a directly parseable named-source cost intact so the typed cost
+    // model can retain its Oracle-facing source-reference surface.
+    if parse_activation_cost_tokens_rewrite(&cost_tokens).is_ok() {
+        return Ok(cost_tokens);
+    }
+    let Some(rewritten) = normalize_named_source_sentence_for_builder(builder, cost_text.as_str())
+    else {
+        return Ok(cost_tokens);
+    };
+    Ok(rewrite_line_normalized(line, rewritten.as_str())?.tokens)
+}
+
+fn rewrite_line_normalized(
+    line: &PreprocessedLine,
+    normalized: &str,
+) -> Result<PreprocessedLine, CardTextError> {
+    let mut rewritten = line.clone();
+    rewritten.info.normalized.original = normalized.to_string();
+    rewritten.info.normalized.normalized = normalized.to_string();
+    rewritten.info.normalized.char_map = (0..normalized.len()).collect();
+    rewritten.tokens = super::lexer::lex_line(normalized, line.info.line_index)?;
+    Ok(rewritten)
+}
+
+fn rewrite_line_tokens(line: &PreprocessedLine, tokens: &[OwnedLexToken]) -> PreprocessedLine {
+    let normalized = render_token_slice(tokens);
+    let mut rewritten = line.clone();
+    rewritten.info.normalized.original = normalized.clone();
+    rewritten.info.normalized.normalized = normalized.clone();
+    rewritten.info.normalized.char_map = (0..normalized.len()).collect();
+    rewritten.tokens = tokens.to_vec();
+    rewritten
+}
+
+fn render_original_text_for_token_slice(
+    line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Option<String> {
+    let span = span_from_tokens(tokens)?;
+    let original_span = map_span_to_original(
+        span,
+        line.info.normalized.normalized.as_str(),
+        line.info.normalized.original.as_str(),
+        &line.info.normalized.char_map,
+    );
+    line.info
+        .normalized
+        .original
+        .get(original_span.start..original_span.end)
+        .map(str::to_string)
+}
+
+fn try_parse_triggered_line_with_named_source_rewrite(
+    builder: &CardDefinitionBuilder,
+    line: &PreprocessedLine,
+    text: &str,
+) -> Result<Option<TriggeredLineCst>, CardTextError> {
+    // This fallback can be reached with `LineInfo::raw_line` so an authored
+    // comma-bearing source name is still available. Reapply the same
+    // parenthetical preprocessing used to build `line.tokens` before parsing
+    // the rewritten candidate; reminder text is presentation, not a second
+    // executable trigger body.
+    let semantic_text = strip_parenthetical_segments(text);
+    let Some(rewritten) =
+        normalize_named_source_trigger_for_builder(builder, semantic_text.as_str())
+    else {
+        return Ok(None);
+    };
+
+    let mut candidates = vec![rewritten];
+    if line_mentions_this_permanent_token_phrase(candidates[0].as_str()) {
+        for subject in [
+            "this creature",
+            "this artifact",
+            "this enchantment",
+            "this land",
+            "this planeswalker",
+            "this battle",
+        ] {
+            let candidate = candidates[0].replace("this permanent", subject);
+            if candidate != candidates[0] {
+                candidates.push(candidate);
+            }
+        }
+    }
+
+    for candidate in candidates {
+        let rewritten_line = rewrite_line_normalized(line, candidate.as_str())?;
+        if let Ok(mut triggered) = parse_triggered_line_cst(&rewritten_line) {
+            restore_authored_named_source_trigger_subject(builder, line, text, &mut triggered)?;
+            return Ok(Some(triggered));
+        }
+    }
+
+    Ok(None)
+}
+
+fn restore_authored_named_source_trigger_subject(
+    builder: &CardDefinitionBuilder,
+    line: &PreprocessedLine,
+    text: &str,
+    triggered: &mut TriggeredLineCst,
+) -> Result<(), CardTextError> {
+    let Some(authored_subject) = leading_named_source_trigger_subject_for_builder(builder, text)
+    else {
+        return Ok(());
+    };
+
+    let generic_subject = named_source_subject_for_builder(builder);
+    let trigger_text = render_token_slice(&triggered.trigger_parse_tokens);
+    let rest = trigger_text.strip_prefix(generic_subject).or_else(|| {
+        // Preprocessing and some typed trigger shapes canonicalize a named
+        // source to the source-only subject "this". Restore its authored
+        // provenance after either canonicalization.
+        trigger_text.strip_prefix("this").filter(|rest| {
+            rest.chars()
+                .next()
+                .is_some_and(|ch| ch.is_whitespace() || ch == '\'' || ch == '’')
+        })
+    });
+    if let Some(rest) = rest {
+        triggered.trigger_parse_tokens =
+            lex_line(&format!("{authored_subject}{rest}"), line.info.line_index)?;
+    }
+    Ok(())
+}
+
+fn leading_named_source_trigger_subject_for_builder(
+    builder: &CardDefinitionBuilder,
+    text: &str,
+) -> Option<String> {
+    let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let (intro_len, after_intro) = if let Some(after_intro) = lower.strip_prefix("when ") {
+        ("when ".len(), after_intro)
+    } else {
+        ("whenever ".len(), lower.strip_prefix("whenever ")?)
+    };
+
+    source_name_aliases_for_builder(builder)
+        .into_iter()
+        .find_map(|alias| {
+            let rest = after_intro.strip_prefix(alias.as_str())?;
+            if rest
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_alphanumeric() || ch == '\'' || ch == '’')
+            {
+                return None;
+            }
+            trimmed
+                .get(intro_len..intro_len + alias.len())
+                .map(str::to_string)
+        })
+}
+
+fn line_mentions_this_permanent_token_phrase(text: &str) -> bool {
+    lex_line(text.trim(), 0)
+        .ok()
+        .is_some_and(|tokens| document_grammar::parse_this_permanent_surface(&tokens).is_some())
+}
+
+fn line_starts_with_lparen_token(line: &PreprocessedLine) -> bool {
+    line.tokens
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::LParen)
+}
+
+fn is_fully_parenthetical_line(line: &PreprocessedLine) -> bool {
+    line_starts_with_lparen_token(line)
+        && line
+            .tokens
+            .last()
+            .is_some_and(|token| token.kind == TokenKind::RParen)
+}
+
+fn is_delayed_when_that_dies_this_turn_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    document_grammar::parse_delayed_prior_object_dies_surface(tokens).is_some()
+}
+
+fn is_delayed_when_that_leaves_battlefield_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    effect_grammar::delayed_sentence_shapes::parse_delayed_tagged_leaves_shape(tokens).is_some()
+}
+
+fn is_delayed_next_end_step_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens).is_some()
+}
+
+fn is_attack_group_combat_damage_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    grammar::has_phrase(tokens, &["either", "of", "those", "creatures"])
+        && grammar::has_phrase(tokens, &["deals", "combat", "damage"])
+        && grammar::has_phrase(tokens, &["this", "combat"])
+}
+
+fn split_trigger_sentence_chunks_rewrite_lexed(
+    tokens: &[OwnedLexToken],
+) -> Vec<Vec<OwnedLexToken>> {
+    let sentence_tokens = split_lexed_sentences(tokens)
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    if sentence_tokens.len() <= 1 {
+        return sentence_tokens
+            .into_iter()
+            .map(|sentence| sentence.to_vec())
+            .collect();
+    }
+
+    let mut chunks = Vec::new();
+    let mut current = Vec::new();
+    let mut current_starts_with_trigger = false;
+
+    for sentence_tokens in sentence_tokens {
+        let sentence_starts_with_trigger = line_starts_with_trigger_intro_tokens(sentence_tokens);
+        let sentence_is_delayed_followup =
+            is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens)
+                || is_delayed_when_that_leaves_battlefield_followup_sentence(sentence_tokens)
+                || is_delayed_next_end_step_followup_sentence(sentence_tokens);
+        let sentence_is_attack_group_followup =
+            is_attack_group_combat_damage_followup_sentence(sentence_tokens);
+        if !current.is_empty()
+            && current_starts_with_trigger
+            && sentence_starts_with_trigger
+            && !sentence_is_delayed_followup
+            && !sentence_is_attack_group_followup
+        {
+            if let Some(chunk) = clone_sentence_chunk_tokens(tokens, &current) {
+                chunks.push(chunk);
+            }
+            current.clear();
+            current_starts_with_trigger = false;
+        }
+        if current.is_empty() {
+            current_starts_with_trigger = sentence_starts_with_trigger;
+        }
+        current.push(sentence_tokens);
+    }
+
+    if !current.is_empty()
+        && let Some(chunk) = clone_sentence_chunk_tokens(tokens, &current)
+    {
+        chunks.push(chunk);
+    }
+
+    chunks
+}
+
+fn starts_with_when_one_or_more_this_way_clause(tokens: &[OwnedLexToken]) -> bool {
+    let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+        .map(|(before, _after)| grammar::has_phrase(before, &["this", "way"]))
+        .unwrap_or(false);
+    document_grammar::parse_when_one_or_more_surface(tokens).is_some() && this_way_in_prefix
+}
+
+fn rewrite_when_one_or_more_this_way_line(line: &PreprocessedLine) -> PreprocessedLine {
+    let rewritten_tokens =
+        crate::effect_sentences::rewrite_when_one_or_more_this_way_clause_prefix(&line.tokens);
+    rewrite_line_tokens(line, &rewritten_tokens)
+}
+
+fn split_reveal_first_draw_line_rewrite_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<Vec<OwnedLexToken>>> {
+    let sentences = split_lexed_sentences(tokens)
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    if sentences.len() <= 1 {
+        return None;
+    }
+
+    let first_tokens = *sentences.first()?;
+    document_grammar::parse_reveal_first_draw_surface(first_tokens)?;
+
+    let tail_tokens = clone_sentence_chunk_tokens(tokens, &sentences[1..])?;
+    document_grammar::parse_reveal_first_draw_followup_surface(&tail_tokens)?;
+
+    Some(vec![first_tokens.to_vec(), tail_tokens])
+}
+
+fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
+    let classification_tokens = tokens_after_non_keyword_label_prefix(line).unwrap_or(&line.tokens);
+
+    if is_bullet_line(line) {
+        return "bullet-line-without-modal-header";
+    }
+    if line_starts_with_trigger_intro_tokens(&line.tokens) {
+        return "triggered-line-not-yet-supported";
+    }
+    if split_lexed_once_on_colon_outside_quotes(&line.tokens).is_some() {
+        return "activated-line-not-yet-supported";
+    }
+    if matches!(
+        document_grammar::parse_unsupported_line_head(classification_tokens),
+        Some(document_grammar::UnsupportedLineHeadSurface::ModalChoice)
+    ) {
+        return "modal-header-not-yet-supported";
+    }
+    if matches!(
+        super::grammar::structure::classify_statement_line_family_lexed(&line.tokens),
+        Some(super::grammar::structure::StatementLineFamily::ArtRating)
+    ) {
+        return "outside-the-game-rating-not-supported";
+    }
+    if looks_like_statement_line_lexed(line) {
+        return "statement-line-not-yet-supported";
+    }
+    if looks_like_static_line_lexed(line) {
+        return "static-line-not-yet-supported";
+    }
+    "unclassified-line-family"
+}
+
+fn try_parse_labeled_line_dispatch(
+    preprocessed: &PreprocessedDocument,
+    idx: usize,
+    line: &PreprocessedLine,
+    allow_unsupported: bool,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    // Prefer the authored token stream for the narrow labeled trigger whose
+    // event is itself a source-qualified triggered-ability event.  Generic
+    // preprocessing is allowed to strip presentation labels and rewrite
+    // source nouns before line-family dispatch; for this event both the
+    // trigger and its complete resolution already have exact typed parsers,
+    // so retain the label and build the Triggered CST before either half can
+    // be claimed as a standalone statement.
+    if let Some((label, label_tokens, body_tokens)) =
+        split_label_prefix_lexed(&line.info.source_tokens)
+    {
+        let body_line = rewrite_line_tokens(line, body_tokens);
+        let is_eminence = label.eq_ignore_ascii_case("eminence");
+        let mut authored_trigger = parse_labeled_qualified_ability_trigger_cst(&body_line);
+        if authored_trigger.is_none() && is_eminence {
+            authored_trigger = parse_triggered_line_cst(&body_line).ok();
+        }
+        if authored_trigger.is_none() && is_eminence {
+            let authored_body = render_original_text_for_token_slice(line, body_tokens)
+                .unwrap_or_else(|| render_token_slice(body_tokens));
+            authored_trigger = try_parse_triggered_line_with_named_source_rewrite(
+                &preprocessed.builder,
+                line,
+                &authored_body,
+            )?;
+        }
+        if authored_trigger.is_none()
+            && is_eminence
+            && let Some(spec) = super::grammar::structure::split_triggered_conditional_clause_lexed(
+                &body_line.tokens,
+                1,
+            )
+        {
+            authored_trigger = Some(TriggeredLineCst {
+                info: line.info.clone(),
+                full_text: render_token_slice(&body_line.tokens),
+                full_parse_tokens: body_line.tokens.clone(),
+                trigger_parse_tokens: spec.trigger_tokens.to_vec(),
+                effect_parse_tokens: spec.effects_tokens.to_vec(),
+                intervening_if: Some(spec.predicate),
+                max_triggers_per_turn: None,
+                chosen_option: None,
+                presentation: Some(PresentationLabel::AbilityWord("Eminence".to_string())),
+            });
+        }
+        if line_starts_with_trigger_intro_tokens(&body_line.tokens)
+            && let Some(mut triggered) = authored_trigger
+        {
+            if looks_like_ability_word_label(label_tokens, false) {
+                triggered.presentation = Some(trigger_presentation(label_tokens, &label));
+            }
+            let (triggered, next_idx) =
+                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+            return Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Triggered(triggered),
+                next_idx,
+            )));
+        }
+    }
+
+    let Some((label, label_tokens, body_tokens)) = split_label_prefix_lexed(&line.tokens) else {
+        return Ok(None);
+    };
+
+    let is_named_label = is_named_ability_label(label.as_str());
+    let max_speed_chosen_option = label
+        .eq_ignore_ascii_case("max speed")
+        .then_some(ChosenOptionContext::MaxSpeed);
+    let preserve_as_choice_label = labeled_choice_block_has_peer(&preprocessed.items, idx)
+        && labeled_choice_block_has_named_option_header(&preprocessed.items, idx);
+    let presentation = (!preserve_as_choice_label).then(|| {
+        activated_presentation_from_preprocessed_line(line)
+            .unwrap_or_else(|| PresentationLabel::AbilityWord(label.clone()))
+    });
+    if document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_some() {
+        return Ok(None);
+    }
+
+    if let Some(triggered) = parse_case_to_solve_line_cst(line, label_tokens, body_tokens)? {
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Triggered(triggered),
+            idx + 1,
+        )));
+    }
+
+    let authored_body_text = render_original_text_for_token_slice(line, body_tokens);
+    let body_line = rewrite_line_tokens(line, body_tokens);
+    if label.eq_ignore_ascii_case("eminence")
+        && let Some((trigger_with_intro, after_trigger)) =
+            grammar::split_lexed_once_on_comma(&body_line.tokens)
+        && let Some((_source_zone_condition, effect_tokens)) =
+            grammar::split_lexed_once_on_comma(after_trigger)
+        && trigger_with_intro.len() > 1
+    {
+        let source_zone_condition = PredicateAst::SourceMatches(crate::ObjectFilter {
+            any_of: vec![
+                crate::ObjectFilter {
+                    zone: Some(crate::zone::Zone::Command),
+                    ..Default::default()
+                },
+                crate::ObjectFilter {
+                    zone: Some(crate::zone::Zone::Battlefield),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        });
+        let triggered = TriggeredLineCst {
+            info: line.info.clone(),
+            full_text: render_token_slice(&body_line.tokens),
+            full_parse_tokens: body_line.tokens.clone(),
+            trigger_parse_tokens: trigger_with_intro[1..].to_vec(),
+            effect_parse_tokens: effect_tokens.to_vec(),
+            intervening_if: Some(source_zone_condition),
+            max_triggers_per_turn: None,
+            chosen_option: None,
+            presentation: Some(PresentationLabel::AbilityWord("Eminence".to_string())),
+        };
+        let (triggered, next_idx) =
+            extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Triggered(triggered),
+            next_idx,
+        )));
+    }
+    let labeled_activation = if (!line_starts_with_lparen_token(line)
+        || is_fully_parenthetical_line(line))
+        && let Some((cost_tokens, effect_parse_tokens)) =
+            split_activation_text_tokens_lexed(&body_line.tokens)
+    {
+        Some((cost_tokens, effect_parse_tokens))
+    } else {
+        None
+    };
+    let prefer_activation = labeled_activation
+        .as_ref()
+        .is_some_and(|(cost_tokens, _)| looks_like_activation_cost_prefix(cost_tokens));
+
+    if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
+        if let Some(mut triggered) = parse_labeled_qualified_ability_trigger_cst(&body_line)
+            .or_else(|| parse_triggered_line_cst(&body_line).ok())
+        {
+            restore_authored_named_source_trigger_subject(
+                &preprocessed.builder,
+                line,
+                authored_body_text
+                    .as_deref()
+                    .unwrap_or(body_line.info.normalized.normalized.as_str()),
+                &mut triggered,
+            )?;
+            if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
+                triggered.chosen_option =
+                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
+            }
+            if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
+                triggered.presentation = trigger_presentation_from_preprocessed_line(line)
+                    .or_else(|| Some(trigger_presentation(label_tokens, &label)));
+            }
+            let (triggered, next_idx) =
+                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+            return Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Triggered(triggered),
+                next_idx,
+            )));
+        }
+        if let Some(mut triggered) = try_parse_triggered_line_with_named_source_rewrite(
+            &preprocessed.builder,
+            line,
+            authored_body_text
+                .as_deref()
+                .unwrap_or(body_line.info.normalized.normalized.as_str()),
+        )? {
+            if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
+                triggered.chosen_option =
+                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
+            }
+            if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
+                triggered.presentation = trigger_presentation_from_preprocessed_line(line)
+                    .or_else(|| Some(trigger_presentation(label_tokens, &label)));
+            }
+            let (triggered, next_idx) =
+                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+            return Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Triggered(triggered),
+                next_idx,
+            )));
+        }
+        if allow_unsupported && is_named_label {
+            return Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Unsupported(UnsupportedLineCst {
+                    info: line.info.clone(),
+                    reason_code: "triggered-line-not-yet-supported",
+                }),
+                idx + 1,
+            )));
+        }
+        if is_named_label {
+            return Err(parse_triggered_line_cst(&body_line)
+                .err()
+                .unwrap_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported triggered line: '{}'",
+                        body_line.info.normalized.normalized.as_str()
+                    ))
+                }));
+        }
+    }
+
+    if prefer_activation
+        && let Some((cost_tokens, effect_parse_tokens)) = labeled_activation.clone()
+    {
+        let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
+            &preprocessed.builder,
+            line,
+            cost_tokens.clone(),
+        )?;
+        match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
+            Ok(cost) => {
+                return Ok(Some(LineDispatchResult::single(
+                    RewriteLineCst::Activated(ActivatedLineCst {
+                        info: line.info.clone(),
+                        cost,
+                        cost_parse_tokens: normalized_cost_tokens,
+                        effect_parse_tokens,
+                        presentation: presentation.clone(),
+                        chosen_option: max_speed_chosen_option.clone().or_else(|| {
+                            preserve_as_choice_label
+                                .then(|| {
+                                    document_grammar::parse_chosen_option_context_tokens(
+                                        label_tokens,
+                                    )
+                                })
+                                .flatten()
+                        }),
+                    }),
+                    idx + 1,
+                )));
+            }
+            Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {
+                return Err(err);
+            }
+            Err(_) => {}
+        }
+    }
+
+    if is_named_label && let Some(keyword_line) = parse_keyword_line_cst(&body_line)? {
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Keyword(keyword_line),
+            idx + 1,
+        )));
+    }
+
+    if should_prefer_statement_before_static_for_nonpermanent_spell(preprocessed, &body_line.tokens)
+        && let Some(mut statement_line) = parse_statement_line_cst(&body_line)?
+    {
+        apply_labeled_statement_surface_facts(&mut statement_line, line, presentation.clone());
+        let (statement_line, next_idx) =
+            extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Statement(statement_line),
+            next_idx,
+        )));
+    }
+    if let Some(split_result) =
+        parse_labeled_conditional_replacement_sentence_split(&body_line, idx)?
+    {
+        return Ok(Some(split_result));
+    }
+
+    if normalized_line_mentions_source_alias(
+        &preprocessed.builder,
+        body_line.info.normalized.normalized.as_str(),
+    ) && let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
+        &preprocessed.builder,
+        body_line.info.normalized.normalized.as_str(),
+    ) {
+        let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
+        if let Some(mut static_line) = parse_static_line_cst(&rewritten_body_line)? {
+            if let Some(chosen_option) = max_speed_chosen_option.clone() {
+                static_line.chosen_option = Some(chosen_option);
+            } else if preserve_as_choice_label {
+                static_line.chosen_option =
+                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
+            }
+            static_line
+                .info
+                .semantic_facts
+                .static_ability
+                .presentation_label = presentation.clone();
+            return Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Static(static_line),
+                idx + 1,
+            )));
+        }
+    }
+
+    if let Some(mut static_line) = parse_static_line_cst(&body_line)? {
+        if let Some(chosen_option) = max_speed_chosen_option.clone() {
+            static_line.chosen_option = Some(chosen_option);
+        } else if preserve_as_choice_label {
+            static_line.chosen_option =
+                document_grammar::parse_chosen_option_context_tokens(label_tokens);
+        }
+        if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+            eprintln!("labeled-static-dispatch: presentation={presentation:?}");
+        }
+        static_line
+            .info
+            .semantic_facts
+            .static_ability
+            .presentation_label = presentation.clone();
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Static(static_line),
+            idx + 1,
+        )));
+    }
+
+    if normalized_line_mentions_source_alias(
+        &preprocessed.builder,
+        body_line.info.normalized.normalized.as_str(),
+    ) && let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
+        &preprocessed.builder,
+        body_line.info.normalized.normalized.as_str(),
+    ) {
+        let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
+        if let Some(mut static_line) = parse_static_line_cst(&rewritten_body_line)? {
+            if let Some(chosen_option) = max_speed_chosen_option.clone() {
+                static_line.chosen_option = Some(chosen_option);
+            } else if preserve_as_choice_label {
+                static_line.chosen_option =
+                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
+            }
+            static_line
+                .info
+                .semantic_facts
+                .static_ability
+                .presentation_label = presentation.clone();
+            return Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Static(static_line),
+                idx + 1,
+            )));
+        }
+    }
+
+    if let Some((cost_tokens, effect_parse_tokens)) = labeled_activation {
+        let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
+            &preprocessed.builder,
+            line,
+            cost_tokens.clone(),
+        )?;
+        match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
+            Ok(cost) => {
+                return Ok(Some(LineDispatchResult::single(
+                    RewriteLineCst::Activated(ActivatedLineCst {
+                        info: line.info.clone(),
+                        cost,
+                        cost_parse_tokens: normalized_cost_tokens,
+                        effect_parse_tokens,
+                        presentation,
+                        chosen_option: max_speed_chosen_option.or_else(|| {
+                            preserve_as_choice_label
+                                .then(|| {
+                                    document_grammar::parse_chosen_option_context_tokens(
+                                        label_tokens,
+                                    )
+                                })
+                                .flatten()
+                        }),
+                    }),
+                    idx + 1,
+                )));
+            }
+            Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {
+                return Err(err);
+            }
+            Err(_) => {}
+        }
+    }
+
+    if let Some(mut statement_line) = parse_statement_line_cst(&body_line)? {
+        apply_labeled_statement_surface_facts(&mut statement_line, line, presentation);
+        let (statement_line, next_idx) =
+            extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Statement(statement_line),
+            next_idx,
+        )));
+    }
+
+    Ok(None)
+}
+
+fn apply_labeled_statement_surface_facts(
+    statement: &mut StatementLineCst,
+    source_line: &PreprocessedLine,
+    presentation: Option<PresentationLabel>,
+) {
+    // The statement body is parsed after the label is stripped and named card
+    // references have been rewritten to "this". Keep the original label and
+    // transform destination as presentation metadata while the lowered effect
+    // program continues to use the normalized self reference.
+    let source_facts = super::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(
+        &source_line.info.source_tokens,
+    );
+    if let Some(as_transforms) = source_facts.statement.as_transforms_effect_program {
+        statement
+            .info
+            .semantic_facts
+            .statement
+            .as_transforms_effect_program = Some(as_transforms);
+    }
+    statement.info.semantic_facts.statement.presentation_label = presentation.clone();
+    // Static lines carry the same authored ability word ("Threshold — This
+    // creature has flying as long as ..."), and the static-ability compile
+    // reads its own facts slot (Mystic Visionary family).
+    statement
+        .info
+        .semantic_facts
+        .static_ability
+        .presentation_label = presentation;
+}
+
+fn try_parse_triggered_line_dispatch(
+    preprocessed: &PreprocessedDocument,
+    idx: usize,
+    line: &PreprocessedLine,
+    allow_unsupported: bool,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if !line_starts_with_trigger_intro_tokens(&line.tokens) {
+        return Ok(None);
+    }
+
+    if should_parse_delayed_trigger_line_as_spell_effect(preprocessed, &line.tokens)
+        && let Some(statement_line) = parse_statement_line_cst(line)?
+    {
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Statement(statement_line),
+            idx + 1,
+        )));
+    }
+
+    // Keep a token created by the first instruction correlated with the
+    // delayed sacrifice in the second sentence. The generic trigger-sentence
+    // splitter otherwise separates them before the semantic linked-token rule
+    // can inspect the complete authored effect tail.
+    let (preserve_linked_created_token, preserve_reciprocal_token_lifecycle) =
+        grammar::split_lexed_once_on_comma(&line.tokens)
+            .map(|(_, effect_tokens)| {
+                (
+                    super::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
+                        effect_tokens,
+                    ),
+                    super::semantic_line_parsing::has_created_token_reciprocal_lifecycle_surface(
+                        effect_tokens,
+                    ),
+                )
+            })
+            .unwrap_or_default();
+    let trigger_chunks = if preserve_linked_created_token || preserve_reciprocal_token_lifecycle {
+        Vec::new()
+    } else {
+        split_trigger_sentence_chunks_rewrite_lexed(&line.tokens)
+    };
+    if trigger_chunks.len() > 1 {
+        let mut lines = Vec::with_capacity(trigger_chunks.len());
+        for chunk_tokens in trigger_chunks {
+            let authored_chunk_text = render_original_text_for_token_slice(line, &chunk_tokens);
+            let chunk_line = rewrite_line_tokens(line, &chunk_tokens);
+            match parse_triggered_line_cst(&chunk_line) {
+                Ok(mut triggered) => {
+                    restore_authored_named_source_trigger_subject(
+                        &preprocessed.builder,
+                        line,
+                        authored_chunk_text
+                            .as_deref()
+                            .unwrap_or(chunk_line.info.normalized.normalized.as_str()),
+                        &mut triggered,
+                    )?;
+                    lines.push(RewriteLineCst::Triggered(triggered));
+                }
+                Err(_) => {
+                    if starts_with_when_one_or_more_this_way_clause(&chunk_line.tokens)
+                        && let Some(statement) = parse_statement_line_cst(
+                            &rewrite_when_one_or_more_this_way_line(&chunk_line),
+                        )?
+                    {
+                        lines.push(RewriteLineCst::Statement(statement));
+                        continue;
+                    }
+                    if let Some(statement) = parse_statement_line_cst(&chunk_line)? {
+                        lines.push(RewriteLineCst::Statement(statement));
+                        continue;
+                    }
+                    if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
+                        &preprocessed.builder,
+                        line,
+                        authored_chunk_text
+                            .as_deref()
+                            .unwrap_or(chunk_line.info.normalized.normalized.as_str()),
+                    )? {
+                        lines.push(RewriteLineCst::Triggered(triggered));
+                        continue;
+                    }
+                    if allow_unsupported {
+                        lines.push(RewriteLineCst::Unsupported(UnsupportedLineCst {
+                            info: line.info.clone(),
+                            reason_code: "triggered-line-not-yet-supported",
+                        }));
+                    } else {
+                        return Err(strict_unsupported_triggered_line_error(
+                            chunk_line.info.normalized.normalized.as_str(),
+                            parse_triggered_line_cst(&chunk_line).err(),
+                        ));
+                    }
+                }
+            }
+        }
+        return Ok(Some(LineDispatchResult {
+            lines,
+            next_idx: idx + 1,
+        }));
+    }
+
+    // The generic CST splitter has no card-name context. Give an exact,
+    // comma-bearing full source name its builder-aware rewrite before a
+    // syntactically valid but lossy split can claim the comma inside the
+    // name as the trigger/effect boundary.
+    if (normalize_comma_bearing_leading_source_trigger(&preprocessed.builder, &line.info.raw_line)
+        .is_some()
+        || preserve_reciprocal_token_lifecycle)
+        && let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
+            &preprocessed.builder,
+            line,
+            &line.info.raw_line,
+        )?
+    {
+        let (triggered, next_idx) =
+            extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Triggered(triggered),
+            next_idx,
+        )));
+    }
+
+    match parse_triggered_line_cst(line) {
+        Ok(mut triggered) => {
+            restore_authored_named_source_trigger_subject(
+                &preprocessed.builder,
+                line,
+                &line.info.raw_line,
+                &mut triggered,
+            )?;
+            let (triggered, next_idx) =
+                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+            Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Triggered(triggered),
+                next_idx,
+            )))
+        }
+        Err(_) => {
+            if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
+                &preprocessed.builder,
+                line,
+                &line.info.raw_line,
+            )? {
+                let (triggered, next_idx) = extend_triggered_line_with_result_followups(
+                    &preprocessed.items,
+                    idx,
+                    triggered,
+                );
+                Ok(Some(LineDispatchResult::single(
+                    RewriteLineCst::Triggered(triggered),
+                    next_idx,
+                )))
+            } else if allow_unsupported {
+                Ok(Some(LineDispatchResult::single(
+                    RewriteLineCst::Unsupported(UnsupportedLineCst {
+                        info: line.info.clone(),
+                        reason_code: "triggered-line-not-yet-supported",
+                    }),
+                    idx + 1,
+                )))
+            } else {
+                Err(strict_unsupported_triggered_line_error(
+                    &line.info.raw_line,
+                    parse_triggered_line_cst(line).err(),
+                ))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+fn split_activation_text_parts_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, String)> {
+    let (cost_tokens, effect_tokens) = split_activation_text_tokens_lexed(tokens)?;
+    Some((
+        cost_tokens,
+        render_token_slice(&effect_tokens).trim().to_string(),
+    ))
+}
+
+fn split_activation_text_tokens_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    let (cost_tokens, effect_tokens) = split_lexed_once_on_colon_outside_quotes(tokens)?;
+
+    let cost_tokens = trim_lexed_commas(cost_tokens);
+    let effect_tokens = trim_lexed_commas(effect_tokens);
+    if cost_tokens.is_empty() || effect_tokens.is_empty() {
+        return None;
+    }
+
+    Some((cost_tokens.to_vec(), effect_tokens.to_vec()))
+}
+
+fn rewrite_cleave_bracket_document(
+    document: &PreprocessedDocument,
+    remove_bracketed_text: bool,
+) -> Result<PreprocessedDocument, CardTextError> {
+    let mut rewritten = document.clone();
+    let mut items = Vec::with_capacity(rewritten.items.len());
+
+    for item in rewritten.items {
+        let PreprocessedItem::Line(line) = item else {
+            items.push(item);
+            continue;
+        };
+        if !line
+            .tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::LBracket | TokenKind::RBracket))
+        {
+            items.push(PreprocessedItem::Line(line));
+            continue;
+        }
+
+        let mut depth = 0usize;
+        let mut tokens = Vec::with_capacity(line.tokens.len());
+        for token in &line.tokens {
+            match token.kind {
+                TokenKind::LBracket => {
+                    depth += 1;
+                }
+                TokenKind::RBracket => {
+                    if depth == 0 {
+                        return Err(CardTextError::ParseError(format!(
+                            "cleave line has an unmatched closing bracket: '{}'",
+                            line.info.raw_line
+                        )));
+                    }
+                    depth -= 1;
+                }
+                _ if depth == 0 || !remove_bracketed_text => tokens.push(token.clone()),
+                _ => {}
+            }
+        }
+        if depth != 0 {
+            return Err(CardTextError::ParseError(format!(
+                "cleave line has an unmatched opening bracket: '{}'",
+                line.info.raw_line
+            )));
+        }
+        if tokens.is_empty() {
+            continue;
+        }
+        let normalized = render_token_slice(&tokens);
+        items.push(PreprocessedItem::Line(rewrite_line_normalized(
+            &line,
+            normalized.trim(),
+        )?));
+    }
+
+    rewritten.items = items;
+    Ok(rewritten)
+}
+
+pub(crate) fn parse_text_to_semantic_document_with_context(
+    context: &mut ParseContext,
+    builder: CardDefinitionBuilder,
+    text: String,
+) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
+    let allow_unsupported = context.features().allow_unsupported;
+    let card_name = builder.card_builder.name_ref().to_string();
+    let _trace_scope = parse_trace::scope(format!(
+        "card parse: \"{}\" allow_unsupported={} source_lines={}",
+        card_name,
+        allow_unsupported,
+        text.lines().count()
+    ));
+    if parser_trace_enabled() {
+        eprintln!(
+            "[parser-flow] stage=parse_text_to_semantic_document:start card={:?} allow_unsupported={} lines={}",
+            builder.card_builder.name_ref(),
+            allow_unsupported,
+            text.lines().count()
+        );
+    }
+    if let Some(err) = preflight_invalid_payment_keyword_lines(text.as_str()) {
+        return Err(err);
+    }
+    if !allow_unsupported && let Some(err) = preflight_known_strict_unsupported(text.as_str()) {
+        return Err(err);
+    }
+    let mut preprocessed =
+        preprocess_document_with_provenance(builder, text.as_str(), context.provenance().clone())?;
+    context.replace_provenance(preprocessed.provenance.clone());
+    let semantic_facts = document_fact_grammar::parse_document_semantic_facts(
+        preprocessed.items.iter().filter_map(|item| match item {
+            PreprocessedItem::Metadata(_) => None,
+            PreprocessedItem::Line(line) => {
+                Some((line.info.display_line_index, line.tokens.as_slice()))
+            }
+        }),
+    );
+    let cleave_preprocessed = if semantic_facts.cleave_rewrite.is_some() {
+        let cleaved = rewrite_cleave_bracket_document(&preprocessed, true)?;
+        preprocessed = rewrite_cleave_bracket_document(&preprocessed, false)?;
+        Some(cleaved)
+    } else {
+        None
+    };
+    parse_trace::event(format!(
+        "preprocessed document: {} item(s)",
+        preprocessed.items.len()
+    ));
+    for item in &preprocessed.items {
+        match item {
+            PreprocessedItem::Metadata(meta) => parse_trace::event(format!(
+                "line {} metadata: {:?}",
+                meta.info.display_line_index + 1,
+                meta.value
+            )),
+            PreprocessedItem::Line(line) => {
+                let raw = line.info.raw_line.trim();
+                let normalized = line.info.normalized.normalized.trim();
+                if raw == normalized {
+                    parse_trace::event(format!(
+                        "line {} text: \"{}\"",
+                        line.info.display_line_index + 1,
+                        normalized
+                    ));
+                } else {
+                    parse_trace::event(format!(
+                        "line {} text: \"{}\" -> \"{}\"",
+                        line.info.display_line_index + 1,
+                        raw,
+                        normalized
+                    ));
+                }
+            }
+        }
+    }
+    if parser_trace_enabled() {
+        eprintln!(
+            "[parser-flow] stage=parse_text_to_semantic_document:preprocessed items={}",
+            preprocessed.items.len()
+        );
+    }
+    let document_context = context.view().child(ParseScopeKind::Document);
+    let cst = parse_document_cst_with_context(document_context, &preprocessed)?;
+    let cleave_cst = cleave_preprocessed
+        .as_ref()
+        .map(|document| {
+            parse_document_cst_with_context(
+                document_context.child(ParseScopeKind::CleaveBranch),
+                document,
+            )
+        })
+        .transpose()?;
+    parse_trace::event(format!("cst lines: {}", cst.lines.len()));
+    if parser_trace_enabled() {
+        eprintln!(
+            "[parser-flow] stage=parse_text_to_semantic_document:cst lines={}",
+            cst.lines.len()
+        );
+    }
+    let semantic = lower_document_cst_with_symbols(
+        preprocessed,
+        cst,
+        cleave_cst,
+        semantic_facts,
+        allow_unsupported,
+        context.symbols().clone(),
+    )?;
+    let annotations = semantic.annotations.clone();
+    parse_trace::event(format!("semantic items: {}", semantic.items.len()));
+    if parser_trace_enabled() {
+        eprintln!(
+            "[parser-flow] stage=parse_text_to_semantic_document:done items={}",
+            semantic.items.len()
+        );
+    }
+    Ok((semantic, annotations))
+}
+
+pub(crate) fn parse_document_cst_with_context(
+    context: ParseContextView<'_>,
+    preprocessed: &PreprocessedDocument,
+) -> Result<RewriteDocumentCst, CardTextError> {
+    let allow_unsupported = context.features().allow_unsupported;
+    let mut lines = Vec::with_capacity(preprocessed.items.len());
+    let mut idx = 0usize;
+    while idx < preprocessed.items.len() {
+        let item = &preprocessed.items[idx];
+        match item {
+            PreprocessedItem::Metadata(meta) => {
+                let cst = RewriteLineCst::Metadata(metadata_line_cst(
+                    meta.info.clone(),
+                    meta.value.clone(),
+                )?);
+                trace_cst_line(&cst);
+                lines.push(cst);
+                idx += 1;
+            }
+            PreprocessedItem::Line(line) => {
+                let line_context = context.child(ParseScopeKind::Line {
+                    source_line: line.info.display_line_index,
+                });
+                let _line_scope = parse_trace::scope(format!(
+                    "line {} parse: \"{}\"",
+                    line.info.display_line_index + 1,
+                    line.info.raw_line
+                ));
+                parser_trace("parse_document_cst:line", &line.tokens);
+                if let Some((level_block, next_idx)) =
+                    try_parse_level_header_block(preprocessed, idx, line, allow_unsupported)?
+                {
+                    trace_cst_line(&level_block);
+                    lines.push(level_block);
+                    idx = next_idx;
+                    continue;
+                }
+
+                if let Some((chapters, presentation_label, text)) =
+                    parse_saga_chapter_prefix(&line.info.raw_line)
+                {
+                    // Retain the authored casing and chapter label from the raw
+                    // line, but compile the preprocessed body. The latter has
+                    // reminder text removed, so token reminder abilities cannot
+                    // leak into the Saga chapter's executable effect program.
+                    let parse_text = parse_saga_chapter_prefix(&line.info.normalized.normalized)
+                        .filter(|(normalized_chapters, _, _)| normalized_chapters == &chapters)
+                        .map(|(_, _, normalized_text)| normalized_text)
+                        .unwrap_or_else(|| text.clone());
+                    let cst = RewriteLineCst::SagaChapter(parse_saga_chapter_line_cst(
+                        line,
+                        chapters,
+                        presentation_label,
+                        text.as_str(),
+                        parse_text.as_str(),
+                    )?);
+                    trace_cst_line(&cst);
+                    lines.push(cst);
+                    idx += 1;
+                    continue;
+                }
+
+                if let Some((modal_block, next_idx)) =
+                    try_parse_modal_bullet_block(preprocessed, idx, line)?
+                {
+                    trace_cst_line(&modal_block);
+                    lines.push(modal_block);
+                    idx = next_idx;
+                    continue;
+                }
+
+                let ticket_ctx = line_dispatch::LineDispatchContext {
+                    parse: line_context,
+                    preprocessed,
+                    idx,
+                    line,
+                    allow_unsupported,
+                };
+                if let Some(dispatch) =
+                    line_family_handlers::sticker_sheet_ticket_marker_result(&ticket_ctx)
+                {
+                    for cst in &dispatch.lines {
+                        trace_cst_line(cst);
+                    }
+                    lines.extend(dispatch.lines);
+                    idx = dispatch.next_idx;
+                    continue;
+                }
+
+                let normalized = line.info.normalized.normalized.as_str();
+                if let Some(chunks) = split_reveal_first_draw_line_rewrite_lexed(&line.tokens) {
+                    for chunk_tokens in chunks {
+                        let chunk_line = rewrite_line_tokens(line, &chunk_tokens);
+                        if line_starts_with_trigger_intro_tokens(&chunk_line.tokens) {
+                            for trigger_chunk in
+                                split_trigger_sentence_chunks_rewrite_lexed(&chunk_line.tokens)
+                            {
+                                let trigger_line = rewrite_line_tokens(&chunk_line, &trigger_chunk);
+                                let cst = RewriteLineCst::Triggered(parse_triggered_line_cst(
+                                    &trigger_line,
+                                )?);
+                                trace_cst_line(&cst);
+                                lines.push(cst);
+                            }
+                        } else if let Some(static_line) = parse_static_line_cst(&chunk_line)? {
+                            let cst = RewriteLineCst::Static(static_line);
+                            trace_cst_line(&cst);
+                            lines.push(cst);
+                        } else {
+                            return Err(CardTextError::ParseError(format!(
+                                "parser could not split reveal-first-draw line family: '{}'",
+                                line.info.raw_line
+                            )));
+                        }
+                    }
+                    idx += 1;
+                    continue;
+                }
+                if let Some((prefix_tokens, suffix_tokens)) =
+                    normalize_trailing_keyword_activation_sentence_lexed(&line.tokens)
+                {
+                    let prefix_line = rewrite_line_tokens(line, &prefix_tokens);
+                    let (prefix_statement, prefix_statement_error) =
+                        match parse_statement_line_cst(&prefix_line) {
+                            Ok(statement) => (statement, None),
+                            Err(err) => (None, Some(err)),
+                        };
+                    if let Some(statement_line) = prefix_statement {
+                        let cst = RewriteLineCst::Statement(statement_line);
+                        trace_cst_line(&cst);
+                        lines.push(cst);
+                    } else {
+                        let mut parsed_raw_static_prefix = false;
+                        let prefix_static_error = match parse_static_line_cst(&prefix_line) {
+                            Ok(Some(static_line)) => {
+                                let cst = RewriteLineCst::Static(static_line);
+                                trace_cst_line(&cst);
+                                lines.push(cst);
+                                parsed_raw_static_prefix = true;
+                                None
+                            }
+                            Ok(None) => None,
+                            Err(err) => Some(err),
+                        };
+                        if parsed_raw_static_prefix {
+                            // handled by the raw static parse above
+                        } else if let Some(rewritten_prefix) =
+                            normalize_named_source_sentence_for_builder(
+                                &preprocessed.builder,
+                                prefix_line.info.normalized.normalized.as_str(),
+                            )
+                        {
+                            let rewritten_prefix_line =
+                                rewrite_line_normalized(line, rewritten_prefix.as_str())?;
+                            if let Some(statement_line) =
+                                parse_statement_line_cst(&rewritten_prefix_line)?
+                            {
+                                let cst = RewriteLineCst::Statement(statement_line);
+                                trace_cst_line(&cst);
+                                lines.push(cst);
+                            } else if let Some(static_line) =
+                                parse_static_line_cst(&rewritten_prefix_line)?
+                            {
+                                let cst = RewriteLineCst::Static(static_line);
+                                trace_cst_line(&cst);
+                                lines.push(cst);
+                            } else {
+                                return Err(CardTextError::ParseError(format!(
+                                    "parser could not split leading sentence before keyword ability: '{}'",
+                                    line.info.raw_line
+                                )));
+                            }
+                        } else if let Some(err) = prefix_statement_error {
+                            return Err(err);
+                        } else if let Some(err) = prefix_static_error {
+                            return Err(err);
+                        } else {
+                            return Err(CardTextError::ParseError(format!(
+                                "parser could not split leading sentence before keyword ability: '{}'",
+                                line.info.raw_line
+                            )));
+                        }
+                    }
+
+                    let suffix_line = rewrite_line_tokens(line, &suffix_tokens);
+                    let Some((_, _, body_tokens)) = split_label_prefix_lexed(&suffix_line.tokens)
+                    else {
+                        return Err(CardTextError::ParseError(format!(
+                            "parser could not recover keyword activation suffix: '{}'",
+                            line.info.raw_line
+                        )));
+                    };
+                    let Some((cost_tokens, effect_parse_tokens)) =
+                        split_activation_text_tokens_lexed(body_tokens)
+                    else {
+                        return Err(CardTextError::ParseError(format!(
+                            "parser could not recover activation suffix: '{}'",
+                            line.info.raw_line
+                        )));
+                    };
+                    let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
+                        &preprocessed.builder,
+                        line,
+                        cost_tokens.clone(),
+                    )?;
+                    let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
+                    let cst = RewriteLineCst::Activated(ActivatedLineCst {
+                        info: suffix_line.info.clone(),
+                        cost,
+                        cost_parse_tokens: normalized_cost_tokens,
+                        effect_parse_tokens,
+                        presentation: None,
+                        chosen_option: None,
+                    });
+                    trace_cst_line(&cst);
+                    lines.push(cst);
+                    idx += 1;
+                    continue;
+                }
+                if normalized == LESS_THAN_ONE_MANA_REDUCTION_REMINDER {
+                    // A few inputs preserve this rules sentence on its own physical line.
+                    // Keep it attached to the preceding cost reducer so lowering can
+                    // distinguish an explicit minimum from an unbounded reduction.
+                    if let Some(RewriteLineCst::Static(previous)) = lines.last_mut()
+                        && previous.parsed.is_none()
+                    {
+                        previous.parse_tokens.extend(line.tokens.clone());
+                    }
+                    idx += 1;
+                    continue;
+                }
+                if let Some(mut dispatch) =
+                    try_parse_labeled_line_dispatch(preprocessed, idx, line, allow_unsupported)?
+                {
+                    line_dispatch::attach_compiler_trigger_facts(line_context, &mut dispatch)?;
+                    for cst in &dispatch.lines {
+                        trace_cst_line(cst);
+                    }
+                    lines.extend(dispatch.lines);
+                    idx = dispatch.next_idx;
+                    continue;
+                }
+                if !line_starts_with_trigger_intro_tokens(&line.tokens)
+                    && !labeled_body_starts_with_trigger_intro_tokens(&line.tokens)
+                    && line_family_grammar::parse_champion_line(&line.tokens).is_none()
+                    && normalized_line_mentions_source_alias(
+                        &preprocessed.builder,
+                        line.info.normalized.normalized.as_str(),
+                    )
+                    && let Some(rewritten) = normalize_named_source_sentence_for_builder(
+                        &preprocessed.builder,
+                        line.info.normalized.normalized.as_str(),
+                    )
+                {
+                    let rewritten_line = rewrite_line_normalized(line, rewritten.as_str())?;
+                    if let Ok(dispatch) = dispatch_standard_line_cst(
+                        line_context,
+                        preprocessed,
+                        idx,
+                        &rewritten_line,
+                        allow_unsupported,
+                    ) {
+                        for cst in &dispatch.lines {
+                            trace_cst_line(cst);
+                        }
+                        lines.extend(dispatch.lines);
+                        idx = dispatch.next_idx;
+                        continue;
+                    }
+                }
+                if !allow_unsupported
+                    && let Some(err) = diagnose_known_unsupported_rewrite_line(&line.tokens)
+                {
+                    return Err(err);
+                }
+                let dispatch = if is_bullet_line(line)
+                    && split_label_prefix_lexed(strip_choice_bullet_prefix_tokens(&line.tokens))
+                        .is_some()
+                {
+                    let stripped_line =
+                        rewrite_line_tokens(line, strip_choice_bullet_prefix_tokens(&line.tokens));
+                    dispatch_standard_line_cst(
+                        line_context,
+                        preprocessed,
+                        idx,
+                        &stripped_line,
+                        allow_unsupported,
+                    )?
+                } else {
+                    dispatch_standard_line_cst(
+                        line_context,
+                        preprocessed,
+                        idx,
+                        line,
+                        allow_unsupported,
+                    )?
+                };
+                for cst in &dispatch.lines {
+                    trace_cst_line(cst);
+                }
+                lines.extend(dispatch.lines);
+                idx = dispatch.next_idx;
+                continue;
+            }
+        }
+    }
+
+    Ok(RewriteDocumentCst { lines })
+}
+
+/// Parse a prepared document at the public grammar boundary with fresh,
+/// request-scoped compiler state.
+pub(crate) fn parse_document_cst(
+    preprocessed: &PreprocessedDocument,
+    allow_unsupported: bool,
+) -> Result<RewriteDocumentCst, CardTextError> {
+    let source_text = preprocessed
+        .items
+        .iter()
+        .map(|item| match item {
+            PreprocessedItem::Metadata(line) => line.info.raw_line.as_str(),
+            PreprocessedItem::Line(line) => line.info.raw_line.as_str(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let context = ParseContext::for_builder(&preprocessed.builder, &source_text, allow_unsupported);
+    parse_document_cst_with_context(context.view().child(ParseScopeKind::Document), preprocessed)
+}
+
+fn lower_document_cst(
+    preprocessed: PreprocessedDocument,
+    cst: RewriteDocumentCst,
+    cleave_cst: Option<RewriteDocumentCst>,
+    semantic_facts: super::ir::DocumentSemanticFacts,
+    allow_unsupported: bool,
+) -> Result<RewriteSemanticDocument, CardTextError> {
+    lower_document_cst_with_symbols(
+        preprocessed,
+        cst,
+        cleave_cst,
+        semantic_facts,
+        allow_unsupported,
+        crate::model::symbols::SymbolTable::default(),
+    )
+}
+
+fn lower_document_cst_with_symbols(
+    preprocessed: PreprocessedDocument,
+    cst: RewriteDocumentCst,
+    cleave_cst: Option<RewriteDocumentCst>,
+    semantic_facts: super::ir::DocumentSemanticFacts,
+    allow_unsupported: bool,
+    symbols: crate::model::symbols::SymbolTable,
+) -> Result<RewriteSemanticDocument, CardTextError> {
+    let overload_items = semantic_facts
+        .overload_rewrite
+        .as_ref()
+        .map(|payload| {
+            let mut items = Vec::new();
+            for line in &cst.lines {
+                let Some(line) = rewrite_overload_line_cst(line, payload) else {
+                    continue;
+                };
+                items.push(lower_non_metadata_rewrite_line_cst(
+                    line,
+                    allow_unsupported,
+                )?);
+            }
+            Ok::<_, CardTextError>(items)
+        })
+        .transpose()?;
+    let cleave_items = semantic_facts
+        .cleave_rewrite
+        .as_ref()
+        .zip(cleave_cst.as_ref())
+        .map(|(payload, cleave_cst)| {
+            let mut items = Vec::new();
+            for line in &cleave_cst.lines {
+                if rewrite_line_cst_source_index(line) == Some(payload.keyword_line_index)
+                    || matches!(line, RewriteLineCst::Metadata(_))
+                {
+                    continue;
+                }
+                items.push(lower_non_metadata_rewrite_line_cst(
+                    line.clone(),
+                    allow_unsupported,
+                )?);
+            }
+            Ok::<_, CardTextError>(items)
+        })
+        .transpose()?;
+
+    let mut builder = preprocessed.builder;
+    let mut items = Vec::with_capacity(cst.lines.len());
+
+    for line in cst.lines {
+        match line {
+            RewriteLineCst::Metadata(MetadataLineCst { value }) => {
+                builder = builder.apply_metadata(value.clone())?;
+                items.push(RewriteSemanticItem::Metadata);
+            }
+            other => items.push(lower_non_metadata_rewrite_line_cst(
+                other,
+                allow_unsupported,
+            )?),
+        }
+    }
+
+    Ok(RewriteSemanticDocument {
+        builder,
+        annotations: preprocessed.annotations,
+        provenance: preprocessed.provenance,
+        symbols,
+        items,
+        overload_items,
+        cleave_items,
+        allow_unsupported,
+    })
+}
+
+fn rewrite_overload_target_tokens(
+    tokens: &[OwnedLexToken],
+    payload: &OverloadRewritePayload,
+) -> Vec<OwnedLexToken> {
+    tokens
+        .iter()
+        .map(|token| {
+            if payload
+                .target_spans
+                .iter()
+                .any(|target_span| target_span == &token.span)
+            {
+                OwnedLexToken::word("each", token.span)
+            } else {
+                token.clone()
+            }
+        })
+        .collect()
+}
+
+fn rewrite_overload_line_cst(
+    line: &RewriteLineCst,
+    payload: &OverloadRewritePayload,
+) -> Option<RewriteLineCst> {
+    if rewrite_line_cst_source_index(line) == Some(payload.keyword_line_index) {
+        return None;
+    }
+    match line {
+        RewriteLineCst::Metadata(_) => None,
+        RewriteLineCst::Statement(statement) => {
+            let mut statement = statement.clone();
+            statement.parse_tokens =
+                rewrite_overload_target_tokens(&statement.parse_tokens, payload);
+            statement.parse_groups = statement
+                .parse_groups
+                .iter()
+                .map(|group| rewrite_overload_target_tokens(group, payload))
+                .collect();
+            statement.text = render_token_slice(&statement.parse_tokens)
+                .trim()
+                .to_string();
+            statement.info.normalized.normalized = statement.text.clone();
+            statement.info.semantic_facts =
+                super::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(
+                    &statement.parse_tokens,
+                );
+            Some(RewriteLineCst::Statement(statement))
+        }
+        other => Some(other.clone()),
+    }
+}
+
+fn rewrite_line_cst_source_index(line: &RewriteLineCst) -> Option<usize> {
+    match line {
+        RewriteLineCst::Metadata(_) => None,
+        RewriteLineCst::Keyword(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Activated(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Triggered(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Static(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Statement(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Modal(line) => Some(line.header.display_line_index),
+        RewriteLineCst::LevelHeader(line) => {
+            line.items.first().map(|item| item.info.display_line_index)
+        }
+        RewriteLineCst::SagaChapter(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Unsupported(line) => Some(line.info.display_line_index),
+    }
+}
+
+pub(crate) fn metadata_line_cst(
+    info: crate::cards::builders::LineInfo,
+    value: crate::cards::builders::MetadataLine,
+) -> Result<MetadataLineCst, CardTextError> {
+    let _ = info;
+    Ok(MetadataLineCst { value })
+}
+
 #[cfg(test)]
 mod tests {
     use crate::ability::PresentationLabel;
@@ -1964,8 +3678,8 @@ mod tests {
         normalize_trailing_keyword_activation_sentence_lexed,
         parse_colon_nonactivation_statement_fallback, parse_keyword_line_cst,
         parse_labeled_qualified_ability_trigger_cst, parse_level_item_cst,
-        parse_statement_line_cst, parse_static_line_cst, parse_text_to_semantic_document,
-        parse_triggered_line_cst, preprocess_document, probe_triggered_split, render_token_slice,
+        parse_statement_line_cst, parse_static_line_cst, parse_triggered_line_cst,
+        preprocess_document, probe_triggered_split, render_token_slice,
         replace_named_source_aliases, replace_named_source_aliases_from_set,
         rewrite_keyword_dash_parse_tokens, rewrite_when_one_or_more_this_way_line,
         sentence_is_static_after_trigger_effect, should_parse_delayed_trigger_line_as_spell_effect,
@@ -1976,6 +3690,22 @@ mod tests {
         trigger_presentation_from_line_tokens,
         triggered_effect_tokens_have_trailing_static_sentences,
     };
+
+    fn parse_text_to_semantic_document(
+        builder: CardDefinitionBuilder,
+        text: String,
+        allow_unsupported: bool,
+    ) -> Result<
+        (
+            crate::ir::RewriteSemanticDocument,
+            crate::cards::ParseAnnotations,
+        ),
+        CardTextError,
+    > {
+        let mut context =
+            crate::parse_context::ParseContext::for_builder(&builder, &text, allow_unsupported);
+        super::parse_text_to_semantic_document_with_context(&mut context, builder, text)
+    }
 
     fn single_preprocessed_line(text: &str) -> super::PreprocessedLine {
         let document = preprocess_document(
@@ -2108,7 +3838,7 @@ mod tests {
             .expect("expected chained non-keyword label prefix to strip");
 
         assert_eq!(
-            render_token_slice(&tokens),
+            render_token_slice(tokens),
             "double target creature's power and toughness until end of turn."
         );
     }
@@ -3097,11 +4827,9 @@ mod tests {
         let line = single_preprocessed_line(
             "Whenever this creature attacks, search your library for artifact card named.",
         );
-        let comma_idx = crate::runtime_backend::lexer::locate_token_kind(
-            &line.tokens,
-            crate::runtime_backend::lexer::TokenKind::Comma,
-        )
-        .expect("expected triggered probe line to contain a comma");
+        let comma_idx =
+            crate::lexer::locate_token_kind(&line.tokens, crate::lexer::TokenKind::Comma)
+                .expect("expected triggered probe line to contain a comma");
         let probe = probe_triggered_split(
             &line.tokens[1..comma_idx],
             &line.tokens[comma_idx + 1..],
@@ -3166,6 +4894,35 @@ mod tests {
         assert_eq!(
             render_token_slice(&parsed.effect_parse_tokens),
             "create a Lander token. At the beginning of the end step on your next turn, sacrifice that token."
+        );
+    }
+
+    #[test]
+    fn triggered_cst_preserves_reciprocal_created_token_lifecycle() {
+        let line = single_preprocessed_line(
+            "When this creature enters, create a 1/1 colorless Construct artifact creature token. Exile that token when this creature leaves the battlefield. Sacrifice this creature when that token leaves the battlefield.",
+        );
+        let parsed = parse_triggered_line_cst(&line)
+            .expect("reciprocal created-token lifecycle should survive the CST probe");
+
+        assert_eq!(
+            render_token_slice(&parsed.trigger_parse_tokens),
+            "this creature enters"
+        );
+        let effects = render_token_slice(&parsed.effect_parse_tokens);
+        let lower_effects = effects.to_ascii_lowercase();
+        assert!(
+            lower_effects.starts_with("create a 1/1 colorless construct"),
+            "{effects}"
+        );
+        assert!(
+            lower_effects.contains("exile that token when this creature leaves the battlefield"),
+            "{effects}"
+        );
+        assert!(
+            lower_effects
+                .contains("sacrifice this creature when that token leaves the battlefield"),
+            "{effects}"
         );
     }
 
@@ -3349,9 +5106,7 @@ mod tests {
         .expect("Eminence should remain a typed triggered line");
 
         assert_eq!(semantic.items.len(), 1, "{semantic:#?}");
-        let [crate::runtime_backend::RewriteSemanticItem::ParsedLine(line)] =
-            semantic.items.as_slice()
-        else {
+        let [crate::ir::RewriteSemanticItem::ParsedLine(line)] = semantic.items.as_slice() else {
             panic!("expected one parsed Eminence line: {semantic:#?}");
         };
         assert!(
@@ -3787,6 +5542,18 @@ mod tests {
     }
 
     #[test]
+    fn named_source_rewrite_preserves_combat_damage_rules_term() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "Whenever this creature deals combat damage to a player, draw a card.",
+                "combat",
+                "this enchantment",
+            ),
+            "whenever this creature deals combat damage to a player, draw a card."
+        );
+    }
+
+    #[test]
     fn named_source_rewrite_preserves_short_alias_used_as_created_token_name() {
         assert_eq!(
             replace_named_source_aliases(
@@ -3800,6 +5567,22 @@ mod tests {
             replace_named_source_aliases("Mechtitan has flying.", "mechtitan", "this artifact",),
             "this artifact has flying.",
             "ordinary source-name subjects must still normalize"
+        );
+    }
+
+    #[test]
+    fn created_token_name_does_not_hide_source_references_in_later_sentences() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Stangg")
+            .card_types(vec![CardType::Creature]);
+        let rewritten = normalize_named_source_trigger_for_builder(
+            &builder,
+            "When Stangg enters, create Stangg Twin, a legendary 3/4 red and green Human Warrior creature token. Exile that token when Stangg leaves the battlefield. Sacrifice Stangg when that token leaves the battlefield.",
+        )
+        .expect("named source trigger should normalize");
+
+        assert_eq!(
+            rewritten,
+            "when this creature enters, create stangg twin, a legendary 3/4 red and green human warrior creature token. exile that token when this creature leaves the battlefield. sacrifice this creature when that token leaves the battlefield."
         );
     }
 
@@ -4037,29 +5820,26 @@ mod tests {
 
     #[test]
     fn named_source_leaves_trigger_keeps_original_head_for_surface_rendering() {
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Emrakul, the World Anew",
-            || {
-                let document = preprocess_document(
-                    CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
-                        .card_types(vec![CardType::Creature]),
-                    "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
-                )
-                .expect("named source leaves line should preprocess");
-                let line = match document.items.first().expect("expected one line") {
-                    PreprocessedItem::Line(line) => line,
-                    other => panic!("expected preprocessed line, got {other:?}"),
-                };
+        crate::util::with_source_reference_context("Emrakul, the World Anew", || {
+            let document = preprocess_document(
+                CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+                    .card_types(vec![CardType::Creature]),
+                "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
+            )
+            .expect("named source leaves line should preprocess");
+            let line = match document.items.first().expect("expected one line") {
+                PreprocessedItem::Line(line) => line,
+                other => panic!("expected preprocessed line, got {other:?}"),
+            };
 
-                let parsed = parse_triggered_line_cst(line)
-                    .expect("named source leaves trigger should parse as triggered CST");
+            let parsed = parse_triggered_line_cst(line)
+                .expect("named source leaves trigger should parse as triggered CST");
 
-                assert_eq!(
-                    render_token_slice(&parsed.trigger_parse_tokens),
-                    "emrakul leaves the battlefield"
-                );
-            },
-        );
+            assert_eq!(
+                render_token_slice(&parsed.trigger_parse_tokens),
+                "emrakul leaves the battlefield"
+            );
+        });
     }
 
     #[test]
@@ -4358,14 +6138,14 @@ mod tests {
             );
             let line = single_preprocessed_line(text);
             let parsed_static_ast =
-                crate::runtime_backend::parse_static_ability_ast_line_lexed(&line.tokens);
+                crate::keyword_static::parse_static_ability_ast_line_lexed(&line.tokens);
             assert!(
                 matches!(parsed_static_ast, Ok(Some(_))),
                 "{text} must reach the typed static AST parser: {parsed_static_ast:#?}; words={:?}",
-                crate::runtime_backend::token_word_refs(&line.tokens)
+                crate::lexer::token_word_refs(&line.tokens)
             );
             let repeated_static_ast =
-                crate::runtime_backend::parse_static_ability_ast_line_lexed(&line.tokens);
+                crate::keyword_static::parse_static_ability_ast_line_lexed(&line.tokens);
             assert!(
                 matches!(repeated_static_ast, Ok(Some(_))),
                 "{text} must remain typed on a repeated static AST parse: \
@@ -4392,1685 +6172,4 @@ mod tests {
             Some(StatementLineFamily::PactNextUpkeep)
         );
     }
-}
-
-fn is_named_ability_label(label: &str) -> bool {
-    matches!(
-        label.to_ascii_lowercase().as_str(),
-        "alliance"
-            | "astral projection"
-            | "bigby's hand"
-            | "body-print"
-            | "boast"
-            | "catch"
-            | "cohort"
-            | "devouring monster"
-            | "diana"
-            | "exhaust"
-            | "gooooaaaalll!"
-            | "hero's sundering"
-            | "hunt for heresy"
-            | "machina"
-            | "mage hand"
-            | "megamorph"
-            | "morph"
-            | "psychic blades"
-            | "raid"
-            | "renew"
-            | "rope dart"
-            | "scorching ray"
-            | "share"
-            | "shieldwall"
-            | "sleight of hand"
-            | "smear campaign"
-            | "stunning strike"
-            | "teleport"
-            | "trance"
-            | "throw"
-            | "throw ..."
-            | "valiant"
-            | "waterbend"
-            | "... catch"
-    )
-}
-
-fn looks_like_ability_word_label(
-    label_tokens: &[OwnedLexToken],
-    preserve_as_choice_label: bool,
-) -> bool {
-    if preserve_as_choice_label {
-        return false;
-    }
-    !label_tokens.is_empty()
-        && !label_tokens
-            .iter()
-            .any(|token| matches!(token.kind, TokenKind::Colon))
-        && token_word_refs(label_tokens).len() <= 4
-}
-
-/// Build the labeled public-route CST for the source-qualified
-/// ability-trigger event directly from its two independently typed halves.
-///
-/// The generic triggered-line probe also speculates across every comma in a
-/// line.  In a clause such as "a creature entering ... causes a triggered
-/// ability ... to trigger", those probes can let the complete effect body be
-/// claimed as a statement after the label is removed even though both the
-/// trigger and resolution have already parsed exactly.  Restrict this fast
-/// path to the qualified `AbilityTriggered` model so ordinary labeled
-/// triggers retain the existing ambiguity handling.
-fn parse_labeled_qualified_ability_trigger_cst(
-    line: &PreprocessedLine,
-) -> Option<TriggeredLineCst> {
-    let (trigger_with_intro, effect_tokens) = grammar::split_lexed_once_on_comma(&line.tokens)?;
-    let trigger_tokens = trigger_with_intro.get(1..)?;
-    let trigger = crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens))
-        .0
-        .ok()?;
-    if !matches!(
-        trigger,
-        crate::model::ast::TriggerSpec::AbilityTriggered {
-            source_filter: Some(_),
-            caused_by_source_entering: true,
-            ..
-        }
-    ) {
-        return None;
-    }
-    let effects = crate::parse_loss::capture(|| parse_effect_sentences_lexed(effect_tokens))
-        .0
-        .ok()?;
-    if effects.is_empty() {
-        return None;
-    }
-    let candidate = render_triggered_split_candidate(trigger_tokens, effect_tokens, None, None)?;
-    Some(candidate.into_cst(line, &line.tokens))
-}
-
-fn normalize_activation_cost_tokens_for_builder(
-    builder: &CardDefinitionBuilder,
-    line: &PreprocessedLine,
-    cost_tokens: Vec<OwnedLexToken>,
-) -> Result<Vec<OwnedLexToken>, CardTextError> {
-    let cost_text = render_token_slice(&cost_tokens);
-    if !normalized_line_mentions_source_alias(builder, cost_text.as_str()) {
-        return Ok(cost_tokens);
-    }
-    // Keep a directly parseable named-source cost intact so the typed cost
-    // model can retain its Oracle-facing source-reference surface.
-    if parse_activation_cost_tokens_rewrite(&cost_tokens).is_ok() {
-        return Ok(cost_tokens);
-    }
-    let Some(rewritten) = normalize_named_source_sentence_for_builder(builder, cost_text.as_str())
-    else {
-        return Ok(cost_tokens);
-    };
-    Ok(rewrite_line_normalized(line, rewritten.as_str())?.tokens)
-}
-
-fn rewrite_line_normalized(
-    line: &PreprocessedLine,
-    normalized: &str,
-) -> Result<PreprocessedLine, CardTextError> {
-    let mut rewritten = line.clone();
-    rewritten.info.normalized.original = normalized.to_string();
-    rewritten.info.normalized.normalized = normalized.to_string();
-    rewritten.info.normalized.char_map = (0..normalized.len()).collect();
-    rewritten.tokens = super::lexer::lex_line(normalized, line.info.line_index)?;
-    Ok(rewritten)
-}
-
-fn rewrite_line_tokens(line: &PreprocessedLine, tokens: &[OwnedLexToken]) -> PreprocessedLine {
-    let normalized = render_token_slice(tokens);
-    let mut rewritten = line.clone();
-    rewritten.info.normalized.original = normalized.clone();
-    rewritten.info.normalized.normalized = normalized.clone();
-    rewritten.info.normalized.char_map = (0..normalized.len()).collect();
-    rewritten.tokens = tokens.to_vec();
-    rewritten
-}
-
-fn render_original_text_for_token_slice(
-    line: &PreprocessedLine,
-    tokens: &[OwnedLexToken],
-) -> Option<String> {
-    let span = span_from_tokens(tokens)?;
-    let original_span = map_span_to_original(
-        span,
-        line.info.normalized.normalized.as_str(),
-        line.info.normalized.original.as_str(),
-        &line.info.normalized.char_map,
-    );
-    line.info
-        .normalized
-        .original
-        .get(original_span.start..original_span.end)
-        .map(str::to_string)
-}
-
-fn try_parse_triggered_line_with_named_source_rewrite(
-    builder: &CardDefinitionBuilder,
-    line: &PreprocessedLine,
-    text: &str,
-) -> Result<Option<TriggeredLineCst>, CardTextError> {
-    // This fallback can be reached with `LineInfo::raw_line` so an authored
-    // comma-bearing source name is still available. Reapply the same
-    // parenthetical preprocessing used to build `line.tokens` before parsing
-    // the rewritten candidate; reminder text is presentation, not a second
-    // executable trigger body.
-    let semantic_text = strip_parenthetical_segments(text);
-    let Some(rewritten) =
-        normalize_named_source_trigger_for_builder(builder, semantic_text.as_str())
-    else {
-        return Ok(None);
-    };
-
-    let mut candidates = vec![rewritten];
-    if line_mentions_this_permanent_token_phrase(candidates[0].as_str()) {
-        for subject in [
-            "this creature",
-            "this artifact",
-            "this enchantment",
-            "this land",
-            "this planeswalker",
-            "this battle",
-        ] {
-            let candidate = candidates[0].replace("this permanent", subject);
-            if candidate != candidates[0] {
-                candidates.push(candidate);
-            }
-        }
-    }
-
-    for candidate in candidates {
-        let rewritten_line = rewrite_line_normalized(line, candidate.as_str())?;
-        if let Ok(mut triggered) = parse_triggered_line_cst(&rewritten_line) {
-            restore_authored_named_source_trigger_subject(builder, line, text, &mut triggered)?;
-            return Ok(Some(triggered));
-        }
-    }
-
-    Ok(None)
-}
-
-fn restore_authored_named_source_trigger_subject(
-    builder: &CardDefinitionBuilder,
-    line: &PreprocessedLine,
-    text: &str,
-    triggered: &mut TriggeredLineCst,
-) -> Result<(), CardTextError> {
-    let Some(authored_subject) = leading_named_source_trigger_subject_for_builder(builder, text)
-    else {
-        return Ok(());
-    };
-
-    let generic_subject = named_source_subject_for_builder(builder);
-    let trigger_text = render_token_slice(&triggered.trigger_parse_tokens);
-    let rest = trigger_text.strip_prefix(generic_subject).or_else(|| {
-        // Preprocessing and some typed trigger shapes canonicalize a named
-        // source to the source-only subject "this". Restore its authored
-        // provenance after either canonicalization.
-        trigger_text.strip_prefix("this").filter(|rest| {
-            rest.chars()
-                .next()
-                .is_some_and(|ch| ch.is_whitespace() || ch == '\'' || ch == '’')
-        })
-    });
-    if let Some(rest) = rest {
-        triggered.trigger_parse_tokens =
-            lex_line(&format!("{authored_subject}{rest}"), line.info.line_index)?;
-    }
-    Ok(())
-}
-
-fn leading_named_source_trigger_subject_for_builder(
-    builder: &CardDefinitionBuilder,
-    text: &str,
-) -> Option<String> {
-    let trimmed = text.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    let (intro_len, after_intro) = if let Some(after_intro) = lower.strip_prefix("when ") {
-        ("when ".len(), after_intro)
-    } else {
-        ("whenever ".len(), lower.strip_prefix("whenever ")?)
-    };
-
-    source_name_aliases_for_builder(builder)
-        .into_iter()
-        .find_map(|alias| {
-            let rest = after_intro.strip_prefix(alias.as_str())?;
-            if rest
-                .chars()
-                .next()
-                .is_some_and(|ch| ch.is_alphanumeric() || ch == '\'' || ch == '’')
-            {
-                return None;
-            }
-            trimmed
-                .get(intro_len..intro_len + alias.len())
-                .map(str::to_string)
-        })
-}
-
-fn line_mentions_this_permanent_token_phrase(text: &str) -> bool {
-    lex_line(text.trim(), 0)
-        .ok()
-        .is_some_and(|tokens| document_grammar::parse_this_permanent_surface(&tokens).is_some())
-}
-
-fn line_starts_with_lparen_token(line: &PreprocessedLine) -> bool {
-    line.tokens
-        .first()
-        .is_some_and(|token| token.kind == TokenKind::LParen)
-}
-
-fn is_fully_parenthetical_line(line: &PreprocessedLine) -> bool {
-    line_starts_with_lparen_token(line)
-        && line
-            .tokens
-            .last()
-            .is_some_and(|token| token.kind == TokenKind::RParen)
-}
-
-fn is_delayed_when_that_dies_this_turn_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
-    document_grammar::parse_delayed_prior_object_dies_surface(tokens).is_some()
-}
-
-fn is_delayed_when_that_leaves_battlefield_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
-    effect_grammar::delayed_sentence_shapes::parse_delayed_tagged_leaves_shape(tokens).is_some()
-}
-
-fn is_delayed_next_end_step_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
-    effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens).is_some()
-}
-
-fn is_attack_group_combat_damage_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
-    grammar::has_phrase(tokens, &["either", "of", "those", "creatures"])
-        && grammar::has_phrase(tokens, &["deals", "combat", "damage"])
-        && grammar::has_phrase(tokens, &["this", "combat"])
-}
-
-fn split_trigger_sentence_chunks_rewrite_lexed(
-    tokens: &[OwnedLexToken],
-) -> Vec<Vec<OwnedLexToken>> {
-    let sentence_tokens = split_lexed_sentences(tokens)
-        .into_iter()
-        .filter(|sentence| !sentence.is_empty())
-        .collect::<Vec<_>>();
-    if sentence_tokens.len() <= 1 {
-        return sentence_tokens
-            .into_iter()
-            .map(|sentence| sentence.to_vec())
-            .collect();
-    }
-
-    let mut chunks = Vec::new();
-    let mut current = Vec::new();
-    let mut current_starts_with_trigger = false;
-
-    for sentence_tokens in sentence_tokens {
-        let sentence_starts_with_trigger = line_starts_with_trigger_intro_tokens(sentence_tokens);
-        let sentence_is_delayed_followup =
-            is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens)
-                || is_delayed_when_that_leaves_battlefield_followup_sentence(sentence_tokens)
-                || is_delayed_next_end_step_followup_sentence(sentence_tokens);
-        let sentence_is_attack_group_followup =
-            is_attack_group_combat_damage_followup_sentence(sentence_tokens);
-        if !current.is_empty() && current_starts_with_trigger && sentence_starts_with_trigger {
-            if !sentence_is_delayed_followup && !sentence_is_attack_group_followup {
-                if let Some(chunk) = clone_sentence_chunk_tokens(tokens, &current) {
-                    chunks.push(chunk);
-                }
-                current.clear();
-                current_starts_with_trigger = false;
-            }
-        }
-        if current.is_empty() {
-            current_starts_with_trigger = sentence_starts_with_trigger;
-        }
-        current.push(sentence_tokens);
-    }
-
-    if !current.is_empty() {
-        if let Some(chunk) = clone_sentence_chunk_tokens(tokens, &current) {
-            chunks.push(chunk);
-        }
-    }
-
-    chunks
-}
-
-fn starts_with_when_one_or_more_this_way_clause(tokens: &[OwnedLexToken]) -> bool {
-    let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-        .map(|(before, _after)| grammar::has_phrase(before, &["this", "way"]))
-        .unwrap_or(false);
-    document_grammar::parse_when_one_or_more_surface(tokens).is_some() && this_way_in_prefix
-}
-
-fn rewrite_when_one_or_more_this_way_line(line: &PreprocessedLine) -> PreprocessedLine {
-    let rewritten_tokens =
-        crate::effect_sentences::rewrite_when_one_or_more_this_way_clause_prefix(
-            &line.tokens,
-        );
-    rewrite_line_tokens(line, &rewritten_tokens)
-}
-
-fn split_reveal_first_draw_line_rewrite_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<Vec<OwnedLexToken>>> {
-    let sentences = split_lexed_sentences(tokens)
-        .into_iter()
-        .filter(|sentence| !sentence.is_empty())
-        .collect::<Vec<_>>();
-    if sentences.len() <= 1 {
-        return None;
-    }
-
-    let first_tokens = *sentences.first()?;
-    if document_grammar::parse_reveal_first_draw_surface(first_tokens).is_none() {
-        return None;
-    }
-
-    let tail_tokens = clone_sentence_chunk_tokens(tokens, &sentences[1..])?;
-    if document_grammar::parse_reveal_first_draw_followup_surface(&tail_tokens).is_none() {
-        return None;
-    }
-
-    Some(vec![first_tokens.to_vec(), tail_tokens])
-}
-
-fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
-    let classification_tokens = tokens_after_non_keyword_label_prefix(line).unwrap_or(&line.tokens);
-
-    if is_bullet_line(line) {
-        return "bullet-line-without-modal-header";
-    }
-    if line_starts_with_trigger_intro_tokens(&line.tokens) {
-        return "triggered-line-not-yet-supported";
-    }
-    if split_lexed_once_on_colon_outside_quotes(&line.tokens).is_some() {
-        return "activated-line-not-yet-supported";
-    }
-    if matches!(
-        document_grammar::parse_unsupported_line_head(classification_tokens),
-        Some(document_grammar::UnsupportedLineHeadSurface::ModalChoice)
-    ) {
-        return "modal-header-not-yet-supported";
-    }
-    if matches!(
-        super::grammar::structure::classify_statement_line_family_lexed(&line.tokens),
-        Some(super::grammar::structure::StatementLineFamily::ArtRating)
-    ) {
-        return "outside-the-game-rating-not-supported";
-    }
-    if looks_like_statement_line_lexed(line) {
-        return "statement-line-not-yet-supported";
-    }
-    if looks_like_static_line_lexed(line) {
-        return "static-line-not-yet-supported";
-    }
-    "unclassified-line-family"
-}
-
-fn try_parse_labeled_line_dispatch(
-    preprocessed: &PreprocessedDocument,
-    idx: usize,
-    line: &PreprocessedLine,
-    allow_unsupported: bool,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    // Prefer the authored token stream for the narrow labeled trigger whose
-    // event is itself a source-qualified triggered-ability event.  Generic
-    // preprocessing is allowed to strip presentation labels and rewrite
-    // source nouns before line-family dispatch; for this event both the
-    // trigger and its complete resolution already have exact typed parsers,
-    // so retain the label and build the Triggered CST before either half can
-    // be claimed as a standalone statement.
-    if let Some((label, label_tokens, body_tokens)) =
-        split_label_prefix_lexed(&line.info.source_tokens)
-    {
-        let body_line = rewrite_line_tokens(line, body_tokens);
-        let is_eminence = label.eq_ignore_ascii_case("eminence");
-        let mut authored_trigger = parse_labeled_qualified_ability_trigger_cst(&body_line);
-        if authored_trigger.is_none() && is_eminence {
-            authored_trigger = parse_triggered_line_cst(&body_line).ok();
-        }
-        if authored_trigger.is_none() && is_eminence {
-            let authored_body = render_original_text_for_token_slice(line, body_tokens)
-                .unwrap_or_else(|| render_token_slice(body_tokens));
-            authored_trigger = try_parse_triggered_line_with_named_source_rewrite(
-                &preprocessed.builder,
-                line,
-                &authored_body,
-            )?;
-        }
-        if authored_trigger.is_none()
-            && is_eminence
-            && let Some(spec) = super::grammar::structure::split_triggered_conditional_clause_lexed(
-                &body_line.tokens,
-                1,
-            )
-        {
-            authored_trigger = Some(TriggeredLineCst {
-                info: line.info.clone(),
-                full_text: render_token_slice(&body_line.tokens),
-                full_parse_tokens: body_line.tokens.clone(),
-                trigger_parse_tokens: spec.trigger_tokens.to_vec(),
-                effect_parse_tokens: spec.effects_tokens.to_vec(),
-                intervening_if: Some(spec.predicate),
-                max_triggers_per_turn: None,
-                chosen_option: None,
-                presentation: Some(PresentationLabel::AbilityWord("Eminence".to_string())),
-            });
-        }
-        if line_starts_with_trigger_intro_tokens(&body_line.tokens)
-            && let Some(mut triggered) = authored_trigger
-        {
-            if looks_like_ability_word_label(label_tokens, false) {
-                triggered.presentation = Some(trigger_presentation(label_tokens, &label));
-            }
-            let (triggered, next_idx) =
-                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
-            return Ok(Some(LineDispatchResult::single(
-                RewriteLineCst::Triggered(triggered),
-                next_idx,
-            )));
-        }
-    }
-
-    let Some((label, label_tokens, body_tokens)) = split_label_prefix_lexed(&line.tokens) else {
-        return Ok(None);
-    };
-
-    let is_named_label = is_named_ability_label(label.as_str());
-    let preserve_as_choice_label = labeled_choice_block_has_peer(&preprocessed.items, idx)
-        && labeled_choice_block_has_named_option_header(&preprocessed.items, idx);
-    let presentation = (!preserve_as_choice_label).then(|| {
-        activated_presentation_from_preprocessed_line(line)
-            .unwrap_or_else(|| PresentationLabel::AbilityWord(label.clone()))
-    });
-    if document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_some() {
-        return Ok(None);
-    }
-
-    if let Some(triggered) = parse_case_to_solve_line_cst(line, label_tokens, body_tokens)? {
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Triggered(triggered),
-            idx + 1,
-        )));
-    }
-
-    let authored_body_text = render_original_text_for_token_slice(line, body_tokens);
-    let body_line = rewrite_line_tokens(line, body_tokens);
-    if label.eq_ignore_ascii_case("eminence")
-        && let Some((trigger_with_intro, after_trigger)) =
-            grammar::split_lexed_once_on_comma(&body_line.tokens)
-        && let Some((_source_zone_condition, effect_tokens)) =
-            grammar::split_lexed_once_on_comma(after_trigger)
-        && trigger_with_intro.len() > 1
-    {
-        let source_zone_condition = PredicateAst::SourceMatches(crate::ObjectFilter {
-            any_of: vec![
-                crate::ObjectFilter {
-                    zone: Some(crate::zone::Zone::Command),
-                    ..Default::default()
-                },
-                crate::ObjectFilter {
-                    zone: Some(crate::zone::Zone::Battlefield),
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        });
-        let triggered = TriggeredLineCst {
-            info: line.info.clone(),
-            full_text: render_token_slice(&body_line.tokens),
-            full_parse_tokens: body_line.tokens.clone(),
-            trigger_parse_tokens: trigger_with_intro[1..].to_vec(),
-            effect_parse_tokens: effect_tokens.to_vec(),
-            intervening_if: Some(source_zone_condition),
-            max_triggers_per_turn: None,
-            chosen_option: None,
-            presentation: Some(PresentationLabel::AbilityWord("Eminence".to_string())),
-        };
-        let (triggered, next_idx) =
-            extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Triggered(triggered),
-            next_idx,
-        )));
-    }
-    let labeled_activation = if (!line_starts_with_lparen_token(line)
-        || is_fully_parenthetical_line(line))
-        && let Some((cost_tokens, effect_parse_tokens)) =
-            split_activation_text_tokens_lexed(&body_line.tokens)
-    {
-        Some((cost_tokens, effect_parse_tokens))
-    } else {
-        None
-    };
-    let prefer_activation = labeled_activation
-        .as_ref()
-        .is_some_and(|(cost_tokens, _)| looks_like_activation_cost_prefix(cost_tokens));
-
-    if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
-        if let Some(mut triggered) = parse_labeled_qualified_ability_trigger_cst(&body_line)
-            .or_else(|| parse_triggered_line_cst(&body_line).ok())
-        {
-            restore_authored_named_source_trigger_subject(
-                &preprocessed.builder,
-                line,
-                authored_body_text
-                    .as_deref()
-                    .unwrap_or(body_line.info.normalized.normalized.as_str()),
-                &mut triggered,
-            )?;
-            if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
-                triggered.chosen_option =
-                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
-            }
-            if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
-                triggered.presentation = trigger_presentation_from_preprocessed_line(line)
-                    .or_else(|| Some(trigger_presentation(label_tokens, &label)));
-            }
-            let (triggered, next_idx) =
-                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
-            return Ok(Some(LineDispatchResult::single(
-                RewriteLineCst::Triggered(triggered),
-                next_idx,
-            )));
-        }
-        if let Some(mut triggered) = try_parse_triggered_line_with_named_source_rewrite(
-            &preprocessed.builder,
-            line,
-            authored_body_text
-                .as_deref()
-                .unwrap_or(body_line.info.normalized.normalized.as_str()),
-        )? {
-            if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
-                triggered.chosen_option =
-                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
-            }
-            if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
-                triggered.presentation = trigger_presentation_from_preprocessed_line(line)
-                    .or_else(|| Some(trigger_presentation(label_tokens, &label)));
-            }
-            let (triggered, next_idx) =
-                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
-            return Ok(Some(LineDispatchResult::single(
-                RewriteLineCst::Triggered(triggered),
-                next_idx,
-            )));
-        }
-        if allow_unsupported && is_named_label {
-            return Ok(Some(LineDispatchResult::single(
-                RewriteLineCst::Unsupported(UnsupportedLineCst {
-                    info: line.info.clone(),
-                    reason_code: "triggered-line-not-yet-supported",
-                }),
-                idx + 1,
-            )));
-        }
-        if is_named_label {
-            return Err(parse_triggered_line_cst(&body_line)
-                .err()
-                .unwrap_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "unsupported triggered line: '{}'",
-                        body_line.info.normalized.normalized.as_str()
-                    ))
-                }));
-        }
-    }
-
-    if prefer_activation
-        && let Some((cost_tokens, effect_parse_tokens)) = labeled_activation.clone()
-    {
-        let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
-            &preprocessed.builder,
-            line,
-            cost_tokens.clone(),
-        )?;
-        match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
-            Ok(cost) => {
-                return Ok(Some(LineDispatchResult::single(
-                    RewriteLineCst::Activated(ActivatedLineCst {
-                        info: line.info.clone(),
-                        cost,
-                        cost_parse_tokens: normalized_cost_tokens,
-                        effect_parse_tokens,
-                        presentation: presentation.clone(),
-                        chosen_option: preserve_as_choice_label
-                            .then(|| {
-                                document_grammar::parse_chosen_option_context_tokens(label_tokens)
-                            })
-                            .flatten(),
-                    }),
-                    idx + 1,
-                )));
-            }
-            Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {
-                return Err(err);
-            }
-            Err(_) => {}
-        }
-    }
-
-    if is_named_label && let Some(keyword_line) = parse_keyword_line_cst(&body_line)? {
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Keyword(keyword_line),
-            idx + 1,
-        )));
-    }
-
-    if should_prefer_statement_before_static_for_nonpermanent_spell(preprocessed, &body_line.tokens)
-        && let Some(mut statement_line) = parse_statement_line_cst(&body_line)?
-    {
-        apply_labeled_statement_surface_facts(&mut statement_line, line, presentation.clone());
-        let (statement_line, next_idx) =
-            extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Statement(statement_line),
-            next_idx,
-        )));
-    }
-    if let Some(split_result) =
-        parse_labeled_conditional_replacement_sentence_split(&body_line, idx)?
-    {
-        return Ok(Some(split_result));
-    }
-
-    if normalized_line_mentions_source_alias(
-        &preprocessed.builder,
-        body_line.info.normalized.normalized.as_str(),
-    ) && let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
-        &preprocessed.builder,
-        body_line.info.normalized.normalized.as_str(),
-    ) {
-        let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
-        if let Some(mut static_line) = parse_static_line_cst(&rewritten_body_line)? {
-            if preserve_as_choice_label {
-                static_line.chosen_option =
-                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
-            }
-            static_line
-                .info
-                .semantic_facts
-                .static_ability
-                .presentation_label = presentation.clone();
-            return Ok(Some(LineDispatchResult::single(
-                RewriteLineCst::Static(static_line),
-                idx + 1,
-            )));
-        }
-    }
-
-    if let Some(mut static_line) = parse_static_line_cst(&body_line)? {
-        if preserve_as_choice_label {
-            static_line.chosen_option =
-                document_grammar::parse_chosen_option_context_tokens(label_tokens);
-        }
-        if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
-            eprintln!("labeled-static-dispatch: presentation={presentation:?}");
-        }
-        static_line
-            .info
-            .semantic_facts
-            .static_ability
-            .presentation_label = presentation.clone();
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Static(static_line),
-            idx + 1,
-        )));
-    }
-
-    if normalized_line_mentions_source_alias(
-        &preprocessed.builder,
-        body_line.info.normalized.normalized.as_str(),
-    ) && let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
-        &preprocessed.builder,
-        body_line.info.normalized.normalized.as_str(),
-    ) {
-        let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
-        if let Some(mut static_line) = parse_static_line_cst(&rewritten_body_line)? {
-            if preserve_as_choice_label {
-                static_line.chosen_option =
-                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
-            }
-            static_line
-                .info
-                .semantic_facts
-                .static_ability
-                .presentation_label = presentation.clone();
-            return Ok(Some(LineDispatchResult::single(
-                RewriteLineCst::Static(static_line),
-                idx + 1,
-            )));
-        }
-    }
-
-    if let Some((cost_tokens, effect_parse_tokens)) = labeled_activation {
-        let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
-            &preprocessed.builder,
-            line,
-            cost_tokens.clone(),
-        )?;
-        match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
-            Ok(cost) => {
-                return Ok(Some(LineDispatchResult::single(
-                    RewriteLineCst::Activated(ActivatedLineCst {
-                        info: line.info.clone(),
-                        cost,
-                        cost_parse_tokens: normalized_cost_tokens,
-                        effect_parse_tokens,
-                        presentation,
-                        chosen_option: preserve_as_choice_label
-                            .then(|| {
-                                document_grammar::parse_chosen_option_context_tokens(label_tokens)
-                            })
-                            .flatten(),
-                    }),
-                    idx + 1,
-                )));
-            }
-            Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {
-                return Err(err);
-            }
-            Err(_) => {}
-        }
-    }
-
-    if let Some(mut statement_line) = parse_statement_line_cst(&body_line)? {
-        apply_labeled_statement_surface_facts(&mut statement_line, line, presentation);
-        let (statement_line, next_idx) =
-            extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Statement(statement_line),
-            next_idx,
-        )));
-    }
-
-    Ok(None)
-}
-
-fn apply_labeled_statement_surface_facts(
-    statement: &mut StatementLineCst,
-    source_line: &PreprocessedLine,
-    presentation: Option<PresentationLabel>,
-) {
-    // The statement body is parsed after the label is stripped and named card
-    // references have been rewritten to "this". Keep the original label and
-    // transform destination as presentation metadata while the lowered effect
-    // program continues to use the normalized self reference.
-    let source_facts = super::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(
-        &source_line.info.source_tokens,
-    );
-    if let Some(as_transforms) = source_facts.statement.as_transforms_effect_program {
-        statement
-            .info
-            .semantic_facts
-            .statement
-            .as_transforms_effect_program = Some(as_transforms);
-    }
-    statement.info.semantic_facts.statement.presentation_label = presentation.clone();
-    // Static lines carry the same authored ability word ("Threshold — This
-    // creature has flying as long as ..."), and the static-ability compile
-    // reads its own facts slot (Mystic Visionary family).
-    statement
-        .info
-        .semantic_facts
-        .static_ability
-        .presentation_label = presentation;
-}
-
-fn try_parse_triggered_line_dispatch(
-    preprocessed: &PreprocessedDocument,
-    idx: usize,
-    line: &PreprocessedLine,
-    allow_unsupported: bool,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_starts_with_trigger_intro_tokens(&line.tokens) {
-        return Ok(None);
-    }
-
-    if should_parse_delayed_trigger_line_as_spell_effect(preprocessed, &line.tokens)
-        && let Some(statement_line) = parse_statement_line_cst(line)?
-    {
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Statement(statement_line),
-            idx + 1,
-        )));
-    }
-
-    // Keep a token created by the first instruction correlated with the
-    // delayed sacrifice in the second sentence. The generic trigger-sentence
-    // splitter otherwise separates them before the semantic linked-token rule
-    // can inspect the complete authored effect tail.
-    let preserve_linked_created_token = grammar::split_lexed_once_on_comma(&line.tokens)
-        .is_some_and(|(_, effect_tokens)| {
-            super::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
-                effect_tokens,
-            )
-        });
-    let trigger_chunks = if preserve_linked_created_token {
-        Vec::new()
-    } else {
-        split_trigger_sentence_chunks_rewrite_lexed(&line.tokens)
-    };
-    if trigger_chunks.len() > 1 {
-        let mut lines = Vec::with_capacity(trigger_chunks.len());
-        for chunk_tokens in trigger_chunks {
-            let authored_chunk_text = render_original_text_for_token_slice(line, &chunk_tokens);
-            let chunk_line = rewrite_line_tokens(line, &chunk_tokens);
-            match parse_triggered_line_cst(&chunk_line) {
-                Ok(mut triggered) => {
-                    restore_authored_named_source_trigger_subject(
-                        &preprocessed.builder,
-                        line,
-                        authored_chunk_text
-                            .as_deref()
-                            .unwrap_or(chunk_line.info.normalized.normalized.as_str()),
-                        &mut triggered,
-                    )?;
-                    lines.push(RewriteLineCst::Triggered(triggered));
-                }
-                Err(_) => {
-                    if starts_with_when_one_or_more_this_way_clause(&chunk_line.tokens)
-                        && let Some(statement) = parse_statement_line_cst(
-                            &rewrite_when_one_or_more_this_way_line(&chunk_line),
-                        )?
-                    {
-                        lines.push(RewriteLineCst::Statement(statement));
-                        continue;
-                    }
-                    if let Some(statement) = parse_statement_line_cst(&chunk_line)? {
-                        lines.push(RewriteLineCst::Statement(statement));
-                        continue;
-                    }
-                    if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
-                        &preprocessed.builder,
-                        line,
-                        authored_chunk_text
-                            .as_deref()
-                            .unwrap_or(chunk_line.info.normalized.normalized.as_str()),
-                    )? {
-                        lines.push(RewriteLineCst::Triggered(triggered));
-                        continue;
-                    }
-                    if allow_unsupported {
-                        lines.push(RewriteLineCst::Unsupported(UnsupportedLineCst {
-                            info: line.info.clone(),
-                            reason_code: "triggered-line-not-yet-supported",
-                        }));
-                    } else {
-                        return Err(strict_unsupported_triggered_line_error(
-                            chunk_line.info.normalized.normalized.as_str(),
-                            parse_triggered_line_cst(&chunk_line).err(),
-                        ));
-                    }
-                }
-            }
-        }
-        return Ok(Some(LineDispatchResult {
-            lines,
-            next_idx: idx + 1,
-        }));
-    }
-
-    // The generic CST splitter has no card-name context. Give an exact,
-    // comma-bearing full source name its builder-aware rewrite before a
-    // syntactically valid but lossy split can claim the comma inside the
-    // name as the trigger/effect boundary.
-    if normalize_comma_bearing_leading_source_trigger(&preprocessed.builder, &line.info.raw_line)
-        .is_some()
-        && let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
-            &preprocessed.builder,
-            line,
-            &line.info.raw_line,
-        )?
-    {
-        let (triggered, next_idx) =
-            extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Triggered(triggered),
-            next_idx,
-        )));
-    }
-
-    match parse_triggered_line_cst(line) {
-        Ok(mut triggered) => {
-            restore_authored_named_source_trigger_subject(
-                &preprocessed.builder,
-                line,
-                &line.info.raw_line,
-                &mut triggered,
-            )?;
-            let (triggered, next_idx) =
-                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
-            Ok(Some(LineDispatchResult::single(
-                RewriteLineCst::Triggered(triggered),
-                next_idx,
-            )))
-        }
-        Err(_) => {
-            if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
-                &preprocessed.builder,
-                line,
-                &line.info.raw_line,
-            )? {
-                let (triggered, next_idx) = extend_triggered_line_with_result_followups(
-                    &preprocessed.items,
-                    idx,
-                    triggered,
-                );
-                Ok(Some(LineDispatchResult::single(
-                    RewriteLineCst::Triggered(triggered),
-                    next_idx,
-                )))
-            } else if allow_unsupported {
-                Ok(Some(LineDispatchResult::single(
-                    RewriteLineCst::Unsupported(UnsupportedLineCst {
-                        info: line.info.clone(),
-                        reason_code: "triggered-line-not-yet-supported",
-                    }),
-                    idx + 1,
-                )))
-            } else {
-                Err(strict_unsupported_triggered_line_error(
-                    &line.info.raw_line,
-                    parse_triggered_line_cst(line).err(),
-                ))
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-fn split_activation_text_parts_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<(Vec<OwnedLexToken>, String)> {
-    let (cost_tokens, effect_tokens) = split_activation_text_tokens_lexed(tokens)?;
-    Some((
-        cost_tokens,
-        render_token_slice(&effect_tokens).trim().to_string(),
-    ))
-}
-
-fn split_activation_text_tokens_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
-    let Some((cost_tokens, effect_tokens)) = split_lexed_once_on_colon_outside_quotes(tokens)
-    else {
-        return None;
-    };
-
-    let cost_tokens = trim_lexed_commas(cost_tokens);
-    let effect_tokens = trim_lexed_commas(effect_tokens);
-    if cost_tokens.is_empty() || effect_tokens.is_empty() {
-        return None;
-    }
-
-    Some((cost_tokens.to_vec(), effect_tokens.to_vec()))
-}
-
-fn rewrite_cleave_bracket_document(
-    document: &PreprocessedDocument,
-    remove_bracketed_text: bool,
-) -> Result<PreprocessedDocument, CardTextError> {
-    let mut rewritten = document.clone();
-    let mut items = Vec::with_capacity(rewritten.items.len());
-
-    for item in rewritten.items {
-        let PreprocessedItem::Line(line) = item else {
-            items.push(item);
-            continue;
-        };
-        if !line
-            .tokens
-            .iter()
-            .any(|token| matches!(token.kind, TokenKind::LBracket | TokenKind::RBracket))
-        {
-            items.push(PreprocessedItem::Line(line));
-            continue;
-        }
-
-        let mut depth = 0usize;
-        let mut tokens = Vec::with_capacity(line.tokens.len());
-        for token in &line.tokens {
-            match token.kind {
-                TokenKind::LBracket => {
-                    depth += 1;
-                }
-                TokenKind::RBracket => {
-                    if depth == 0 {
-                        return Err(CardTextError::ParseError(format!(
-                            "cleave line has an unmatched closing bracket: '{}'",
-                            line.info.raw_line
-                        )));
-                    }
-                    depth -= 1;
-                }
-                _ if depth == 0 || !remove_bracketed_text => tokens.push(token.clone()),
-                _ => {}
-            }
-        }
-        if depth != 0 {
-            return Err(CardTextError::ParseError(format!(
-                "cleave line has an unmatched opening bracket: '{}'",
-                line.info.raw_line
-            )));
-        }
-        if tokens.is_empty() {
-            continue;
-        }
-        let normalized = render_token_slice(&tokens);
-        items.push(PreprocessedItem::Line(rewrite_line_normalized(
-            &line,
-            normalized.trim(),
-        )?));
-    }
-
-    rewritten.items = items;
-    Ok(rewritten)
-}
-
-pub(crate) fn parse_text_to_semantic_document_with_context(
-    context: &mut ParseContext,
-    builder: CardDefinitionBuilder,
-    text: String,
-) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
-    let allow_unsupported = context.features().allow_unsupported;
-    let card_name = builder.card_builder.name_ref().to_string();
-    let _trace_scope = parse_trace::scope(format!(
-        "card parse: \"{}\" allow_unsupported={} source_lines={}",
-        card_name,
-        allow_unsupported,
-        text.lines().count()
-    ));
-    if parser_trace_enabled() {
-        eprintln!(
-            "[parser-flow] stage=parse_text_to_semantic_document:start card={:?} allow_unsupported={} lines={}",
-            builder.card_builder.name_ref(),
-            allow_unsupported,
-            text.lines().count()
-        );
-    }
-    if let Some(err) = preflight_invalid_payment_keyword_lines(text.as_str()) {
-        return Err(err);
-    }
-    if !allow_unsupported && let Some(err) = preflight_known_strict_unsupported(text.as_str()) {
-        return Err(err);
-    }
-    let mut preprocessed = preprocess_document_with_provenance(
-        builder,
-        text.as_str(),
-        context.provenance().clone(),
-    )?;
-    context.replace_provenance(preprocessed.provenance.clone());
-    let semantic_facts = document_fact_grammar::parse_document_semantic_facts(
-        preprocessed.items.iter().filter_map(|item| match item {
-            PreprocessedItem::Metadata(_) => None,
-            PreprocessedItem::Line(line) => {
-                Some((line.info.display_line_index, line.tokens.as_slice()))
-            }
-        }),
-    );
-    let cleave_preprocessed = if semantic_facts.cleave_rewrite.is_some() {
-        let cleaved = rewrite_cleave_bracket_document(&preprocessed, true)?;
-        preprocessed = rewrite_cleave_bracket_document(&preprocessed, false)?;
-        Some(cleaved)
-    } else {
-        None
-    };
-    parse_trace::event(format!(
-        "preprocessed document: {} item(s)",
-        preprocessed.items.len()
-    ));
-    for item in &preprocessed.items {
-        match item {
-            PreprocessedItem::Metadata(meta) => parse_trace::event(format!(
-                "line {} metadata: {:?}",
-                meta.info.display_line_index + 1,
-                meta.value
-            )),
-            PreprocessedItem::Line(line) => {
-                let raw = line.info.raw_line.trim();
-                let normalized = line.info.normalized.normalized.trim();
-                if raw == normalized {
-                    parse_trace::event(format!(
-                        "line {} text: \"{}\"",
-                        line.info.display_line_index + 1,
-                        normalized
-                    ));
-                } else {
-                    parse_trace::event(format!(
-                        "line {} text: \"{}\" -> \"{}\"",
-                        line.info.display_line_index + 1,
-                        raw,
-                        normalized
-                    ));
-                }
-            }
-        }
-    }
-    if parser_trace_enabled() {
-        eprintln!(
-            "[parser-flow] stage=parse_text_to_semantic_document:preprocessed items={}",
-            preprocessed.items.len()
-        );
-    }
-    let document_context = context.view().child(ParseScopeKind::Document);
-    let cst = parse_document_cst_with_context(document_context, &preprocessed)?;
-    let cleave_cst = cleave_preprocessed
-        .as_ref()
-        .map(|document| {
-            parse_document_cst_with_context(
-                document_context.child(ParseScopeKind::CleaveBranch),
-                document,
-            )
-        })
-        .transpose()?;
-    parse_trace::event(format!("cst lines: {}", cst.lines.len()));
-    if parser_trace_enabled() {
-        eprintln!(
-            "[parser-flow] stage=parse_text_to_semantic_document:cst lines={}",
-            cst.lines.len()
-        );
-    }
-    let semantic = lower_document_cst_with_symbols(
-        preprocessed,
-        cst,
-        cleave_cst,
-        semantic_facts,
-        allow_unsupported,
-        context.symbols().clone(),
-    )?;
-    let annotations = semantic.annotations.clone();
-    parse_trace::event(format!("semantic items: {}", semantic.items.len()));
-    if parser_trace_enabled() {
-        eprintln!(
-            "[parser-flow] stage=parse_text_to_semantic_document:done items={}",
-            semantic.items.len()
-        );
-    }
-    Ok((semantic, annotations))
-}
-
-pub(crate) fn parse_document_cst_with_context(
-    context: ParseContextView<'_>,
-    preprocessed: &PreprocessedDocument,
-) -> Result<RewriteDocumentCst, CardTextError> {
-    let allow_unsupported = context.features().allow_unsupported;
-    let mut lines = Vec::with_capacity(preprocessed.items.len());
-    let mut idx = 0usize;
-    while idx < preprocessed.items.len() {
-        let item = &preprocessed.items[idx];
-        match item {
-            PreprocessedItem::Metadata(meta) => {
-                let cst = RewriteLineCst::Metadata(metadata_line_cst(
-                    meta.info.clone(),
-                    meta.value.clone(),
-                )?);
-                trace_cst_line(&cst);
-                lines.push(cst);
-                idx += 1;
-            }
-            PreprocessedItem::Line(line) => {
-                let line_context = context.child(ParseScopeKind::Line {
-                    source_line: line.info.display_line_index,
-                });
-                let _line_scope = parse_trace::scope(format!(
-                    "line {} parse: \"{}\"",
-                    line.info.display_line_index + 1,
-                    line.info.raw_line
-                ));
-                parser_trace("parse_document_cst:line", &line.tokens);
-                if let Some((level_block, next_idx)) =
-                    try_parse_level_header_block(preprocessed, idx, line, allow_unsupported)?
-                {
-                    trace_cst_line(&level_block);
-                    lines.push(level_block);
-                    idx = next_idx;
-                    continue;
-                }
-
-                if let Some((chapters, presentation_label, text)) =
-                    parse_saga_chapter_prefix(&line.info.raw_line)
-                {
-                    // Retain the authored casing and chapter label from the raw
-                    // line, but compile the preprocessed body. The latter has
-                    // reminder text removed, so token reminder abilities cannot
-                    // leak into the Saga chapter's executable effect program.
-                    let parse_text = parse_saga_chapter_prefix(&line.info.normalized.normalized)
-                        .filter(|(normalized_chapters, _, _)| normalized_chapters == &chapters)
-                        .map(|(_, _, normalized_text)| normalized_text)
-                        .unwrap_or_else(|| text.clone());
-                    let cst = RewriteLineCst::SagaChapter(parse_saga_chapter_line_cst(
-                        line,
-                        chapters,
-                        presentation_label,
-                        text.as_str(),
-                        parse_text.as_str(),
-                    )?);
-                    trace_cst_line(&cst);
-                    lines.push(cst);
-                    idx += 1;
-                    continue;
-                }
-
-                if let Some((modal_block, next_idx)) =
-                    try_parse_modal_bullet_block(preprocessed, idx, line)?
-                {
-                    trace_cst_line(&modal_block);
-                    lines.push(modal_block);
-                    idx = next_idx;
-                    continue;
-                }
-
-                let normalized = line.info.normalized.normalized.as_str();
-                if let Some(chunks) = split_reveal_first_draw_line_rewrite_lexed(&line.tokens) {
-                    for chunk_tokens in chunks {
-                        let chunk_line = rewrite_line_tokens(line, &chunk_tokens);
-                        if line_starts_with_trigger_intro_tokens(&chunk_line.tokens) {
-                            for trigger_chunk in
-                                split_trigger_sentence_chunks_rewrite_lexed(&chunk_line.tokens)
-                            {
-                                let trigger_line = rewrite_line_tokens(&chunk_line, &trigger_chunk);
-                                let cst = RewriteLineCst::Triggered(parse_triggered_line_cst(
-                                    &trigger_line,
-                                )?);
-                                trace_cst_line(&cst);
-                                lines.push(cst);
-                            }
-                        } else if let Some(static_line) = parse_static_line_cst(&chunk_line)? {
-                            let cst = RewriteLineCst::Static(static_line);
-                            trace_cst_line(&cst);
-                            lines.push(cst);
-                        } else {
-                            return Err(CardTextError::ParseError(format!(
-                                "parser could not split reveal-first-draw line family: '{}'",
-                                line.info.raw_line
-                            )));
-                        }
-                    }
-                    idx += 1;
-                    continue;
-                }
-                if let Some((prefix_tokens, suffix_tokens)) =
-                    normalize_trailing_keyword_activation_sentence_lexed(&line.tokens)
-                {
-                    let prefix_line = rewrite_line_tokens(line, &prefix_tokens);
-                    let (prefix_statement, prefix_statement_error) =
-                        match parse_statement_line_cst(&prefix_line) {
-                            Ok(statement) => (statement, None),
-                            Err(err) => (None, Some(err)),
-                        };
-                    if let Some(statement_line) = prefix_statement {
-                        let cst = RewriteLineCst::Statement(statement_line);
-                        trace_cst_line(&cst);
-                        lines.push(cst);
-                    } else {
-                        let mut parsed_raw_static_prefix = false;
-                        let prefix_static_error = match parse_static_line_cst(&prefix_line) {
-                            Ok(Some(static_line)) => {
-                                let cst = RewriteLineCst::Static(static_line);
-                                trace_cst_line(&cst);
-                                lines.push(cst);
-                                parsed_raw_static_prefix = true;
-                                None
-                            }
-                            Ok(None) => None,
-                            Err(err) => Some(err),
-                        };
-                        if parsed_raw_static_prefix {
-                            // handled by the raw static parse above
-                        } else if let Some(rewritten_prefix) =
-                            normalize_named_source_sentence_for_builder(
-                                &preprocessed.builder,
-                                prefix_line.info.normalized.normalized.as_str(),
-                            )
-                        {
-                            let rewritten_prefix_line =
-                                rewrite_line_normalized(line, rewritten_prefix.as_str())?;
-                            if let Some(statement_line) =
-                                parse_statement_line_cst(&rewritten_prefix_line)?
-                            {
-                                let cst = RewriteLineCst::Statement(statement_line);
-                                trace_cst_line(&cst);
-                                lines.push(cst);
-                            } else if let Some(static_line) =
-                                parse_static_line_cst(&rewritten_prefix_line)?
-                            {
-                                let cst = RewriteLineCst::Static(static_line);
-                                trace_cst_line(&cst);
-                                lines.push(cst);
-                            } else {
-                                return Err(CardTextError::ParseError(format!(
-                                    "parser could not split leading sentence before keyword ability: '{}'",
-                                    line.info.raw_line
-                                )));
-                            }
-                        } else if let Some(err) = prefix_statement_error {
-                            return Err(err);
-                        } else if let Some(err) = prefix_static_error {
-                            return Err(err);
-                        } else {
-                            return Err(CardTextError::ParseError(format!(
-                                "parser could not split leading sentence before keyword ability: '{}'",
-                                line.info.raw_line
-                            )));
-                        }
-                    }
-
-                    let suffix_line = rewrite_line_tokens(line, &suffix_tokens);
-                    let Some((_, _, body_tokens)) = split_label_prefix_lexed(&suffix_line.tokens)
-                    else {
-                        return Err(CardTextError::ParseError(format!(
-                            "parser could not recover keyword activation suffix: '{}'",
-                            line.info.raw_line
-                        )));
-                    };
-                    let Some((cost_tokens, effect_parse_tokens)) =
-                        split_activation_text_tokens_lexed(body_tokens)
-                    else {
-                        return Err(CardTextError::ParseError(format!(
-                            "parser could not recover activation suffix: '{}'",
-                            line.info.raw_line
-                        )));
-                    };
-                    let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
-                        &preprocessed.builder,
-                        line,
-                        cost_tokens.clone(),
-                    )?;
-                    let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
-                    let cst = RewriteLineCst::Activated(ActivatedLineCst {
-                        info: suffix_line.info.clone(),
-                        cost,
-                        cost_parse_tokens: normalized_cost_tokens,
-                        effect_parse_tokens,
-                        presentation: None,
-                        chosen_option: None,
-                    });
-                    trace_cst_line(&cst);
-                    lines.push(cst);
-                    idx += 1;
-                    continue;
-                }
-                if normalized == LESS_THAN_ONE_MANA_REDUCTION_REMINDER {
-                    // A few inputs preserve this rules sentence on its own physical line.
-                    // Keep it attached to the preceding cost reducer so lowering can
-                    // distinguish an explicit minimum from an unbounded reduction.
-                    if let Some(RewriteLineCst::Static(previous)) = lines.last_mut()
-                        && previous.parsed.is_none()
-                    {
-                        previous.parse_tokens.extend(line.tokens.clone());
-                    }
-                    idx += 1;
-                    continue;
-                }
-                if let Some(dispatch) =
-                    try_parse_labeled_line_dispatch(preprocessed, idx, line, allow_unsupported)?
-                {
-                    for cst in &dispatch.lines {
-                        trace_cst_line(cst);
-                    }
-                    lines.extend(dispatch.lines);
-                    idx = dispatch.next_idx;
-                    continue;
-                }
-                if !line_starts_with_trigger_intro_tokens(&line.tokens)
-                    && !labeled_body_starts_with_trigger_intro_tokens(&line.tokens)
-                    && line_family_grammar::parse_champion_line(&line.tokens).is_none()
-                    && normalized_line_mentions_source_alias(
-                        &preprocessed.builder,
-                        line.info.normalized.normalized.as_str(),
-                    )
-                    && let Some(rewritten) = normalize_named_source_sentence_for_builder(
-                        &preprocessed.builder,
-                        line.info.normalized.normalized.as_str(),
-                    )
-                {
-                    let rewritten_line = rewrite_line_normalized(line, rewritten.as_str())?;
-                    if let Ok(dispatch) = dispatch_standard_line_cst(
-                        line_context,
-                        preprocessed,
-                        idx,
-                        &rewritten_line,
-                        allow_unsupported,
-                    ) {
-                        for cst in &dispatch.lines {
-                            trace_cst_line(cst);
-                        }
-                        lines.extend(dispatch.lines);
-                        idx = dispatch.next_idx;
-                        continue;
-                    }
-                }
-                if !allow_unsupported
-                    && let Some(err) = diagnose_known_unsupported_rewrite_line(&line.tokens)
-                {
-                    return Err(err);
-                }
-                let dispatch = if is_bullet_line(line)
-                    && split_label_prefix_lexed(strip_choice_bullet_prefix_tokens(&line.tokens))
-                        .is_some()
-                {
-                    let stripped_line =
-                        rewrite_line_tokens(line, strip_choice_bullet_prefix_tokens(&line.tokens));
-                    dispatch_standard_line_cst(
-                        line_context,
-                        preprocessed,
-                        idx,
-                        &stripped_line,
-                        allow_unsupported,
-                    )?
-                } else {
-                    dispatch_standard_line_cst(
-                        line_context,
-                        preprocessed,
-                        idx,
-                        line,
-                        allow_unsupported,
-                    )?
-                };
-                for cst in &dispatch.lines {
-                    trace_cst_line(cst);
-                }
-                lines.extend(dispatch.lines);
-                idx = dispatch.next_idx;
-                continue;
-            }
-        }
-    }
-
-    Ok(RewriteDocumentCst { lines })
-}
-
-/// Parse a prepared document at the public grammar boundary with fresh,
-/// request-scoped compiler state.
-pub(crate) fn parse_document_cst(
-    preprocessed: &PreprocessedDocument,
-    allow_unsupported: bool,
-) -> Result<RewriteDocumentCst, CardTextError> {
-    let source_text = preprocessed
-        .items
-        .iter()
-        .map(|item| match item {
-            PreprocessedItem::Metadata(line) => line.info.raw_line.as_str(),
-            PreprocessedItem::Line(line) => line.info.raw_line.as_str(),
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    let context = ParseContext::for_builder(&preprocessed.builder, &source_text, allow_unsupported);
-    parse_document_cst_with_context(
-        context.view().child(ParseScopeKind::Document),
-        preprocessed,
-    )
-}
-
-fn lower_document_cst(
-    preprocessed: PreprocessedDocument,
-    cst: RewriteDocumentCst,
-    cleave_cst: Option<RewriteDocumentCst>,
-    semantic_facts: super::ir::DocumentSemanticFacts,
-    allow_unsupported: bool,
-) -> Result<RewriteSemanticDocument, CardTextError> {
-    lower_document_cst_with_symbols(
-        preprocessed,
-        cst,
-        cleave_cst,
-        semantic_facts,
-        allow_unsupported,
-        crate::model::symbols::SymbolTable::default(),
-    )
-}
-
-fn lower_document_cst_with_symbols(
-    preprocessed: PreprocessedDocument,
-    cst: RewriteDocumentCst,
-    cleave_cst: Option<RewriteDocumentCst>,
-    semantic_facts: super::ir::DocumentSemanticFacts,
-    allow_unsupported: bool,
-    symbols: crate::model::symbols::SymbolTable,
-) -> Result<RewriteSemanticDocument, CardTextError> {
-    let overload_items = semantic_facts
-        .overload_rewrite
-        .as_ref()
-        .map(|payload| {
-            let mut items = Vec::new();
-            for line in &cst.lines {
-                let Some(line) = rewrite_overload_line_cst(line, payload) else {
-                    continue;
-                };
-                items.push(lower_non_metadata_rewrite_line_cst(
-                    line,
-                    allow_unsupported,
-                )?);
-            }
-            Ok::<_, CardTextError>(items)
-        })
-        .transpose()?;
-    let cleave_items = semantic_facts
-        .cleave_rewrite
-        .as_ref()
-        .zip(cleave_cst.as_ref())
-        .map(|(payload, cleave_cst)| {
-            let mut items = Vec::new();
-            for line in &cleave_cst.lines {
-                if rewrite_line_cst_source_index(line) == Some(payload.keyword_line_index)
-                    || matches!(line, RewriteLineCst::Metadata(_))
-                {
-                    continue;
-                }
-                items.push(lower_non_metadata_rewrite_line_cst(
-                    line.clone(),
-                    allow_unsupported,
-                )?);
-            }
-            Ok::<_, CardTextError>(items)
-        })
-        .transpose()?;
-
-    let mut builder = preprocessed.builder;
-    let mut items = Vec::with_capacity(cst.lines.len());
-
-    for line in cst.lines {
-        match line {
-            RewriteLineCst::Metadata(MetadataLineCst { value }) => {
-                builder = builder.apply_metadata(value.clone())?;
-                items.push(RewriteSemanticItem::Metadata);
-            }
-            other => items.push(lower_non_metadata_rewrite_line_cst(
-                other,
-                allow_unsupported,
-            )?),
-        }
-    }
-
-    Ok(RewriteSemanticDocument {
-        builder,
-        annotations: preprocessed.annotations,
-        provenance: preprocessed.provenance,
-        symbols,
-        items,
-        overload_items,
-        cleave_items,
-        allow_unsupported,
-    })
-}
-
-fn rewrite_overload_target_tokens(
-    tokens: &[OwnedLexToken],
-    payload: &OverloadRewritePayload,
-) -> Vec<OwnedLexToken> {
-    tokens
-        .iter()
-        .map(|token| {
-            if payload
-                .target_spans
-                .iter()
-                .any(|target_span| target_span == &token.span)
-            {
-                OwnedLexToken::word("each", token.span)
-            } else {
-                token.clone()
-            }
-        })
-        .collect()
-}
-
-fn rewrite_overload_line_cst(
-    line: &RewriteLineCst,
-    payload: &OverloadRewritePayload,
-) -> Option<RewriteLineCst> {
-    if rewrite_line_cst_source_index(line) == Some(payload.keyword_line_index) {
-        return None;
-    }
-    match line {
-        RewriteLineCst::Metadata(_) => None,
-        RewriteLineCst::Statement(statement) => {
-            let mut statement = statement.clone();
-            statement.parse_tokens =
-                rewrite_overload_target_tokens(&statement.parse_tokens, payload);
-            statement.parse_groups = statement
-                .parse_groups
-                .iter()
-                .map(|group| rewrite_overload_target_tokens(group, payload))
-                .collect();
-            statement.text = render_token_slice(&statement.parse_tokens)
-                .trim()
-                .to_string();
-            statement.info.normalized.normalized = statement.text.clone();
-            statement.info.semantic_facts =
-                super::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(
-                    &statement.parse_tokens,
-                );
-            Some(RewriteLineCst::Statement(statement))
-        }
-        other => Some(other.clone()),
-    }
-}
-
-fn rewrite_line_cst_source_index(line: &RewriteLineCst) -> Option<usize> {
-    match line {
-        RewriteLineCst::Metadata(_) => None,
-        RewriteLineCst::Keyword(line) => Some(line.info.display_line_index),
-        RewriteLineCst::Activated(line) => Some(line.info.display_line_index),
-        RewriteLineCst::Triggered(line) => Some(line.info.display_line_index),
-        RewriteLineCst::Static(line) => Some(line.info.display_line_index),
-        RewriteLineCst::Statement(line) => Some(line.info.display_line_index),
-        RewriteLineCst::Modal(line) => Some(line.header.display_line_index),
-        RewriteLineCst::LevelHeader(line) => {
-            line.items.first().map(|item| item.info.display_line_index)
-        }
-        RewriteLineCst::SagaChapter(line) => Some(line.info.display_line_index),
-        RewriteLineCst::Unsupported(line) => Some(line.info.display_line_index),
-    }
-}
-
-pub(crate) fn metadata_line_cst(
-    info: crate::cards::builders::LineInfo,
-    value: crate::cards::builders::MetadataLine,
-) -> Result<MetadataLineCst, CardTextError> {
-    let _ = info;
-    Ok(MetadataLineCst { value })
 }

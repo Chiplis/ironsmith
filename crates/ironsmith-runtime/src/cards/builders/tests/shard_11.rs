@@ -1017,7 +1017,7 @@ pub(super) fn specialized_token_reminders_preserve_separate_sentence_presentatio
             program
                 .flattened_default_effects()
                 .iter()
-                .find_map(|effect| nested_create_token(effect))
+                .find_map(nested_create_token)
         }) {
             return create;
         }
@@ -1027,10 +1027,7 @@ pub(super) fn specialized_token_reminders_preserve_separate_sentence_presentatio
                 AbilityKind::Triggered(triggered) => triggered.effects.flattened_default_effects(),
                 AbilityKind::Static(_) => continue,
             };
-            if let Some(create) = effects
-                .iter()
-                .find_map(|effect| nested_create_token(effect))
-            {
+            if let Some(create) = effects.iter().find_map(nested_create_token) {
                 return create;
             }
         }
@@ -1830,7 +1827,7 @@ pub(super) fn parse_token_copy_cleanup_preserves_your_next_end_step() {
         .as_ref()
         .expect("expected spell effects")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>())
         .unwrap_or_else(|| {
             panic!(
@@ -2856,8 +2853,8 @@ pub(super) fn death_rattle_oni_destroy_filter(
                 .flattened_default_effects()
                 .iter()
                 .find_map(|effect| effect.downcast_ref::<DestroyEffect>())
-                .and_then(|destroy| match &destroy.spec {
-                    ChooseSpec::All(filter) => Some(filter),
+                .map(|destroy| match &destroy.spec {
+                    ChooseSpec::All(filter) => filter,
                     other => {
                         panic!(
                             "Death-Rattle Oni should destroy all matching creatures, got {other:?}"
@@ -3423,7 +3420,7 @@ pub(super) fn spear_of_heliod_anthem_and_damage_history_destroy_runtime() {
     crate::cost::can_pay_cost(&game, spear, alice, &activated.mana_cost).expect(
         "Spear activation cost should be payable with three white mana and an untapped source",
     );
-    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    let mut dm = crate::decision::AutoPassDecisionMaker;
     crate::special_actions::pay_total_cost_with_choice(
         &mut game,
         alice,

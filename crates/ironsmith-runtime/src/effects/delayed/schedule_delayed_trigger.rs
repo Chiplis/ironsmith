@@ -259,16 +259,11 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                     continue;
                 };
                 let tag = TagKey::from(format!("targeted_{idx}"));
-                if !tagged_objects.contains_key(&tag) {
-                    tagged_objects.insert(
-                        tag,
-                        vec![
+                tagged_objects.entry(tag).or_insert_with(|| vec![
                             crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
                                 object, game,
                             ),
-                        ],
-                    );
-                }
+                        ]);
             }
         }
 

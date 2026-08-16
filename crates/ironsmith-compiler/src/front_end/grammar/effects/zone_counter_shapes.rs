@@ -5,14 +5,14 @@ use winnow::token::any;
 
 use crate::cards::builders::{IT_TAG, PlayerAst};
 use crate::effect::{ChoiceCount, Value};
-use crate::object::CounterType;
 use crate::grammar::{filters, leaf, primitives, values};
-use crate::front_end::lexer::{LexStream, OwnedLexToken, TokenKind};
+use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
+use crate::object::CounterType;
+use crate::target::{PlayerFilter, SourceReferenceSurface};
 use crate::util::{
     source_reference_surface_for_possessive_words, source_reference_surface_for_words,
     this_source_surface_for_words,
 };
-use crate::target::{PlayerFilter, SourceReferenceSurface};
 
 use super::counter_marker_shapes;
 
@@ -892,7 +892,7 @@ pub(crate) fn player_filter_for_half_reference(player: PlayerAst) -> Option<Play
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn tokens(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()
@@ -943,21 +943,18 @@ mod tests {
                 consumed: 2,
             })
         );
-        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Counter Bear",
-            || {
-                assert_eq!(
-                    parse_counter_count_prefix_shape(&tokens(
-                        "Counter Bear's counters on that creature"
-                    )),
-                    CounterCountPrefixShape::Referential(ReferentialCounterCountShape {
-                        source: CounterReferenceSource::Source,
-                        counter_type: None,
-                        consumed: 3,
-                    })
-                );
-            },
-        );
+        crate::util::with_source_reference_context("Counter Bear", || {
+            assert_eq!(
+                parse_counter_count_prefix_shape(&tokens(
+                    "Counter Bear's counters on that creature"
+                )),
+                CounterCountPrefixShape::Referential(ReferentialCounterCountShape {
+                    source: CounterReferenceSource::Source,
+                    counter_type: None,
+                    consumed: 3,
+                })
+            );
+        });
         let counter_tokens = tokens("+1/+1 counters on target creature equal to the difference");
         let shape = parse_put_counter_target_shape(&counter_tokens).unwrap();
         assert!(shape.equal_to_difference);

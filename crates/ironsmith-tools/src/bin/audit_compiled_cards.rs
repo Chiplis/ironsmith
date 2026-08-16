@@ -86,9 +86,7 @@ fn extract_effect_type(line: &str) -> Option<String> {
     let marker = "Effect(";
     let start = line.find(marker)? + marker.len();
     let rest = &line[start..];
-    let end = rest
-        .find(|ch: char| ch == ' ' || ch == '{' || ch == ')' || ch == ':')
-        .unwrap_or(rest.len());
+    let end = rest.find([' ', '{', ')', ':']).unwrap_or(rest.len());
     let kind = &rest[..end];
     if kind.is_empty() {
         None

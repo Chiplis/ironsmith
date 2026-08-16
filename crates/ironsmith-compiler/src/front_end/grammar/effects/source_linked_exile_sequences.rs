@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 use crate::types::CardType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,7 +80,7 @@ pub(crate) fn parse_reveal_source_exiled_permanents_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_each_player_source_linked_exile_sequence() {

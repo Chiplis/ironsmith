@@ -50,6 +50,7 @@ export default function Shell() {
   const [zoneViews, setZoneViews] = useState(["battlefield", "ante"]);
   const [deckLoadingMode, setDeckLoadingMode] = useState(false);
   const [puzzleSetupMode, setPuzzleSetupMode] = useState(false);
+  const [initializationError, setInitializationError] = useState(null);
   const [mobileOpponentIndex, setMobileOpponentIndex] = useState(0);
   const [mobileViewMode, setMobileViewMode] = useState("battlefield");
   const [mobilePhaseStops, setMobilePhaseStops] = useState(() => new Set());
@@ -176,6 +177,7 @@ export default function Shell() {
   useEffect(() => {
     if (!game) return;
     async function init() {
+      setInitializationError(null);
       try {
         if (typeof game.setSemanticThreshold === "function") {
           await game.setSemanticThreshold(semanticThreshold);
@@ -200,7 +202,9 @@ export default function Shell() {
           await refresh("WASM loaded");
         }
       } catch (err) {
-        setStatus(`Init failed: ${err}`, true);
+        const message = err instanceof Error ? err.message : String(err);
+        setInitializationError(message);
+        setStatus(`Init failed: ${message}`, true);
       }
     }
 
@@ -413,6 +417,19 @@ export default function Shell() {
     return (
       <div className="flex items-center justify-center h-screen text-destructive">
         WASM failed: {wasmError.message}
+      </div>
+    );
+  }
+
+  if (initializationError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen gap-3 px-6 text-center text-destructive">
+        <span className="text-[18px] font-bold uppercase tracking-wider">
+          Game initialization failed
+        </span>
+        <span className="max-w-2xl text-sm text-muted-foreground">
+          {initializationError}
+        </span>
       </div>
     );
   }

@@ -1,5 +1,5 @@
+use crate::lexer::{OwnedLexToken, parser_token_word_refs};
 use crate::mana::ManaSymbol;
-use crate::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
 use winnow::combinator::alt;
 use winnow::prelude::*;
 
@@ -367,7 +367,7 @@ pub(crate) fn parse_sacrifice_attached_exclusion(tokens: &[OwnedLexToken]) -> bo
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::{lex_line, parser_token_word_refs};
+    use crate::lexer::{lex_line, parser_token_word_refs};
 
     use super::*;
 

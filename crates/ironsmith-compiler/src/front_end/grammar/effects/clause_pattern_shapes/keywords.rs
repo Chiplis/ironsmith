@@ -258,10 +258,10 @@ fn phased_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-fn parse_all_phase_subject<'a>(
-    tokens: &'a [OwnedLexToken],
+fn parse_all_phase_subject(
+    tokens: &[OwnedLexToken],
     direction: PhaseDirectionShape,
-) -> Option<&'a [OwnedLexToken]> {
+) -> Option<&[OwnedLexToken]> {
     let mut input = LexStream::new(tokens);
     let simultaneously = opt(primitives::kw("simultaneously"))
         .parse_next(&mut input)
@@ -291,8 +291,7 @@ fn parse_target_phase_subject(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToke
 
 fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
     let raw_subject = tokens_before(input, 1, phase_marker.void())?;
-    let subject_words =
-        crate::front_end::lexer::TokenWordView::new(raw_subject).word_refs();
+    let subject_words = crate::lexer::TokenWordView::new(raw_subject).word_refs();
     let has_negated_auxiliary = subject_words.iter().any(|word| {
         matches!(
             *word,

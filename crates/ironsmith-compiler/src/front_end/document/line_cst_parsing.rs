@@ -33,10 +33,8 @@ fn rewrite_count_that_number_life_total_trigger_tokens(
     Some(rewritten)
 }
 
-fn trigger_has_moved_or_cast_origin_condition(
-    trigger: &crate::model::ast::TriggerSpec,
-) -> bool {
-    crate::families::activation_and_restrictions::trigger_clause_core::trigger_spec_has_moved_or_cast_origin_condition(trigger)
+fn trigger_has_moved_or_cast_origin_condition(trigger: &crate::model::ast::TriggerSpec) -> bool {
+    crate::activation_and_restrictions::trigger_clause_core::trigger_spec_has_moved_or_cast_origin_condition(trigger)
 }
 
 fn moved_or_cast_origin_trigger_split_index(
@@ -71,9 +69,9 @@ fn moved_or_cast_origin_trigger_split_index(
 pub(super) fn parse_triggered_line_cst(
     line: &PreprocessedLine,
 ) -> Result<TriggeredLineCst, CardTextError> {
-    {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_triggered_line_cst_inner(line)
-    }
+    })
 }
 
 fn parse_triggered_line_cst_inner(
@@ -109,17 +107,30 @@ fn parse_triggered_line_cst_inner(
         return Err(err);
     }
 
-    // Preserve the grammar-proven created-token/delayed-sacrifice program
-    // before probing ordinary trigger splits.
+    // The preprocessing pass may simplify possessive/value references in a
+    // trigger's effect tail. For the small correlated bundles below, those
+    // authored references are executable provenance rather than presentation:
+    // e.g. `its power`, `its owner's library`, and a quoted Aura grant. Prove
+    // and retain the original tail before probing the normalized split.
     let (source_tokens_without_cap, _) =
         strip_trailing_trigger_cap_suffix_tokens(&line.info.source_tokens);
     if parse_trigger_intro_tokens(source_tokens_without_cap).is_some()
         && let Some((leading_tokens, effect_tokens)) =
             grammar::split_lexed_once_on_comma(source_tokens_without_cap)
         && leading_tokens.len() > 1
-        && crate::model::compiler_semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
-            effect_tokens,
-        )
+        && (crate::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(effect_tokens)
+            || crate::semantic_line_parsing::is_authored_dynamic_exile_permission_bundle(
+                effect_tokens,
+            )
+            || crate::semantic_line_parsing::is_authored_look_hand_optional_cast_bundle(
+                effect_tokens,
+            )
+            || crate::semantic_line_parsing::has_created_token_reciprocal_lifecycle_surface(
+                effect_tokens,
+            )
+            || crate::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
+                effect_tokens,
+            ))
         && let Some(candidate) = render_triggered_split_candidate(
             &leading_tokens[1..],
             effect_tokens,
@@ -131,13 +142,21 @@ fn parse_triggered_line_cst_inner(
         return Ok(candidate.into_cst(line, source_tokens_without_cap));
     }
 
-    // The normalized token stream can prove the same linked program directly.
+    // A small set of fully typed trigger bodies carry executable provenance
+    // across their authored sentence boundary. Claim the exact full tail
+    // before the ordinary split probes can independently accept the return or
+    // exile producer and peel the linked Aura/permission sentence into a
+    // separate generic program.
     if let Some((leading_tokens, effect_tokens)) =
         grammar::split_lexed_once_on_comma(tokens_without_cap)
         && leading_tokens.len() > 1
-        && crate::model::compiler_semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
-            effect_tokens,
-        )
+        && (crate::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(effect_tokens)
+            || crate::semantic_line_parsing::has_created_token_reciprocal_lifecycle_surface(
+                effect_tokens,
+            )
+            || crate::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
+                effect_tokens,
+            ))
         && let Some(candidate) = render_triggered_split_candidate(
             &leading_tokens[1..],
             effect_tokens,
@@ -242,6 +261,28 @@ fn parse_triggered_line_cst_inner(
         return Ok(candidate.into_cst(line, tokens_without_cap));
     }
 
+    // A same-object exile/return program is one atomic effect even though it
+    // contains a later comma-then boundary. Once the grammar proves the full
+    // tail, commit the first trigger comma so speculative later splits cannot
+    // absorb the exile action into the trigger and retain only the return.
+    if let Some((leading_tokens, effect_tokens)) =
+        grammar::split_lexed_once_on_comma(tokens_without_cap)
+        && leading_tokens.len() > 1
+        && parse_trigger_clause_lexed(trim_lexed_commas(&leading_tokens[1..])).is_ok()
+        && crate::grammar::effects::parse_exile_return_same_shape(
+            crate::util::trim_edge_punctuation_tokens(effect_tokens),
+        )
+        .is_some()
+        && let Some(candidate) = render_triggered_split_candidate(
+            &leading_tokens[1..],
+            effect_tokens,
+            None,
+            trailing_cap,
+        )
+    {
+        return Ok(candidate.into_cst(line, tokens_without_cap));
+    }
+
     if has_explicit_intervening_if {
         if let Some(parsed) = typed_conditional_fallback {
             parse_trace::event(format!(
@@ -267,23 +308,21 @@ fn parse_triggered_line_cst_inner(
             )
         })
         .or_else(|| grammar::split_lexed_once_on_comma(tokens_without_cap));
-    if let Some((leading_tokens, effect_tokens)) = preferred_comma_split {
-        if leading_tokens.len() > 1
-            && !comma_split_tail_starts_with_filter_list_continuation(effect_tokens)
-        {
-            let probe =
-                probe_triggered_split(&leading_tokens[1..], effect_tokens, None, trailing_cap);
-            if let Some(parsed) = probe.supported_cst(line, tokens_without_cap) {
-                parse_trace::event(format!(
-                    "trigger split: comma trigger=\"{}\" effects=\"{}\"",
-                    render_token_slice(&parsed.trigger_parse_tokens),
-                    render_token_slice(&parsed.effect_parse_tokens)
-                ));
-                return Ok(parsed);
-            }
-            if best_probe_error.is_none() {
-                best_probe_error = probe.preferred_error();
-            }
+    if let Some((leading_tokens, effect_tokens)) = preferred_comma_split
+        && leading_tokens.len() > 1
+        && !comma_split_tail_starts_with_filter_list_continuation(effect_tokens)
+    {
+        let probe = probe_triggered_split(&leading_tokens[1..], effect_tokens, None, trailing_cap);
+        if let Some(parsed) = probe.supported_cst(line, tokens_without_cap) {
+            parse_trace::event(format!(
+                "trigger split: comma trigger=\"{}\" effects=\"{}\"",
+                render_token_slice(&parsed.trigger_parse_tokens),
+                render_token_slice(&parsed.effect_parse_tokens)
+            ));
+            return Ok(parsed);
+        }
+        if best_probe_error.is_none() {
+            best_probe_error = probe.preferred_error();
         }
     }
 
@@ -329,7 +368,7 @@ fn parse_triggered_line_cst_inner(
             let effect_len = parsed.effect_parse_tokens.len();
             if best_supported_split
                 .as_ref()
-                .map_or(true, |(_, prev): &(usize, TriggeredLineCst)| {
+                .is_none_or(|(_, prev): &(usize, TriggeredLineCst)| {
                     effect_len > prev.effect_parse_tokens.len()
                 })
             {
@@ -461,9 +500,7 @@ pub(super) fn parse_static_line_cst(
         return Ok(Some(make_static(None)));
     }
     let lexed = &parse_tokens;
-    if super::super::families::keyword_static::parse_double_counters_replacement_line(lexed)?
-        .is_some()
-    {
+    if crate::keyword_static::parse_double_counters_replacement_line(lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
     if matches!(
@@ -493,46 +530,46 @@ pub(super) fn parse_static_line_cst(
 
     let mut deferred_error = None;
 
-    if grammar::parse_prefix(&lexed, grammar::phrase(&["level", "up"])).is_some() {
-        if parse_level_up_line_lexed(&lexed)?.is_some() {
-            return Ok(Some(make_static(None)));
-        }
+    if grammar::parse_prefix(lexed, grammar::phrase(&["level", "up"])).is_some()
+        && parse_level_up_line_lexed(lexed)?.is_some()
+    {
+        return Ok(Some(make_static(None)));
     }
-    if is_doesnt_untap_during_your_untap_step_line_lexed(&lexed) {
+    if is_doesnt_untap_during_your_untap_step_line_lexed(lexed) {
         return Ok(Some(make_static(None)));
     }
     if matches!(
-        super::super::grammar::structure::classify_static_line_family_lexed(&lexed),
+        super::super::grammar::structure::classify_static_line_family_lexed(lexed),
         Some(super::super::grammar::structure::StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep)
     ) {
         return Ok(Some(make_static(None)));
     }
 
-    if parse_if_this_spell_costs_less_to_cast_line_lexed(&lexed)?.is_some() {
+    if parse_if_this_spell_costs_less_to_cast_line_lexed(lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
-    if parse_spell_additional_life_cost_per_target_line(&lexed)?.is_some() {
+    if parse_spell_additional_life_cost_per_target_line(lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
-    if parse_spell_cost_increase_per_target_beyond_first_line(&lexed)?.is_some() {
+    if parse_spell_cost_increase_per_target_beyond_first_line(lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
-    if parse_spell_and_player_activated_ability_cost_modifier_line(&lexed)?.is_some() {
+    if parse_spell_and_player_activated_ability_cost_modifier_line(lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
-    if parse_spells_cost_modifier_line(&lexed)?.is_some() {
-        return Ok(Some(make_static(None)));
-    }
-
-    if is_activate_only_once_each_turn_line_lexed(&lexed) {
+    if parse_spells_cost_modifier_line(lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
 
-    if effect_grammar::parse_compound_buff_unblockable_tokens(&lexed).is_some() {
+    if is_activate_only_once_each_turn_line_lexed(lexed) {
         return Ok(Some(make_static(None)));
     }
 
-    match parse_static_ability_ast_line_lexed(&lexed) {
+    if effect_grammar::parse_compound_buff_unblockable_tokens(lexed).is_some() {
+        return Ok(Some(make_static(None)));
+    }
+
+    match parse_static_ability_ast_line_lexed(lexed) {
         Ok(Some(_abilities)) => {
             return Ok(Some(make_static(None)));
         }
@@ -540,13 +577,13 @@ pub(super) fn parse_static_line_cst(
         Err(err) => deferred_error = Some(err),
     }
 
-    if !should_skip_keyword_action_static_probe(&lexed)
-        && let Some(_actions) = parse_ability_line_lexed(&lexed)
+    if !should_skip_keyword_action_static_probe(lexed)
+        && let Some(_actions) = parse_ability_line_lexed(lexed)
     {
         return Ok(Some(make_static(None)));
     }
 
-    if parse_split_static_item_count(&lexed)?.is_some() {
+    if parse_split_static_item_count(lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
 
@@ -652,8 +689,7 @@ pub(super) fn parse_level_item_cst(
             normalize_activation_cost_tokens_for_builder(builder, line, cost_tokens.clone())?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost_cst) => {
-                let compiler_cost =
-                    crate::cst_lowering::recognize_activation_cost_cst(&cost_cst)?;
+                let compiler_cost = crate::cst_lowering::recognize_activation_cost_cst(&cost_cst)?;
                 let cost = crate::lowering::cost_materialization::materialize_compiler_total_cost(
                     &compiler_cost,
                 )?;

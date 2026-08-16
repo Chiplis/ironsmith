@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() < 4 {
         eprintln!(
             "Usage: {} <names-file> <cards.json> <out-file>",
-            args.get(0)
+            args.first()
                 .map(|s| s.as_str())
                 .unwrap_or("dump_false_positive_texts")
         );
@@ -271,14 +271,15 @@ fn build_parse_input(card: &Value) -> Option<CardInput> {
     if let Some(type_line) = type_line.filter(|value| !value.trim().is_empty()) {
         lines.push(format!("Type: {}", type_line.trim()));
     }
-    if let (Some(power), Some(toughness)) = (power, toughness) {
-        if !power.trim().is_empty() && !toughness.trim().is_empty() {
-            lines.push(format!(
-                "Power/Toughness: {}/{}",
-                power.trim(),
-                toughness.trim()
-            ));
-        }
+    if let (Some(power), Some(toughness)) = (power, toughness)
+        && !power.trim().is_empty()
+        && !toughness.trim().is_empty()
+    {
+        lines.push(format!(
+            "Power/Toughness: {}/{}",
+            power.trim(),
+            toughness.trim()
+        ));
     }
     if let Some(loyalty) = loyalty.filter(|value| !value.trim().is_empty()) {
         lines.push(format!("Loyalty: {}", loyalty.trim()));

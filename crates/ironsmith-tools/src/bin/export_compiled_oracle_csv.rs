@@ -37,6 +37,10 @@ struct CsvRow {
     compiled_text: String,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the CSV worker transfers one fully compiled definition at a time without retaining outcome collections"
+)]
 enum ParseOutcome {
     Success(CardDefinition),
     Error(String),
@@ -151,14 +155,15 @@ fn build_card_input(card: &Value) -> Option<CardInput> {
     if let Some(type_line) = type_line.filter(|value| !value.trim().is_empty()) {
         metadata_lines.push(format!("Type: {}", type_line.trim()));
     }
-    if let (Some(power), Some(toughness)) = (power, toughness) {
-        if !power.trim().is_empty() && !toughness.trim().is_empty() {
-            metadata_lines.push(format!(
-                "Power/Toughness: {}/{}",
-                power.trim(),
-                toughness.trim()
-            ));
-        }
+    if let (Some(power), Some(toughness)) = (power, toughness)
+        && !power.trim().is_empty()
+        && !toughness.trim().is_empty()
+    {
+        metadata_lines.push(format!(
+            "Power/Toughness: {}/{}",
+            power.trim(),
+            toughness.trim()
+        ));
     }
     if let Some(loyalty) = loyalty.filter(|value| !value.trim().is_empty()) {
         metadata_lines.push(format!("Loyalty: {}", loyalty.trim()));

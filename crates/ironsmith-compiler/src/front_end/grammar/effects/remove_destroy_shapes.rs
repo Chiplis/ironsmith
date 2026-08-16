@@ -593,8 +593,7 @@ fn parse_destroy_all_shape(tokens: &[OwnedLexToken]) -> DestroyAllShape<'_> {
     {
         let filter_tokens = trim_lexed_commas(&tokens[..except_idx]);
         let exception_tokens = trim_lexed_commas(exception_tokens);
-        let exception_words =
-            crate::lexer::parser_token_word_refs(exception_tokens);
+        let exception_words = crate::lexer::parser_token_word_refs(exception_tokens);
         let attack_eligibility_exception = matches!(
             exception_words.as_slice(),
             [

@@ -96,13 +96,13 @@ fn strip_indefinite_article(text: &str) -> &str {
 }
 
 fn pluralize_cost_noun_phrase(phrase: &str) -> String {
-    if let Some((head, tail)) = phrase.split_once(" ") {
-        if matches!(
+    if let Some((head, tail)) = phrase.split_once(" ")
+        && matches!(
             tail,
             "you control" | "an opponent controls" | "that player controls"
-        ) {
-            return format!("{} {tail}", pluralize_cost_noun_phrase(head));
-        }
+        )
+    {
+        return format!("{} {tail}", pluralize_cost_noun_phrase(head));
     }
     match phrase {
         "Elf" => "Elves".to_string(),
@@ -615,8 +615,7 @@ fn singularize_first_plural_word(phrase: &str) -> String {
             if singularized {
                 return word.to_string();
             }
-            let core =
-                word.trim_end_matches(|character: char| matches!(character, ',' | '.' | ';' | ':'));
+            let core = word.trim_end_matches([',', '.', ';', ':']);
             if matches!(core, "this" | "its" | "has" | "is" | "was") {
                 return word.to_string();
             }
@@ -646,6 +645,20 @@ fn singularize_first_plural_word(phrase: &str) -> String {
 }
 
 fn describe_for_each_cost_modifier_amount(amount: &Value) -> Option<(String, Option<String>)> {
+    if amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
+        && amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference)
+        && matches!(
+            amount.unhinted(),
+            Value::CommanderCastCount(PlayerFilter::You)
+        )
+    {
+        return Some((
+            "{1}".to_string(),
+            Some(
+                "for each time you've cast a commander from the command zone this game".to_string(),
+            ),
+        ));
+    }
     let (multiplier, repeated_value) = repeated_for_each_cost_value(amount)?;
     let item = match repeated_value {
         Value::Count(filter) => describe_attacking_player_cost_basis(filter)
@@ -841,7 +854,7 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             "{X}".to_string(),
             Some(format!(
                 "where X is the total toughness of {}",
-                filter.description()
+                crate::compiled_text::describe_aggregate_filter_value_subject(filter)
             )),
         ),
         Value::TotalManaValue(filter) => (

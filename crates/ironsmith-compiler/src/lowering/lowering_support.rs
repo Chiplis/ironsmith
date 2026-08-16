@@ -41,9 +41,11 @@ use super::effect_pipeline::{
     NormalizedPreparedAbility, PreparedEffectsForLowering, PreparedPredicateForLowering,
     PreparedTriggeredEffectsForLowering, SourceSentenceSegment,
 };
-use super::reference_model::{LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports};
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
 use super::static_ability_helpers::executable_object_abilities_for_keyword_action;
+use crate::model::reference_state::{
+    LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports,
+};
 
 pub(crate) fn replace_pending_removed_counter_metrics_with_x(effects: &mut [EffectAst]) {
     fn replace_value(value: &mut Value) {
@@ -1095,11 +1097,9 @@ fn preserve_copy_reference_kind_from_trigger(effects: &mut [EffectAst], trigger:
             _ => {}
         }
 
-        crate::model::visit::for_each_nested_effects_mut(
-            effect,
-            true,
-            |nested| preserve_copy_reference_kind_from_trigger(nested, trigger),
-        );
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            preserve_copy_reference_kind_from_trigger(nested, trigger)
+        });
     }
 }
 
@@ -1199,19 +1199,172 @@ fn retarget_spell_cast_mana_spent_condition(
 fn retarget_it_target_to_source(target: &mut TargetAst) {
     match target {
         TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => {
-            *target = TargetAst::Source(span.clone());
+            *target = TargetAst::Source(*span);
         }
         TargetAst::Object(filter, span, _) if *filter == ObjectFilter::tagged(IT_TAG) => {
-            *target = TargetAst::Source(span.clone());
+            *target = TargetAst::Source(*span);
         }
         TargetAst::WithCount(inner, _) => retarget_it_target_to_source(inner),
         _ => {}
     }
 }
 
+fn discard_filter_can_supply_demonstrative_noun(filter: Option<&ObjectFilter>, noun: &str) -> bool {
+    let Some(filter) = filter else {
+        return noun == "card";
+    };
+    match noun {
+        "card" | "object" => true,
+        "artifact" => filter
+            .card_types
+            .contains(&crate::types::CardType::Artifact),
+        "creature" => filter
+            .card_types
+            .contains(&crate::types::CardType::Creature),
+        "enchantment" => filter
+            .card_types
+            .contains(&crate::types::CardType::Enchantment),
+        "land" => filter.card_types.contains(&crate::types::CardType::Land),
+        // A card in a hand or graveyard is not a permanent, spell, source, or
+        // token even when its printed characteristics could later produce
+        // one of those battlefield/stack objects.
+        "permanent" | "source" | "spell" | "token" => false,
+        _ => false,
+    }
+}
+
+fn terminal_discard_filter(effect: &EffectAst) -> Option<Option<ObjectFilter>> {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::Discard { filter, .. } = &subject_verb.action
+    {
+        return Some(filter.clone());
+    }
+
+    let mut terminal = None;
+    for_each_nested_effects(effect, true, |nested| {
+        if let Some(last) = nested.last()
+            && let Some(filter) = terminal_discard_filter(last)
+        {
+            terminal = Some(filter);
+        }
+    });
+    terminal
+}
+
+fn typed_demonstrative_noun(target: &TargetAst) -> Option<&'static str> {
+    let (span, surfaced_filter_noun) = match target {
+        TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => (*span, None),
+        TargetAst::Object(filter, _, span)
+            if filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == IT_TAG
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }) =>
+        {
+            let noun = match filter.explicit_card_type_noun() {
+                Some(crate::types::CardType::Artifact) => Some("artifact"),
+                Some(crate::types::CardType::Creature) => Some("creature"),
+                Some(crate::types::CardType::Enchantment) => Some("enchantment"),
+                Some(crate::types::CardType::Land) => Some("land"),
+                _ => None,
+            };
+            (*span, noun)
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            return typed_demonstrative_noun(inner);
+        }
+        _ => return None,
+    };
+    let recorded_surface = crate::util::source_reference_surface_for_span(span);
+    let Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface)) = recorded_surface
+    else {
+        return surfaced_filter_noun;
+    };
+    match surface.split_whitespace().last()? {
+        "artifact" => Some("artifact"),
+        "card" => Some("card"),
+        "creature" => Some("creature"),
+        "enchantment" => Some("enchantment"),
+        "land" => Some("land"),
+        "object" => Some("object"),
+        "permanent" => Some("permanent"),
+        "source" => Some("source"),
+        "spell" => Some("spell"),
+        "token" => Some("token"),
+        _ => None,
+    }
+}
+
+fn retarget_typed_demonstrative_it(target: &mut TargetAst, tag: &crate::tag::TagKey) -> bool {
+    if typed_demonstrative_noun(target).is_none() {
+        return false;
+    }
+    match target {
+        TargetAst::Tagged(current, _) if current.as_str() == IT_TAG => {
+            *current = tag.clone();
+            true
+        }
+        TargetAst::Object(filter, _, _) => {
+            let mut rebound = false;
+            for constraint in &mut filter.tagged_constraints {
+                if constraint.tag.as_str() == IT_TAG
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                {
+                    constraint.tag = tag.clone();
+                    rebound = true;
+                }
+            }
+            rebound
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            retarget_typed_demonstrative_it(inner, tag)
+        }
+        _ => false,
+    }
+}
+
+/// A phase-step trigger can introduce an attached object before its body. If
+/// an intervening discard only introduces "a card", a later typed phrase
+/// such as "that creature" cannot denote the discarded object. Preserve the
+/// trigger participant instead of letting ordinary last-object memory erase
+/// the authored noun's type boundary.
+fn bind_phase_step_trigger_untap_after_incompatible_discard(
+    effects: &mut [EffectAst],
+    trigger: &TriggerSpec,
+) {
+    let Some(trigger_tag) = phase_step_trigger_object_reference_tag(trigger).map(TagKey::from)
+    else {
+        return;
+    };
+    let mut prior_discard: Option<Option<ObjectFilter>> = None;
+    for effect in effects {
+        if let Some(discard_filter) = prior_discard {
+            fn visit(
+                effect: &mut EffectAst,
+                discard_filter: Option<&ObjectFilter>,
+                trigger_tag: &TagKey,
+            ) {
+                if let EffectAst::SubjectVerb(subject_verb) = effect
+                    && let SubjectVerbActionAst::Untap { target } = &mut subject_verb.action
+                    && let Some(noun) = typed_demonstrative_noun(target)
+                    && !discard_filter_can_supply_demonstrative_noun(discard_filter, noun)
+                {
+                    retarget_typed_demonstrative_it(target, trigger_tag);
+                }
+                for_each_nested_effects_mut(effect, true, |nested| {
+                    for child in nested {
+                        visit(child, discard_filter, trigger_tag);
+                    }
+                });
+            }
+            visit(effect, discard_filter.as_ref(), &trigger_tag);
+        }
+        prior_discard = terminal_discard_filter(effect);
+    }
+}
+
 fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
-    match effect {
-        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+    if let EffectAst::SubjectVerb(subject_verb) = effect {
+        match &mut subject_verb.action {
             SubjectVerbActionAst::PutCounters { target, .. }
             | SubjectVerbActionAst::PutCounterChoice { target, .. }
             | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
@@ -1231,8 +1384,7 @@ fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
                 }
             }
             _ => {}
-        },
-        _ => {}
+        }
     }
     if matches!(
         effect,
@@ -1286,15 +1438,11 @@ fn bind_stack_retargets_to_triggering_object(effects: &mut [EffectAst]) {
         {
             *target = TargetAst::Tagged(crate::tag::TagKey::from("triggering"), None);
         }
-        crate::model::visit::for_each_nested_effects_mut(
-            effect,
-            true,
-            |nested| {
-                for nested_effect in nested {
-                    visit(nested_effect);
-                }
-            },
-        );
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            for nested_effect in nested {
+                visit(nested_effect);
+            }
+        });
     }
 
     for effect in effects {
@@ -1374,7 +1522,7 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                 .entry(tag.as_str().to_string())
                 .or_insert((0, false));
             entry.0 += 1;
-            entry.1 |= count.max.map_or(true, |max| max > 1);
+            entry.1 |= count.max.is_none_or(|max| max > 1);
         }
         if let EffectAst::SubjectVerb(subject_verb) = effect
             && let SubjectVerbActionAst::Exile { target, .. } = &subject_verb.action
@@ -1423,7 +1571,7 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                         filter: ObjectFilter::tagged(tag.clone()).in_zone(Zone::Exile),
                         tapped: *tapped,
                         face_down: false,
-                        controller: controller.clone(),
+                        controller: *controller,
                         verb_surface: ironsmith_core::MoveToZoneVerbSurface::Return,
                     })
                 }
@@ -1992,6 +2140,7 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     if let Some(trigger) = trigger {
         preserve_copy_reference_kind_from_trigger(&mut normalized, trigger);
         bind_unblocked_trigger_attacker_combat_assignment(&mut normalized, trigger);
+        bind_phase_step_trigger_untap_after_incompatible_discard(&mut normalized, trigger);
         // A stack retarget can never act on the source permanent, so an
         // "it"/"that spell" reference inside its clause always means the
         // triggering stack object — even when an earlier body sentence
@@ -2269,6 +2418,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     preserve_copy_reference_kind_from_trigger(&mut normalized, &trigger);
     bind_source_and_trigger_object_destroy_pair(&mut normalized, &trigger);
     bind_unblocked_trigger_attacker_combat_assignment(&mut normalized, &trigger);
+    bind_phase_step_trigger_untap_after_incompatible_discard(&mut normalized, &trigger);
     // "You may choose new targets for that spell" after a body sentence about
     // the source must still bind the TRIGGERING stack object (Speedball).
     if trigger_provides_stack_object(&trigger) {
@@ -2667,17 +2817,17 @@ fn effect_produces_mana(effect: &crate::effect::Effect) -> bool {
 pub(crate) fn rewrite_lower_parsed_ability(
     parsed: ParsedAbility,
 ) -> Result<ParsedAbility, CardTextError> {
-    {
+    stacker::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
         rewrite_lower_parsed_ability_internal(parsed, None)
-    }
+    })
 }
 
 pub(crate) fn rewrite_lower_prepared_ability(
     normalized: NormalizedParsedAbility,
 ) -> Result<ParsedAbility, CardTextError> {
-    {
+    stacker::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
         rewrite_lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
-    }
+    })
 }
 
 pub(crate) fn rewrite_apply_instead_followup_statement_to_last_ability(
@@ -2831,7 +2981,7 @@ pub(crate) fn rewrite_parsed_triggered_ability(
         text,
         effects_ast: Some(effects_ast),
         trigger_spec: Some(trigger),
-        reference_imports: reference_imports.into(),
+        reference_imports,
     }
 }
 
@@ -3841,10 +3991,11 @@ fn rewrite_validate_effect_for_iterated_player(
         )?;
         return rewrite_validate_effects_for_iterated_player(&haunt.haunt_effects, false, context);
     }
-    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
-        if !iterated_player_bound && matches!(choose.chooser, PlayerFilter::Target(_)) {
-            return Ok(());
-        }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && !iterated_player_bound
+        && matches!(choose.chooser, PlayerFilter::Target(_))
+    {
+        return Ok(());
     }
     if let Some(create_token) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         if !iterated_player_bound {
@@ -3895,7 +4046,7 @@ fn rewrite_validate_ability_for_iterated_player(
             )?;
             rewrite_validate_choose_specs_for_iterated_player(
                 &triggered.choices,
-                &triggered.effects.flattened_default_effects(),
+                triggered.effects.flattened_default_effects(),
                 false,
                 context,
             )?;
@@ -3912,7 +4063,7 @@ fn rewrite_validate_ability_for_iterated_player(
             )?;
             rewrite_validate_choose_specs_for_iterated_player(
                 &activated.choices,
-                &activated.effects.flattened_default_effects(),
+                activated.effects.flattened_default_effects(),
                 false,
                 context,
             )?;
@@ -3964,7 +4115,7 @@ pub(crate) fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
     rewrite_validate_effects_for_iterated_player(&lowered.effects, iterated_player_bound, context)?;
     rewrite_validate_choose_specs_for_iterated_player(
         &lowered.choices,
-        &lowered.effects.flattened_default_effects(),
+        lowered.effects.flattened_default_effects(),
         iterated_player_bound,
         context,
     )
@@ -3974,7 +4125,54 @@ pub(crate) fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
 mod tests {
     use super::*;
     use crate::Until;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
+
+    #[test]
+    fn phase_step_attachment_survives_incompatible_discard_antecedent() {
+        let tokens = lex_line(
+            "That player may discard a card at random. If the player does, untap that creature.",
+            0,
+        )
+        .expect("attachment trigger body should lex");
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("attachment trigger body should parse");
+        let trigger = TriggerSpec::BeginningOfUpkeep(PlayerFilter::ControllerOf(
+            ObjectRef::tagged("enchanted"),
+        ));
+        let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+            trigger,
+            &effects,
+            ReferenceImports::default(),
+        )
+        .expect("attachment trigger should prepare");
+        fn untap_reference_tag(effect: &EffectAst) -> Option<TagKey> {
+            if let EffectAst::SubjectVerb(subject_verb) = effect
+                && let SubjectVerbActionAst::Untap {
+                    target: TargetAst::Object(filter, _, _),
+                } = &subject_verb.action
+            {
+                return filter
+                    .tagged_constraints
+                    .iter()
+                    .find(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+                    .map(|constraint| constraint.tag.clone());
+            }
+            let mut found = None;
+            for_each_nested_effects(effect, true, |nested| {
+                if found.is_none() {
+                    found = nested.iter().find_map(untap_reference_tag);
+                }
+            });
+            found
+        }
+        let tag = prepared
+            .prepared
+            .effects
+            .iter()
+            .find_map(untap_reference_tag)
+            .expect("prepared body should retain the typed untap target");
+        assert_eq!(tag.as_str(), "enchanted");
+    }
 
     #[test]
     fn statement_preparation_exports_terminal_per_player_memory_for_next_line() {
@@ -3983,9 +4181,8 @@ mod tests {
             0,
         )
         .expect("partitioned exile statement should lex");
-        let effects =
-            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
-                .expect("partitioned exile statement should parse");
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("partitioned exile statement should parse");
         let prepared =
             rewrite_prepare_statement_effects_for_lowering(&effects, ReferenceImports::default())
                 .expect("statement preparation should assign its terminal result producer");
@@ -4000,9 +4197,8 @@ mod tests {
     fn self_contained_coordinated_statement_does_not_export_unused_result_id() {
         let tokens = lex_line("Target player draws two cards and loses 2 life.", 0)
             .expect("coordinated statement should lex");
-        let effects =
-            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
-                .expect("coordinated statement should parse");
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("coordinated statement should parse");
         let prepared =
             rewrite_prepare_statement_effects_for_lowering(&effects, ReferenceImports::default())
                 .expect("coordinated statement should prepare");
@@ -4037,9 +4233,8 @@ mod tests {
         );
         let tokens = lex_line("That creature gains first strike until end of turn.", 0)
             .expect("shared combat body should lex");
-        let effects =
-            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
-                .expect("shared combat body should parse");
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("shared combat body should parse");
         let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
             trigger,
             &effects,
@@ -4110,9 +4305,8 @@ mod tests {
             0,
         )
         .expect("linked delayed return should lex");
-        let effects =
-            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
-                .expect("linked delayed return should parse");
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("linked delayed return should parse");
         let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
             TriggerSpec::DiesCreatureDealtDamageByThisTurn {
                 victim: ObjectFilter::creature(),
@@ -4215,9 +4409,8 @@ mod tests {
             0,
         )
         .expect("linked unblocked-attacker body should lex");
-        let effects =
-            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
-                .expect("linked unblocked-attacker body should parse");
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("linked unblocked-attacker body should parse");
         let trigger = TriggerSpec::AttacksAndIsntBlocked(
             ObjectFilter::creature()
                 .match_tagged("enchanted", TaggedOpbjectRelation::IsTaggedObject),
@@ -4326,9 +4519,8 @@ mod tests {
             0,
         )
         .expect("power-sink probe should lex");
-        let effects =
-            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
-                .expect("power-sink probe should parse");
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("power-sink probe should parse");
         let prepared = rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())
             .expect("power-sink probe should prepare");
         let lowered = materialize_prepared_statement_effects(&prepared)
@@ -4380,15 +4572,16 @@ mod tests {
             .expect("prepare vote with cross-sentence option");
         let lowered = materialize_prepared_statement_effects(&prepared)
             .expect("lower vote with cross-sentence option");
-        let vote_starts_with_controller = lowered
-            .effects
-            .flattened_default_effects()
-            .into_iter()
-            .any(|effect| {
-                effect
-                    .downcast_ref::<crate::effects::VoteEffect>()
-                    .is_some_and(|vote| vote.starting_with_controller)
-            });
+        let vote_starts_with_controller =
+            lowered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::VoteEffect>()
+                        .is_some_and(|vote| vote.starting_with_controller)
+                });
         assert!(
             vote_starts_with_controller,
             "typed vote lost participant order"
@@ -4429,8 +4622,7 @@ mod tests {
         )
         .expect("lex");
         let effects =
-            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
-                .expect("parse");
+            crate::effect_sentences::parse_effect_sentences_lexed(&tokens).expect("parse");
         let prepared = rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())
             .expect("prepare");
         let debug = format!("{:#?}", prepared.effects);
@@ -4467,9 +4659,8 @@ mod tests {
 
         for (text, trigger) in cases {
             let tokens = lex_line(text, 0).expect("lex trailing-unless sentence");
-            let effects =
-                crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
-                    .expect("parse trailing-unless sentence");
+            let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+                .expect("parse trailing-unless sentence");
             assert!(
                 matches!(effects.as_slice(), [EffectAst::TrailingUnless { .. }]),
                 "expected explicit trailing-unless AST for {text}: {effects:#?}"

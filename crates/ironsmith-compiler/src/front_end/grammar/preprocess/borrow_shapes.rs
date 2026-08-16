@@ -129,7 +129,7 @@ pub(crate) fn parse_borrow_static_sentence_surface(
     if leading_words > 0 {
         let condition_start = words.token_index_after_words(leading_words)?;
         let (relative_comma, _, _) =
-            primitives::find_prefix(tokens.get(condition_start..)?, || primitives::comma())?;
+            primitives::find_prefix(tokens.get(condition_start..)?, primitives::comma)?;
         let comma = condition_start + relative_comma;
         let condition = render_token_slice(tokens.get(condition_start..comma)?)
             .trim()

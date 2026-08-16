@@ -54,7 +54,7 @@ pub(crate) fn parse_embedded_token_rules_boundary_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn typed_sentence_facts_preserve_token_reminder_and_round_up_prefixes() {

@@ -192,13 +192,7 @@ pub(crate) fn parse_as_enters_subject<'a>(
         _ => {
             let enters = first_word(&words[cursor + 1..], &["enters"])?;
             let enters_word = cursor + 1 + enters.word;
-            if crate::util::source_reference_surface_for_words(
-                &words[cursor..enters_word],
-            )
-            .is_none()
-            {
-                return None;
-            }
+            crate::util::source_reference_surface_for_words(&words[cursor..enters_word])?;
             cursor = enters_word;
             AsEntersSubject::SourceReference
         }
@@ -358,7 +352,7 @@ fn first_token_word(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<Token
         let Some(candidate) = token.as_word() else {
             continue;
         };
-        if expected.iter().any(|word| candidate == *word) {
+        if expected.contains(&candidate) {
             return Some(TokenBoundary {
                 token: token_offset,
             });
@@ -373,10 +367,7 @@ fn first_word(words: &[&str], expected: &[&str]) -> Option<WordBoundary> {
         let word = initial_len.saturating_sub(input.len());
         let parsed: WResult<&str> = any.parse_next(&mut input);
         let candidate = parsed.ok()?;
-        if expected
-            .iter()
-            .any(|expected_word| candidate == *expected_word)
-        {
+        if expected.contains(&candidate) {
             return Some(WordBoundary { word });
         }
     }

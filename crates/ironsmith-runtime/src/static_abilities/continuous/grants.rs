@@ -433,6 +433,19 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             format!("{subject} {verb} {rendered_ability}")
         };
         if let Some(condition) = &self.condition {
+            if self.filter.controller.is_none()
+                && grant_subject_is_plural(&subject)
+                && let crate::ConditionExpr::CountComparison {
+                    count: AnthemCountExpression::MatchingFilter(counted_filter),
+                    display: Some(display),
+                    ..
+                } = condition
+                && counted_filter.controller == Some(PlayerFilter::IteratedPlayer)
+                && display.starts_with("that player ")
+                && let Some(predicate) = text.strip_prefix(&subject)
+            {
+                return format!("{subject} each player controls{predicate} as long as {display}");
+            }
             if (subject.starts_with("equipped ") || subject.starts_with("enchanted "))
                 && let Some(condition_text) =
                     describe_attached_subject_static_condition(condition, &subject)

@@ -2163,9 +2163,9 @@ pub(super) fn describe_destroyed_land_controller_basic_search_then_player_shuffl
     Some("Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string())
 }
 
-fn destroyed_land_controller_search_may_effect<'a>(
-    effects: &'a [Effect],
-) -> Option<(&'a Effect, Option<&'a TagKey>)> {
+fn destroyed_land_controller_search_may_effect(
+    effects: &[Effect],
+) -> Option<(&Effect, Option<&TagKey>)> {
     if let [may_effect] = effects
         && may_effect
             .downcast_ref::<crate::effects::MayEffect>()
@@ -2301,9 +2301,7 @@ pub(super) fn describe_destroyed_land_basic_search_then_player_shuffle(
         return None;
     };
 
-    if describe_optional_basic_land_search_effects(search_effects).is_none() {
-        return None;
-    }
+    describe_optional_basic_land_search_effects(search_effects)?;
     let shuffle = shuffle_effect.downcast_ref::<crate::effects::IfEffect>()?;
     let [shuffle_then] = shuffle.then.as_slice() else {
         return None;
@@ -3776,7 +3774,7 @@ pub(in crate::compiled_text) fn describe_power_damage_exchange_clause(
     // damage result. The latter is the same chosen object only because the
     // exact target equality above has already been established.
     if power_tag != &tagged.tag
-        && !first_result_tag.is_some_and(|first_result_tag| power_tag == first_result_tag)
+        && first_result_tag.is_none_or(|first_result_tag| power_tag != first_result_tag)
     {
         return None;
     }
@@ -4117,7 +4115,7 @@ pub(super) fn is_effect_count_reference(
 ) -> bool {
     match value {
         Value::SurfaceHinted { value, .. } => is_effect_count_reference(value, effect_id),
-        Value::EffectValue(id) => effect_id.map_or(true, |expected| *id == expected),
+        Value::EffectValue(id) => effect_id.is_none_or(|expected| *id == expected),
         Value::EventValue(EventValueSpec::Amount) => true,
         Value::EffectMetric {
             effect_id: id,
@@ -4126,7 +4124,7 @@ pub(super) fn is_effect_count_reference(
                 | crate::effect::EffectMetric::ChosenCount
                 | crate::effect::EffectMetric::AffectedCount,
             ..
-        } => effect_id.map_or(true, |expected| *id == expected),
+        } => effect_id.is_none_or(|expected| *id == expected),
         Value::PendingEffectMetric {
             metric:
                 crate::effect::EffectMetric::Count
@@ -4144,7 +4142,7 @@ pub(super) fn is_effect_count_reference(
                 | crate::effect::EffectMetric::AffectedCount
         ) =>
         {
-            effect_id.map_or(true, |expected| *id == expected)
+            effect_id.is_none_or(|expected| *id == expected)
         }
         Value::PendingPriorEffectMetric(query)
             if matches!(
@@ -4167,7 +4165,7 @@ pub(super) fn effect_count_reference_offset(
     match value {
         Value::SurfaceHinted { value, .. } => effect_count_reference_offset(value, effect_id),
         Value::EffectValueOffset(id, offset)
-            if effect_id.map_or(true, |expected| *id == expected) =>
+            if effect_id.is_none_or(|expected| *id == expected) =>
         {
             Some(*offset)
         }
@@ -4180,7 +4178,7 @@ pub(super) fn effect_count_reference_offset(
                 | crate::effect::EffectMetric::AffectedCount,
             offset,
             ..
-        } if effect_id.map_or(true, |expected| *id == expected) => Some(*offset),
+        } if effect_id.is_none_or(|expected| *id == expected) => Some(*offset),
         Value::PendingEffectMetricOffset {
             metric:
                 crate::effect::EffectMetric::Count
@@ -5051,7 +5049,7 @@ pub(super) fn describe_consult_exile_may_cast_rest_bottom_sequence(
         || !matches!(
             move_to_zone.target.base(),
             ChooseSpec::Object(filter)
-                if describe_exiled_card_copy_target_filter(&filter).is_some()
+                if describe_exiled_card_copy_target_filter(filter).is_some()
         )
     {
         return None;
@@ -6148,7 +6146,7 @@ pub(super) fn describe_target_player_sacrifice_then_gain_toughness(
     let gain = gain_effect.downcast_ref::<crate::effects::GainLifeEffect>()?;
     let target_player = choose_spec_player_filter(&target_only.target)?;
     let gain_player = choose_spec_player_filter(&gain.player)?;
-    if !player_filters_refer_to_same_player(&choose.chooser, &sacrifice.player)
+    if !player_filters_refer_to_same_player(&choose.chooser, sacrifice.player)
         || !player_filters_refer_to_same_player(&choose.chooser, &target_player)
         || !player_filters_refer_to_same_player(&choose.chooser, &gain_player)
         || !matches!(
@@ -6893,9 +6891,7 @@ pub(super) fn choose_owner_matches_looked_player(
 ) -> bool {
     choose.filter.owner.as_ref().is_none_or(|owner| {
         let owner_text = describe_player_filter(owner);
-        owner_text == looked_player
-            || owner_text == format!("target {looked_player}")
-            || (looked_player.starts_with("target ") && owner_text == looked_player)
+        owner_text == looked_player || owner_text == format!("target {looked_player}")
     })
 }
 

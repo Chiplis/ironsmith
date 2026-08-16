@@ -70,7 +70,7 @@ pub(crate) fn rewrite_lower_level_ability_ast(
                         let object_abilities =
                             rewrite_lower_keyword_action_to_object_abilities(action)?;
                         lowered.abilities.extend(
-                            crate::families::static_ability_helpers::object_abilities_to_static_carriers(
+                            crate::static_ability_helpers::object_abilities_to_static_carriers(
                                 object_abilities,
                                 display,
                             )?,
@@ -191,6 +191,199 @@ pub(crate) fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> 
     )
 }
 
+pub(crate) fn effect_target_uses_it_reference(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::Tagged(_) => true,
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            effect_target_uses_it_reference(inner)
+        }
+        ChooseSpec::SurfaceHinted { spec, .. } | ChooseSpec::WithCountValue(spec, _, _) => {
+            effect_target_uses_it_reference(spec)
+        }
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter.tagged_constraints.iter().any(|constraint| {
+                matches!(
+                    constraint.relation,
+                    crate::target::TaggedOpbjectRelation::IsTaggedObject
+                )
+            })
+        }
+        _ => false,
+    }
+}
+
+fn replacement_choose_spec_object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => replacement_choose_spec_object_filter(spec),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => Some(filter),
+        _ => None,
+    }
+}
+
+pub(crate) fn extract_previous_replacement_target(
+    effect: &crate::effect::Effect,
+) -> Option<ChooseSpec> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return extract_previous_replacement_target(&tagged.effect);
+    }
+    if let Some(unless_pays) =
+        effect.downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
+        && let [inner] = unless_pays.effects.as_slice()
+    {
+        return extract_previous_replacement_target(inner);
+    }
+    if let Some(counter) = effect.downcast_ref::<crate::effects::CounterEffect>() {
+        return Some(counter.target.clone());
+    }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
+        return Some(damage.target.clone());
+    }
+    if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>() {
+        return Some(destroy.spec.clone());
+    }
+    if let Some(return_to_hand) = effect.downcast_ref::<crate::effects::ReturnToHandEffect>() {
+        return Some(return_to_hand.spec.clone());
+    }
+    if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+        return Some(exile.spec.clone());
+    }
+    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        return Some(move_to_zone.target.clone());
+    }
+    if let Some(return_to_hand) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
+    {
+        return Some(return_to_hand.target.clone());
+    }
+    if let Some(return_to_battlefield) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+    {
+        return Some(return_to_battlefield.target.clone());
+    }
+    if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>() {
+        #[cfg(not(feature = "serialization"))]
+        {
+            return destroy.target.clone();
+        }
+        #[cfg(feature = "serialization")]
+        {
+            return Some(destroy.spec.clone());
+        }
+    }
+    if let Some(modify) = effect.downcast_ref::<crate::effects::ModifyPowerToughnessEffect>() {
+        return Some(modify.target.clone());
+    }
+    if let Some(continuous) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
+        if let Some(target_spec) = &continuous.target_spec {
+            return Some(target_spec.clone());
+        }
+        if let crate::continuous::EffectTarget::Filter(filter) = &continuous.target {
+            return Some(ChooseSpec::Object(filter.clone()));
+        }
+    }
+    None
+}
+
+pub(crate) fn rewrite_replacement_effect_target(
+    effect: &crate::effect::Effect,
+    previous_target: &ChooseSpec,
+) -> Option<crate::effect::Effect> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && let Some(rewritten_inner) =
+            rewrite_replacement_effect_target(&tagged.effect, previous_target)
+    {
+        return Some(crate::effect::Effect::new(
+            crate::effects::TaggedEffect::new(tagged.tag.clone(), rewritten_inner),
+        ));
+    }
+    if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>()
+        && effect_target_uses_it_reference(&destroy.spec)
+    {
+        return Some(crate::effect::Effect::new(
+            crate::effects::DestroyEffect::with_spec(previous_target.clone()),
+        ));
+    }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>()
+        && effect_target_uses_it_reference(&damage.target)
+    {
+        let mut damage = damage.clone();
+        damage.target = previous_target.clone();
+        return Some(crate::effect::Effect::new(damage));
+    }
+    if let Some(counter) = effect.downcast_ref::<crate::effects::CounterEffect>()
+        && effect_target_uses_it_reference(&counter.target)
+    {
+        return Some(crate::effect::Effect::new(
+            crate::effects::CounterEffect::new(previous_target.clone()),
+        ));
+    }
+    if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
+        && {
+            #[cfg(not(feature = "serialization"))]
+            {
+                destroy
+                    .target
+                    .as_ref()
+                    .is_some_and(effect_target_uses_it_reference)
+            }
+            #[cfg(feature = "serialization")]
+            {
+                effect_target_uses_it_reference(&destroy.spec)
+            }
+        }
+    {
+        return Some(crate::effect::Effect::new(
+            crate::effects::DestroyNoRegenerationEffect::with_spec(previous_target.clone()),
+        ));
+    }
+    if let Some(continuous) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        && let crate::continuous::EffectTarget::Filter(replacement_filter) = &continuous.target
+        && let Some(previous_filter) = replacement_choose_spec_object_filter(previous_target)
+    {
+        // "Those ..." is an explicit reference to the entire set affected by
+        // the default branch. The noun parsed in the replacement clause only
+        // describes that antecedent; it must not become a fresh, broader
+        // runtime filter.
+        if continuous.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::Those) {
+            let mut rewritten = continuous.clone();
+            rewritten.target = crate::continuous::EffectTarget::Filter(previous_filter.clone());
+            return Some(crate::effect::Effect::new(rewritten));
+        }
+        // A separately lowered "those creatures get ... instead" branch can
+        // lose the antecedent's controller while keeping the same typed set.
+        // Restore only that exact provenance loss; an explicitly different
+        // replacement filter remains untouched.
+        let mut previous_without_controller = previous_filter.clone();
+        previous_without_controller.controller = None;
+        if &previous_without_controller == replacement_filter
+            && previous_filter.controller.is_some()
+            && replacement_filter.controller.is_none()
+        {
+            let mut rewritten = continuous.clone();
+            rewritten.target = crate::continuous::EffectTarget::Filter(previous_filter.clone());
+            return Some(crate::effect::Effect::new(rewritten));
+        }
+    }
+    None
+}
+
+pub(crate) fn push_unsupported_marker(
+    builder: CardDefinitionBuilder,
+    raw_line: &str,
+    reason: String,
+) -> CardDefinitionBuilder {
+    crate::parse_loss::record(
+        "allow_unsupported_line",
+        format!("{} ({reason})", raw_line.trim()),
+    );
+    builder.with_ability(Ability::static_ability(
+        StaticAbility::unsupported_parser_line(raw_line.trim(), reason),
+    ))
+}
+
 pub(crate) fn rewrite_apply_line_ast(
     builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
@@ -225,8 +418,31 @@ pub(crate) fn rewrite_lower_line_ast(
         mut restrictions,
         semantic_facts,
     } = line;
+    let mut handled_restrictions_for_new_ability = false;
 
     for parsed in chunks {
+        if let NormalizedLineChunk::Statement { effects_ast, .. } = &parsed
+            && rewrite_apply_instead_followup_statement_to_last_ability(
+                builder,
+                *last_restrictable_ability,
+                effects_ast,
+            )?
+        {
+            collect_tag_spans_from_effects_with_context(effects_ast, annotations, &info.normalized);
+            handled_restrictions_for_new_ability = true;
+            continue;
+        }
+        if let NormalizedLineChunk::Statement { effects_ast, .. } = &parsed
+            && rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
+                builder,
+                *last_restrictable_ability,
+                effects_ast,
+            )?
+        {
+            handled_restrictions_for_new_ability = true;
+            continue;
+        }
+
         let abilities_before = builder.abilities.len();
         *builder = rewrite_apply_line_ast(
             builder.clone(),
@@ -237,12 +453,18 @@ pub(crate) fn rewrite_lower_line_ast(
             allow_unsupported,
             annotations,
         )?;
+        let abilities_after = builder.abilities.len();
 
-        for ability in &mut builder.abilities[abilities_before..] {
-            if is_restrictable_ability(ability) {
-                apply_pending_restrictions_to_ability(ability, &mut restrictions);
+        for ability_idx in abilities_before..abilities_after {
+            if is_restrictable_ability(&builder.abilities[ability_idx]) {
+                apply_pending_restrictions_to_ability(
+                    &mut builder.abilities[ability_idx],
+                    &mut restrictions,
+                );
+                handled_restrictions_for_new_ability = true;
             }
         }
+
         rewrite_update_last_restrictable_ability(
             builder,
             abilities_before,
@@ -250,11 +472,11 @@ pub(crate) fn rewrite_lower_line_ast(
         );
     }
 
-    if !restrictions.is_empty()
+    if !handled_restrictions_for_new_ability
         && let Some(index) = *last_restrictable_ability
-        && let Some(ability) = builder.abilities.get_mut(index)
+        && index < builder.abilities.len()
     {
-        apply_pending_restrictions_to_ability(ability, &mut restrictions);
+        apply_pending_restrictions_to_ability(&mut builder.abilities[index], &mut restrictions);
     }
 
     Ok(())

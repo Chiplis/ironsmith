@@ -152,6 +152,11 @@ pub fn resolve_registry_candidates<T>(
         .iter()
         .map(|candidate| candidate.metadata.id)
         .collect::<Vec<_>>();
+    let alternative_names = alternatives
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
     let span = candidates
         .iter()
         .filter_map(|candidate| candidate.span)
@@ -160,7 +165,7 @@ pub fn resolve_registry_candidates<T>(
         registry,
         span,
         alternatives,
-        "non-equivalent registry rules recognized the same input",
+        format!("non-equivalent registry rules recognized the same input: {alternative_names}"),
     ))
 }
 

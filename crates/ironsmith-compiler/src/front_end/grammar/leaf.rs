@@ -15,10 +15,7 @@ mod references;
 mod source_references;
 mod targets;
 
-pub(crate) use activation_heads::{
-    LeafActivationCostHead, parse_leaf_activation_cost_head_lexed,
-    parse_leaf_activation_cost_head_tokens,
-};
+pub(crate) use activation_heads::{LeafActivationCostHead, parse_leaf_activation_cost_head_lexed};
 pub(crate) use articles::{
     parse_leaf_article_complete, parse_leaf_leading_articles_tokens,
     parse_leaf_leading_articles_words, parse_leaf_leading_indefinite_article_tokens,
@@ -78,11 +75,7 @@ pub(crate) use numbers::{
     parse_leaf_number_prefix_words, parse_leaf_number_token_lexed, parse_number_complete,
     parse_number_i32_complete,
 };
-pub(crate) use outcomes::{
-    recognize_activation_cost_head, recognize_condition_intro, recognize_duration_prefix,
-    recognize_mana_cost_prefix, recognize_number_prefix, recognize_player_reference,
-    recognize_target_head,
-};
+pub(crate) use outcomes::{recognize_activation_cost_head, recognize_target_head};
 pub(crate) use player_subjects::{
     LeafPlayerReferenceMode, parse_leaf_player_reference_tokens, parse_leaf_player_reference_words,
 };
@@ -94,11 +87,12 @@ pub(crate) use references::LeafPlayerReference;
 #[cfg(test)]
 pub(crate) use references::parse_player_reference_complete;
 pub(crate) use source_references::{
-    LeafSourceAnaphor, LeafSourceReferenceAlias, parse_leaf_source_anaphor_words,
-    parse_leaf_source_reference_alias_words, parse_leaf_source_reference_aliases_for_name,
-    parse_leaf_source_reference_possessive_alias_words, parse_leaf_this_source_reference_surface,
-    parse_leaf_this_source_reference_words, push_leaf_source_reference_alias,
-    push_leaf_source_reference_alias_words, strip_leaf_source_possessive_suffix,
+    LeafSourceAnaphor, parse_leaf_source_anaphor_words, parse_leaf_this_source_reference_words,
+    strip_leaf_source_possessive_suffix,
+};
+#[cfg(test)]
+pub(crate) use source_references::{
+    LeafSourceReferenceAlias, parse_leaf_source_reference_aliases_for_name,
 };
 pub(crate) use targets::parse_leaf_target_head_tokens;
 

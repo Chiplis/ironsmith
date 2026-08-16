@@ -297,16 +297,15 @@ mod tests {
     fn test_selfless_savior_targets_another_creature() {
         let def = selfless_savior();
 
-        if let Some(ability) = def.abilities.first() {
-            if let AbilityKind::Activated(activated) = &ability.kind {
-                if let ChooseSpec::Object(filter) = &activated.choices[0] {
-                    // The filter should have the "other" flag set
-                    assert!(
-                        filter.other,
-                        "Selfless Savior should only target 'another' creature, not itself"
-                    );
-                }
-            }
+        if let Some(ability) = def.abilities.first()
+            && let AbilityKind::Activated(activated) = &ability.kind
+            && let ChooseSpec::Object(filter) = &activated.choices[0]
+        {
+            // The filter should have the "other" flag set
+            assert!(
+                filter.other,
+                "Selfless Savior should only target 'another' creature, not itself"
+            );
         }
     }
 

@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn source_battlefield_lifetime_is_a_typed_leading_duration() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "For as long as this creature remains on the battlefield, gain control of it.",
             0,
         )
@@ -469,7 +469,7 @@ mod tests {
             LeafConditionalDurationKind::SourceRemainsOnBattlefield
         );
         assert_eq!(
-            crate::runtime_backend::front_end::lexer::TokenWordView::new(parsed.rest).word_refs(),
+            crate::lexer::TokenWordView::new(parsed.rest).word_refs(),
             ["gain", "control", "of", "it"]
         );
     }

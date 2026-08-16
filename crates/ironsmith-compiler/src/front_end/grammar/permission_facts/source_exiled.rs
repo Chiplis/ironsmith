@@ -4,7 +4,7 @@ use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
-use crate::front_end::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 
 use super::super::primitives;
 
@@ -115,7 +115,7 @@ fn parse_source_exiled_tail_lexed<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn source_exiled_spell_fact_is_typed_and_preserves_tail() {

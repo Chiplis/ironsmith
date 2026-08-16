@@ -35,7 +35,6 @@ pub fn black_market_connections() -> CardDefinition {
 }
 
 /// Creates a 3/2 colorless Shapeshifter creature token with changeling.
-
 #[cfg(test)]
 fn shapeshifter_mercenary_token() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Shapeshifter")

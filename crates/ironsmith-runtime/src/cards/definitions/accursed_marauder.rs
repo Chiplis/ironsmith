@@ -168,7 +168,7 @@ mod tests {
             assert!(
                 alice_player.graveyard.iter().any(|&id| {
                     game.object(id)
-                        .map_or(false, |obj| obj.name == "Alice's Bear")
+                        .is_some_and(|obj| obj.name == "Alice's Bear")
                 }),
                 "Alice's creature should be in graveyard after sacrifice"
             );
@@ -176,10 +176,10 @@ mod tests {
             // Verify Bob's creature is now in the graveyard
             let bob_player = game.player(bob).expect("Bob should exist");
             assert!(
-                bob_player.graveyard.iter().any(|&id| {
-                    game.object(id)
-                        .map_or(false, |obj| obj.name == "Bob's Bear")
-                }),
+                bob_player
+                    .graveyard
+                    .iter()
+                    .any(|&id| { game.object(id).is_some_and(|obj| obj.name == "Bob's Bear") }),
                 "Bob's creature should be in graveyard after sacrifice"
             );
 
@@ -229,13 +229,13 @@ mod tests {
             assert!(result.is_ok());
 
             // Only Alice's creature should be sacrificed (Bob has no nontoken creatures)
-            if let Ok(outcome) = result {
-                if let crate::effect::OutcomeValue::Count(count) = outcome.value {
-                    assert_eq!(
-                        count, 1,
-                        "Should only sacrifice 1 creature (Alice's nontoken)"
-                    );
-                }
+            if let Ok(outcome) = result
+                && let crate::effect::OutcomeValue::Count(count) = outcome.value
+            {
+                assert_eq!(
+                    count, 1,
+                    "Should only sacrifice 1 creature (Alice's nontoken)"
+                );
             }
 
             // Alice's creature should be in graveyard
@@ -243,7 +243,7 @@ mod tests {
             assert!(
                 alice_player.graveyard.iter().any(|&id| {
                     game.object(id)
-                        .map_or(false, |obj| obj.name == "Alice's Bear")
+                        .is_some_and(|obj| obj.name == "Alice's Bear")
                 }),
                 "Alice's creature should be in graveyard"
             );
@@ -279,14 +279,14 @@ mod tests {
 
             // No creatures should be sacrificed (only the marauder exists, and
             // each player chooses which creature to sacrifice - if they have none, nothing happens)
-            if let Ok(outcome) = result {
-                if let crate::effect::OutcomeValue::Count(count) = outcome.value {
-                    // The marauder itself could be sacrificed by Alice
-                    assert!(
-                        count <= 1,
-                        "At most 1 creature sacrificed (the marauder itself by Alice)"
-                    );
-                }
+            if let Ok(outcome) = result
+                && let crate::effect::OutcomeValue::Count(count) = outcome.value
+            {
+                // The marauder itself could be sacrificed by Alice
+                assert!(
+                    count <= 1,
+                    "At most 1 creature sacrificed (the marauder itself by Alice)"
+                );
             }
         }
     }

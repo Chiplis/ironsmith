@@ -459,7 +459,7 @@ fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
 /// by the ordered graveyard traversal at runtime rather than by ordinary
 /// battlefield filter defaults.
 fn parse_source_graveyard_cards_above_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     const PREFIX: [&str; 7] = ["this", "card", "is", "in", "your", "graveyard", "with"];
     if words.len() < PREFIX.len() + 5
         || words[..PREFIX.len()] != PREFIX
@@ -773,15 +773,14 @@ fn parse_you_life_total_at_most_predicate(
     ];
     if let Some(relation) = parse_has_relation_clauses(tokens)
         && let Some(matched) = WinnowSequence::new(&have_atoms).parse_full(relation.tail_clause)
+        && surface::exact(relation.subject_clause, &["you"])
     {
-        if surface::exact(relation.subject_clause, &["you"]) {
-            let amount = matched
-                .capture_clause_by_role(WinnowCaptureRole::Amount, relation.tail_clause)
-                .ok_or_else(|| {
-                    CardTextError::ParseError("missing amount in life predicate".to_string())
-                })?;
-            return life_total_at_most_from_amount_tokens(amount.tokens());
-        }
+        let amount = matched
+            .capture_clause_by_role(WinnowCaptureRole::Amount, relation.tail_clause)
+            .ok_or_else(|| {
+                CardTextError::ParseError("missing amount in life predicate".to_string())
+            })?;
+        return life_total_at_most_from_amount_tokens(amount.tokens());
     }
 
     let total_atoms = [
@@ -1274,7 +1273,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
                 Some(counter_type),
             ),
             operator,
-            right: Value::Fixed(count as i32),
+            right: Value::Fixed(count),
         });
     }
     let source_count = match operator {
@@ -1343,9 +1342,7 @@ fn parse_triggering_object_source_stat_predicate(tokens: &[OwnedLexToken]) -> Op
         return Some(triggering_stat_filter(true));
     }
 
-    let Some(has_idx) = words.iter().position(|word| *word == "has") else {
-        return None;
-    };
+    let has_idx = words.iter().position(|word| *word == "has")?;
     let comparison_tail = &words[has_idx..];
     let explicit_source_reference = surface::exact_words(
         comparison_tail,
@@ -1446,7 +1443,7 @@ fn parse_source_verbless_counted_counter_predicate(tokens: &[OwnedLexToken]) -> 
             continue;
         }
         let counter_tokens = counter_clause.tokens().get(used..)?;
-        let counter_type = parse_terminal_counter_phrase(&counter_tokens)??;
+        let counter_type = parse_terminal_counter_phrase(counter_tokens)??;
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
                 Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
@@ -1880,10 +1877,8 @@ fn parse_stack_object_targets_object_predicate(tokens: &[OwnedLexToken]) -> Opti
         return None;
     }
     let target =
-        crate::grammar::shared_util::target_semantics::parse_target_phrase_inner(
-            target.tokens(),
-        )
-        .ok()?;
+        crate::grammar::shared_util::target_semantics::parse_target_phrase_inner(target.tokens())
+            .ok()?;
     let spell_filter = match target {
         TargetAst::Object(target_filter, None, _) => {
             ObjectFilter::spell().targeting_object(target_filter)
@@ -2175,9 +2170,7 @@ fn parse_you_control_or_graveyard_predicate(
     }
 
     let graveyard_object = matched.capture_clause("graveyard_object", tail_clause)?;
-    let Some(graveyard_tokens) = graveyard_object_tokens_after_existential(graveyard_object) else {
-        return None;
-    };
+    let graveyard_tokens = graveyard_object_tokens_after_existential(graveyard_object)?;
 
     let result =
         parse_object_filter(control_object.tokens(), false).and_then(|mut control_filter| {
@@ -2412,22 +2405,21 @@ fn parse_player_controls_predicate(
     // and can normalize singular `exactly one` to an existential control
     // condition, which is not equivalent for intervening-if triggers.
     let has_authored_exact_count = tokens.iter().any(|token| token.is_word("exactly"));
-    if !has_power_toughness_relation && !has_authored_exact_count {
-        if let Some(control_condition) =
-            crate::grammar::conditions::parse_control_condition(
-                tokens,
-                crate::grammar::conditions::ControlConditionOptions {
-                    allow_that_player: player == PlayerAst::That,
-                    allow_opponent_players: false,
-                    allow_defending_player: false,
-                    bind_filter_controller_to_subject: controller.is_some(),
-                    allow_different_powers_tail: allow_different_powers,
-                    default_filter_zone: None,
-                },
-            )
-        {
-            return Ok(Some(predicate_from_control_condition(control_condition)));
-        }
+    if !has_power_toughness_relation
+        && !has_authored_exact_count
+        && let Some(control_condition) = crate::grammar::conditions::parse_control_condition(
+            tokens,
+            crate::grammar::conditions::ControlConditionOptions {
+                allow_that_player: player == PlayerAst::That,
+                allow_opponent_players: false,
+                allow_defending_player: false,
+                bind_filter_controller_to_subject: controller.is_some(),
+                allow_different_powers_tail: allow_different_powers,
+                default_filter_zone: None,
+            },
+        )
+    {
+        return Ok(Some(predicate_from_control_condition(control_condition)));
     }
 
     let words_view = clause.words();
@@ -3025,10 +3017,8 @@ fn parse_passive_this_way_tagged_object_predicate(
         return Ok(None);
     };
     filter.set_prior_effect_action_surface(
-        crate::grammar::shared_util::value_helper_shapes::parse_prior_effect_action(
-            &action_words,
-        )
-        .map(|(action, _)| action),
+        crate::grammar::shared_util::value_helper_shapes::parse_prior_effect_action(&action_words)
+            .map(|(action, _)| action),
     );
     Ok(Some(PredicateAst::TaggedMatches(
         TagKey::from(reference_tag),
@@ -3558,10 +3548,7 @@ fn demonstrative_descriptor_filter_tokens(
     // grammar consumes that verb as part of counter clauses such as "it has a
     // counter on it"; stripping it here turns the remainder into an
     // unsupported standalone noun phrase.
-    } else if clause_word_at_is_any(clause, descriptor_start, &["was", "were"]) {
-        descriptor_start += 1;
-        match_time = DemonstrativeMatchTime::LastKnown;
-    } else if clause_word_at_is_any(clause, descriptor_start, &["had"]) {
+    } else if clause_word_at_is_any(clause, descriptor_start, &["was", "were", "had"]) {
         descriptor_start += 1;
         match_time = DemonstrativeMatchTime::LastKnown;
     } else if clause_word_range_matches_any_phrase(

@@ -3,7 +3,7 @@
 //! These effects iterate over objects that were tagged by prior effects in the same
 //! spell/ability resolution, enabling patterns like:
 //! - "Destroy all creatures. Their controllers each create a token for each creature
-//!    they controlled that was destroyed this way."
+//!   they controlled that was destroyed this way."
 
 use crate::effect::{Effect, EffectOutcome, ExecutionFact};
 use crate::effects::{EffectExecutor, SimultaneousEffectProposal};

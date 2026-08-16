@@ -100,7 +100,7 @@ fn every_subtype_family(input: &mut LexStream<'_>) -> WResult<SubtypeFamily> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("static-grant fixture should lex")

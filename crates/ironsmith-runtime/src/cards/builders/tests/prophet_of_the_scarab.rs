@@ -26,7 +26,7 @@ fn prophet_of_the_scarab_keeps_the_greater_of_two_zombie_counts() {
     let draw = trigger(&definition)
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::DrawCardsEffect>())
         .expect("the trigger should draw a dynamic number of cards");
     assert!(

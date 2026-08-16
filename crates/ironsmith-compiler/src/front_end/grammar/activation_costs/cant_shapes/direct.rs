@@ -2,9 +2,9 @@ use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
+use crate::lexer::parser_token_word_refs;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
-use crate::front_end::lexer::parser_token_word_refs;
 
 use super::super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::super::{leaf, primitives};
@@ -335,7 +335,7 @@ fn parse_surface_x<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(raw: &str) -> Option<DirectCantFact> {
         let tokens = lex_line(raw, 0).expect("lex direct cant fixture");

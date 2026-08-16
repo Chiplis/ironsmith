@@ -224,11 +224,7 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
             continue;
         }
         if let Some(color) = parse_color(word) {
-            colors = Some(
-                colors
-                    .unwrap_or_else(crate::color::ColorSet::new)
-                    .union(color),
-            );
+            colors = Some(colors.unwrap_or_default().union(color));
             continue;
         }
         if let Some(card_type) = parse_card_type(word) {
@@ -714,7 +710,7 @@ pub(crate) fn parse_redirect_next_damage_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()
@@ -741,7 +737,7 @@ mod tests {
             DestroyDamageTargetReference::Creature
         );
         assert_eq!(
-            crate::runtime_backend::token_word_refs(shape.target_tokens),
+            crate::lexer::token_word_refs(shape.target_tokens),
             ["target", "creature"]
         );
     }

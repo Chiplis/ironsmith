@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use winnow::token::take_till;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, LexedClause, OwnedLexToken, TokenKind};
+use crate::lexer::{LexStream, LexedClause, OwnedLexToken, TokenKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExilePermissionFollowupKind {
@@ -65,7 +65,7 @@ pub(crate) fn parse_exile_permission_followup_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, render_token_slice};
+    use crate::lexer::{lex_line, render_token_slice};
 
     #[test]
     fn parses_reflexive_exile_and_delayed_play_followups() {

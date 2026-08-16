@@ -146,7 +146,7 @@ pub(crate) fn parse_leading_optional_companion_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, render_token_slice};
+    use crate::lexer::{lex_line, render_token_slice};
 
     #[test]
     fn captures_source_optional_target_and_shared_predicate_separately() {

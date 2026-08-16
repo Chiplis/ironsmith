@@ -195,6 +195,35 @@ pub(crate) fn recognize_target_head(tokens: &[OwnedLexToken]) -> ParseOutcome<Le
                 | "those"
                 | "other"
                 | "top"
+                // Typed reference and bare selection surfaces are resolved
+                // by target semantics after this prefix recognizer. They
+                // intentionally consume no count/article/`target` prefix,
+                // but are still valid target-head inputs rather than
+                // `NoMatch`.
+                | "it"
+                | "itself"
+                | "its"
+                | "them"
+                | "their"
+                | "him"
+                | "her"
+                | "enchanted"
+                | "equipped"
+                | "chosen"
+                | "you"
+                | "your"
+                | "opponent"
+                | "opponents"
+                | "spell"
+                | "spells"
+                | "card"
+                | "cards"
+                | "creature"
+                | "creatures"
+                | "permanent"
+                | "permanents"
+                | "all"
+                | "rest"
         );
     if !commits {
         return ParseOutcome::NoMatch;

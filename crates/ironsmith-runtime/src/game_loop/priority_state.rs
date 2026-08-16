@@ -461,20 +461,19 @@ pub(crate) fn choose_tagged_cost_step(
 
     let next_effect = next.effect_ref()?;
 
-    if let Some(sacrifice) = next_effect.downcast_ref::<crate::effects::SacrificeEffect>() {
-        if sacrifice.player == crate::target::PlayerFilter::You
-            && tagged_filter_matches(&sacrifice.filter, &choose.tag)
-        {
-            return Some(ActivationCostStep::Sacrifice {
-                cost: crate::costs::Cost::sacrifice(choose.filter.clone()),
+    if let Some(sacrifice) = next_effect.downcast_ref::<crate::effects::SacrificeEffect>()
+        && sacrifice.player == crate::target::PlayerFilter::You
+        && tagged_filter_matches(&sacrifice.filter, &choose.tag)
+    {
+        return Some(ActivationCostStep::Sacrifice {
+            cost: crate::costs::Cost::sacrifice(choose.filter.clone()),
+            filter: choose.filter.clone(),
+            description: crate::costs::CostProcessingMode::SacrificeTarget {
                 filter: choose.filter.clone(),
-                description: crate::costs::CostProcessingMode::SacrificeTarget {
-                    filter: choose.filter.clone(),
-                }
-                .display(),
-                choice_tag: Some(choose.tag.clone()),
-            });
-        }
+            }
+            .display(),
+            choice_tag: Some(choose.tag.clone()),
+        });
     }
 
     let sacrifice_player = next_effect
@@ -488,20 +487,19 @@ pub(crate) fn choose_tagged_cost_step(
                         .downcast_ref::<ironsmith_core::SacrificePlayerEffect>()
                 })
         });
-    if let Some(sacrifice) = sacrifice_player {
-        if sacrifice.player == crate::target::PlayerFilter::You
-            && tagged_filter_matches(&sacrifice.filter, &choose.tag)
-        {
-            return Some(ActivationCostStep::Sacrifice {
-                cost: crate::costs::Cost::sacrifice(choose.filter.clone()),
+    if let Some(sacrifice) = sacrifice_player
+        && sacrifice.player == crate::target::PlayerFilter::You
+        && tagged_filter_matches(&sacrifice.filter, &choose.tag)
+    {
+        return Some(ActivationCostStep::Sacrifice {
+            cost: crate::costs::Cost::sacrifice(choose.filter.clone()),
+            filter: choose.filter.clone(),
+            description: crate::costs::CostProcessingMode::SacrificeTarget {
                 filter: choose.filter.clone(),
-                description: crate::costs::CostProcessingMode::SacrificeTarget {
-                    filter: choose.filter.clone(),
-                }
-                .display(),
-                choice_tag: Some(choose.tag.clone()),
-            });
-        }
+            }
+            .display(),
+            choice_tag: Some(choose.tag.clone()),
+        });
     }
 
     if let Some(exile) = next_effect.downcast_ref::<crate::effects::ExileEffect>() {
@@ -554,22 +552,21 @@ pub(crate) fn choose_tagged_cost_step(
         }
     }
 
-    if let Some(return_to_hand) = next_effect.downcast_ref::<crate::effects::ReturnToHandEffect>() {
-        if let ChooseSpec::Object(filter) = return_to_hand.spec.base()
-            && tagged_filter_matches(filter, &choose.tag)
-        {
-            return Some(ActivationCostStep::CardChoice(
-                ActivationCardCostChoice::ReturnToHand {
-                    cost: crate::costs::Cost::return_to_hand(choose.filter.clone()),
+    if let Some(return_to_hand) = next_effect.downcast_ref::<crate::effects::ReturnToHandEffect>()
+        && let ChooseSpec::Object(filter) = return_to_hand.spec.base()
+        && tagged_filter_matches(filter, &choose.tag)
+    {
+        return Some(ActivationCostStep::CardChoice(
+            ActivationCardCostChoice::ReturnToHand {
+                cost: crate::costs::Cost::return_to_hand(choose.filter.clone()),
+                filter: choose.filter.clone(),
+                description: crate::costs::CostProcessingMode::ReturnToHandTarget {
                     filter: choose.filter.clone(),
-                    description: crate::costs::CostProcessingMode::ReturnToHandTarget {
-                        filter: choose.filter.clone(),
-                    }
-                    .display(),
-                    choice_tag: Some(choose.tag.clone()),
-                },
-            ));
-        }
+                }
+                .display(),
+                choice_tag: Some(choose.tag.clone()),
+            },
+        ));
     }
 
     if let Some(move_to_zone) = next_effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {

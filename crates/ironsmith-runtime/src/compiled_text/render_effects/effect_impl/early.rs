@@ -83,6 +83,11 @@
         if let Some(compact) = describe_quantified_player_mill_discard_draw(sequence) {
             return compact;
         }
+        if let Some(compact) =
+            describe_owner_subject_shuffle_with_shared_target(&sequence.effects)
+        {
+            return compact;
+        }
         if let Some(compact) = describe_coordinated_sequence(sequence) {
             return compact;
         }
@@ -3216,7 +3221,7 @@
             return format!(
                 "Put a {} counter on {target} for each {}",
                 describe_counter_type(put_counters.counter_type),
-                describe_for_each_count_filter(&filter)
+                describe_for_each_count_filter(filter)
             );
         }
         if put_counters
@@ -3267,7 +3272,7 @@
         {
             return format!(
                 "Put its {} counters on {target}",
-                describe_counter_type(counter_type.clone()),
+                describe_counter_type(*counter_type),
             );
         }
         if let Some((amount_text, basis_text)) = describe_dynamic_counter_amount_phrase(
@@ -5288,11 +5293,10 @@
         if matches!(
             reveal_top.player,
             PlayerFilter::Defending | PlayerFilter::Attacking | PlayerFilter::DamagedPlayer
-        ) {
-            if let Some(rest) = subject.strip_prefix("the ") {
+        )
+            && let Some(rest) = subject.strip_prefix("the ") {
                 subject = rest.to_string();
             }
-        }
         let verb = player_verb(&subject, "reveal", "reveals");
         let pronoun = if subject == "you" { "your" } else { "their" };
         return format!("{subject} {verb} the top card of {pronoun} library");
@@ -5380,12 +5384,23 @@
         }
         return format!("Look at {}", look_at_objects.filter.description());
     }
-    if let Some(apply_continuous) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
-        if let Some(text) = describe_apply_continuous_effect(apply_continuous) {
+    if let Some(apply_continuous) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        && let Some(text) = describe_apply_continuous_effect(apply_continuous) {
             return text;
         }
-    }
     if let Some(grant_all) = effect.downcast_ref::<crate::effects::GrantAbilitiesAllEffect>() {
+        if grant_all.abilities.len() == 1
+            && grant_all.abilities[0].id()
+                == crate::static_abilities::StaticAbilityId::CanAttackAsThoughNoDefender
+            && matches!(grant_all.duration, Until::EndOfTurn)
+        {
+            let mut subject_filter = grant_all.filter.clone();
+            subject_filter.set_set_quantifier_surface(None);
+            let subject = pluralize_noun_phrase(&subject_filter.description());
+            return format!(
+                "{subject} can attack this turn as though they didn't have defender"
+            );
+        }
         if let Some(text) = describe_attack_block_if_able_grant(
             &grant_all.abilities,
             &grant_all.duration,
@@ -5418,6 +5433,21 @@
     }
     if let Some(grant_target) = effect.downcast_ref::<crate::effects::GrantAbilitiesTargetEffect>()
     {
+        if grant_target.abilities.len() == 1
+            && grant_target.abilities[0].id()
+                == crate::static_abilities::StaticAbilityId::CanAttackAsThoughNoDefender
+            && matches!(grant_target.duration, Until::EndOfTurn)
+        {
+            let target = capitalize_first(&describe_choose_spec(&grant_target.target));
+            let pronoun = if choose_spec_is_plural(&grant_target.target) {
+                "they"
+            } else {
+                "it"
+            };
+            return format!(
+                "{target} can attack this turn as though {pronoun} didn't have defender"
+            );
+        }
         if let Some(text) = describe_attack_block_if_able_grant(
             &grant_target.abilities,
             &grant_target.duration,
@@ -5632,9 +5662,7 @@
     }
     if let Some(bid_life) = effect.downcast_ref::<crate::effects::BidLifeEffect>() {
         let target = describe_choose_spec(&bid_life.target);
-        let starting_bid = match bid_life.starting_bid {
-            crate::effects::LifeBidStart::Fixed(amount) => amount,
-        };
+        let crate::effects::LifeBidStart::Fixed(starting_bid) = bid_life.starting_bid;
         return format!(
             "Each player may bid life for control of {target}. You start the bidding with a bid of {starting_bid}. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid and gains control of the creature. This effect lasts indefinitely"
         );
@@ -6073,9 +6101,8 @@
                 .iter()
                 .map(structural_unwrap_render_wrappers)
                 .filter(|effect| {
-                    !effect
-                        .downcast_ref::<crate::effects::TargetOnlyEffect>()
-                        .is_some_and(|target| !target.explicit_declaration)
+                    effect
+                        .downcast_ref::<crate::effects::TargetOnlyEffect>().is_none_or(|target| target.explicit_declaration)
                         && effect
                             .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
                             .is_none()
@@ -6435,6 +6462,9 @@
         return text;
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        if let Some(compact) = describe_may_temporary_flash_and_cast_trigger(may) {
+            return compact;
+        }
         if matches!(may.decider, None | Some(PlayerFilter::You))
             && let [manifest] = may.effects.as_slice()
             && manifest
@@ -6594,7 +6624,7 @@
             } else if active_end_turn {
                 // The body is fixed text; the generic inner render would
                 // re-introduce its own subject ("that player ends the turn").
-                return format!("The player whose turn it is may end the turn");
+                return "The player whose turn it is may end the turn".to_string();
             } else {
                 describe_player_filter(decider)
             };

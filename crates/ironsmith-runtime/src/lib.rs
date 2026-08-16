@@ -1,4 +1,52 @@
 #![recursion_limit = "256"]
+#![expect(
+    dead_code,
+    reason = "the runtime effect vocabulary includes canonical operations that are not yet reached by every card family"
+)]
+#![expect(
+    clippy::large_enum_variant,
+    reason = "runtime AST and decision nodes remain value-semantic across the compiler materialization boundary"
+)]
+#![expect(
+    clippy::type_complexity,
+    reason = "effect composition APIs preserve complete typed runtime state in their public signatures"
+)]
+#![expect(
+    clippy::too_many_arguments,
+    reason = "gameplay operations carry explicit game, source, target, duration, and decision context"
+)]
+#![expect(
+    clippy::field_reassign_with_default,
+    reason = "runtime filters and game fixtures are assembled incrementally from independent rule clauses"
+)]
+#![expect(
+    clippy::enum_variant_names,
+    reason = "runtime rule enums retain family-qualified variants for unambiguous call sites"
+)]
+#![expect(
+    clippy::wrong_self_convention,
+    reason = "runtime query method names describe rules concepts rather than ownership conversions"
+)]
+#![expect(
+    clippy::ptr_arg,
+    reason = "mutating gameplay helpers retain vector capacity and insertion semantics across calls"
+)]
+#![expect(
+    clippy::question_mark,
+    reason = "explicit matcher guards keep semantic rejection points visible in renderer composition"
+)]
+#![expect(
+    clippy::nonminimal_bool,
+    reason = "correlation predicates spell out symmetric tag and controller exclusions for auditability"
+)]
+#![expect(
+    clippy::if_same_then_else,
+    reason = "distinct authored grammar shapes intentionally converge on the same canonical surface"
+)]
+#![expect(
+    clippy::needless_range_loop,
+    reason = "renderer lookahead windows use absolute segment indexes when correlating neighboring effects"
+)]
 
 #[cfg(test)]
 extern crate self as ironsmith;

@@ -4,7 +4,7 @@ use winnow::prelude::*;
 
 use crate::cards::builders::PlayerAst;
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, OwnedLexToken, TokenWordView};
+use crate::lexer::{LexStream, OwnedLexToken, TokenWordView};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ExileOwnerSurface {
@@ -112,7 +112,7 @@ pub(crate) fn parse_exile_one_per_card_type_from_graveyard_shape(
     )?;
     let ((owner, ()), rest) =
         primitives::parse_prefix(rest, (exile_owner_surface, graveyard_word))?;
-    if TokenWordView::new(rest).len() != 0 {
+    if !TokenWordView::new(rest).is_empty() {
         return None;
     }
     Some(ExileOnePerCardTypeFromGraveyardShape {
@@ -193,7 +193,7 @@ pub(crate) fn is_each_player_library_shape(tokens: &[OwnedLexToken]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

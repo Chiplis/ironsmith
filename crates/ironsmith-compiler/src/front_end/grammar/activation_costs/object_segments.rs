@@ -299,10 +299,7 @@ fn strip_not_declared_as_attacking_or_blocking_suffix(
 
     for start in 0..tokens.len() {
         let suffix_words = primitives::TokenWordView::new(&tokens[start..]).word_refs();
-        if SUFFIXES
-            .iter()
-            .any(|expected| suffix_words.as_slice() == *expected)
-        {
+        if SUFFIXES.contains(&suffix_words.as_slice()) {
             let filter_tokens = &tokens[..start];
             if !filter_tokens.is_empty() {
                 return (filter_tokens, true);

@@ -1136,9 +1136,18 @@ impl ZoneChangeTrigger {
     }
 
     pub(crate) fn this_subject_text(&self, fallback: &'static str) -> String {
-        match &self.this_object_surface {
+        let text = match &self.this_object_surface {
             Some(surface) => surface.display_text(),
             None => format!("this {}", self.this_subject(fallback)),
+        };
+        match text.as_str() {
+            // Equipment, Siege, and Case are printed subtypes and are capitalized in
+            // Oracle text even when the compiler's semantic token view is
+            // lowercased.
+            "this equipment" => "this Equipment".to_string(),
+            "this siege" => "this Siege".to_string(),
+            "this case" => "this Case".to_string(),
+            _ => text,
         }
     }
 
@@ -1206,10 +1215,10 @@ impl TriggerMatcher for ZoneChangeTrigger {
             return false;
         };
 
-        if let Some(during_turn) = &self.during_turn {
-            if !current_turn_matches_player_filter(during_turn, ctx, None) {
-                return false;
-            }
+        if let Some(during_turn) = &self.during_turn
+            && !current_turn_matches_player_filter(during_turn, ctx, None)
+        {
+            return false;
         }
         if matches!(
             self.timing,
@@ -1292,10 +1301,8 @@ impl TriggerMatcher for ZoneChangeTrigger {
                         self.object_filter.matches(obj, &ctx.filter_ctx, ctx.game)
                     } else if let Some(snapshot) = zc.snapshot.as_ref() {
                         snapshot_matches_filter(snapshot, &self.object_filter, ctx)
-                    } else if self.object_filter == ObjectFilter::default() {
-                        true
                     } else {
-                        false
+                        self.object_filter == ObjectFilter::default()
                     }
                 })
             };

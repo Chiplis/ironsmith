@@ -1,10 +1,8 @@
 use std::ops::Range;
 
-use crate::front_end::lexer::{OwnedLexToken, TokenWordView};
+use crate::lexer::{OwnedLexToken, TokenWordView};
 
-use crate::grammar::{
-    keyword_static_lines, primitives, static_keyword_line_shapes,
-};
+use crate::grammar::{keyword_static_lines, primitives, static_keyword_line_shapes};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LifeTotalCostConditionShape {

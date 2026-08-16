@@ -37,7 +37,7 @@ pub(crate) fn parse_chosen_type_reference_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn recognizes_land_filter_type_references_without_inferring_the_type_domain() {

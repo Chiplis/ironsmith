@@ -73,7 +73,7 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
         ));
     }
 
-    let delayed_effects = super::parse_effect_sentences_lexed(&remainder)?;
+    let delayed_effects = super::parse_effect_sentences_lexed(remainder)?;
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed end-step effect clause (clause: '{}')",
@@ -113,7 +113,7 @@ fn retarget_source_copy_spell_to_delayed_triggering_object(effects: &mut [Effect
         crate::model::visit::for_each_nested_effects_mut(
             effect,
             true,
-            |nested| retarget_source_copy_spell_to_delayed_triggering_object(nested),
+            retarget_source_copy_spell_to_delayed_triggering_object,
         );
     }
 
@@ -300,7 +300,10 @@ fn parse_next_cast_spell_or_loyalty_delayed_sentence(
 fn parse_next_cast_single_opponent_or_permanent_copy_loop(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
-    let words = crate::token_word_refs(tokens);
+    let words = tokens
+        .iter()
+        .filter_map(|token| token.as_word().map(|_| token.parser_text()))
+        .collect::<Vec<_>>();
     if words
         != [
             "when",
@@ -489,7 +492,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 
         let trigger = next_cast_instant_sorcery_or_loyalty_trigger_from_core(trigger_tokens)
             .map(Ok)
-            .unwrap_or_else(|| parse_trigger_clause_lexed(&trigger_tokens))?;
+            .unwrap_or_else(|| parse_trigger_clause_lexed(trigger_tokens))?;
         let one_shot = delayed_trigger_is_one_shot(trigger_clause);
         if delayed_trigger_provides_triggering_stack_object(&trigger) {
             retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
@@ -534,7 +537,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         if put_into_your_graveyard {
             watched_filter.owner = Some(PlayerFilter::You);
         }
-        let delayed_effects = parse_effect_chain(&shape.effect_tokens)?;
+        let delayed_effects = parse_effect_chain(shape.effect_tokens)?;
         if delayed_effects.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing delayed target-dies effect clause (clause: '{}')",
@@ -578,7 +581,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         })?;
         victim.dealt_damage_by_source_this_turn =
             Some(ironsmith_core::DamagedBySource::ThisCreature);
-        let delayed_effects = parse_effect_chain(&shape.effect_tokens)?;
+        let delayed_effects = parse_effect_chain(shape.effect_tokens)?;
         if delayed_effects.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing delayed damage-history death effect clause (clause: '{}')",
@@ -594,7 +597,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         }]));
     }
     if delayed_shapes::is_delayed_prior_object_put_into_a_graveyard(trigger_core_tokens) {
-        let delayed_effects = parse_effect_chain(&shape.effect_tokens)?;
+        let delayed_effects = parse_effect_chain(shape.effect_tokens)?;
         if delayed_effects.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing delayed prior-object graveyard effect clause (clause: '{}')",
@@ -618,7 +621,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         let watched_filter = filter
             .clone()
             .match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
-        let delayed_effects = parse_effect_chain(&shape.effect_tokens)?;
+        let delayed_effects = parse_effect_chain(shape.effect_tokens)?;
         if delayed_effects.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing delayed target combat-damage effect clause (clause: '{}')",
@@ -668,7 +671,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         )));
     }
 
-    let mut delayed_effects = parse_effect_chain(&remainder)?;
+    let mut delayed_effects = parse_effect_chain(remainder)?;
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger effect clause (clause: '{}')",
@@ -710,7 +713,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
                         clause_display.trim()
                     ))
                 })?;
-            let noun = crate::token_word_refs(subject_tokens)
+            let noun = crate::lexer::token_word_refs(subject_tokens)
                 .get(1)
                 .and_then(|noun| ironsmith_core::DemonstrativeAntecedentSurface::from_noun(noun));
             filter.set_demonstrative_antecedent_surface(noun);
@@ -731,7 +734,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
         )));
     }
 
-    let remainder_words = crate::token_word_refs(&remainder);
+    let remainder_words = crate::lexer::token_word_refs(remainder);
     let delayed_effects = if matches!(
         remainder_words.as_slice(),
         ["exile", "its", "controllers", "graveyard"]
@@ -745,7 +748,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
         ));
         vec![EffectAst::subject_verb_exile_all(graveyard, false)]
     } else {
-        parse_effect_chain(&remainder)?
+        parse_effect_chain(remainder)?
     };
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -951,7 +954,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn delayed_end_step_header_uses_captured_step_owner() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "At the beginning of your next end step, draw a card.",
             0,
         )
@@ -969,7 +972,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn delayed_end_step_header_uses_captured_turn_owner() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "At the beginning of the end step of that player's next turn, draw a card.",
             0,
         )
@@ -987,7 +990,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn delayed_end_step_body_uses_typed_consult_bundle_dispatch() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "At the beginning of the next end step, reveal cards from the top of your library until you reveal that many creature cards, put all creature cards revealed this way onto the battlefield, then shuffle the rest of the revealed cards into your library.",
             0,
         )
@@ -1005,7 +1008,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn delayed_dies_this_way_uses_captured_filter() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "If a creature dealt damage this way would die this turn, exile it instead.",
             0,
         )
@@ -1028,7 +1031,7 @@ mod copy_and_next_spell_shape_tests {
     #[test]
     fn delayed_that_dies_this_turn_uses_captured_effect_tail() {
         let tokens =
-            crate::runtime_backend::lex_line("When that creature dies this turn, draw a card.", 0)
+            crate::lexer::lex_line("When that creature dies this turn, draw a card.", 0)
                 .expect("that-dies delayed text should lex");
 
         let effects = parse_delayed_when_that_dies_this_turn_sentence(&tokens)
@@ -1046,7 +1049,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn delayed_death_exiles_the_referenced_objects_controllers_whole_graveyard() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "When that creature dies this turn, exile its controller's graveyard.",
             0,
         )
@@ -1082,7 +1085,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn definite_filtered_death_subject_watches_the_prior_object_once() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "When the permanent you don't control dies this turn, you gain 2 life.",
             0,
         )
@@ -1134,7 +1137,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn indefinite_damage_history_subject_keeps_this_way_collection_shape() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Whenever a creature dealt damage this way dies this turn, you gain 2 life.",
             0,
         )
@@ -1158,7 +1161,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn delayed_that_creature_leaves_uses_captured_effect_tail() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "When that creature leaves the battlefield, return this card from exile to the battlefield under its owner's control.",
             0,
         )
@@ -1179,7 +1182,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn this_turn_delayed_trigger_uses_captured_duration_tail() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "This turn, whenever you draw a card, draw a card.",
             0,
         )
@@ -1198,7 +1201,7 @@ mod copy_and_next_spell_shape_tests {
     #[test]
     fn suffix_this_turn_delayed_trigger_uses_captured_trigger_and_effect() {
         let tokens =
-            crate::runtime_backend::lex_line("Whenever you draw a card this turn, draw a card.", 0)
+            crate::lexer::lex_line("Whenever you draw a card this turn, draw a card.", 0)
                 .expect("suffix-this-turn delayed trigger text should lex");
 
         let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
@@ -1213,7 +1216,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn next_single_opponent_or_permanent_copy_keeps_each_other_opponent_choice() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "When you next cast an instant or sorcery spell that targets only a single opponent or a single permanent an opponent controls this turn, for each other opponent, choose that player or a permanent they control, copy that spell, and the copy targets the chosen player or permanent.",
             0,
         )
@@ -1277,7 +1280,7 @@ mod copy_and_next_spell_shape_tests {
             "When you next cast an instant or sorcery spell that targets an opponent or a permanent an opponent controls this turn, for each other opponent, choose that player or a permanent they control, copy that spell, and the copy targets the chosen player or permanent.",
             "When you next cast an instant or sorcery spell that targets only a single opponent or a single permanent an opponent controls this turn, copy that spell.",
         ] {
-            let tokens = crate::runtime_backend::lex_line(text, 0).expect("near miss should lex");
+            let tokens = crate::lexer::lex_line(text, 0).expect("near miss should lex");
             assert!(
                 parse_next_cast_single_opponent_or_permanent_copy_loop(&tokens).is_none(),
                 "near miss must not use the exact correlated route: {text}"
@@ -1287,7 +1290,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn delayed_death_after_damage_by_previous_creature_keeps_both_identities() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Whenever a creature dealt damage by that creature dies this turn, its controller loses 2 life.",
             0,
         )
@@ -1324,7 +1327,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn suffix_this_turn_first_matching_cast_is_one_shot() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "When you cast a spell with the chosen name for the first time this turn, draw two cards.",
             0,
         )
@@ -1361,7 +1364,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn suffix_this_turn_delayed_trigger_supports_spell_or_loyalty_union() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "When you next cast an instant spell, cast a sorcery spell, or activate a loyalty ability this turn, copy that spell or ability twice. You may choose new targets for the copies.",
             0,
         )
@@ -1404,7 +1407,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn leading_this_turn_target_attack_unblocked_uses_captured_subject() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "This turn, when target creature you control attacks and isn't blocked, draw a card.",
             0,
         )
@@ -1423,7 +1426,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn suffix_this_turn_tagged_dealt_damage_uses_captured_kind() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Whenever that creature is dealt damage this turn, draw a card.",
             0,
         )
@@ -1442,7 +1445,7 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn suffix_this_turn_tagged_combat_damage_uses_captured_marker() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Whenever that permanent is dealt combat damage this turn, draw a card.",
             0,
         )

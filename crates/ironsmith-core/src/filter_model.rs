@@ -494,6 +494,9 @@ pub struct ObjectFilterUnionSurface {
     /// relative clause. The ordinary zone and history predicate remain the
     /// executable semantics; this retains only the authored surface.
     entered_battlefield_explicit_surface: bool,
+    /// Oracle introduced an entry-history condition with "you had ...
+    /// enter" rather than the canonical past-tense relative clause.
+    you_had_entry_surface: bool,
     /// Oracle placed a mana-source cast predicate after a granted ability as
     /// an `if` clause ("has split second if mana from ... was spent") rather
     /// than inside the affected-spell noun phrase. The ordinary
@@ -549,6 +552,7 @@ impl ObjectFilterUnionSurface {
             graveyard_entry_history: None,
             global_characteristic_domain: None,
             entered_battlefield_explicit_surface: false,
+            you_had_entry_surface: false,
             mana_source_spent_trailing_if_surface: false,
             as_you_cast_this_turn_surface: false,
         }
@@ -946,6 +950,15 @@ impl ObjectFilterUnionSurface {
 
     pub const fn entered_battlefield_explicit_surface(self) -> bool {
         self.entered_battlefield_explicit_surface
+    }
+
+    pub const fn with_you_had_entry_surface(mut self, authored: bool) -> Self {
+        self.you_had_entry_surface = authored;
+        self
+    }
+
+    pub const fn you_had_entry_surface(self) -> bool {
+        self.you_had_entry_surface
     }
 
     pub const fn with_mana_source_spent_trailing_if_surface(mut self, trailing: bool) -> Self {
@@ -2392,6 +2405,16 @@ impl ObjectFilter {
         self.union_surface.entered_battlefield_explicit_surface()
     }
 
+    /// Preserve the authored "you had ... enter" history surface without
+    /// changing the executable entry-history filter.
+    pub fn set_you_had_entry_surface(&mut self, authored: bool) {
+        self.union_surface = self.union_surface.with_you_had_entry_surface(authored);
+    }
+
+    pub const fn has_you_had_entry_surface(&self) -> bool {
+        self.union_surface.you_had_entry_surface()
+    }
+
     pub fn set_mana_source_spent_trailing_if_surface(&mut self, trailing: bool) {
         self.union_surface = self
             .union_surface
@@ -2683,15 +2706,17 @@ impl ObjectFilter {
     }
 
     pub fn has_search_stated_quality(&self) -> bool {
-        let mut generic = Self::default();
-        generic.zone = self.zone;
-        generic.owner = self.owner.clone();
-        generic.controller = self.controller.clone();
-        generic.cast_by = self.cast_by.clone();
-        generic.excluded_cast_origin_zone = self.excluded_cast_origin_zone;
-        generic.first_spell_cast_each_turn = self.first_spell_cast_each_turn;
-        generic.spell_cast_ordinal_each_turn = self.spell_cast_ordinal_each_turn;
-        generic.single_graveyard = self.single_graveyard;
+        let generic = Self {
+            zone: self.zone,
+            owner: self.owner.clone(),
+            controller: self.controller.clone(),
+            cast_by: self.cast_by.clone(),
+            excluded_cast_origin_zone: self.excluded_cast_origin_zone,
+            first_spell_cast_each_turn: self.first_spell_cast_each_turn,
+            spell_cast_ordinal_each_turn: self.spell_cast_ordinal_each_turn,
+            single_graveyard: self.single_graveyard,
+            ..Self::default()
+        };
         self != &generic
     }
 
@@ -4352,7 +4377,7 @@ impl ObjectFilter {
                     Some(Zone::Battlefield) | None if self.is_commander => "commander",
                     Some(Zone::Battlefield) | None => "permanent",
                     Some(Zone::Stack) => {
-                        let kind = self.stack_kind.unwrap_or_else(|| {
+                        let kind = self.stack_kind.unwrap_or({
                             if self.has_mana_cost {
                                 StackObjectKind::Spell
                             } else {
@@ -5440,7 +5465,7 @@ pub fn describe_owner_scoped_zone_union(filter: &ObjectFilter) -> Option<String>
     let outer_probe = ObjectFilter {
         owner: filter.owner.clone(),
         any_of: filter.any_of.clone(),
-        union_surface: filter.union_surface.clone(),
+        union_surface: filter.union_surface,
         ..ObjectFilter::default()
     };
     if filter != &outer_probe {
@@ -6935,7 +6960,7 @@ mod tests {
     #[test]
     fn iterated_player_detection_only_flags_dynamic_variants() {
         assert!(PlayerFilter::IteratedPlayer.mentions_iterated_player());
-        assert!(PlayerFilter::target_player().mentions_iterated_player() == false);
+        assert!(!PlayerFilter::target_player().mentions_iterated_player());
         assert!(
             PlayerFilter::excluding(PlayerFilter::IteratedPlayer, PlayerFilter::Opponent)
                 .mentions_iterated_player()
@@ -7357,13 +7382,15 @@ mod tests {
 
     #[test]
     fn branch_scoped_characteristic_union_flattens_a_serial_list_container() {
-        let mut leading = ObjectFilter::default();
-        leading.any_of = vec![
-            ObjectFilter::default().with_subtype(Subtype::Pest).other(),
-            ObjectFilter::default().with_subtype(Subtype::Bat),
-            ObjectFilter::default().with_subtype(Subtype::Insect),
-            ObjectFilter::default().with_subtype(Subtype::Snake),
-        ];
+        let leading = ObjectFilter {
+            any_of: vec![
+                ObjectFilter::default().with_subtype(Subtype::Pest).other(),
+                ObjectFilter::default().with_subtype(Subtype::Bat),
+                ObjectFilter::default().with_subtype(Subtype::Insect),
+                ObjectFilter::default().with_subtype(Subtype::Snake),
+            ],
+            ..ObjectFilter::default()
+        };
         let mut filter = ObjectFilter {
             zone: Some(Zone::Battlefield),
             controller: Some(PlayerFilter::You),

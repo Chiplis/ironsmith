@@ -166,7 +166,7 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
         "exile-return-same: counter_tokens={:?} return_tokens_len={}",
         shape
             .counter_tokens
-            .map(crate::token_word_refs),
+            .map(crate::lexer::token_word_refs),
         shape.return_tokens.len()
     ));
 

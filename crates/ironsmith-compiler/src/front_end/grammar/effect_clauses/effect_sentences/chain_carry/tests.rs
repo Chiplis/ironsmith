@@ -20,7 +20,7 @@ use super::{
     parse_effect_clause_with_trailing_if_lexed, parse_leading_player_may_lexed,
     preserve_coordinated_effect_chain_surface, starts_like_create_fragment_lexed,
 };
-use crate::runtime_backend::front_end::shared::util::with_source_reference_context;
+use crate::util::with_source_reference_context;
 
 #[test]
 fn each_player_optional_hand_reveal_preserves_selected_collection() {
@@ -165,10 +165,10 @@ fn optional_mana_payment_exports_the_result_across_the_followup_sentence() {
     let effects = parse_effect_sentences_lexed(&tokens)
         .expect("optional payment and followup should parse into typed sentences");
     let trigger = crate::cards::builders::TriggerSpec::ThisAttacksAndIsntBlocked;
-    let prepared = crate::runtime_backend::lowering::lowering_support::rewrite_prepare_effects_with_trigger_context_for_lowering(
+    let prepared = crate::lowering_support::rewrite_prepare_effects_with_trigger_context_for_lowering(
         Some(&trigger),
         &effects,
-        crate::runtime_backend::ReferenceImports::default(),
+        crate::model::reference_state::ReferenceImports::default(),
     )
     .unwrap_or_else(|error| {
         panic!(
@@ -1723,12 +1723,17 @@ fn vraskas_fall_choice_and_consequences_do_not_become_coordinated() {
 
     let effects =
         parse_effect_sentence_lexed(&tokens).expect("Vraska's Fall sentence should parse");
+    let debug = format!("{effects:#?}");
     assert!(
         effects
             .iter()
             .all(|effect| !matches!(effect, EffectAst::Coordinated { .. })),
         "choice and its consequences must remain on the specialist path: {effects:#?}"
     );
+    assert!(debug.contains("Planeswalker"), "{debug}");
+    assert!(debug.contains("PoisonCounters"), "{debug}");
+    assert!(!debug.contains("ChooseOneOf"), "{debug}");
+    assert!(!debug.contains("UnlessAction"), "{debug}");
 }
 
 #[test]
@@ -2300,7 +2305,7 @@ fn conditional_named_source_tap_set_stays_one_antecedent() {
         matches!(
             effects.as_slice(),
             [EffectAst::IfResult {
-                predicate: crate::cards::builders::IfResultPredicate::DidNot,
+                predicate: crate::cards::builders::IfResultPredicate::ExplicitDidNot,
                 effects,
             }] if matches!(
                 effects.as_slice(),
@@ -2753,13 +2758,45 @@ fn trailing_if_binds_its_mana_value_to_the_declared_object_target() {
 }
 
 #[test]
+fn trailing_if_keeps_counter_action_outside_graveyard_history_predicate() {
+    let tokens = lex_line(
+        "Put a +1/+1 counter on this creature if a permanent was put into a graveyard from the battlefield this turn.",
+        0,
+    )
+    .expect("graveyard-history conditional should lex");
+
+    let effect = parse_effect_clause_with_trailing_if_lexed(&tokens)
+        .expect("graveyard-history conditional should parse");
+    let EffectAst::TrailingIf { predicate, effects } = effect else {
+        panic!("expected a trailing conditional, got {effect:#?}");
+    };
+    assert!(
+        matches!(
+            predicate,
+            PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
+        ),
+        "{predicate:#?}"
+    );
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutCounters { .. },
+                ..
+            })]
+        ),
+        "{effects:#?}"
+    );
+}
+
+#[test]
 fn mass_destruction_trailing_source_power_condition_preempts_broad_destroy() {
     let tokens = lex_line(
         "Then destroy all other creatures if its power is exactly 20.",
         0,
     )
     .expect("conditional mass destruction should lex");
-    let split = crate::runtime_backend::grammar::structure::split_trailing_if_clause_lexed(&tokens)
+    let split = crate::grammar::structure::split_trailing_if_clause_lexed(&tokens)
         .expect("the trailing source-power predicate should be grammar-proven");
     assert!(matches!(
         split.predicate,
@@ -3318,7 +3355,7 @@ fn or_action_clause_accepts_an_explicit_source_gain_choice_branch() {
     let action_split = action_splits
         .iter()
         .find(|split| {
-            crate::runtime_backend::token_word_refs(split.second_tokens)
+            crate::lexer::token_word_refs(split.second_tokens)
                 .starts_with(&["this", "creature", "gains"])
         })
         .expect("outer action `or` should remain distinct from the nested ability choices");
@@ -3971,7 +4008,7 @@ fn trailing_venture_mechanic_keeps_the_coordinated_return() {
 }
 #[test]
 fn opponent_choice_before_exile_keeps_source_exclusion_and_shared_tag() {
-    let tokens = crate::runtime_backend::lex_line(
+    let tokens = crate::lexer::lex_line(
         "An opponent chooses a permanent you control other than this creature and exiles it.",
         0,
     )

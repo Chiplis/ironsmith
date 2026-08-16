@@ -2334,6 +2334,75 @@ pub(super) fn parse_choose_not_to_untap_line_and_activated_line_without_spurious
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn oracle_optional_untap_lines_remain_typed_static_abilities() {
+    let cards = [
+        ("Amber Prison", "this artifact"),
+        ("Ashnod's Battle Gear", "this artifact"),
+        ("Bottomless Vault", "this land"),
+        ("Callous Oppressor", "this creature"),
+        ("Deserter's Quarters", "this artifact"),
+        ("Endoskeleton", "this artifact"),
+        ("Entrancing Lyre", "this artifact"),
+        ("Everglove Courier", "this creature"),
+        ("Flamestick Courier", "this creature"),
+        ("Flowstone Armor", "this artifact"),
+        ("Frightshroud Courier", "this creature"),
+        ("Ghosthelm Courier", "this creature"),
+        ("Helm of Possession", "this artifact"),
+        ("Hisoka's Guard", "this creature"),
+        ("Ice Floe", "this land"),
+        ("Mana Leech", "this creature"),
+        ("Mole Worms", "this creature"),
+        ("Old Man of the Sea", "this creature"),
+        ("Pearlspear Courier", "this creature"),
+        ("Phyrexian Gremlins", "this creature"),
+        ("Preacher", "this creature"),
+        ("Rust Tick", "this creature"),
+        ("Sand Squid", "this creature"),
+        ("Seasinger", "this creature"),
+        ("Spirit Shield", "this artifact"),
+        ("Tawnos's Weaponry", "this artifact"),
+        ("Thalakos Dreamsower", "this creature"),
+        ("Whip Vine", "this creature"),
+        ("Willow Satyr", "this creature"),
+        ("Zelyon Sword", "this artifact"),
+    ];
+    assert_eq!(
+        cards.len(),
+        30,
+        "keep the complete regression census pinned"
+    );
+
+    for (name, subject) in cards {
+        let def = parse_oracle_card_definition(name);
+        let expected = format!("You may choose not to untap {subject} during your untap step");
+        let compiled = unprocessed_compiled_lines(&def).join("\n");
+
+        assert!(
+            compiled
+                .lines()
+                .any(|line| line.trim_end_matches('.') == expected),
+            "expected {name} to retain its authored optional-untap line, got {compiled}"
+        );
+        assert!(
+            !compiled.contains(&format!("You may untap {subject}")),
+            "expected {name} not to lower the static rule as a one-shot untap effect, got {compiled}"
+        );
+        assert!(
+            def.abilities.iter().any(|ability| matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
+            )),
+            "expected {name} to carry the typed optional-untap static ability, got {:?}",
+            def.abilities
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_named_source_optional_untap_and_control_duration_surface() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Rubinia Soulsinger")
         .card_types(vec![CardType::Creature])

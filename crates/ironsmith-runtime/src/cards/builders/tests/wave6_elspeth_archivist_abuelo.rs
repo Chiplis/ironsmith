@@ -101,7 +101,7 @@ fn abuelos_awakening_keeps_owned_graveyard_and_x_entry_counters() {
         .expect("Awakening should compile as a spell program");
     let returned = program
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(find_nested::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>)
         .expect("the first sentence should remain a typed graveyard return");
     let ChooseSpec::Object(filter) = returned.target.base() else {

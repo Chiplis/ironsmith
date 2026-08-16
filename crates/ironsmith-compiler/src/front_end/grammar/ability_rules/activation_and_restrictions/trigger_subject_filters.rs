@@ -21,8 +21,7 @@ fn trigger_controller_player_filter(
 }
 
 fn trigger_source_words(words: &[&str]) -> bool {
-    crate::grammar::trigger_subjects::parse_trigger_source_subject_words(words)
-        .is_some()
+    crate::grammar::trigger_subjects::parse_trigger_source_subject_words(words).is_some()
 }
 
 pub(crate) fn parse_discard_trigger_card_filter(
@@ -38,9 +37,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
     }
 
     let Some(envelope) =
-        crate::grammar::trigger_subjects::parse_discard_trigger_envelope(
-            &remainder,
-        )
+        crate::grammar::trigger_subjects::parse_discard_trigger_envelope(&remainder)
     else {
         return Err(CardTextError::ParseError(format!(
             "missing discard trigger card keyword (clause: '{}')",
@@ -48,7 +45,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
         )));
     };
     let mut qualifier_tokens = strip_leading_articles(envelope.qualifier);
-    let qualifier_words = crate::token_word_refs(&qualifier_tokens);
+    let qualifier_words = crate::lexer::token_word_refs(&qualifier_tokens);
     if trigger_subject_grammar::trigger_words_are_one_or_more(&qualifier_words) {
         qualifier_tokens.clear();
     }
@@ -85,7 +82,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
         return Ok(None);
     }
 
-    let qualifier_words = crate::token_word_refs(&qualifier_tokens);
+    let qualifier_words = crate::lexer::token_word_refs(&qualifier_tokens);
     if let Ok(mut filter) = parse_object_filter(&qualifier_tokens, false) {
         // A discard event already fixes the object's event-time zone to the
         // hand. Nouns such as "permanent" otherwise make the general object
@@ -139,9 +136,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
 }
 
 fn subtype_list_controller_suffix(words: &[&str]) -> (Option<PlayerFilter>, usize) {
-    if let Some(suffix) =
-        crate::grammar::trigger_subjects::parse_trigger_control_suffix(words)
-    {
+    if let Some(suffix) = crate::grammar::trigger_subjects::parse_trigger_control_suffix(words) {
         (
             Some(trigger_controller_player_filter(suffix.controller)),
             suffix.subject_end,
@@ -152,13 +147,9 @@ fn subtype_list_controller_suffix(words: &[&str]) -> (Option<PlayerFilter>, usiz
 }
 
 pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
-    use crate::grammar::trigger_subjects::{
-        AttachedControllerSubject, PossessivePlayerReference,
-    };
+    use crate::grammar::trigger_subjects::{AttachedControllerSubject, PossessivePlayerReference};
 
-    match crate::grammar::trigger_subjects::parse_possessive_player_reference(
-        words,
-    ) {
+    match crate::grammar::trigger_subjects::parse_possessive_player_reference(words) {
         PossessivePlayerReference::EnchantedPlayer => {
             PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))
         }
@@ -214,15 +205,12 @@ pub(crate) fn parse_shuffle_trigger_subject(
 
 pub(crate) fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
     let controller =
-        crate::grammar::trigger_subjects::parse_spell_or_ability_controller_tail(
-            words,
-        )?;
+        crate::grammar::trigger_subjects::parse_spell_or_ability_controller_tail(words)?;
     Some(trigger_controller_player_filter(controller))
 }
 
 pub(crate) fn parse_spell_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
-    let controller =
-        crate::grammar::trigger_subjects::parse_spell_controller_tail(words)?;
+    let controller = crate::grammar::trigger_subjects::parse_spell_controller_tail(words)?;
     Some(trigger_controller_player_filter(controller))
 }
 
@@ -280,9 +268,8 @@ pub(crate) fn parse_subtype_list_enters_trigger_filter_lexed(
 
 #[test]
 fn subtype_list_enter_trigger_preserves_and_or_surface() {
-    let tokens =
-        crate::lexer::lex_line("Rabbits, Bats, Birds, and/or Mice you control", 0)
-            .expect("lex subtype-list trigger subject");
+    let tokens = crate::lexer::lex_line("Rabbits, Bats, Birds, and/or Mice you control", 0)
+        .expect("lex subtype-list trigger subject");
     let filter = parse_subtype_list_enters_trigger_filter_lexed(&tokens, true)
         .expect("parse subtype-list trigger subject");
 
@@ -298,11 +285,8 @@ fn subtype_list_enter_trigger_preserves_and_or_surface() {
         "another Rabbit, Bat, Bird, and/or Mouse you control"
     );
 
-    let mixed = crate::lexer::lex_line(
-        "nontoken artifact creature or Vehicle you control",
-        0,
-    )
-    .expect("lex mixed type/subtype trigger subject");
+    let mixed = crate::lexer::lex_line("nontoken artifact creature or Vehicle you control", 0)
+        .expect("lex mixed type/subtype trigger subject");
     assert!(
         parse_subtype_list_enters_trigger_filter_lexed(&mixed, true).is_none(),
         "the compact subtype-list path must not discard non-subtype predicates"
@@ -315,9 +299,7 @@ fn parse_source_or_filter_trigger_subject_filter_lexed(
     let word_view = ActivationRestrictionCompatWords::new(subject_tokens);
     let subject_words = word_view.to_word_refs();
     let Some(shape) =
-        crate::grammar::trigger_subjects::parse_source_or_filter_shape(
-            &subject_words,
-        )
+        crate::grammar::trigger_subjects::parse_source_or_filter_shape(&subject_words)
     else {
         return Ok(None);
     };
@@ -325,13 +307,11 @@ fn parse_source_or_filter_trigger_subject_filter_lexed(
     if !is_source_reference_words(source_words) {
         return Ok(None);
     }
-    let Some(filter_token_idx) =
-        crate::grammar::trigger_subjects::parse_trigger_word_span(
-            subject_tokens,
-            shape.filter_word,
-        )
-        .map(|span| span.first)
-    else {
+    let Some(filter_token_idx) = crate::grammar::trigger_subjects::parse_trigger_word_span(
+        subject_tokens,
+        shape.filter_word,
+    )
+    .map(|span| span.first) else {
         return Ok(None);
     };
     let Some(alternative_filter) =
@@ -391,11 +371,7 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
     // the resolution-local `it` antecedent. Keep the canonical choice tag when
     // this trigger lives on a later ability; a same-resolution reference pass
     // can still alias it to the concrete producer tag.
-    if let Some(chosen) =
-        crate::grammar::targets::parse_chosen_object_target(
-            subject_tokens,
-        )
-    {
+    if let Some(chosen) = crate::grammar::targets::parse_chosen_object_target(subject_tokens) {
         let mut filter = parse_object_filter_lexed(chosen.filter_tokens, false)?;
         filter = filter.match_tagged(
             crate::cards::builders::CHOSEN_OBJECTS_TAG,
@@ -422,9 +398,7 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
         return Ok(None);
     }
     if let Some(suffix) =
-        crate::grammar::trigger_subjects::parse_trigger_control_suffix(
-            &subject_words,
-        )
+        crate::grammar::trigger_subjects::parse_trigger_control_suffix(&subject_words)
         && trigger_source_words(&subject_words[..suffix.subject_end])
     {
         let mut filter = ObjectFilter::default();
@@ -450,9 +424,7 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
             filter.other = true;
         }
         if let Some(controller_phrase) =
-            crate::grammar::trigger_subjects::parse_trigger_control_phrase(
-                &subject_words,
-            )
+            crate::grammar::trigger_subjects::parse_trigger_control_phrase(&subject_words)
         {
             filter.controller = Some(trigger_controller_player_filter(
                 controller_phrase.controller,
@@ -470,15 +442,12 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
     // `an attacking creature you control or a blocking creature an opponent
     // controls` erases the distinction between the two arms.
     if intrinsic_attachment_state.is_none()
-        && !crate::families::object_filters::has_shared_terminal_object_noun(
-            &normalized_subject_tokens,
-        )
+        && !crate::object_filters::has_shared_terminal_object_noun(&normalized_subject_tokens)
         && let Some(mut filter) =
-            crate::grammar::filters::
-                parse_branch_scoped_object_filter_union_lexed(
-                    &normalized_subject_tokens,
-                    other,
-                )
+            crate::grammar::filters::parse_branch_scoped_object_filter_union_lexed(
+                &normalized_subject_tokens,
+                other,
+            )
     {
         if filter.zone.is_none() {
             filter.zone = Some(Zone::Battlefield);
@@ -492,10 +461,8 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
     let word_view = ActivationRestrictionCompatWords::new(&normalized_subject_tokens);
     let normalized_words = word_view.to_word_refs();
     let controller_phrase = if let Some(controller_phrase) =
-        crate::grammar::trigger_subjects::parse_trigger_control_phrase(
-            &normalized_words,
-        )
-        .filter(|phrase| phrase.start.saturating_add(phrase.words) < normalized_words.len())
+        crate::grammar::trigger_subjects::parse_trigger_control_phrase(&normalized_words)
+            .filter(|phrase| phrase.start.saturating_add(phrase.words) < normalized_words.len())
     {
         controller_override = Some(trigger_controller_player_filter(
             controller_phrase.controller,
@@ -506,18 +473,16 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
     };
 
     if let Some((word_idx, len)) = controller_phrase
-        && let Some(start) =
-            crate::grammar::trigger_subjects::parse_trigger_word_span(
-                &normalized_subject_tokens,
-                word_idx,
-            )
-            .map(|span| span.first)
-        && let Some(end) =
-            crate::grammar::trigger_subjects::parse_trigger_word_span(
-                &normalized_subject_tokens,
-                word_idx + len,
-            )
-            .map(|span| span.first)
+        && let Some(start) = crate::grammar::trigger_subjects::parse_trigger_word_span(
+            &normalized_subject_tokens,
+            word_idx,
+        )
+        .map(|span| span.first)
+        && let Some(end) = crate::grammar::trigger_subjects::parse_trigger_word_span(
+            &normalized_subject_tokens,
+            word_idx + len,
+        )
+        .map(|span| span.first)
     {
         normalized_subject_tokens.drain(start..end);
     }
@@ -580,21 +545,19 @@ pub(crate) fn parse_attack_trigger_subject_filter_lexed(
     // "this [creature] or equipped creature" — an Equipment triggering for
     // itself (while reconfigured) or its bearer.
     {
-        let word_refs = crate::token_word_refs(subject_tokens);
+        let word_refs = crate::lexer::token_word_refs(subject_tokens);
         if matches!(
             word_refs.as_slice(),
             ["this", "or", "equipped", "creature"]
                 | ["this", "creature", "or", "equipped", "creature"]
                 | ["this", "permanent", "or", "equipped", "creature"]
-        ) {
-            if let Some(or_token_idx) = subject_tokens.iter().position(|t| t.is_word("or"))
-                && let Some(equipped) =
-                    parse_trigger_subject_filter_lexed(&subject_tokens[or_token_idx + 1..])?
-            {
-                let mut union = ObjectFilter::default();
-                union.any_of = vec![ObjectFilter::source(), equipped];
-                return Ok(Some(union));
-            }
+        ) && let Some(or_token_idx) = subject_tokens.iter().position(|t| t.is_word("or"))
+            && let Some(equipped) =
+                parse_trigger_subject_filter_lexed(&subject_tokens[or_token_idx + 1..])?
+        {
+            let mut union = ObjectFilter::default();
+            union.any_of = vec![ObjectFilter::source(), equipped];
+            return Ok(Some(union));
         }
     }
     let Some(mut filter) = parse_trigger_subject_filter_lexed(subject_tokens)? else {
@@ -618,9 +581,8 @@ pub(crate) fn parse_attack_trigger_subject_filter_lexed(
 
 #[test]
 fn suspected_attack_subject_preserves_the_designation_filter() {
-    let tokens =
-        crate::lexer::lex_line("one or more suspected creatures you control", 0)
-            .expect("lex suspected attack subject");
+    let tokens = crate::lexer::lex_line("one or more suspected creatures you control", 0)
+        .expect("lex suspected attack subject");
     let filter = parse_attack_trigger_subject_filter_lexed(&tokens)
         .expect("parse suspected attack subject")
         .expect("object-filter subject");
@@ -641,14 +603,13 @@ pub(crate) fn has_draw_except_first_in_draw_step_pattern(words: &[&str]) -> bool
 pub(crate) fn parse_spell_activity_trigger(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     let activity_facts = trigger_subject_grammar::parse_spell_activity_surface_facts(&clause_words);
     if !activity_facts.has_spell_noun {
         return Ok(None);
     }
 
-    let verb_facts =
-        crate::grammar::trigger_subjects::parse_spell_activity_verb_facts(tokens);
+    let verb_facts = crate::grammar::trigger_subjects::parse_spell_activity_verb_facts(tokens);
     let cast_idx = verb_facts.cast;
     let copy_idx = verb_facts.copy;
     if cast_idx.is_none() && copy_idx.is_none() {
@@ -684,9 +645,7 @@ pub(crate) fn parse_spell_activity_trigger(
     let parse_filter =
         |filter_tokens: &[OwnedLexToken]| -> Result<Option<ObjectFilter>, CardTextError> {
             let envelope =
-                crate::grammar::trigger_subjects::parse_spell_filter_envelope(
-                    filter_tokens,
-                );
+                crate::grammar::trigger_subjects::parse_spell_filter_envelope(filter_tokens);
             let filter_tokens = &filter_tokens[..envelope.end];
             let filter_words: Vec<&str> = filter_tokens
                 .iter()
@@ -782,7 +741,7 @@ pub(crate) fn parse_spell_activity_trigger(
         } else {
             (copy, cast, false)
         };
-        let between_words = crate::token_word_refs(&tokens[first + 1..second]);
+        let between_words = crate::lexer::token_word_refs(&tokens[first + 1..second]);
         if trigger_subject_grammar::spell_activity_words_are_or_separator(&between_words) {
             let filter = parse_filter(tokens.get(second + 1..).unwrap_or_default())?;
             let cast_trigger = TriggerSpec::SpellCast {
@@ -810,9 +769,7 @@ pub(crate) fn parse_spell_activity_trigger(
     if let Some(cast) = cast_idx {
         let suffix_tokens = tokens.get(cast + 1..).unwrap_or_default();
         let suffix_envelope =
-            crate::grammar::trigger_subjects::parse_spell_filter_envelope(
-                suffix_tokens,
-            );
+            crate::grammar::trigger_subjects::parse_spell_filter_envelope(suffix_tokens);
         let mut filter_tokens = &suffix_tokens[..suffix_envelope.end];
         if filter_tokens.is_empty() {
             let prefix_tokens =
@@ -942,7 +899,8 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
 pub(crate) fn parse_copy_reference_cost_reduction_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaCost> {
-    let shape = crate::grammar::trigger_subjects::parse_copy_reference_cost_reduction_shape_tokens(tokens)?;
+    let shape =
+        crate::grammar::trigger_subjects::parse_copy_reference_cost_reduction_shape_tokens(tokens)?;
     let reduction_tokens = trim_commas(&tokens[shape.reduction_tokens]).to_vec();
     let (reduction, consumed) = parse_cost_modifier_mana_cost(&reduction_tokens)?;
     if consumed != reduction_tokens.len() {
@@ -982,8 +940,7 @@ pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAs
 }
 
 pub(crate) fn is_simple_copy_reference_sentence(tokens: &[OwnedLexToken]) -> bool {
-    crate::grammar::trigger_subjects::parse_simple_copy_reference_tokens(tokens)
-        .is_some()
+    crate::grammar::trigger_subjects::parse_simple_copy_reference_tokens(tokens).is_some()
 }
 
 pub(crate) fn token_name_mentions_eldrazi_spawn_or_scion(name: &str) -> bool {
@@ -1023,13 +980,9 @@ pub(crate) fn effect_creates_any_token(effect: &EffectAst) -> bool {
             if matches!(
                 &subject_verb.action,
                 crate::model::ast::SubjectVerbActionAst::Populate { .. }
-                    | crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods {
-                        ..
-                    }
+                    | crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods { .. }
                     | crate::model::ast::SubjectVerbActionAst::CreateTokenCopy { .. }
-                    | crate::model::ast::SubjectVerbActionAst::CreateTokenCopyFromSource {
-                        ..
-                    }
+                    | crate::model::ast::SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
             ) =>
         {
             true
@@ -1131,10 +1084,7 @@ pub(crate) fn parse_sentence_exile_that_token_when_source_leaves(
 ) -> Option<EffectAst> {
     use crate::grammar::trigger_subjects::TokenLifecycleSentenceKind;
 
-    let kind =
-        crate::grammar::trigger_subjects::parse_token_lifecycle_sentence_tokens(
-            tokens,
-        )?;
+    let kind = crate::grammar::trigger_subjects::parse_token_lifecycle_sentence_tokens(tokens)?;
     if kind != TokenLifecycleSentenceKind::ExileCreatedTokenWhenSourceLeaves {
         return None;
     }
@@ -1152,10 +1102,7 @@ pub(crate) fn parse_sentence_sacrifice_source_when_that_token_leaves(
 ) -> Option<EffectAst> {
     use crate::grammar::trigger_subjects::TokenLifecycleSentenceKind;
 
-    let kind =
-        crate::grammar::trigger_subjects::parse_token_lifecycle_sentence_tokens(
-            tokens,
-        )?;
+    let kind = crate::grammar::trigger_subjects::parse_token_lifecycle_sentence_tokens(tokens)?;
     if kind != TokenLifecycleSentenceKind::SacrificeSourceWhenCreatedTokenLeaves {
         return None;
     }
@@ -1168,10 +1115,7 @@ pub(crate) fn parse_sentence_sacrifice_source_when_that_token_leaves(
 }
 
 pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bool {
-    crate::grammar::token_definitions::parse_token_reminder_sentence_kind_tokens(
-        tokens,
-    )
-    .is_some()
+    crate::grammar::token_definitions::parse_token_reminder_sentence_kind_tokens(tokens).is_some()
 }
 
 pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -1186,7 +1130,9 @@ pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<O
         // quotes before the marker prevents a `where X is` inside the granted
         // ability itself from being promoted to the outer create effect.
         if let Some(where_shape) =
-            crate::grammar::effects::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens)
+            crate::grammar::effects::sentence_predicate_shapes::parse_where_x_sentence_tokens(
+                tokens,
+            )
         {
             let quote_count = where_shape
                 .stripped_tokens
@@ -1252,25 +1198,18 @@ pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<O
 }
 
 pub(crate) fn append_token_reminder_to_last_create_effect(
-    effects: &mut Vec<EffectAst>,
+    effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     if tokens.is_empty() {
         return Ok(false);
     }
-    let reminder =
-        crate::grammar::token_definitions::parse_token_reminder_facts_tokens(
-            tokens,
-        );
-    let sentence_kind = crate::grammar::token_definitions::
-        parse_token_reminder_sentence_kind_tokens(tokens);
+    let reminder = crate::grammar::token_definitions::parse_token_reminder_facts_tokens(tokens);
+    let sentence_kind =
+        crate::grammar::token_definitions::parse_token_reminder_sentence_kind_tokens(tokens);
     let ability_presentation = match sentence_kind {
-        Some(
-            crate::grammar::token_definitions::TokenReminderSentenceKind::GrantedAbility,
-        ) => Some(
-            if crate::grammar::token_definitions::
-                token_ability_sentence_uses_gain_verb(tokens)
-            {
+        Some(crate::grammar::token_definitions::TokenReminderSentenceKind::GrantedAbility) => Some(
+            if crate::grammar::token_definitions::token_ability_sentence_uses_gain_verb(tokens) {
                 ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
             } else {
                 ironsmith_core::TokenAbilityPresentation::SeparateSentence
@@ -1303,10 +1242,7 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
         // one ability list. The compact equipment-reminder facts understand
         // the activation but cannot carry the quoted sibling, so give the
         // complete typed grant parser first refusal for exactly this shape.
-        if crate::sentences::effect_sentences::mixed_pronoun_token_rule_list(
-            tokens,
-        )
-        .is_some()
+        if crate::effect_sentences::mixed_pronoun_token_rule_list(tokens).is_some()
             && append_token_granted_ability_to_effect(Some(effect), tokens)?
         {
             return Ok(true);
@@ -1360,17 +1296,14 @@ fn append_token_granted_ability_to_effect(
                 return Ok(false);
             };
             let Some(ability_tokens) =
-                crate::sentences::effect_sentences::mixed_pronoun_token_rule_list(
-                    tokens,
-                )
-                .or_else(|| {
+                crate::effect_sentences::mixed_pronoun_token_rule_list(tokens).or_else(|| {
                     crate::grammar::effects::dispatch_entry_shapes::
                         parse_token_granted_ability_tokens(tokens)
                 })
             else {
                 return Ok(false);
             };
-            let Ok(parsed) = crate::sentences::effect_sentences::parse_granted_abilities_for_token_definition(
+            let Ok(parsed) = crate::effect_sentences::parse_granted_abilities_for_token_definition(
                 definition,
                 ability_tokens,
             ) else {
@@ -1397,13 +1330,13 @@ fn append_token_granted_ability_to_effect(
                     granted_abilities.push(ability);
                 }
             }
-            let presentation = if crate::grammar::token_definitions::
-                token_ability_sentence_uses_gain_verb(tokens)
-            {
-                ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
-            } else {
-                ironsmith_core::TokenAbilityPresentation::SeparateSentence
-            };
+            let presentation =
+                if crate::grammar::token_definitions::token_ability_sentence_uses_gain_verb(tokens)
+                {
+                    ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
+                } else {
+                    ironsmith_core::TokenAbilityPresentation::SeparateSentence
+                };
             *ability_presentation = Some(if keywords_authored_inline {
                 ironsmith_core::TokenAbilityPresentation::with_added_standalone_tail(None)
             } else if combine_separate_sentence {
@@ -1586,7 +1519,7 @@ pub(crate) fn append_token_reminder_to_effect(
 #[cfg(test)]
 mod typed_trigger_subject_migration_tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn discard_permanent_card_filter_does_not_require_battlefield_zone() {
@@ -1892,7 +1825,7 @@ mod typed_trigger_subject_migration_tests {
         )
         .expect("quoted token where-x text should lex");
         let stripped = strip_embedded_token_rules_text(&tokens);
-        let words = crate::runtime_backend::token_word_refs(&stripped)
+        let words = crate::lexer::token_word_refs(&stripped)
             .into_iter()
             .map(str::to_ascii_lowercase)
             .collect::<Vec<_>>();
@@ -1924,7 +1857,7 @@ mod typed_trigger_subject_migration_tests {
         )
         .expect("inner where-x token text should lex");
         let stripped_inner = strip_embedded_token_rules_text(&inner_only);
-        let inner_words = crate::runtime_backend::token_word_refs(&stripped_inner)
+        let inner_words = crate::lexer::token_word_refs(&stripped_inner)
             .into_iter()
             .map(str::to_ascii_lowercase)
             .collect::<Vec<_>>();

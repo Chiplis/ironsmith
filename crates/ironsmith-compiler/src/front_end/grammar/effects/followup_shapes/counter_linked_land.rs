@@ -3,9 +3,9 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::object::CounterType;
 use crate::grammar::{filters, leaf, primitives};
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
+use crate::object::CounterType;
 use crate::types::Subtype;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

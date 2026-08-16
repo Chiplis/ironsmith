@@ -2,7 +2,6 @@
 
 use super::shard_16::{oracle_text_by_name, parse_oracle_card_definition};
 use super::*;
-use crate::filter::ObjectFilterExt as _;
 
 fn assert_exact(name: &str, definition: &CardDefinition) {
     assert_eq!(

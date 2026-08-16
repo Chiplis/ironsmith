@@ -2,7 +2,7 @@ use winnow::combinator::alt;
 use winnow::prelude::*;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{OwnedLexToken, TokenWordView};
+use crate::lexer::{OwnedLexToken, TokenWordView};
 
 use super::common::{
     first_choice_damage_word_is, has_all_or_each_at, has_choice_damage_condition_boundary,
@@ -101,7 +101,7 @@ pub(crate) fn parse_destroy_multi_target_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn identifies_destroy_fanout_and_repeated_target_starts() {

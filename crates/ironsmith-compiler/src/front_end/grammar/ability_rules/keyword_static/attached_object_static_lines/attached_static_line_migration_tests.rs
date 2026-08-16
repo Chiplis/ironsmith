@@ -2,13 +2,13 @@ use super::*;
 
 #[test]
 fn display_keeps_adjacent_mana_symbols_compact() {
-    let tokens = crate::runtime_backend::lexer::lex_line("t {w}, {u}", 0).unwrap();
+    let tokens = crate::lexer::lex_line("t {w}, {u}", 0).unwrap();
     assert_eq!(display_text_for_tokens(&tokens, false), "{T}{W}, {U}");
 }
 
 #[test]
 fn otherwise_keyword_grant_uses_typed_clause_boundary() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Equipped creature has deathtouch during your turn. Otherwise, it has reach.",
         0,
     )
@@ -22,7 +22,7 @@ fn otherwise_keyword_grant_uses_typed_clause_boundary() {
 #[test]
 fn typed_attached_restriction_shapes_preserve_static_semantics() {
     let tokens =
-        crate::runtime_backend::lexer::lex_line("Enchanted creature can't attack or block.", 0)
+        crate::lexer::lex_line("Enchanted creature can't attack or block.", 0)
             .unwrap();
     assert!(
         parse_attached_cant_attack_or_block_line(&tokens)
@@ -30,7 +30,7 @@ fn typed_attached_restriction_shapes_preserve_static_semantics() {
             .is_some()
     );
 
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "All creatures able to block equipped creature do so.",
         0,
     )
@@ -44,7 +44,7 @@ fn typed_attached_restriction_shapes_preserve_static_semantics() {
 
 #[test]
 fn attached_color_condition_keeps_ability_loss_on_the_attached_creature() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "As long as enchanted creature is red, it loses all abilities.",
         0,
     )
@@ -72,7 +72,7 @@ fn attached_color_condition_keeps_ability_loss_on_the_attached_creature() {
         "the typed consequent must remove abilities from the attached object: {ability:#?}"
     );
 
-    let global = crate::runtime_backend::lexer::lex_line(
+    let global = crate::lexer::lex_line(
         "As long as you control a red creature, red creatures lose all abilities.",
         0,
     )
@@ -87,7 +87,7 @@ fn attached_color_condition_keeps_ability_loss_on_the_attached_creature() {
 
 #[test]
 fn attached_subject_carries_into_pronoun_loss_and_grant_sentence() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Enchanted creature can't attack or block. It loses all abilities and has \"{1}: Draw a card.\"",
         0,
     )
@@ -108,7 +108,7 @@ fn attached_subject_carries_into_pronoun_loss_and_grant_sentence() {
 
 #[test]
 fn attached_transform_subject_carries_into_combat_and_ability_loss_sentence() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Enchanted creature is a Turtle with base power and toughness 0/1. It can't attack and loses all abilities.",
         0,
     )
@@ -126,7 +126,7 @@ fn attached_transform_subject_carries_into_combat_and_ability_loss_sentence() {
 
 #[test]
 fn attached_keyword_and_goaded_clause_keeps_both_continuous_abilities() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Enchanted creature has indestructible and is goaded.",
         0,
     )
@@ -148,7 +148,7 @@ fn attached_keyword_and_goaded_clause_keeps_both_continuous_abilities() {
     assert_eq!(dispatched.len(), 2, "{dispatched:#?}");
 
     let ordinary =
-        crate::runtime_backend::lexer::lex_line("Enchanted creature has indestructible.", 0)
+        crate::lexer::lex_line("Enchanted creature has indestructible.", 0)
             .unwrap();
     assert!(
         parse_attached_has_keywords_and_is_goaded_line(&ordinary)
@@ -160,7 +160,7 @@ fn attached_keyword_and_goaded_clause_keeps_both_continuous_abilities() {
 
 #[test]
 fn attached_keyword_grant_and_loss_dispatches_before_subject_filter_loss() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Enchanted creature has defender and loses flying.",
         0,
     )
@@ -189,7 +189,7 @@ fn attached_keyword_grant_and_loss_dispatches_before_subject_filter_loss() {
         "the granted keyword must not become an affected-object prerequisite: {grant_filter:#?}"
     );
 
-    let filtered = crate::runtime_backend::lexer::lex_line(
+    let filtered = crate::lexer::lex_line(
         "Enchanted creature with defender loses flying.",
         0,
     )
@@ -213,7 +213,7 @@ fn attached_keyword_grant_and_loss_dispatches_before_subject_filter_loss() {
 
 #[test]
 fn attached_restrictions_with_ignore_clause_become_static_special_action_semantics() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a permanent of their choice for that player to ignore this effect until end of turn.",
         0,
     )
@@ -239,7 +239,7 @@ fn attached_restrictions_with_ignore_clause_become_static_special_action_semanti
         "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a creature of their choice for that player to ignore this effect until end of turn.",
         "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a permanent of their choice for that player to ignore this effect until end of combat.",
     ] {
-        let tokens = crate::runtime_backend::lexer::lex_line(unsupported, 0).unwrap();
+        let tokens = crate::lexer::lex_line(unsupported, 0).unwrap();
         assert!(
             parse_attached_restrictions_with_ignore_special_action_line(&tokens)
                 .unwrap()
@@ -266,7 +266,7 @@ fn attached_pt_compounds_preserve_both_characteristic_effects() {
         ),
         ("Enchanted creature gets +3/+1 and is black.", "SetColors"),
     ] {
-        let tokens = crate::runtime_backend::lexer::lex_line(line, 0).unwrap();
+        let tokens = crate::lexer::lex_line(line, 0).unwrap();
         if line.contains(" is black") {
             let intended = parse_anthem_and_type_color_addition_line(&tokens)
                 .unwrap()
@@ -310,7 +310,7 @@ fn attached_pt_compounds_preserve_both_characteristic_effects() {
         );
     }
 
-    let standalone = crate::runtime_backend::lexer::lex_line(
+    let standalone = crate::lexer::lex_line(
         "Creatures your opponents control lose all abilities.",
         0,
     )
@@ -329,7 +329,7 @@ fn attached_pt_compounds_preserve_both_characteristic_effects() {
 
 #[test]
 fn typed_attached_transform_and_prevention_shapes_lower() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Enchanted creature is a blue Frog with base power and toughness 3/3 in addition to its other types.",
         0,
     )
@@ -340,7 +340,7 @@ fn typed_attached_transform_and_prevention_shapes_lower() {
             .is_some()
     );
 
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "If damage would be dealt to this creature, prevent that damage and remove a shield counter from it.",
         0,
     )
@@ -354,7 +354,7 @@ fn typed_attached_transform_and_prevention_shapes_lower() {
 
 #[test]
 fn attached_land_type_setting_replaces_the_land_subtype_family() {
-    let lush = crate::runtime_backend::lexer::lex_line(
+    let lush = crate::lexer::lex_line(
         "Enchanted land is a Mountain, Forest, and Plains.",
         0,
     )
@@ -366,7 +366,7 @@ fn attached_land_type_setting_replaces_the_land_subtype_family() {
     assert!(lush_debug.contains("SetLandSubtypes"), "{lush_debug}");
     assert!(!lush_debug.contains("AddSubtypes"), "{lush_debug}");
 
-    let song = crate::runtime_backend::lexer::lex_line(
+    let song = crate::lexer::lex_line(
         "Enchanted permanent is a colorless Forest land.",
         0,
     )
@@ -396,7 +396,7 @@ fn quoted_attached_activated_grants_parse_from_carried_tokens() {
             Some(vec![crate::mana::ManaSymbol::Green]),
         ),
     ] {
-        let tokens = crate::runtime_backend::lexer::lex_line(text, 0).unwrap();
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
         let parsed = parse_attached_granted_activated_line(&tokens)
             .unwrap()
             .expect("quoted activated grant should parse from its carried tokens");
@@ -414,7 +414,7 @@ fn quoted_attached_activated_grants_parse_from_carried_tokens() {
 
 #[test]
 fn attached_has_clause_combines_keyword_and_quoted_activated_grants() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Enchanted creature has vigilance and \"{W}, {T}: Bolster 1.\" (To bolster 1, choose a creature with the least toughness among creatures you control and put a +1/+1 counter on it.)",
         0,
     )
@@ -437,7 +437,7 @@ fn attached_has_clause_combines_keyword_and_quoted_activated_grants() {
 
 #[test]
 fn attached_land_reset_lowers_loss_and_each_quoted_mana_ability() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
+    let tokens = crate::lexer::lex_line(
         "Enchanted land loses all land types and abilities and has \"{T}: Add {C}\" and \"{T}, Pay 1 life: Add one mana of any color.\"",
         0,
     )

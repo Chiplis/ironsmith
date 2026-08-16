@@ -65,7 +65,7 @@ fn joyful_stormsculptor_keeps_convoke_and_the_shared_opponent_battle_damage_set(
     let protected_battle = triggered
         .effects
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(protected_battle_filter)
         .expect("the damage program must retain its protected-Battle iteration");
     assert_eq!(

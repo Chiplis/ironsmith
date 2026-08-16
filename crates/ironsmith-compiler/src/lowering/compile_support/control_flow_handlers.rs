@@ -1387,14 +1387,13 @@ fn vote_extra_amount(effect: &EffectAst) -> Option<(u32, bool)> {
             [EffectAst::VoteExtra { count, .. }] => Some((*count, true)),
             _ => None,
         },
-        EffectAst::MayByPlayer { player, effects }
-            if matches!(player, PlayerAst::You | PlayerAst::Implicit) =>
-        {
-            match effects.as_slice() {
-                [EffectAst::VoteExtra { count, .. }] => Some((*count, true)),
-                _ => None,
-            }
-        }
+        EffectAst::MayByPlayer {
+            player: PlayerAst::You | PlayerAst::Implicit,
+            effects,
+        } => match effects.as_slice() {
+            [EffectAst::VoteExtra { count, .. }] => Some((*count, true)),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -1446,7 +1445,7 @@ pub(crate) fn compile_vote_sequence(
                 }
                 _ => None,
             })
-            .last()
+            .next_back()
             .unwrap_or(1);
 
         let secret_choice = if let Some(object_choice) = object_choice {
@@ -1533,7 +1532,7 @@ pub(crate) fn compile_vote_sequence(
             effect if vote_extra_amount(effect).is_some() => Some(idx + 1),
             _ => None,
         })
-        .last()
+        .next_back()
         .unwrap_or(1);
 
     for annotated in effects.iter().take(consumed).skip(1) {
@@ -1798,9 +1797,8 @@ mod typed_search_predicate_tests {
             ],
         };
 
-        let compiled =
-            crate::runtime_backend::compile_support::compile_statement_effects(&[removal, fanout])
-                .expect("removed count should lower across both fanout frames");
+        let compiled = crate::compile_support::compile_statement_effects(&[removal, fanout])
+            .expect("removed count should lower across both fanout frames");
         let debug = format!("{compiled:#?}");
 
         assert_eq!(
@@ -1858,7 +1856,7 @@ mod typed_search_predicate_tests {
             },
         ];
 
-        let compiled = crate::runtime_backend::compile_support::compile_statement_effects(&effects)
+        let compiled = crate::compile_support::compile_statement_effects(&effects)
             .expect("coin-flip result follow-up should lower");
         let sequence = compiled[0]
             .downcast_ref::<crate::effects::SequenceEffect>()
@@ -1904,7 +1902,7 @@ mod typed_search_predicate_tests {
             },
         ];
 
-        let compiled = crate::runtime_backend::compile_support::compile_statement_effects(&effects)
+        let compiled = crate::compile_support::compile_statement_effects(&effects)
             .expect("each-player coin-face correlation should lower");
         let [flip_result, followup] = compiled.as_slice() else {
             panic!("expected one shared flip result and one correlated follow-up: {compiled:#?}");
@@ -1961,9 +1959,8 @@ mod typed_search_predicate_tests {
             continue_predicate: IfResultPredicate::WonClash,
         };
 
-        let compiled =
-            crate::runtime_backend::compile_support::compile_statement_effects(&[process])
-                .expect("wrapped clash repeat process should lower");
+        let compiled = crate::compile_support::compile_statement_effects(&[process])
+            .expect("wrapped clash repeat process should lower");
         let repeat = compiled[0]
             .downcast_ref::<crate::effects::RepeatProcessEffect>()
             .expect("expected a runtime repeat process");
@@ -1998,7 +1995,7 @@ mod typed_search_predicate_tests {
 
     #[test]
     fn secret_choice_followup_keeps_the_result_id_used_by_otherwise() {
-        let compiled = crate::runtime_backend::compile_card_text(
+        let compiled = crate::compile_card_text(
             CardDefinitionBuilder::new(CardId::new(), "Expert-Level Safe")
                 .card_types(vec![CardType::Artifact]),
             "When this artifact enters, exile the top two cards of your library face down.\n\

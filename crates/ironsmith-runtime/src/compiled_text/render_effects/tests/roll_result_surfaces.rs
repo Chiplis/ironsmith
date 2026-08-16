@@ -117,11 +117,7 @@ fn sequenced_d20_setup_renders_only_exhaustive_same_result_id_rows() {
         )
     );
     let one_segment = crate::resolution::ResolutionProgram::from_effects(
-        program
-            .flattened_default_effects()
-            .into_iter()
-            .cloned()
-            .collect(),
+        program.flattened_default_effects().to_vec(),
     );
     assert_eq!(
         describe_sequenced_d20_numeric_result_table_program(&one_segment).as_deref(),
@@ -347,7 +343,7 @@ fn die_result_damage_then_random_source_attachment_keeps_typed_sequence_surface(
     let roll_id = crate::effect::EffectId(7);
     let enchanted_player = PlayerFilter::TaggedPlayer(TagKey::from("enchanted"));
     let chosen_player_tag = TagKey::from("chosen_player_0");
-    let effects = vec![
+    let effects = [
         Effect::with_id(
             roll_id.0,
             Effect::roll_die_with_die_text(6, PlayerFilter::You, Some("d6".to_string())),
@@ -386,7 +382,7 @@ fn die_result_damage_then_random_source_attachment_keeps_typed_sequence_surface(
 fn die_result_damage_then_direct_random_source_attachment_keeps_typed_sequence_surface() {
     let roll_id = crate::effect::EffectId(11);
     let enchanted_player = PlayerFilter::TaggedPlayer(TagKey::from("enchanted"));
-    let effects = vec![
+    let effects = [
         Effect::with_id(
             roll_id.0,
             Effect::roll_die_with_die_text(6, PlayerFilter::You, Some("d6".to_string())),

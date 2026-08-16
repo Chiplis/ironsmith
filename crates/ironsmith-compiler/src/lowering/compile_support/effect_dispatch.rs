@@ -243,10 +243,10 @@ fn nested_effect_is_discard(effect: &Effect) -> bool {
 }
 
 fn nested_effect_defines_result_id(effect: &Effect, id: EffectId) -> bool {
-    if let Some(with_id) = effect.as_with_id() {
-        if with_id.id == id {
-            return true;
-        }
+    if let Some(with_id) = effect.as_with_id()
+        && with_id.id == id
+    {
+        return true;
     }
     let mut found = false;
     effect.visit_child_effects(&mut |child| {
@@ -408,6 +408,102 @@ fn preserve_independent_coordinated_targets(
         }
     }
     (effects, preserved)
+}
+
+fn coordinated_continuous_effect(
+    effect: &Effect,
+) -> Option<&crate::effects::ApplyContinuousEffect> {
+    if let Some(tagged) = effect.as_tagged() {
+        return coordinated_continuous_effect(&tagged.effect);
+    }
+    if let Some(with_id) = effect.as_with_id() {
+        return coordinated_continuous_effect(&with_id.effect);
+    }
+    effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+}
+
+fn with_coordinated_continuous_duration(effect: &Effect, duration: &Until) -> Option<Effect> {
+    if let Some(tagged) = effect.as_tagged() {
+        return Some(Effect::new(crate::effects::TaggedEffect::new(
+            tagged.tag.clone(),
+            with_coordinated_continuous_duration(&tagged.effect, duration)?,
+        )));
+    }
+    if let Some(with_id) = effect.as_with_id() {
+        return Some(Effect::new(crate::effects::WithIdEffect::new(
+            with_id.id,
+            with_coordinated_continuous_duration(&with_id.effect, duration)?,
+        )));
+    }
+    let mut continuous = effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?
+        .clone();
+    continuous.until = duration.clone();
+    Some(Effect::new(continuous))
+}
+
+/// A trailing duration in one coordinated continuous clause scopes every
+/// predicate in that clause. Individual grant lowering can leave an earlier
+/// arm at the default `Forever` duration (for example, "gains hexproof and
+/// indestructible until end of turn"). Carry the typed terminal duration back
+/// only when every earlier arm is the same target and has no duration of its
+/// own.
+pub(super) fn preserve_shared_trailing_coordinated_duration(effects: &mut [Effect]) {
+    let trailing_start = effects
+        .iter()
+        .rposition(|effect| coordinated_continuous_effect(effect).is_none())
+        .map_or(0, |index| index + 1);
+    let effects = &mut effects[trailing_start..];
+    if effects.len() < 2 {
+        return;
+    }
+    let Some(last_continuous) = effects.last().and_then(coordinated_continuous_effect) else {
+        return;
+    };
+    if last_continuous.until == Until::Forever {
+        return;
+    }
+    let shared_duration = last_continuous.until.clone();
+    let shared_target = last_continuous.target.clone();
+    let shared_target_spec = last_continuous.target_spec.clone();
+    let first_anchor = effects.first().and_then(|effect| {
+        effect
+            .as_tagged()
+            .map(|tagged| tagged.tag.clone())
+            .or_else(|| {
+                effect
+                    .as_with_id()?
+                    .effect
+                    .as_tagged()
+                    .map(|tagged| tagged.tag.clone())
+            })
+    });
+    let earlier_len = effects.len() - 1;
+    if !effects[..earlier_len]
+        .iter()
+        .enumerate()
+        .all(|(index, effect)| {
+            coordinated_continuous_effect(effect).is_some_and(|continuous| {
+                continuous.until == Until::Forever
+                    && ((continuous.target == shared_target
+                        && continuous.target_spec == shared_target_spec)
+                        || (index == 0
+                            && first_anchor.as_ref().is_some_and(|anchor| {
+                                matches!(
+                                    shared_target_spec.as_ref().map(ChooseSpec::base),
+                                    Some(ChooseSpec::Tagged(tag)) if tag == anchor
+                                )
+                            })))
+            })
+        })
+    {
+        return;
+    }
+    for effect in &mut effects[..earlier_len] {
+        if let Some(retimed) = with_coordinated_continuous_duration(effect, &shared_duration) {
+            *effect = retimed;
+        }
+    }
 }
 
 fn describe_value_for_mode(value: &Value) -> String {
@@ -731,9 +827,9 @@ pub(crate) fn compile_effect(
     // `compile_subject_verb_effect` has a large debug-build frame because it lowers the
     // complete typed action enum. Keep the recursive lowering guard consistent with the
     // other typed effect entry points; a 2 MiB alternate stack is smaller than that frame.
-    {
+    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         compile_effect_inner(effect, ctx)
-    }
+    })
 }
 
 fn compile_effect_inner(
@@ -802,7 +898,8 @@ fn compile_effect_inner(
         if coordination.kind == crate::model::CoordinationKindAst::Sequence {
             return Ok((effects, choices));
         }
-        let (effects, choices) = preserve_independent_coordinated_targets(effects, choices);
+        let (mut effects, choices) = preserve_independent_coordinated_targets(effects, choices);
+        preserve_shared_trailing_coordinated_duration(&mut effects);
         return Ok((
             vec![Effect::new(crate::effects::SequenceEffect::coordinated(
                 effects,
@@ -862,7 +959,10 @@ fn compile_effect_inner(
         ctx.auto_tag_object_targets = saved_auto_tag_object_targets;
         let (mut effects, choices) = compiled?;
         preserve_nested_result_value_links(&mut effects);
-        let (effects, choices) = preserve_independent_coordinated_targets(effects, choices);
+        let (mut effects, choices) = preserve_independent_coordinated_targets(effects, choices);
+        if !*leading_duration {
+            preserve_shared_trailing_coordinated_duration(&mut effects);
+        }
         let sequence = if *result_conjunction {
             crate::effects::SequenceEffect::result_conjunction(effects, *leading_duration)
         } else if *leading_duration {
@@ -1124,9 +1224,9 @@ fn compile_effect_inner(
     } = effect
     {
         let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-        let player = resolve_non_target_player_filter(player.clone(), &current_reference_env(ctx))?;
+        let player = resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
         let zone_owner =
-            resolve_non_target_player_filter(zone_owner.clone(), &current_reference_env(ctx))?;
+            resolve_non_target_player_filter(*zone_owner, &current_reference_env(ctx))?;
         return Ok((
             vec![Effect::new({
                 let mut effect =
@@ -1168,7 +1268,61 @@ fn compile_compiler_control_flow(
     control: &crate::model::CompilerControlFlowAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    use crate::model::{ControlFlowNodeAst, ControlPredicateAst};
+    use crate::model::{CompilerDurationAst, ControlFlowNodeAst, ControlPredicateAst};
+
+    fn apply_duration_scope(effects: &mut [EffectAst], duration: &CompilerDurationAst) -> usize {
+        let (until, restriction_surface) = match duration {
+            CompilerDurationAst::ThisTurn | CompilerDurationAst::UntilEndOfTurn => (
+                Until::EndOfTurn,
+                crate::effect::RestrictionDurationSurface::LeadingUntilEndOfTurn,
+            ),
+            CompilerDurationAst::UntilEndOfCombat => (
+                Until::EndOfCombat,
+                crate::effect::RestrictionDurationSurface::Default,
+            ),
+            CompilerDurationAst::UntilNextTurn => (
+                Until::YourNextTurn,
+                crate::effect::RestrictionDurationSurface::LeadingUntilYourNextTurn,
+            ),
+            _ => return 0,
+        };
+
+        fn apply(
+            effects: &mut [EffectAst],
+            until: &Until,
+            restriction_surface: crate::effect::RestrictionDurationSurface,
+        ) -> usize {
+            let mut changed = 0;
+            for effect in effects {
+                if let EffectAst::SubjectVerb(subject_verb) = effect {
+                    match &mut subject_verb.action {
+                        SubjectVerbActionAst::Pump { duration, .. }
+                        | SubjectVerbActionAst::PumpForEach { duration, .. }
+                        | SubjectVerbActionAst::PumpAll { duration, .. } => {
+                            *duration = until.clone();
+                            changed += 1;
+                        }
+                        SubjectVerbActionAst::Cant {
+                            duration,
+                            duration_surface,
+                            ..
+                        } => {
+                            *duration = until.clone();
+                            *duration_surface = restriction_surface;
+                            changed += 1;
+                        }
+                        _ => {}
+                    }
+                }
+                crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                    changed += apply(nested, until, restriction_surface);
+                });
+            }
+            changed
+        }
+
+        apply(effects, &until, restriction_surface)
+    }
 
     let program_effects = |index: usize| -> Result<&[EffectAst], CardTextError> {
         control
@@ -1249,8 +1403,21 @@ fn compile_compiler_control_flow(
         ControlFlowNodeAst::Permission(permission) => {
             compile_effects(program_effects(permission.program)?, ctx)
         }
-        ControlFlowNodeAst::Duration { program, .. }
-        | ControlFlowNodeAst::Delayed { program, .. }
+        ControlFlowNodeAst::Duration { duration, program } => {
+            let mut effects = program_effects(*program)?.to_vec();
+            if apply_duration_scope(&mut effects, duration) == 0 {
+                return compile_effects(&effects, ctx);
+            }
+            compile_effect(
+                &EffectAst::Coordinated {
+                    effects,
+                    leading_duration: true,
+                    result_conjunction: false,
+                },
+                ctx,
+            )
+        }
+        ControlFlowNodeAst::Delayed { program, .. }
         | ControlFlowNodeAst::NestedAbility { program } => {
             compile_effects(program_effects(*program)?, ctx)
         }

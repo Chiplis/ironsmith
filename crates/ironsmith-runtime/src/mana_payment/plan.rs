@@ -273,6 +273,9 @@ pub struct PendingManaPayment {
     pub request: ManaPaymentRequest,
     pub plan: ManaPaymentPlan,
     pub next_activation: usize,
+    /// False while the UI is showing the first legal plan and a better
+    /// bounded-search result is still being computed.
+    pub planning_complete: bool,
 }
 
 impl PendingManaPayment {
@@ -281,6 +284,16 @@ impl PendingManaPayment {
             request,
             plan,
             next_activation: 0,
+            planning_complete: true,
+        }
+    }
+
+    pub fn provisional(request: ManaPaymentRequest, plan: ManaPaymentPlan) -> Self {
+        Self {
+            request,
+            plan,
+            next_activation: 0,
+            planning_complete: false,
         }
     }
 }

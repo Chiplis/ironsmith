@@ -44,10 +44,10 @@ fn granted_conspire_count(game: &GameState, spell_id: ObjectId, caster: PlayerId
         .count();
     let mut object_for_filter = object.clone();
     if let Some(chars) = game.current_characteristics(spell_id) {
-        object_for_filter.name = chars.name.into();
-        object_for_filter.card_types = chars.card_types.into();
-        object_for_filter.subtypes = chars.subtypes.into();
-        object_for_filter.supertypes = chars.supertypes.into();
+        object_for_filter.name = chars.name;
+        object_for_filter.card_types = chars.card_types;
+        object_for_filter.subtypes = chars.subtypes;
+        object_for_filter.supertypes = chars.supertypes;
         object_for_filter.color_override = Some(chars.colors);
     }
 
@@ -252,7 +252,7 @@ pub(super) fn collect_available_casting_methods(
                     .card
                     .mana_cost
                     .as_ref()
-                    .map(|cost| format_mana_cost_simple(cost))
+                    .map(format_mana_cost_simple)
                     .unwrap_or_else(|| "0".to_string());
                 methods.push(CastingMethodOption {
                     method: CastingMethod::SplitOtherHalf,
@@ -273,7 +273,7 @@ pub(super) fn collect_available_casting_methods(
                     from_zone,
                 )
                 .as_ref()
-                .map(|cost| format_mana_cost_simple(cost))
+                .map(format_mana_cost_simple)
                 .unwrap_or_else(|| "0".to_string());
                 methods.push(CastingMethodOption {
                     method: CastingMethod::Fuse,
@@ -616,7 +616,7 @@ pub(super) fn format_alternative_method(
         AlternativeCastingMethod::Blitz { total_cost } => {
             let cost_desc = total_cost
                 .mana_cost()
-                .map(|cost| format_mana_cost_simple(cost))
+                .map(format_mana_cost_simple)
                 .unwrap_or_else(|| "0".to_string());
             ("Blitz".to_string(), cost_desc)
         }
@@ -666,14 +666,14 @@ pub(super) fn format_alternative_method(
         AlternativeCastingMethod::Flashback { .. } => {
             let cost_desc = method
                 .mana_cost()
-                .map(|cost| format_mana_cost_simple(cost))
+                .map(format_mana_cost_simple)
                 .unwrap_or_else(|| "0".to_string());
             ("Flashback".to_string(), cost_desc)
         }
         AlternativeCastingMethod::Harmonize { .. } => {
             let cost_desc = method
                 .mana_cost()
-                .map(|cost| format_mana_cost_simple(cost))
+                .map(format_mana_cost_simple)
                 .unwrap_or_else(|| "0".to_string());
             (
                 "Harmonize".to_string(),
@@ -710,7 +710,7 @@ pub(super) fn format_alternative_method(
         } => {
             let cost_desc = cost
                 .as_ref()
-                .map(|cost| format_mana_cost_simple(cost))
+                .map(format_mana_cost_simple)
                 .or_else(|| {
                     spell
                         .mana_cost
@@ -2546,6 +2546,7 @@ pub(super) fn prompt_spell_assist_payment_plan(
     state: &mut PriorityLoopState,
     mut pending: PendingCast,
 ) -> Result<GameProgress, GameLoopError> {
+    let refining_existing_plan = pending.pending_mana_payment.is_some();
     let assistant = pending.assist_player.ok_or_else(|| {
         GameLoopError::InvalidState("Assist payment has no chosen player".to_string())
     })?;
@@ -2560,24 +2561,29 @@ pub(super) fn prompt_spell_assist_payment_plan(
     if let Some(existing) = pending.pending_mana_payment.as_ref() {
         request.preferences = existing.request.preferences.clone();
     }
-    let plan = crate::mana_payment::plan_mana_payment(game, &request)
-        .map_err(|failure| {
-            state.rollback_action(game);
-            GameLoopError::ActionCancelled(format!(
-                "the announced Assist contribution has no legal payment plan: {failure:?}"
-            ))
-        })?
-        .into_iter()
-        .next()
-        .ok_or_else(|| {
-            GameLoopError::InvalidState("planner returned no Assist payment plan".to_string())
-        })?;
+    let plan_result = if refining_existing_plan {
+        crate::mana_payment::plan_mana_payment(game, &request).and_then(|plans| {
+            plans
+                .into_iter()
+                .next()
+                .ok_or(crate::mana_payment::ManaPaymentFailure::NoLegalPlan)
+        })
+    } else {
+        crate::mana_payment::plan_first_mana_payment(game, &request)
+    };
+    let plan = plan_result.map_err(|failure| {
+        state.rollback_action(game);
+        GameLoopError::ActionCancelled(format!(
+            "the announced Assist contribution has no legal payment plan: {failure:?}"
+        ))
+    })?;
     pending.display_mana_pips =
         expand_mana_cost_to_display_pips(&request.cost, request.x_value as usize);
-    pending.pending_mana_payment = Some(crate::mana_payment::PendingManaPayment::new(
-        request.clone(),
-        plan.clone(),
-    ));
+    pending.pending_mana_payment = Some(if refining_existing_plan {
+        crate::mana_payment::PendingManaPayment::new(request.clone(), plan.clone())
+    } else {
+        crate::mana_payment::PendingManaPayment::provisional(request.clone(), plan.clone())
+    });
     pending.stage = CastStage::PayingAssistMana;
     let subject = game
         .object(pending.spell_id)
@@ -2723,24 +2729,32 @@ pub(super) fn prompt_spell_mana_ability_window(
     mut pending: PendingCast,
     _decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    let refining_existing_plan = pending.pending_mana_payment.is_some();
     let request = spell_mana_payment_request(game, &pending)?;
-    let plan = crate::mana_payment::plan_mana_payment(game, &request)
-        .map_err(|failure| {
-            state.rollback_action(game);
-            GameLoopError::ActionCancelled(format!(
-                "no legal mana payment plan for the spell: {failure:?}"
-            ))
-        })?
-        .into_iter()
-        .next()
-        .ok_or_else(|| GameLoopError::InvalidState("planner returned no spell plan".to_string()))?;
+    let plan_result = if refining_existing_plan {
+        crate::mana_payment::plan_mana_payment(game, &request).and_then(|plans| {
+            plans
+                .into_iter()
+                .next()
+                .ok_or(crate::mana_payment::ManaPaymentFailure::NoLegalPlan)
+        })
+    } else {
+        crate::mana_payment::plan_first_mana_payment(game, &request)
+    };
+    let plan = plan_result.map_err(|failure| {
+        state.rollback_action(game);
+        GameLoopError::ActionCancelled(format!(
+            "no legal mana payment plan for the spell: {failure:?}"
+        ))
+    })?;
 
     pending.display_mana_pips =
         expand_mana_cost_to_display_pips(&request.cost, request.x_value as usize);
-    pending.pending_mana_payment = Some(crate::mana_payment::PendingManaPayment::new(
-        request.clone(),
-        plan.clone(),
-    ));
+    pending.pending_mana_payment = Some(if refining_existing_plan {
+        crate::mana_payment::PendingManaPayment::new(request.clone(), plan.clone())
+    } else {
+        crate::mana_payment::PendingManaPayment::provisional(request.clone(), plan.clone())
+    });
     pending.mana_ability_window_closed = true;
     pending.stage = CastStage::PayingMana;
     let player = pending.caster;
@@ -2766,29 +2780,35 @@ pub(super) fn prompt_activation_mana_ability_window(
     mut pending: PendingActivation,
     _decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    let refining_existing_plan = pending.pending_mana_payment.is_some();
     let request = activation_mana_payment_request(game, &pending)?;
     let cost = pending.mana_cost_to_pay.as_ref().ok_or_else(|| {
         GameLoopError::InvalidState("activation payment prompt has no mana cost".to_string())
     })?;
-    let plan = crate::mana_payment::plan_mana_payment(game, &request)
-        .map_err(|failure| {
-            state.rollback_action(game);
-            GameLoopError::ActionCancelled(format!(
-                "no legal mana payment plan for the activation: {failure:?}"
-            ))
-        })?
-        .into_iter()
-        .next()
-        .ok_or_else(|| {
-            GameLoopError::InvalidState("planner returned no activation plan".to_string())
-        })?;
+    let plan_result = if refining_existing_plan {
+        crate::mana_payment::plan_mana_payment(game, &request).and_then(|plans| {
+            plans
+                .into_iter()
+                .next()
+                .ok_or(crate::mana_payment::ManaPaymentFailure::NoLegalPlan)
+        })
+    } else {
+        crate::mana_payment::plan_first_mana_payment(game, &request)
+    };
+    let plan = plan_result.map_err(|failure| {
+        state.rollback_action(game);
+        GameLoopError::ActionCancelled(format!(
+            "no legal mana payment plan for the activation: {failure:?}"
+        ))
+    })?;
 
     pending.display_mana_pips =
         expand_mana_cost_to_display_pips(cost, pending.x_value.unwrap_or(0));
-    pending.pending_mana_payment = Some(crate::mana_payment::PendingManaPayment::new(
-        request.clone(),
-        plan.clone(),
-    ));
+    pending.pending_mana_payment = Some(if refining_existing_plan {
+        crate::mana_payment::PendingManaPayment::new(request.clone(), plan.clone())
+    } else {
+        crate::mana_payment::PendingManaPayment::provisional(request.clone(), plan.clone())
+    });
     pending.mana_ability_window_closed = true;
     pending.stage = ActivationStage::PayingMana;
     let player = pending.activator;
@@ -3722,10 +3742,10 @@ pub(super) fn get_legal_cost_choice_objects(
     let ctx = game.filter_context_for(player, Some(source));
 
     let ids: Vec<ObjectId> = match zone {
-        Zone::Battlefield => game.battlefield.iter().copied().collect(),
+        Zone::Battlefield => game.battlefield.to_vec(),
         Zone::Hand => game
             .player(player)
-            .map(|p| p.hand.iter().copied().collect())
+            .map(|p| p.hand.to_vec())
             .unwrap_or_default(),
         Zone::Graveyard => game.player(player).map_or_else(Vec::new, |p| {
             if top_only {
@@ -3734,7 +3754,7 @@ pub(super) fn get_legal_cost_choice_objects(
                 p.graveyard.to_vec()
             }
         }),
-        Zone::Exile => game.exile.iter().copied().collect(),
+        Zone::Exile => game.exile.to_vec(),
         _ => Vec::new(),
     };
 

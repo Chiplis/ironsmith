@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::rest;
 
-use crate::front_end::lexer::{LexStream, OwnedLexToken, TokenKind};
+use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 
 use super::super::super::primitives;
 
@@ -101,7 +101,7 @@ pub(crate) fn parse_leading_effect_label_tokens(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::front_end::lexer::{lex_line, render_token_slice};
+    use crate::lexer::{lex_line, render_token_slice};
 
     use super::*;
 

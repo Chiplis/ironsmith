@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    ActivationTiming, CardTextError, EffectAst, EffectPredicate, IfResultPredicate, LineInfo,
-    ConditionalModeSelection, ParsedConditionalModeChange, ParsedModalActivatedHeader,
+    ActivationTiming, CardTextError, ConditionalModeSelection, EffectAst, EffectPredicate,
+    IfResultPredicate, LineInfo, ParsedConditionalModeChange, ParsedModalActivatedHeader,
     ParsedModalGate, ParsedModalHeader, SubjectVerbActionAst,
 };
 use crate::effect::Value;
@@ -298,10 +298,12 @@ pub(crate) fn parse_modal_header(
 fn parse_modal_presentation_label(
     source_tokens: &[OwnedLexToken],
 ) -> Option<crate::ability::PresentationLabel> {
-    let choose_idx = source_tokens.iter().position(|token| token.is_word("choose"))?;
-    let dash_idx = source_tokens.iter().position(|token| {
-        matches!(token.kind, TokenKind::Dash | TokenKind::EmDash)
-    })?;
+    let choose_idx = source_tokens
+        .iter()
+        .position(|token| token.is_word("choose"))?;
+    let dash_idx = source_tokens
+        .iter()
+        .position(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))?;
     if dash_idx >= choose_idx {
         return None;
     }
@@ -310,10 +312,7 @@ fn parse_modal_presentation_label(
         .iter()
         .filter(|token| token.kind == TokenKind::Word || token.kind == TokenKind::Number)
         .count();
-    if word_count == 0
-        || word_count > 4
-        || label_tokens.iter().any(|token| token.is_period())
-    {
+    if word_count == 0 || word_count > 4 || label_tokens.iter().any(|token| token.is_period()) {
         return None;
     }
     let label = render_token_slice(label_tokens).trim().to_string();

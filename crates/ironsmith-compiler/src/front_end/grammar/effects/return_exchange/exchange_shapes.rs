@@ -303,10 +303,7 @@ fn source_stat_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueKindShap
         (&"toughness", source_words) => (source_words, ExchangeValueKindShape::Toughness),
         _ => return None,
     };
-    crate::util::source_reference_surface_for_possessive_words(
-        source_words,
-    )
-    .map(|_| kind)
+    crate::util::source_reference_surface_for_possessive_words(source_words).map(|_| kind)
 }
 
 fn target_stat_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueOperandShape<'_>> {

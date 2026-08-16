@@ -359,17 +359,18 @@ impl EffectExecutor for ForPlayersEffect {
         // order and carries no unit grouping.
         let simultaneous_effects = flatten_sequences_for_simultaneous_units(&self.effects);
 
-        if !self.starting_with_controller && !self.stop_after_first_happened {
-            if let Some(unsupported) = simultaneous_effects.iter().find(|effect| {
+        if !self.starting_with_controller
+            && !self.stop_after_first_happened
+            && let Some(unsupported) = simultaneous_effects.iter().find(|effect| {
                 !effect.0.supports_simultaneous_player_action()
                     && !effect.0.is_read_only_simultaneous_player_action()
-            }) {
-                let mut description = format!("{:?}", unsupported.0);
-                description.truncate(120);
-                return Err(ExecutionError::Impossible(format!(
-                    "generic each-player action lacks simultaneous proposal support: {description}"
-                )));
-            }
+            })
+        {
+            let mut description = format!("{:?}", unsupported.0);
+            description.truncate(120);
+            return Err(ExecutionError::Impossible(format!(
+                "generic each-player action lacks simultaneous proposal support: {description}"
+            )));
         }
 
         if self.starting_with_controller || self.stop_after_first_happened {

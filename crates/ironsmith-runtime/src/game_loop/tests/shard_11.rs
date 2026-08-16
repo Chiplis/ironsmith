@@ -816,7 +816,7 @@ pub(super) fn test_cleanup_discard_no_decision_when_under_limit() {
 
     // Add only 5 cards to hand (under max hand size of 7)
     for i in 0..5 {
-        let card = CardBuilder::new(CardId::new(), &format!("Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Card {}", i))
             .card_types(vec![CardType::Sorcery])
             .build();
         game.create_object_from_card(&card, alice, Zone::Hand);
@@ -1079,7 +1079,7 @@ pub(super) fn test_cleanup_discard_via_game_loop() {
     // Add 10 cards to hand (3 over max hand size of 7)
     let mut card_ids = Vec::new();
     for i in 0..10 {
-        let card = CardBuilder::new(CardId::new(), &format!("Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Card {}", i))
             .card_types(vec![CardType::Sorcery])
             .build();
         let obj_id = game.create_object_from_card(&card, alice, Zone::Hand);
@@ -1151,7 +1151,7 @@ pub(super) fn test_cleanup_discard_specific_card_choice() {
 
     // Add 9 cards to hand (2 over max hand size of 7)
     for i in 0..9 {
-        let card = CardBuilder::new(CardId::new(), &format!("Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Card {}", i))
             .card_types(vec![CardType::Sorcery])
             .build();
         game.create_object_from_card(&card, alice, Zone::Hand);

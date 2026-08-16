@@ -10,10 +10,10 @@ use winnow::token::any;
 
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::filter::StackObjectKind;
+use crate::grammar::{conditions, filters, leaf, primitives};
+use crate::lexer::{LexStream, OwnedLexToken};
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
-use crate::grammar::{conditions, filters, leaf, primitives};
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
 use crate::static_abilities::{
     AttackCostCondition, AttackingGroupAttackCondition, CantAttackUnlessConditionSpec,
     DefendingPlayerAttackCondition,
@@ -641,7 +641,7 @@ fn spell_cast_condition(noncreature: bool) -> crate::ConditionExpr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{lex_line, parser_token_word_refs};
+    use crate::lexer::{lex_line, parser_token_word_refs};
 
     fn parse(raw: &str) -> Option<AttackUnlessConditionFact<'static>> {
         let tokens = Box::leak(Box::new(

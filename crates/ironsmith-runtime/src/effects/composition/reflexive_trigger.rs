@@ -262,6 +262,65 @@ fn reflexive_it_snapshots(game: &GameState, outcome: &EffectOutcome) -> Vec<Obje
     Vec::new()
 }
 
+impl EffectExecutor for ReflexiveTriggerEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        for effect in &self.effects {
+            visitor(effect);
+        }
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let outcome = ctx
+            .get_outcome(self.condition)
+            .cloned()
+            .ok_or(ExecutionError::EffectNotFound(self.condition))?;
+        if !self.predicate.evaluate_outcome(&outcome) {
+            return Ok(EffectOutcome::resolved());
+        }
+        let fallback_it_snapshots = reflexive_it_snapshots(game, &outcome);
+
+        let targets = choose_reflexive_targets(game, ctx, &self.choices)
+            .ok_or(ExecutionError::InvalidTarget)?;
+
+        let mut tagged_objects = ctx.tagged_objects.clone();
+        let it_tag = TagKey::from("__it__");
+        if !tagged_objects.contains_key(&it_tag) && !fallback_it_snapshots.is_empty() {
+            tagged_objects.insert(it_tag, fallback_it_snapshots);
+        }
+
+        let mut entry = StackEntry::ability(ctx.source, ctx.controller, self.effects.clone())
+            .with_targets(targets)
+            .with_optional_costs_paid(ctx.optional_costs_paid.clone())
+            .with_tagged_objects(tagged_objects)
+            .with_effect_outcomes(ctx.effect_outcomes.clone());
+
+        if let Some(x) = ctx.x_value {
+            entry = entry.with_x(x);
+        }
+        if let Some(defending_player) = ctx.combat.defending_player {
+            entry = entry.with_defending_player(defending_player);
+        }
+        if let Some(source) = game.object(ctx.source) {
+            entry = entry.with_source_info(source.stable_id, source.name.to_string());
+        } else if let Some(snapshot) = ctx.source_snapshot.clone() {
+            entry = entry
+                .with_source_info(snapshot.stable_id, snapshot.name.to_string())
+                .with_source_snapshot(snapshot);
+        }
+
+        game.push_to_stack(entry);
+        Ok(EffectOutcome::count(1))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ReflexiveTriggerEffect, choose_reflexive_targets};
@@ -430,64 +489,5 @@ mod tests {
             Some(game.object(source).expect("source object").name.as_str())
         );
         assert!(entry.source_snapshot.is_some());
-    }
-}
-
-impl EffectExecutor for ReflexiveTriggerEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
-        for effect in &self.effects {
-            visitor(effect);
-        }
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        let outcome = ctx
-            .get_outcome(self.condition)
-            .cloned()
-            .ok_or(ExecutionError::EffectNotFound(self.condition))?;
-        if !self.predicate.evaluate_outcome(&outcome) {
-            return Ok(EffectOutcome::resolved());
-        }
-        let fallback_it_snapshots = reflexive_it_snapshots(game, &outcome);
-
-        let targets = choose_reflexive_targets(game, ctx, &self.choices)
-            .ok_or(ExecutionError::InvalidTarget)?;
-
-        let mut tagged_objects = ctx.tagged_objects.clone();
-        let it_tag = TagKey::from("__it__");
-        if !tagged_objects.contains_key(&it_tag) && !fallback_it_snapshots.is_empty() {
-            tagged_objects.insert(it_tag, fallback_it_snapshots);
-        }
-
-        let mut entry = StackEntry::ability(ctx.source, ctx.controller, self.effects.clone())
-            .with_targets(targets)
-            .with_optional_costs_paid(ctx.optional_costs_paid.clone())
-            .with_tagged_objects(tagged_objects)
-            .with_effect_outcomes(ctx.effect_outcomes.clone());
-
-        if let Some(x) = ctx.x_value {
-            entry = entry.with_x(x);
-        }
-        if let Some(defending_player) = ctx.combat.defending_player {
-            entry = entry.with_defending_player(defending_player);
-        }
-        if let Some(source) = game.object(ctx.source) {
-            entry = entry.with_source_info(source.stable_id, source.name.to_string());
-        } else if let Some(snapshot) = ctx.source_snapshot.clone() {
-            entry = entry
-                .with_source_info(snapshot.stable_id, snapshot.name.to_string())
-                .with_source_snapshot(snapshot);
-        }
-
-        game.push_to_stack(entry);
-        Ok(EffectOutcome::count(1))
     }
 }

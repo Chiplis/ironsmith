@@ -134,13 +134,12 @@ impl CostExecutableEffect for TapEffect {
         if game.object(source).is_some()
             && game.current_is_creature(source)
             && game.is_summoning_sick(source)
-        {
-            if !game.current_has_static_ability_id(
+            && !game.current_has_static_ability_id(
                 source,
                 crate::static_abilities::StaticAbilityId::Haste,
-            ) {
-                return Err(CostValidationError::SummoningSickness);
-            }
+            )
+        {
+            return Err(CostValidationError::SummoningSickness);
         }
 
         Ok(())

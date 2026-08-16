@@ -2,12 +2,7 @@ use super::*;
 
 macro_rules! primitive {
     ($id:literal, $_former_order:expr, $stage:ident, $hints:expr, $parser:expr) => {
-        SubjectVerbPrimitive::new(
-            $id,
-            SubjectVerbPrimitiveStage::$stage,
-            $hints,
-            $parser,
-        )
+        SubjectVerbPrimitive::new($id, SubjectVerbPrimitiveStage::$stage, $hints, $parser)
     };
 }
 
@@ -289,6 +284,13 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
             LexRuleHeadHint::Single("that"),
         ],
         parse_sentence_target_player_reveals_random_card_from_hand
+    ),
+    primitive!(
+        "exile-hand-and-graveyard-bundle",
+        190,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        parse_sentence_exile_hand_and_graveyard_bundle
     ),
 ];
 
@@ -680,15 +682,13 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         "shuffle-object-into-library",
         560,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("shuffle")],
+        &[
+            LexRuleHeadHint::Single("shuffle"),
+            LexRuleHeadHint::Single("the"),
+            LexRuleHeadHint::Single("target"),
+            LexRuleHeadHint::Single("its"),
+        ],
         parse_sentence_shuffle_object_into_library
-    ),
-    primitive!(
-        "exile-hand-and-graveyard-bundle",
-        570,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("exile")],
-        parse_sentence_exile_hand_and_graveyard_bundle
     ),
     primitive!(
         "target-player-exiles-creature-and-graveyard",
@@ -881,7 +881,8 @@ pub(crate) static POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::util::tokenize_line;
+    use crate::model::ast::SubjectVerbSubjectAst;
+    use crate::util::tokenize_line;
 
     #[test]
     fn parse_sentence_implicit_become_clause_handles_explicit_self_negative_type_with_duration() {
@@ -985,7 +986,7 @@ mod tests {
 
     #[test]
     fn preconditional_registry_claims_coordinated_conditional_entry_counters() {
-        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each of them enters with an additional +1/+1 counter on it if it's a creature and an additional loyalty counter on it if it's a planeswalker.",
             0,
         )
@@ -1004,6 +1005,95 @@ mod tests {
                 .iter()
                 .all(|effect| matches!(effect, EffectAst::Conditional { .. })),
             "{effects:#?}"
+        );
+    }
+
+    #[test]
+    fn postconditional_registry_claims_owner_subject_shuffle_clauses_atomically() {
+        for text in [
+            "The owner of target nonland permanent shuffles it into their library, then draws two cards.",
+            "Target creature's owner shuffles it into their library.",
+            "Its owner shuffles it into their library.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).expect("shuffle fixture should lex");
+            let effects = run_subject_verb_primitives_lexed(
+                &tokens,
+                POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+                &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+            )
+            .unwrap_or_else(|error| panic!("registry parse should succeed for {text:?}: {error}"))
+            .expect("owner-subject shuffle primitive should claim the sentence");
+
+            assert!(
+                matches!(
+                    effects.first(),
+                    Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. },
+                        ..
+                    }))
+                ),
+                "expected one atomic shuffle-objects effect for {text:?}, got {effects:#?}"
+            );
+            assert!(
+                effects.iter().all(|effect| !matches!(
+                    effect,
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::ShuffleLibrary,
+                        ..
+                    })
+                )),
+                "owner-subject shuffle must not lower as a separate move plus library shuffle: {effects:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn owner_subject_shuffle_binds_same_sentence_library_followup_to_the_owner() {
+        let text = "The owner of target nonenchantment permanent shuffles it into their library, then exiles the top card of their library.";
+        let tokens = crate::lexer::lex_line(text, 0).expect("owner-subject fixture should lex");
+        let effects = run_subject_verb_primitives_lexed(
+            &tokens,
+            POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+        )
+        .unwrap_or_else(|error| panic!("owner-subject parse should succeed: {error}"))
+        .expect("owner-subject shuffle primitive should claim the sentence");
+
+        assert!(
+            matches!(
+                effects.get(1),
+                Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject: SubjectVerbSubjectAst {
+                        player: PlayerAst::ItsOwner,
+                        ..
+                    },
+                    action: SubjectVerbActionAst::ExileTopOfLibrary { .. },
+                }))
+            ),
+            "the same-sentence `their library` follow-up must remain owner-correlated: {effects:#?}"
+        );
+
+        let full_parse = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("the public sentence dispatcher should preserve the same owner binding");
+        let full_parse_debug = format!("{full_parse:#?}");
+        assert!(
+            full_parse_debug.contains("player: ItsOwner")
+                && !full_parse_debug.contains("player: ItsController"),
+            "the public sentence route must preserve the owner-correlated follow-up: {full_parse:#?}"
+        );
+
+        let compiled = crate::compile_card_text(
+            crate::CardDefinitionBuilder::new(crate::CardId::new(), "Owner Shuffle Probe")
+                .card_types(vec![crate::CardType::Instant]),
+            text,
+            false,
+        )
+        .expect("the full card compiler should preserve the owner binding");
+        let compiled_debug = format!("{:#?}", compiled.definition.spell_effect);
+        assert!(
+            compiled_debug.contains("player: OwnerOf(")
+                && !compiled_debug.contains("player: ControllerOf("),
+            "the compiled follow-up must read the shuffled object's owner library: {compiled_debug}"
         );
     }
 

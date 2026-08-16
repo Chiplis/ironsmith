@@ -7,7 +7,7 @@ use crate::target::ObjectFilter;
 pub(crate) fn parse_artifact_enchantment_or_token_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if !words
         .iter()
         .any(|word| *word == "token" || *word == "tokens")
@@ -76,6 +76,8 @@ mod zone_handlers;
 
 pub(crate) use super::grammar::effects::parse_cant_effect_sentence;
 pub(crate) use super::grammar::effects::parse_cant_effect_sentence_with_grammar_entrypoint_lexed as parse_cant_effect_sentence_lexed;
+#[cfg(test)]
+pub(crate) use bundle_rules::parse_typed_effect_bundle_lexed;
 pub(crate) use chain_carry::parse_effect_chain_with_subject_verb_primitives_lexed;
 pub(crate) use chain_carry::*;
 pub(crate) use chain_carry::{
@@ -111,6 +113,7 @@ pub(crate) use sequence_rules::generic_subject_verb_sequences::pairs::parse_temp
 pub(crate) use sequence_rules::generic_subject_verb_sequences::parse_destroy_then_no_regeneration_sequence;
 pub(crate) use sequence_rules::generic_subject_verb_sequences::quads::parse_look_at_top_optional_battlefield_then_conditional_remainder;
 pub(crate) use sequence_rules::generic_subject_verb_sequences::triples::parse_look_at_top_partition_face_down_then_filtered_permission;
+pub(crate) use sequence_rules::try_parse_subject_verb_sequence_rule;
 pub(crate) use subject_verb_primitives::*;
 pub(crate) use verb_handlers::parse_exiled_with_source_move_surface;
 pub(crate) use verb_handlers::{

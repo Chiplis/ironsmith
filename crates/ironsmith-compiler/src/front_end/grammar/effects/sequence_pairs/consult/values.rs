@@ -1,7 +1,7 @@
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::grammar::values as value_grammar;
 use crate::grammar::{filters, permission_shapes, primitives};
-use crate::front_end::lexer::{OwnedLexToken, TokenWordView};
+use crate::lexer::{OwnedLexToken, TokenWordView};
 
 use super::super::sequence_any_phrase;
 
@@ -66,7 +66,7 @@ pub(crate) fn parse_consult_mana_value_condition_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

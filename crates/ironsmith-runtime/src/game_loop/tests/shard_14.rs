@@ -2982,7 +2982,7 @@ pub(super) fn test_affinity_reduces_mana_cost() {
 
     // Create 4 artifacts on the battlefield
     for i in 0..4 {
-        let artifact = CardBuilder::new(CardId::new(), &format!("Artifact {}", i))
+        let artifact = CardBuilder::new(CardId::new(), format!("Artifact {}", i))
             .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&artifact, alice, Zone::Battlefield);
@@ -3042,7 +3042,7 @@ pub(super) fn test_affinity_partial_reduction() {
 
     // Create 2 artifacts on the battlefield
     for i in 0..2 {
-        let artifact = CardBuilder::new(CardId::new(), &format!("Artifact {}", i))
+        let artifact = CardBuilder::new(CardId::new(), format!("Artifact {}", i))
             .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&artifact, alice, Zone::Battlefield);
@@ -3118,7 +3118,7 @@ pub(super) fn test_affinity_only_counts_own_artifacts() {
 
     // Create 2 artifacts controlled by Alice
     for i in 0..2 {
-        let artifact = CardBuilder::new(CardId::new(), &format!("Alice Artifact {}", i))
+        let artifact = CardBuilder::new(CardId::new(), format!("Alice Artifact {}", i))
             .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&artifact, alice, Zone::Battlefield);
@@ -3126,7 +3126,7 @@ pub(super) fn test_affinity_only_counts_own_artifacts() {
 
     // Create 2 artifacts controlled by Bob (should NOT count)
     for i in 10..12 {
-        let artifact = CardBuilder::new(CardId::new(), &format!("Bob Artifact {}", i))
+        let artifact = CardBuilder::new(CardId::new(), format!("Bob Artifact {}", i))
             .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&artifact, bob, Zone::Battlefield);
@@ -3200,7 +3200,7 @@ pub(super) fn test_delve_reduces_mana_cost() {
 
     // Put 7 cards in graveyard
     for i in 0..7 {
-        let card = CardBuilder::new(CardId::new(), &format!("Graveyard Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Graveyard Card {}", i))
             .card_types(vec![CardType::Creature])
             .build();
         game.create_object_from_card(&card, alice, Zone::Graveyard);
@@ -3266,7 +3266,7 @@ pub(super) fn test_delve_partial_reduction() {
 
     // Put 3 cards in graveyard
     for i in 0..3 {
-        let card = CardBuilder::new(CardId::new(), &format!("Graveyard Card {}", i))
+        let card = CardBuilder::new(CardId::new(), format!("Graveyard Card {}", i))
             .card_types(vec![CardType::Creature])
             .build();
         game.create_object_from_card(&card, alice, Zone::Graveyard);

@@ -373,7 +373,7 @@ fn trim_clause(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("lex fixture")
@@ -421,10 +421,8 @@ mod tests {
     #[test]
     fn named_source_is_a_status_condition_subject() {
         let tokens = lex("Probe is equipped.");
-        let parsed = crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-            "Probe",
-            || parse_subject_status(&tokens),
-        );
+        let parsed =
+            crate::util::with_source_reference_context("Probe", || parse_subject_status(&tokens));
 
         assert_eq!(
             parsed,

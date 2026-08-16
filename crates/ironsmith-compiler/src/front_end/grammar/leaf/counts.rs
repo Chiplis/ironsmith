@@ -331,7 +331,7 @@ fn choice_count_range(first: u32, last: u32) -> ChoiceCount {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn choice_count_prefixes_are_typed_for_tokens_and_words() {

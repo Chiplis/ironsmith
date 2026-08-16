@@ -105,7 +105,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for payload in cards.values().take(args.limit.unwrap_or(usize::MAX)) {
         processed += 1;
-        if processed % 1000 == 0 {
+        if processed.is_multiple_of(1000) {
             eprintln!("[INFO] processed {processed} cards");
         }
 
@@ -692,10 +692,8 @@ fn first_words(text: &str, count: usize) -> String {
 fn abstract_text(card_name: &str, text: &str) -> String {
     let mut source = text.to_ascii_lowercase();
     source = source
-        .replace('’', "'")
-        .replace('‘', "'")
-        .replace('“', "\"")
-        .replace('”', "\"")
+        .replace(['’', '‘'], "'")
+        .replace(['“', '”'], "\"")
         .replace('—', " — ");
     for alias in card_name_aliases(card_name) {
         source = source.replace(alias.as_str(), "~");

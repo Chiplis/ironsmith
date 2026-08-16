@@ -8,8 +8,8 @@ use crate::types::Subtype;
 
 use super::cst::{KeywordLineKindCst, KeywordLinePayloadCst};
 use super::lexer::OwnedLexToken;
-use super::semantic::{ParsedLevelAbilityItemAst, ParsedLineAst};
-use super::shared_types::LineInfo;
+use crate::model::compiler_semantic::{ParsedLevelAbilityItemAst, ParsedLineAst};
+use crate::model::facts::LineInfo;
 
 #[derive(Debug, Clone)]
 pub(crate) struct RewriteSemanticDocument {

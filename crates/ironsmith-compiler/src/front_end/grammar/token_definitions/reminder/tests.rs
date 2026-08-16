@@ -1,5 +1,5 @@
-use crate::runtime_backend::front_end::lexer::lex_line;
-use crate::runtime_backend::token_definition::{
+use crate::lexer::lex_line;
+use crate::model::token_definition::{
     CreatureTokenShape, TokenDefinitionSpec, TokenEmbeddedRuleShape,
 };
 use crate::{color::ColorSet, types::CardType};
@@ -52,8 +52,8 @@ fn parses_dynamic_pt_and_lifecycle_reminders() {
     assert!(matches!(
         facts.dynamic_power_toughness,
         Some((Value::PowerOf(ref power), Value::ToughnessOf(ref toughness)))
-            if matches!(power.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::runtime_backend::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG)
-                && matches!(toughness.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::runtime_backend::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG)
+            if matches!(power.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::model::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG)
+                && matches!(toughness.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::model::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG)
     ));
 
     let embedded = lex_line(
@@ -139,7 +139,7 @@ fn merges_quoted_rule_facts_without_relexing_a_definition_name() {
 #[test]
 fn merging_quoted_equipment_grant_preserves_existing_equip_line() {
     let mut definition =
-        crate::runtime_backend::front_end::grammar::token_definitions::parse_token_definition_shape_text(
+        crate::grammar::token_definitions::parse_token_definition_shape_text(
             "colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.",
         )
         .expect("complete Equipment token definition");
@@ -161,12 +161,12 @@ fn merging_quoted_equipment_grant_preserves_existing_equip_line() {
     assert_eq!(rules.lines.len(), 2, "{rules:#?}");
     assert!(rules.lines.iter().any(|line| matches!(
         line,
-        crate::runtime_backend::token_definition::EquipmentRuleLineShape::GrantedDamage { .. }
+        crate::model::token_definition::EquipmentRuleLineShape::GrantedDamage { .. }
     )));
     assert!(rules.lines.iter().any(|line| matches!(
         line,
-        crate::runtime_backend::token_definition::EquipmentRuleLineShape::Equip(
-            crate::runtime_backend::token_definition::TokenEquipShape { amount: 1 }
+        crate::model::token_definition::EquipmentRuleLineShape::Equip(
+            crate::model::token_definition::TokenEquipShape { amount: 1 }
         )
     )));
 }
@@ -183,12 +183,10 @@ fn classifies_capitalized_quoted_ability_and_typed_lifecycle_reminders() {
             .definition
             .creature_rules
             .tap_mana_ability,
-        Some(
-            crate::runtime_backend::token_definition::TokenTapManaAbilityShape {
-                mana: vec![crate::mana::ManaSymbol::Green],
-                restrictions: Vec::new(),
-            }
-        )
+        Some(crate::model::token_definition::TokenTapManaAbilityShape {
+            mana: vec![crate::mana::ManaSymbol::Green],
+            restrictions: Vec::new(),
+        })
     );
 
     let delayed = lex_line(

@@ -160,22 +160,14 @@ pub(crate) fn parse_sentence_exile_multi_target(
     let mut first_target = if !first_is_explicit_target
         && choice_shapes::is_likely_named_or_source_reference_shape(&first_words)
     {
-        if let Some(surface) = crate::util::source_reference_surface_for_words(
-            &first_words,
-        )
-        .or_else(|| crate::util::this_source_surface_for_words(&first_words))
+        if let Some(surface) = crate::util::source_reference_surface_for_words(&first_words)
+            .or_else(|| crate::util::this_source_surface_for_words(&first_words))
         {
-            crate::util::record_source_reference_surface(
-                first_clause.span(),
-                surface,
-            );
+            crate::util::record_source_reference_surface(first_clause.span(), surface);
         }
         TargetAst::Source(first_clause.span())
     } else {
-        match parse_target_phrase(first_clause.tokens()) {
-            Ok(target) => target,
-            Err(err) => return Err(err),
-        }
+        parse_target_phrase(first_clause.tokens())?
     };
     let mut second_target = parse_target_phrase(second_clause.tokens())?;
 
@@ -296,11 +288,8 @@ pub(crate) fn parse_sentence_destroy_multi_target(
             return Ok(None);
         }
         if let Some(choice) =
-            crate::grammar::choices::parse_possessive_object_choice_tokens(
-                segment_clause.tokens(),
-            )
-            && choice.actor
-                == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
+            crate::grammar::choices::parse_possessive_object_choice_tokens(segment_clause.tokens())
+            && choice.actor == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
         {
             let target = parse_target_phrase(&choice.object_tokens)?;
             effects.push(EffectAst::Sequence {
@@ -379,9 +368,7 @@ fn parse_sentence_reveal_selected_cards_in_hand_for_player(
 
     let mut count = ChoiceCount::exactly(1);
     if let Some((parsed_count, used)) =
-        crate::util::parse_choice_count_token_prefix_consumed(
-            descriptor_clause.tokens(),
-        )
+        crate::util::parse_choice_count_token_prefix_consumed(descriptor_clause.tokens())
     {
         count = if parsed_count.dynamic_x {
             ChoiceCount::any_number()
@@ -412,7 +399,7 @@ fn parse_sentence_reveal_selected_cards_in_hand_for_player(
             let mut filter = ObjectFilter::default();
             let mut idx = 0usize;
             if let Some(color) = descriptor_words.get(idx).and_then(|word| parse_color(word)) {
-                filter.colors = Some(color.into());
+                filter.colors = Some(color);
                 idx += 1;
             }
             if !choice_shapes::is_card_noun_at(&descriptor_words, idx) {
@@ -537,7 +524,7 @@ pub(crate) fn object_target_with_count(target: &TargetAst) -> Option<(ObjectFilt
     match target {
         TargetAst::Object(filter, _, _) => Some((filter.clone(), ChoiceCount::exactly(1))),
         TargetAst::WithCount(inner, count) => match inner.as_ref() {
-            TargetAst::Object(filter, _, _) => Some((filter.clone(), count.clone())),
+            TargetAst::Object(filter, _, _) => Some((filter.clone(), *count)),
             _ => None,
         },
         _ => None,
@@ -754,9 +741,9 @@ pub(crate) fn parse_sentence_unless_pays(
             .expect("comma/then split has at least two segments");
         let mut effects = Vec::new();
         for segment in leading {
-            effects.extend(parse_effect_chain(*segment)?);
+            effects.extend(parse_effect_chain(segment)?);
         }
-        let final_effects = parse_effect_chain(*last)?;
+        let final_effects = parse_effect_chain(last)?;
         if effects.is_empty() || final_effects.is_empty() {
             return Ok(None);
         }
@@ -811,20 +798,19 @@ pub(crate) fn parse_sentence_unless_pays(
         let inner_clause = before_unless_clause
             .after_words(2)
             .unwrap_or_else(|| before_unless_clause.from(2));
-        if let Ok(inner_effects) = parse_effect_chain(inner_clause.tokens()) {
-            if !inner_effects.is_empty() {
-                if let Some(unless_effect) = try_build_unless(inner_effects, clause, unless_idx)? {
-                    let wrapper = match prefix_kind {
-                        choice_shapes::ChoiceDamageScope::Opponent => EffectAst::ForEachOpponent {
-                            effects: vec![unless_effect],
-                        },
-                        choice_shapes::ChoiceDamageScope::Player => EffectAst::ForEachPlayer {
-                            effects: vec![unless_effect],
-                        },
-                    };
-                    return Ok(Some(vec![wrapper]));
-                }
-            }
+        if let Ok(inner_effects) = parse_effect_chain(inner_clause.tokens())
+            && !inner_effects.is_empty()
+            && let Some(unless_effect) = try_build_unless(inner_effects, clause, unless_idx)?
+        {
+            let wrapper = match prefix_kind {
+                choice_shapes::ChoiceDamageScope::Opponent => EffectAst::ForEachOpponent {
+                    effects: vec![unless_effect],
+                },
+                choice_shapes::ChoiceDamageScope::Player => EffectAst::ForEachPlayer {
+                    effects: vec![unless_effect],
+                },
+            };
+            return Ok(Some(vec![wrapper]));
         }
         return Ok(None);
     }
@@ -869,7 +855,38 @@ pub(crate) fn parse_sentence_unless_pays(
 #[cfg(test)]
 mod opponent_choice_target_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
+
+    #[test]
+    fn damage_unless_participant_places_counter_stays_one_typed_choice() {
+        let tokens = lex_line(
+            "This enchantment deals 3 damage to that player unless the player puts a -1/-1 counter on a creature they control.",
+            0,
+        )
+        .expect("damage-unless clause should lex");
+        let shape =
+            choice_shapes::parse_unless_sentence_shape(&tokens).expect("unless sentence shape");
+        let prefix = parse_effect_chain(shape.action_tokens)
+            .expect("damage prefix should parse independently");
+        assert!(!prefix.is_empty(), "damage prefix should not be empty");
+        let built = try_build_unless(
+            prefix,
+            SubjectVerbPrimitiveClause::new(&tokens),
+            shape.unless_token,
+        )
+        .expect("payment tail should parse");
+        assert!(
+            built.is_some(),
+            "payment tail should form an unless wrapper"
+        );
+        let parsed = parse_sentence_unless_pays(SubjectVerbPrimitiveClause::new(&tokens))
+            .expect("damage-unless clause should parse")
+            .expect("unless parser should claim the complete clause");
+        assert!(
+            matches!(parsed.as_slice(), [EffectAst::UnlessPays { .. }]),
+            "expected one typed unless-payment around the damage: {parsed:#?}"
+        );
+    }
 
     #[test]
     fn multi_target_destroy_keeps_opponent_chooser_on_second_target() {

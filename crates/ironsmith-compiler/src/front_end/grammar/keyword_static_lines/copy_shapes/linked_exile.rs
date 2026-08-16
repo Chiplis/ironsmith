@@ -130,7 +130,7 @@ pub(super) fn parse_linked_exile_pair_lexed<'a>(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
     use crate::{CardType, Zone};
 
     use super::*;
@@ -163,10 +163,7 @@ mod tests {
     #[test]
     fn recognizes_compound_shape_before_static_sentence_splitting() {
         let tokens = lex_line(MIMEOPLASM_TEXT, 0).expect("linked replacement should lex");
-        let parsed =
-            crate::runtime_backend::families::keyword_static::parse_static_ability_ast_line_lexed(
-                &tokens,
-            )
+        let parsed = crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
             .expect("static parser should accept linked replacement")
             .expect("static parser should return a replacement ability");
         let debug = format!("{parsed:#?}");

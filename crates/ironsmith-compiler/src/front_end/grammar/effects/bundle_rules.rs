@@ -11,7 +11,7 @@ use crate::cards::builders::LibraryBottomOrderAst;
 use crate::filter::AlternativeCastKind;
 use crate::grammar::leaf;
 use crate::grammar::primitives::{self, WordSliceInput};
-use crate::front_end::lexer::{
+use crate::lexer::{
     LexStream, OwnedLexToken, TokenWordView, parser_token_word_refs, render_token_slice,
     split_lexed_sentences, trim_lexed_commas,
 };
@@ -857,7 +857,7 @@ pub(crate) fn parse_kicked_search_library_slots_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("bundle grammar fixture should lex")

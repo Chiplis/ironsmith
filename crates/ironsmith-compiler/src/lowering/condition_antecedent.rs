@@ -1134,7 +1134,7 @@ mod tests {
     fn created_tokens_supersede_condition_antecedent() {
         let create = effect(SubjectVerbActionAst::CreateTokenWithMods {
             name: "Goblin Rogue".to_string(),
-            definition: crate::runtime_backend::grammar::token_definitions::parse_token_definition_shape_text(
+            definition: crate::grammar::token_definitions::parse_token_definition_shape_text(
                 "1/1 black Goblin Rogue creature token",
             )
             .expect("test token definition should parse"),

@@ -160,7 +160,7 @@ pub(crate) fn parse_consult_traversal_with_inline_followup(
     let each_opponent = matches!(
         &shape.player,
         effect_grammar::ConsultTraversalPlayerShape::Subject(subject)
-            if crate::front_end::lexer::parser_token_word_refs(subject).as_slice()
+            if crate::lexer::parser_token_word_refs(subject).as_slice()
                 == ["each", "opponent"]
     );
     let Some(parts) = parse_consult_traversal_sentence(tokens)? else {
@@ -683,7 +683,7 @@ pub(crate) fn parse_if_you_cant_sentence(
 mod tests {
     use super::*;
     use crate::Subtype;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn ordinary_negated_control_condition_is_not_a_failed_action_followup() {

@@ -2,7 +2,7 @@ use winnow::combinator::{alt, eof, opt};
 use winnow::prelude::*;
 
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use crate::zone::Zone;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -286,7 +286,7 @@ pub(crate) fn parse_choose_all_zones_to_hand_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()

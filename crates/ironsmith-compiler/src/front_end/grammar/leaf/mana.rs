@@ -234,11 +234,7 @@ pub(crate) fn parse_leaf_pawprint_label_count_complete(raw: &str) -> Result<u32,
 
 pub(crate) fn parse_leaf_pawprint_label_count_token(token: &OwnedLexToken) -> Option<u32> {
     match token.kind {
-        TokenKind::ManaGroup => match parse_leaf_pawprint_label_count_complete(token.parser_text())
-        {
-            Ok(count) => Some(count),
-            Err(_) => None,
-        },
+        TokenKind::ManaGroup => parse_leaf_pawprint_label_count_complete(token.parser_text()).ok(),
         TokenKind::Word if token.parser_text() == "p" => Some(1),
         _ => None,
     }
@@ -251,34 +247,30 @@ fn parse_leaf_pawprint_label_count(input: &mut &str) -> WResult<u32> {
 }
 
 pub(crate) fn parse_leaf_surface_mana_pip_token(token: &OwnedLexToken) -> Option<LeafManaPipToken> {
-    match primitives::parse_all(
+    primitives::parse_all(
         std::slice::from_ref(token),
         parse_leaf_surface_mana_pip_lexed,
         "leaf-surface-mana-pip",
-    ) {
-        Ok(pip) => Some(pip),
-        Err(_) => None,
-    }
+    )
+    .ok()
 }
 
 pub(crate) fn parse_leaf_mana_cost_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeafManaCostPrefix> {
     let mut input = LexStream::new(tokens);
-    match parse_leaf_mana_cost_prefix_lexed.parse_next(&mut input) {
-        Ok(prefix) => Some(prefix),
-        Err(_) => None,
-    }
+    parse_leaf_mana_cost_prefix_lexed
+        .parse_next(&mut input)
+        .ok()
 }
 
 pub(crate) fn parse_leaf_fixed_mana_cost_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeafManaCostPrefix> {
     let mut input = LexStream::new(tokens);
-    match parse_leaf_fixed_mana_cost_prefix_lexed.parse_next(&mut input) {
-        Ok(prefix) => Some(prefix),
-        Err(_) => None,
-    }
+    parse_leaf_fixed_mana_cost_prefix_lexed
+        .parse_next(&mut input)
+        .ok()
 }
 
 #[cfg(test)]
@@ -311,14 +303,12 @@ pub(crate) fn parse_leaf_mana_cost_tokens(
 pub(crate) fn parse_leaf_fixed_mana_output_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<ManaSymbol>> {
-    match primitives::parse_all(
+    primitives::parse_all(
         tokens,
         parse_leaf_fixed_mana_output_lexed,
         "leaf-fixed-mana-output",
-    ) {
-        Ok(output) => Some(output),
-        Err(_) => None,
-    }
+    )
+    .ok()
 }
 
 fn parse_leaf_mana_symbol_spaced(input: &mut &str) -> WResult<ManaSymbol> {
@@ -380,7 +370,7 @@ fn trim_single_mana_brace_pair(raw: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn strict_group_parser_rejects_legacy_bare_tokens() {

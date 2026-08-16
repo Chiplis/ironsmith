@@ -16,6 +16,36 @@ pub(super) enum PostParseFollowupResult {
     Handled { consumed_sentences: usize },
 }
 
+type PreParseFollowupRuleFn = for<'a> fn(
+    &mut SentenceDispatchState<'a>,
+    &[SentenceInput],
+    usize,
+    &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError>;
+
+type PostParseFollowupRuleFn = for<'a> fn(
+    &mut SentenceDispatchState<'a>,
+    &[SentenceInput],
+    usize,
+    &[OwnedLexToken],
+    &mut Vec<EffectAst>,
+)
+    -> Result<Option<PostParseFollowupResult>, CardTextError>;
+
+struct SubjectVerbFollowupRuleDef {
+    id: &'static str,
+    priority: u16,
+    heads: &'static [&'static str],
+    run: PreParseFollowupRuleFn,
+}
+
+struct SubjectVerbPostParseRuleDef {
+    id: &'static str,
+    priority: u16,
+    heads: &'static [&'static str],
+    run: PostParseFollowupRuleFn,
+}
+
 fn effect_contains_search_library(effect: &EffectAst) -> bool {
     if matches!(
         effect,
@@ -132,11 +162,8 @@ mod demonstrative_grant_surface_tests {
 
     #[test]
     fn rebuilding_a_demonstrative_grant_keeps_its_those_surface() {
-        let tokens = crate::runtime_backend::lex_line(
-            "Those creatures gain vigilance until end of turn.",
-            0,
-        )
-        .expect("demonstrative grant should lex");
+        let tokens = crate::lexer::lex_line("Those creatures gain vigilance until end of turn.", 0)
+            .expect("demonstrative grant should lex");
         let antecedent = ObjectFilter::creature().you_control().other();
         let rebuilt = build_grant_all_from_demonstrative_gain(antecedent.clone(), &tokens)
             .expect("demonstrative grant should parse")
@@ -233,11 +260,11 @@ fn is_if_you_do_return_source_exiled_cards_sentence(tokens: &[OwnedLexToken]) ->
     if words.get(5) != Some(&"cards") || words.get(6) != Some(&"to") {
         return false;
     }
-    words.iter().any(|word| *word == "battlefield")
+    words.contains(&"battlefield")
         && words
             .iter()
             .any(|word| matches!(*word, "owner" | "owners" | "owner's" | "owners'"))
-        && words.iter().any(|word| *word == "control")
+        && words.contains(&"control")
 }
 
 fn sacrifice_effect_targets_tagged_it(effect: &EffectAst) -> bool {
@@ -277,6 +304,111 @@ fn sacrifice_effect_targets_source(effect: &EffectAst) -> bool {
         return false;
     };
     *count == 1 && target.is_none() && filter.source
+}
+
+fn rule_matches_sentence_head(heads: &[&str], tokens: &[OwnedLexToken]) -> bool {
+    if heads.is_empty() {
+        return true;
+    }
+    LexedClause::new(tokens)
+        .first_word()
+        .is_some_and(|head| heads.contains(&head))
+}
+
+fn pre_followup_subject_verb_route(id: &str) -> &'static str {
+    match id {
+        "library-shuffle" => {
+            "subject-verb verb=Shuffle subject=implicit recognizer=library-followup"
+        }
+        "still-lands" => {
+            "subject-verb verb=Remain subject=implicit recognizer=land-animation-followup"
+        }
+        "cant-be-regenerated" => {
+            "subject-verb verb=Cant subject=implicit recognizer=regeneration-followup"
+        }
+        "damage-cant-be-prevented" => {
+            "subject-verb verb=Deal subject=previous recognizer=unpreventable-damage-followup"
+        }
+        "copy-and-cast" => "subject-verb verb=Copy subject=implicit recognizer=copy-cast-followup",
+        "token-followups" => "subject-verb verb=Create subject=implicit recognizer=token-followup",
+        "exile-this-way" => "subject-verb verb=Exile subject=implicit recognizer=this-way-followup",
+        "tap-damage-this-way" => {
+            "subject-verb verb=Tap subject=implicit recognizer=damage-this-way-followup"
+        }
+        "destroy-those-creatures" => {
+            "subject-verb verb=Destroy subject=implicit recognizer=referential-followup"
+        }
+        "otherwise" => "subject-verb verb=Do subject=implicit recognizer=otherwise-followup",
+        _ => "subject-verb verb=Do subject=implicit recognizer=pre-parse-followup",
+    }
+}
+
+pub(super) fn run_pre_parse_followup_registry(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let mut matching_rules = PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES
+        .iter()
+        .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
+        .collect::<Vec<_>>();
+    matching_rules.sort_by_key(|rule| rule.priority);
+
+    for rule in matching_rules {
+        if let Some(mut result) = (rule.run)(state, sentences, sentence_idx, sentence_tokens)? {
+            parser_trace(
+                format!(
+                    "parse_effect_sentences:subject-verb-followup-pre:{}",
+                    rule.id
+                )
+                .as_str(),
+                sentence_tokens,
+            );
+            if let PreParseFollowupResult::Handled { route, .. } = &mut result
+                && route.is_none()
+            {
+                *route = Some(pre_followup_subject_verb_route(rule.id));
+            }
+            return Ok(Some(result));
+        }
+    }
+    Ok(None)
+}
+
+pub(super) fn run_post_parse_followup_registry(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let mut matching_rules = POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES
+        .iter()
+        .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
+        .collect::<Vec<_>>();
+    matching_rules.sort_by_key(|rule| rule.priority);
+
+    for rule in matching_rules {
+        if let Some(result) = (rule.run)(
+            state,
+            sentences,
+            sentence_idx,
+            sentence_tokens,
+            sentence_effects,
+        )? {
+            parser_trace(
+                format!(
+                    "parse_effect_sentences:subject-verb-followup-post:{}",
+                    rule.id
+                )
+                .as_str(),
+                sentence_tokens,
+            );
+            return Ok(Some(result));
+        }
+    }
+    Ok(None)
 }
 
 fn pre_rule_library_shuffle_followups(
@@ -334,7 +466,7 @@ fn pre_rule_optional_source_exile_and_collect_evidence(
     sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let words = crate::token_word_refs(sentence_tokens);
+    let words = crate::lexer::token_word_refs(sentence_tokens);
     let expected_head = ["you", "may", "exile", "it", "and", "collect", "evidence"];
     if words.len() != 8
         || !words[..7]
@@ -344,15 +476,13 @@ fn pre_rule_optional_source_exile_and_collect_evidence(
     {
         return Ok(None);
     }
-    let Some(amount) =
-        crate::util::parse_number_word_u32(words[7])
-    else {
+    let Some(amount) = crate::util::parse_number_word_u32(words[7]) else {
         return Ok(None);
     };
     let Some(followup) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    let followup_words = crate::token_word_refs(followup.lexed());
+    let followup_words = crate::lexer::token_word_refs(followup.lexed());
     let expected_followup = [
         "if",
         "you",
@@ -374,14 +504,8 @@ fn pre_rule_optional_source_exile_and_collect_evidence(
         return Ok(None);
     }
 
-    let source_exiled_tag = crate::util::helper_tag_for_tokens(
-        sentence_tokens,
-        "exiled",
-    );
-    let evidence_tag = crate::util::helper_tag_for_tokens(
-        sentence_tokens,
-        "evidence",
-    );
+    let source_exiled_tag = crate::util::helper_tag_for_tokens(sentence_tokens, "exiled");
+    let evidence_tag = crate::util::helper_tag_for_tokens(sentence_tokens, "evidence");
     let evidence_filter = ObjectFilter::default()
         .in_zone(Zone::Graveyard)
         .owned_by(PlayerFilter::You)
@@ -438,7 +562,7 @@ mod collect_evidence_followup_tests {
 
     #[test]
     fn optional_self_exile_collects_a_real_aggregate_evidence_set() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "You may exile it and collect evidence 4. If you do, return this card to the battlefield tapped.",
             0,
         )
@@ -506,7 +630,7 @@ mod collect_evidence_followup_tests {
 
     #[test]
     fn plain_optional_self_exile_does_not_gain_evidence_selection() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "You may exile it. If you do, return this card to the battlefield tapped.",
             0,
         )
@@ -987,9 +1111,7 @@ pub(super) fn try_bind_conditional_token_entry_followup(
     if !try_apply_token_copy_followup(&mut modified, followup)? {
         return Ok(false);
     }
-    let predicate = crate::grammar::filters::parse_condition_predicate_lexed(
-        &predicate_tokens,
-    )?;
+    let predicate = crate::grammar::filters::parse_condition_predicate_lexed(&predicate_tokens)?;
 
     effects.pop();
     effects.push(EffectAst::Conditional {
@@ -1118,16 +1240,13 @@ fn pre_rule_token_followups(
         Some(TokenCopyFollowup::GainHasteUntilEndOfTurn(_))
     );
     if !is_temporary_token_grant
-        && crate::sentences::effect_sentences::mixed_pronoun_token_rule_list(
+        && crate::effect_sentences::mixed_pronoun_token_rule_list(authored_reminder_tokens)
+            .is_some()
+        && state.effects.last().is_some_and(effect_creates_any_token)
+        && crate::effect_sentences::attach_mixed_pronoun_token_rules_to_last_create(
+            state.effects,
             authored_reminder_tokens,
         )
-        .is_some()
-        && state.effects.last().is_some_and(effect_creates_any_token)
-        && crate::sentences::effect_sentences::
-            attach_mixed_pronoun_token_rules_to_last_create(
-                state.effects,
-                authored_reminder_tokens,
-            )
     {
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
@@ -1155,18 +1274,17 @@ fn pre_rule_token_followups(
         )));
     }
     let parses_under_token_source_identity =
-        crate::util::source_reference_surface_for_words(&["this", "token"])
-            .is_some();
+        crate::util::source_reference_surface_for_words(&["this", "token"]).is_some();
     if !is_temporary_token_grant
         && is_generic_token_reminder_sentence(reminder_tokens)
         && !parses_under_token_source_identity
+        && !reminder_facts.delayed_pronoun_lifecycle
+        && !reminder_facts.pronoun_trigger_prefix
     {
-        if !reminder_facts.delayed_pronoun_lifecycle && !reminder_facts.pronoun_trigger_prefix {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported standalone token reminder clause (clause: '{}')",
-                LexedClause::new(sentence_tokens).text()
-            )));
-        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported standalone token reminder clause (clause: '{}')",
+            LexedClause::new(sentence_tokens).text()
+        )));
     }
     // Target-declaration normalization may collapse repeated `target`
     // markers into one union filter.  The authored sentence is still the
@@ -1191,13 +1309,14 @@ fn pre_rule_token_followups(
         return Ok(Some(PreParseFollowupResult::Plan(plan)));
     }
     if let Some(abilities) = parse_token_granted_ability_followup_sentence_lexed(reminder_tokens)? {
-        let presentation = if crate::grammar::token_definitions::
-            token_ability_sentence_uses_gain_verb(reminder_tokens)
-        {
-            ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
-        } else {
-            ironsmith_core::TokenAbilityPresentation::SeparateSentence
-        };
+        let presentation =
+            if crate::grammar::token_definitions::token_ability_sentence_uses_gain_verb(
+                reminder_tokens,
+            ) {
+                ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
+            } else {
+                ironsmith_core::TokenAbilityPresentation::SeparateSentence
+            };
         if try_apply_token_granted_ability_followup(state.effects, &abilities, presentation)? {
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
@@ -1340,7 +1459,7 @@ mod moved_object_entry_followup_tests {
 
     #[test]
     fn optional_single_hand_move_keeps_entry_state_and_grant_in_may_scope() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "You may put a creature card with mana value 3 or less from your hand onto the battlefield. It enters tapped and attacking and gains indestructible until end of turn.",
             0,
         )
@@ -1489,7 +1608,7 @@ fn pre_rule_otherwise_followup(
 }
 
 fn is_if_card_put_into_exile_this_way_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let has_expected_prefix = grammar::match_word_prefix(
+    grammar::match_word_prefix(
         tokens,
         &[
             "if", "a", "card", "is", "put", "into", "exile", "this", "way",
@@ -1512,9 +1631,7 @@ fn is_if_card_put_into_exile_this_way_sentence(tokens: &[OwnedLexToken]) -> bool
             tokens,
             &["if", "card", "was", "put", "into", "exile", "this", "way"],
         )
-        .is_some();
-
-    has_expected_prefix
+        .is_some()
 }
 
 fn pre_rule_exile_this_way_followup(
@@ -1598,7 +1715,7 @@ fn pre_rule_declined_tagged_battlefield_move_followup(
     else {
         return Ok(None);
     };
-    let condition_words = crate::token_word_refs(condition_tokens);
+    let condition_words = crate::lexer::token_word_refs(condition_tokens);
     if condition_words.len() < 7
         || condition_words.first().copied() != Some("if")
         || condition_words.get(1).copied() != Some("you")
@@ -1808,7 +1925,7 @@ fn pre_rule_choose_for_each_player_instead(
     else {
         return Ok(None);
     };
-    let replacement_words = crate::token_word_refs(replacement_tokens);
+    let replacement_words = crate::lexer::token_word_refs(replacement_tokens);
     if !matches!(
         replacement_words.as_slice(),
         [
@@ -1867,7 +1984,7 @@ mod choose_for_each_player_instead_tests {
 
     #[test]
     fn paid_colors_can_replace_only_the_per_player_chooser() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each player chooses an artifact, a creature, an enchantment, and a planeswalker from among the nonland permanents they control, then sacrifices the rest. If {B}{R} was spent to cast this spell, you choose the permanents for each player instead.",
             0,
         )
@@ -2117,7 +2234,7 @@ fn first_library_search_shape(
         } = effect
             && zones.contains(&Zone::Library)
         {
-            return Some((filter.clone(), zones.clone(), count.clone()));
+            return Some((filter.clone(), zones.clone(), *count));
         }
         let mut nested_shape = None;
         for_each_nested_effects(effect, true, |nested| {
@@ -2148,7 +2265,7 @@ fn replace_matching_library_search_count(
             && zones.as_slice() == replacement_zones
             && filter == replacement_filter
         {
-            *count = replacement_count.clone();
+            *count = *replacement_count;
             return true;
         }
         let mut replaced = false;
@@ -2413,9 +2530,7 @@ fn post_rule_numeric_result_branch_label(
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
     let Some(prefix) =
-        crate::grammar::structure::split_leading_result_prefix_lexed(
-            sentence_tokens,
-        )
+        crate::grammar::structure::split_leading_result_prefix_lexed(sentence_tokens)
     else {
         return Ok(None);
     };
@@ -2423,9 +2538,7 @@ fn post_rule_numeric_result_branch_label(
         return Ok(None);
     };
     let Some(label_split) =
-        crate::grammar::document_shapes::parse_statement_label_split_tokens(
-            prefix.trailing_tokens,
-        )
+        crate::grammar::document_shapes::parse_statement_label_split_tokens(prefix.trailing_tokens)
     else {
         return Ok(None);
     };
@@ -2456,8 +2569,7 @@ mod numeric_result_branch_label_tests {
     use super::*;
 
     fn parsed_row(text: &str) -> EffectAst {
-        let tokens =
-            crate::runtime_backend::lex_line(text, 0).expect("numeric result row should lex");
+        let tokens = crate::lexer::lex_line(text, 0).expect("numeric result row should lex");
         let mut effects =
             parse_effect_sentences_lexed(&tokens).expect("numeric result row should parse");
         assert_eq!(effects.len(), 1, "{effects:#?}");
@@ -2511,96 +2623,94 @@ fn post_rule_future_zone_and_self_replacement(
             sentence_effects.first(),
             Some(EffectAst::Conditional { .. } | EffectAst::TrailingIf { .. })
         )
-    {
-        if let Some((predicate, mut if_true, mut if_false)) = sentence_effects
+        && let Some((predicate, mut if_true, mut if_false)) = sentence_effects
             .pop()
             .and_then(take_self_replacement_condition)
-        {
-            if let Some(replacement) = materialize_search_count_self_replacement(
-                &mut state.effects,
-                predicate.clone(),
-                &if_true,
-                sentence_tokens,
-            ) {
-                state.effects.push(replacement);
-                return Ok(Some(PostParseFollowupResult::Handled {
-                    consumed_sentences: 1,
-                }));
-            }
-            let Some(previous) = state.effects.pop() else {
-                return Err(CardTextError::InvariantViolation(
-                    "expected previous effect for 'instead' conditional rewrite".to_string(),
-                ));
-            };
-            let previous_target = primary_target_from_effect(&previous);
-            let previous_damage_target = primary_damage_target_from_effect(&previous);
-            let previous_damage_source = primary_damage_source_from_effect(&previous);
-            let predicate = bind_self_replacement_condition_to_previous_target(
-                predicate,
-                sentence_tokens,
-                previous_target.as_ref(),
-            );
-            if has_trailing_unpreventable_damage_rider(sentence_tokens)
-                && !mark_last_deal_damage_unpreventable(&mut if_true)
-            {
-                return Err(CardTextError::ParseError(format!(
-                    "unpreventable-damage replacement rider has no damage effect (clause: '{}')",
-                    LexedClause::new(sentence_tokens).text(),
-                )));
-            }
-            let (mut default_effects, carried_player) =
-                default_effects_for_self_replacement(state.effects, previous);
-            if let Some(mill_count) = default_effects
-                .iter()
-                .rev()
-                .find_map(mill_count_from_effect)
-            {
-                replace_mill_event_amounts_with_value(&mut if_true, &mill_count);
-            }
-            if let Some(player) = carried_player {
-                bind_that_player_subjects_in_effects(&mut if_true, player);
-            }
-            preserve_search_owner_anaphor_in_self_replacement(&mut default_effects);
-            preserve_search_owner_anaphor_in_self_replacement(&mut if_true);
-            if let Some(owner) = first_search_library_owner(&default_effects) {
-                bind_self_replacement_search_owner(&mut if_true, &owner);
-            }
-            if let Some(target) = previous_target.as_ref() {
-                replace_it_target_in_effects(&mut if_true, target);
-            }
-            if let Some(target) = previous_damage_target.as_ref() {
-                replace_it_damage_target_in_effects(&mut if_true, target);
-                replace_placeholder_damage_target_in_effects(&mut if_true, target);
-            }
-            if let Some(source) = previous_damage_source.as_ref()
-                && !previous_damage_target.as_ref().is_some_and(|target| {
-                    normalize_anaphoric_damage_self_replacement(
-                        &mut if_true,
-                        sentence_tokens,
-                        source,
-                        target,
-                    )
-                })
-            {
-                // In an authored damage self-replacement, a leading source
-                // pronoun ("It deals ... instead") repeats the source of the
-                // default damage event. It must not bind to the most recent
-                // object antecedent, which may come from an additional cost.
-                replace_anaphoric_damage_source_in_effects(&mut if_true, source);
-            }
-            for effect in default_effects.into_iter().rev() {
-                if_false.insert(0, effect);
-            }
-            state.effects.push(EffectAst::SelfReplacement {
-                predicate,
-                if_true,
-                if_false,
-                attach_to_previous_ability: false,
-            });
+    {
+        if let Some(replacement) = materialize_search_count_self_replacement(
+            state.effects,
+            predicate.clone(),
+            &if_true,
+            sentence_tokens,
+        ) {
+            state.effects.push(replacement);
             return Ok(Some(PostParseFollowupResult::Handled {
                 consumed_sentences: 1,
             }));
         }
+        let Some(previous) = state.effects.pop() else {
+            return Err(CardTextError::InvariantViolation(
+                "expected previous effect for 'instead' conditional rewrite".to_string(),
+            ));
+        };
+        let previous_target = primary_target_from_effect(&previous);
+        let previous_damage_target = primary_damage_target_from_effect(&previous);
+        let previous_damage_source = primary_damage_source_from_effect(&previous);
+        let predicate = bind_self_replacement_condition_to_previous_target(
+            predicate,
+            sentence_tokens,
+            previous_target.as_ref(),
+        );
+        if has_trailing_unpreventable_damage_rider(sentence_tokens)
+            && !mark_last_deal_damage_unpreventable(&mut if_true)
+        {
+            return Err(CardTextError::ParseError(format!(
+                "unpreventable-damage replacement rider has no damage effect (clause: '{}')",
+                LexedClause::new(sentence_tokens).text(),
+            )));
+        }
+        let (mut default_effects, carried_player) =
+            default_effects_for_self_replacement(state.effects, previous);
+        if let Some(mill_count) = default_effects
+            .iter()
+            .rev()
+            .find_map(mill_count_from_effect)
+        {
+            replace_mill_event_amounts_with_value(&mut if_true, &mill_count);
+        }
+        if let Some(player) = carried_player {
+            bind_that_player_subjects_in_effects(&mut if_true, player);
+        }
+        preserve_search_owner_anaphor_in_self_replacement(&mut default_effects);
+        preserve_search_owner_anaphor_in_self_replacement(&mut if_true);
+        if let Some(owner) = first_search_library_owner(&default_effects) {
+            bind_self_replacement_search_owner(&mut if_true, &owner);
+        }
+        if let Some(target) = previous_target.as_ref() {
+            replace_it_target_in_effects(&mut if_true, target);
+        }
+        if let Some(target) = previous_damage_target.as_ref() {
+            replace_it_damage_target_in_effects(&mut if_true, target);
+            replace_placeholder_damage_target_in_effects(&mut if_true, target);
+        }
+        if let Some(source) = previous_damage_source.as_ref()
+            && !previous_damage_target.as_ref().is_some_and(|target| {
+                normalize_anaphoric_damage_self_replacement(
+                    &mut if_true,
+                    sentence_tokens,
+                    source,
+                    target,
+                )
+            })
+        {
+            // In an authored damage self-replacement, a leading source
+            // pronoun ("It deals ... instead") repeats the source of the
+            // default damage event. It must not bind to the most recent
+            // object antecedent, which may come from an additional cost.
+            replace_anaphoric_damage_source_in_effects(&mut if_true, source);
+        }
+        for effect in default_effects.into_iter().rev() {
+            if_false.insert(0, effect);
+        }
+        state.effects.push(EffectAst::SelfReplacement {
+            predicate,
+            if_true,
+            if_false,
+            attach_to_previous_ability: false,
+        });
+        return Ok(Some(PostParseFollowupResult::Handled {
+            consumed_sentences: 1,
+        }));
     }
     Ok(None)
 }
@@ -2621,7 +2731,7 @@ fn post_rule_correlated_plural_sacrifice_result(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let words = crate::token_word_refs(sentence_tokens);
+    let words = crate::lexer::token_word_refs(sentence_tokens);
     if !matches!(
         words.as_slice(),
         [
@@ -2663,10 +2773,7 @@ fn post_rule_correlated_plural_sacrifice_result(
         return Ok(None);
     }
 
-    let result_tag = crate::util::helper_tag_for_tokens(
-        sentence_tokens,
-        "sacrificed",
-    );
+    let result_tag = crate::util::helper_tag_for_tokens(sentence_tokens, "sacrificed");
     let mut sacrifice = sacrifice.clone();
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst { subject, .. }) = &mut sacrifice {
         subject.player = PlayerAst::That;
@@ -2693,7 +2800,7 @@ fn post_rule_each_player_coin_face_followup(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let words = crate::token_word_refs(sentence_tokens);
+    let words = crate::lexer::token_word_refs(sentence_tokens);
     let result_predicate = match words.get(..7) {
         Some(["each", "player", "whose", "coin", "comes", "up", "heads"]) => IfResultPredicate::Did,
         Some(["each", "player", "whose", "coin", "comes", "up", "tails"]) => {
@@ -2750,8 +2857,8 @@ mod each_player_coin_face_followup_tests {
             let text = format!(
                 "Each player flips a coin. Each player whose coin comes up {face} sacrifices a creature of their choice."
             );
-            let tokens = crate::runtime_backend::lex_line(&text, 0)
-                .expect("coin-face player sequence should lex");
+            let tokens =
+                crate::lexer::lex_line(&text, 0).expect("coin-face player sequence should lex");
             let effects = parse_effect_sentences_lexed(&tokens)
                 .expect("coin-face player sequence should parse");
 
@@ -2792,7 +2899,7 @@ fn post_rule_typed_sacrificed_result_iterator(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let words = crate::token_word_refs(sentence_tokens);
+    let words = crate::lexer::token_word_refs(sentence_tokens);
     if !words.starts_with(&["for", "each"])
         || !words
             .windows(3)
@@ -2843,10 +2950,7 @@ fn post_rule_typed_sacrificed_result_iterator(
         );
     }
 
-    let result_tag = crate::util::helper_tag_for_tokens(
-        sentence_tokens,
-        "sacrificed",
-    );
+    let result_tag = crate::util::helper_tag_for_tokens(sentence_tokens, "sacrificed");
     let previous_effect = previous.clone();
     *previous = EffectAst::TagAffected {
         effect: Box::new(previous_effect),
@@ -2867,7 +2971,7 @@ fn post_rule_revealed_same_mana_value_as_another_iterator(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let words = crate::token_word_refs(sentence_tokens);
+    let words = crate::lexer::token_word_refs(sentence_tokens);
     const PREFIX: &[&str] = &[
         "for", "each", "of", "those", "cards", "that", "has", "the", "same", "mana", "value", "as",
         "another", "card", "revealed", "this", "way",
@@ -2935,7 +3039,7 @@ mod revealed_same_mana_value_iterator_tests {
 
     #[test]
     fn revealed_cards_compare_against_a_different_card_in_the_revealed_set() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Reveal up to five nonland cards from your hand. For each of those cards that has the same mana value as another card revealed this way, create a Treasure token.",
             0,
         )
@@ -2980,7 +3084,7 @@ mod revealed_same_mana_value_iterator_tests {
 
     #[test]
     fn ordinary_for_each_revealed_card_does_not_gain_a_mana_value_condition() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Reveal up to five nonland cards from your hand. For each card revealed this way, create a Treasure token.",
             0,
         )
@@ -3000,7 +3104,7 @@ mod correlated_plural_sacrifice_result_tests {
 
     #[test]
     fn chosen_permanents_and_sacrifice_results_keep_distinct_typed_sets() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "For each player, choose target permanent that player controls. Those players sacrifice those permanents. Each player who sacrificed a permanent this way reveals the top card of their library, then puts it onto the battlefield if it's a permanent card.",
             0,
         )
@@ -3066,7 +3170,7 @@ mod correlated_plural_sacrifice_result_tests {
 
     #[test]
     fn wave_of_vitriol_keeps_sacrificed_lands_partitioned_by_snapshot_controller() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Each player sacrifices all artifacts, enchantments, and nonbasic lands they control. For each land sacrificed this way, its controller may search their library for a basic land card and put it onto the battlefield tapped. Then each player who searched their library this way shuffles.",
             0,
         )
@@ -3525,7 +3629,7 @@ fn post_rule_hand_reveal_choice_discard_followup(
         return Ok(None);
     }
 
-    branch_effects.extend(sentence_effects.drain(..));
+    branch_effects.append(sentence_effects);
     Ok(Some(PostParseFollowupResult::Handled {
         consumed_sentences: 1,
     }))
@@ -3544,9 +3648,7 @@ fn post_rule_reflexive_object_followup(
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
     let references_reflexive_object =
         crate::compile_support::effects_reference_it_tag(sentence_effects)
-            || crate::compile_support::effects_reference_its_controller(
-                sentence_effects,
-            );
+            || crate::compile_support::effects_reference_its_controller(sentence_effects);
     if sentence_effects.is_empty() || !references_reflexive_object {
         return Ok(None);
     }
@@ -3704,7 +3806,7 @@ fn post_rule_prior_exiled_card_reference(
     {
         return Ok(None);
     }
-    if !tag_latest_prior_exile(&mut state.effects) {
+    if !tag_latest_prior_exile(state.effects) {
         for effect in sentence_effects {
             bind_prior_exiled_card_to_source_link(effect);
         }
@@ -3741,7 +3843,7 @@ fn post_rule_targeted_object_delayed_leave(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let words = crate::token_word_refs(sentence_tokens);
+    let words = crate::lexer::token_word_refs(sentence_tokens);
     if !words.starts_with(&["when", "the", "targeted"])
         && !words.starts_with(&["whenever", "the", "targeted"])
     {
@@ -3795,7 +3897,7 @@ fn post_rule_returned_permanent_enters(
     let Some(comma_idx) = sentence_tokens.iter().position(OwnedLexToken::is_comma) else {
         return Ok(None);
     };
-    if crate::token_word_refs(&sentence_tokens[..comma_idx])
+    if crate::lexer::token_word_refs(&sentence_tokens[..comma_idx])
         != ["when", "that", "permanent", "enters"]
         || !state
             .effects
@@ -3850,7 +3952,7 @@ fn post_rule_delayed_trigger_result_followup(
     else {
         return Ok(None);
     };
-    effects.extend(sentence_effects.drain(..));
+    effects.append(sentence_effects);
     Ok(Some(PostParseFollowupResult::Handled {
         consumed_sentences: 1,
     }))
@@ -4102,7 +4204,7 @@ mod delayed_copy_retarget_followup_tests {
 
     #[test]
     fn optional_copy_retarget_stays_inside_repeating_delayed_trigger() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Choose a planeswalker type. Until end of turn, whenever you activate an ability of a planeswalker of that type, copy that ability. You may choose new targets for the copies.",
             0,
         )
@@ -4123,7 +4225,7 @@ mod delayed_copy_retarget_followup_tests {
 
     #[test]
     fn retarget_does_not_attach_to_a_delayed_trigger_that_creates_no_copy() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "Until end of turn, whenever you draw a card, draw a card. You may choose new targets for the copies.",
             0,
         )
@@ -4142,17 +4244,15 @@ mod delayed_copy_retarget_followup_tests {
 
     #[test]
     fn fixed_copy_target_stays_inside_the_optional_copy_branch() {
-        let tokens =
-            crate::runtime_backend::lex_line("You may copy that spell. The copy targets Ivy.", 0)
-                .expect("optional copy procedure should lex");
-        let parsed =
-            crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
-                "Ivy, Gleeful Spellthief",
-                &[crate::CardType::Creature],
-                &[crate::Subtype::Faerie, crate::Subtype::Rogue],
-                || parse_effect_sentences_lexed(&tokens),
-            )
-            .expect("optional copy procedure should parse");
+        let tokens = crate::lexer::lex_line("You may copy that spell. The copy targets Ivy.", 0)
+            .expect("optional copy procedure should lex");
+        let parsed = crate::util::with_card_source_reference_context(
+            "Ivy, Gleeful Spellthief",
+            &[crate::CardType::Creature],
+            &[crate::Subtype::Faerie, crate::Subtype::Rogue],
+            || parse_effect_sentences_lexed(&tokens),
+        )
+        .expect("optional copy procedure should parse");
         let [optional] = parsed.as_slice() else {
             panic!("the fixed retarget must not remain an outer sibling: {parsed:#?}");
         };
@@ -4172,9 +4272,8 @@ mod delayed_copy_retarget_followup_tests {
 
     #[test]
     fn unconditional_copy_does_not_acquire_an_optional_owner() {
-        let tokens =
-            crate::runtime_backend::lex_line("Copy that spell. The copy targets this creature.", 0)
-                .expect("unconditional copy procedure should lex");
+        let tokens = crate::lexer::lex_line("Copy that spell. The copy targets this creature.", 0)
+            .expect("unconditional copy procedure should lex");
         let parsed = parse_effect_sentences_lexed(&tokens)
             .expect("unconditional copy procedure should parse");
         assert_eq!(parsed.len(), 2, "{parsed:#?}");
@@ -4185,6 +4284,239 @@ mod delayed_copy_retarget_followup_tests {
     }
 }
 
+const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
+    SubjectVerbFollowupRuleDef {
+        id: "optional-source-exile-and-collect-evidence",
+        priority: 5,
+        heads: &["you"],
+        run: pre_rule_optional_source_exile_and_collect_evidence,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "library-shuffle",
+        priority: 10,
+        heads: &["if", "then", "that"],
+        run: pre_rule_library_shuffle_followups,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "still-lands",
+        priority: 20,
+        heads: &["theyre", "they", "its", "it"],
+        run: pre_rule_still_lands_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "cant-be-regenerated",
+        priority: 30,
+        heads: &["it", "they", "those", "creature", "creatures", "a"],
+        run: pre_rule_cant_be_regenerated_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "damage-cant-be-prevented",
+        priority: 35,
+        heads: &["the"],
+        run: pre_rule_damage_cant_be_prevented_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "copy-and-cast",
+        priority: 40,
+        heads: &["copy", "that", "you", "the"],
+        run: pre_rule_copy_and_cast_followups,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "draw-count-demonstrative-gain",
+        priority: 45,
+        heads: &["that", "those", "each", "all"],
+        run: pre_rule_draw_count_demonstrative_gain_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "token-followups",
+        priority: 42,
+        heads: &[],
+        run: pre_rule_token_followups,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "moved-object-entry-followup",
+        priority: 43,
+        heads: &["it"],
+        run: pre_rule_moved_object_entry_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "exile-this-way",
+        priority: 55,
+        heads: &["if"],
+        run: pre_rule_exile_this_way_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "source-exiled-return-if-sacrificed",
+        priority: 55,
+        heads: &["if"],
+        run: pre_rule_return_source_exiled_cards_if_source_sacrificed,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "declined-tagged-battlefield-move",
+        priority: 54,
+        heads: &["if"],
+        run: pre_rule_declined_tagged_battlefield_move_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "milled-this-way",
+        priority: 55,
+        heads: &["when"],
+        run: pre_rule_when_milled_this_way_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "if-no-one-does",
+        priority: 55,
+        heads: &["if"],
+        run: pre_rule_if_no_one_does_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "if-you-win",
+        priority: 55,
+        heads: &["if"],
+        run: pre_rule_if_you_win_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "choose-for-each-player-instead",
+        priority: 55,
+        heads: &["if"],
+        run: pre_rule_choose_for_each_player_instead,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "future-zone-replacement",
+        priority: 56,
+        heads: &["if"],
+        run: pre_rule_future_zone_replacement_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "skip-tapped-source-turn-replacement",
+        priority: 57,
+        heads: &["if"],
+        run: pre_rule_skip_tapped_source_turn_replacement,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "damage-this-way-player-followup",
+        priority: 58,
+        heads: &["if", "players"],
+        run: pre_rule_damage_this_way_player_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "tap-damage-this-way",
+        priority: 58,
+        heads: &["tap"],
+        run: pre_rule_tap_damage_this_way_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "destroy-those-creatures",
+        priority: 59,
+        heads: &["destroy", "then"],
+        run: pre_rule_destroy_those_creatures_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "otherwise",
+        priority: 60,
+        heads: &["otherwise"],
+        run: pre_rule_otherwise_followup,
+    },
+];
+
+const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &[
+    SubjectVerbPostParseRuleDef {
+        id: "numeric-result-branch-label",
+        priority: 5,
+        heads: &[],
+        run: post_rule_numeric_result_branch_label,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "token-copy-and-extra-turn",
+        priority: 10,
+        heads: &[],
+        run: post_rule_token_copy_and_extra_turn,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "future-zone-and-self-replacement",
+        priority: 20,
+        heads: &[],
+        run: post_rule_future_zone_and_self_replacement,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "each-player-coin-face-followup",
+        priority: 22,
+        heads: &["each"],
+        run: post_rule_each_player_coin_face_followup,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "typed-sacrificed-result-iterator",
+        priority: 23,
+        heads: &["for"],
+        run: post_rule_typed_sacrificed_result_iterator,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "revealed-same-mana-value-as-another-iterator",
+        priority: 23,
+        heads: &["for"],
+        run: post_rule_revealed_same_mana_value_as_another_iterator,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "correlated-plural-sacrifice-result",
+        priority: 24,
+        heads: &["those"],
+        run: post_rule_correlated_plural_sacrifice_result,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "hand-reveal-choice-discard-followup",
+        priority: 25,
+        heads: &["that", "the"],
+        run: post_rule_hand_reveal_choice_discard_followup,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "prior-exiled-card-reference",
+        priority: 26,
+        heads: &[],
+        run: post_rule_prior_exiled_card_reference,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "returned-permanent-enters",
+        priority: 26,
+        heads: &["when"],
+        run: post_rule_returned_permanent_enters,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "targeted-object-delayed-leave",
+        priority: 26,
+        heads: &["when", "whenever"],
+        run: post_rule_targeted_object_delayed_leave,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "reflexive-object-followup",
+        priority: 27,
+        heads: &[],
+        run: post_rule_reflexive_object_followup,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "delayed-trigger-result-followup",
+        priority: 30,
+        heads: &["if", "when"],
+        run: post_rule_delayed_trigger_result_followup,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "delayed-trigger-copy-retarget-followup",
+        priority: 31,
+        heads: &["you"],
+        run: post_rule_delayed_trigger_copy_retarget_followup,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "optional-copy-retarget-followup",
+        priority: 32,
+        heads: &["the"],
+        run: post_rule_optional_copy_retarget_followup,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "self-replacement-common-suffix",
+        priority: 100,
+        heads: &[],
+        run: post_rule_self_replacement_common_suffix,
+    },
+];
 
 #[cfg(test)]
 mod retained_land_followup_tests {
@@ -4255,7 +4587,7 @@ mod copy_cast_followup_tests {
 
     #[test]
     fn delayed_copy_of_prior_exiled_card_keeps_cast_inside_trigger() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Exile target instant or sorcery card from your graveyard. Creatures you control get +X/+0 until end of turn, where X is that card's mana value. Whenever a creature you control deals combat damage to a player this turn, copy the exiled card. You may cast the copy without paying its mana cost.",
             0,
         )
@@ -4301,7 +4633,7 @@ mod copy_cast_followup_tests {
 
     #[test]
     fn immediate_exiled_card_cast_keeps_its_may_scope() {
-        let lexed = crate::runtime_backend::lex_line("You may cast the exiled card.", 0)
+        let lexed = crate::lexer::lex_line("You may cast the exiled card.", 0)
             .expect("optional tagged cast should lex");
         let parsed =
             parse_effect_sentences_lexed(&lexed).expect("optional tagged cast should parse");
@@ -4384,7 +4716,7 @@ mod revealed_hand_actor_tests {
 
     #[test]
     fn dependent_exile_keeps_the_revealing_player_as_actor() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Target opponent reveals X cards from their hand, where X is the number of Goblins you control. You choose one of those cards. That player exiles it.",
             0,
         )
@@ -4402,7 +4734,7 @@ mod declined_move_followup_tests {
 
     #[test]
     fn source_exiled_move_and_decline_fallback_stay_one_conditional() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "You may put the exiled card onto the battlefield if it's a creature card. If you don't put it onto the battlefield, put it into its owner's hand.",
             0,
         )
@@ -4420,7 +4752,7 @@ mod damage_self_replacement_followup_tests {
 
     #[test]
     fn it_deals_to_that_creature_ignores_prior_cost_object_provenance() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "This deals 2 damage to target creature. It deals 4 damage to that creature instead if this spell's additional cost was paid.",
             0,
         )
@@ -4455,14 +4787,11 @@ mod damage_self_replacement_followup_tests {
             "the authored trailing-if surface must be consumed by the typed self-replacement: {parsed:#?}"
         );
 
-        let lowered =
-            crate::runtime_backend::compile_support::compile_statement_effects_with_imports(
-                &parsed,
-                &crate::runtime_backend::reference_model::ReferenceImports::with_last_object_tag(
-                    "counters_0",
-                ),
-            )
-            .expect("damage self-replacement should lower");
+        let lowered = crate::compile_support::compile_statement_effects_with_imports(
+            &parsed,
+            &crate::model::reference_state::ReferenceImports::with_last_object_tag("counters_0"),
+        )
+        .expect("damage self-replacement should lower");
         let debug = format!("{lowered:#?}");
         assert!(debug.contains("ExecuteWithSourceEffect"), "{debug}");
         assert!(debug.contains("source: Source"), "{debug}");
@@ -4472,7 +4801,7 @@ mod damage_self_replacement_followup_tests {
 
     #[test]
     fn omitted_damage_target_reuses_the_default_target() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "This deals 3 damage to target creature. It deals 5 damage instead if you control an artifact.",
             0,
         )
@@ -4504,7 +4833,7 @@ mod counter_self_replacement_followup_tests {
 
     #[test]
     fn double_counters_on_that_creature_reuses_the_default_target() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Put a +1/+1 counter on target creature you control. If this is the second time this ability has resolved this turn, double the number of +1/+1 counters on that creature instead.",
             0,
         )
@@ -4537,12 +4866,11 @@ mod counter_self_replacement_followup_tests {
         assert_eq!(replacement_target, default_target);
         assert!(target_is_explicitly_chosen(&replacement_target));
 
-        let lowered =
-            crate::runtime_backend::compile_support::compile_statement_effects_with_imports(
-                &parsed,
-                &crate::runtime_backend::reference_model::ReferenceImports::default(),
-            )
-            .expect("counter self-replacement should lower");
+        let lowered = crate::compile_support::compile_statement_effects_with_imports(
+            &parsed,
+            &crate::model::reference_state::ReferenceImports::default(),
+        )
+        .expect("counter self-replacement should lower");
         let [segment] = lowered.effects.segments.as_slice() else {
             panic!(
                 "expected one self-replacement segment: {:#?}",
@@ -4645,7 +4973,7 @@ mod prior_token_copy_self_replacement_tests {
 
     #[test]
     fn conditional_of_those_tokens_replaces_copy_token_count() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Create a tapped and attacking token that's a copy of another target attacking creature. If that creature is a Kraken, Leviathan, Octopus, or Serpent, create two of those tokens instead.",
             0,
         )
@@ -4721,7 +5049,7 @@ mod targeted_delayed_leave_followup_tests {
 
     #[test]
     fn targeted_creature_leave_watcher_reuses_delayed_target_choice() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Whenever target creature deals combat damage to a non-Wall creature this turn, destroy that non-Wall creature. When the targeted creature leaves the battlefield this turn, sacrifice this artifact.",
             0,
         )
@@ -4759,7 +5087,7 @@ mod returned_permanent_enters_followup_tests {
 
     #[test]
     fn singular_return_result_gets_a_one_shot_enter_watcher() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Return target permanent card from an opponent's graveyard to the battlefield. When that permanent enters, return up to one target permanent card from your graveyard to the battlefield.",
             0,
         )
@@ -4804,7 +5132,7 @@ mod returned_permanent_enters_followup_tests {
             "Return target permanent card from an opponent's graveyard to the battlefield. When that card enters, return target permanent card from your graveyard to the battlefield.",
             "Return up to two target permanent cards from an opponent's graveyard to the battlefield. When that permanent enters, return target permanent card from your graveyard to the battlefield.",
         ] {
-            let lexed = crate::runtime_backend::lex_line(text, 0).expect("near miss should lex");
+            let lexed = crate::lexer::lex_line(text, 0).expect("near miss should lex");
             let parsed =
                 parse_effect_sentences_lexed(&lexed).expect("near miss should still parse");
             assert!(
@@ -4866,7 +5194,7 @@ mod conditional_target_self_replacement_followup_tests {
 
     #[test]
     fn madness_replacement_keeps_both_target_toughness_thresholds() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Gain control of target creature if its toughness is 2 or less. If this spell's madness cost was paid, instead gain control of that creature if its toughness is X or less.",
             0,
         )
@@ -4892,7 +5220,7 @@ mod conditional_target_self_replacement_followup_tests {
 
     #[test]
     fn kicked_replacement_keeps_both_target_mana_value_thresholds() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Destroy target artifact if its mana value is 2 or less. If this spell was kicked, destroy that artifact if its mana value is 5 or less instead.",
             0,
         )
@@ -4925,7 +5253,7 @@ mod conditional_target_self_replacement_followup_tests {
 
     #[test]
     fn kicked_target_replacement_carries_the_common_exile_life_suffix_into_both_arms() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Choose target creature with mana value 3 or less. If this spell was kicked, instead choose target creature. Exile the chosen creature, then its controller gains life equal to its mana value.",
             0,
         )
@@ -4965,7 +5293,7 @@ mod conditional_target_self_replacement_followup_tests {
 
     #[test]
     fn a_non_instead_kicked_choice_is_not_rewritten_as_a_self_replacement() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Choose target creature with mana value 3 or less. If this spell was kicked, choose target creature.",
             0,
         )
@@ -5009,7 +5337,7 @@ mod targeted_search_self_replacement_followup_tests {
 
     #[test]
     fn targeted_search_instead_branch_carries_owner_without_changing_implicit_chooser() {
-        let lexed = crate::runtime_backend::lex_line(
+        let lexed = crate::lexer::lex_line(
             "Search target player's library for up to three cards, exile them, then that player shuffles. If this spell was kicked, instead search that player's library for up to fifteen cards, exile them, then that player shuffles.",
             0,
         )
@@ -5046,12 +5374,11 @@ mod targeted_search_self_replacement_followup_tests {
             "both branches carry the target-qualified library while preserving a demonstrative action surface"
         );
 
-        let lowered =
-            crate::runtime_backend::compile_support::compile_statement_effects_with_imports(
-                &parsed,
-                &crate::runtime_backend::reference_model::ReferenceImports::default(),
-            )
-            .expect("targeted search self-replacement should lower");
+        let lowered = crate::compile_support::compile_statement_effects_with_imports(
+            &parsed,
+            &crate::model::reference_state::ReferenceImports::default(),
+        )
+        .expect("targeted search self-replacement should lower");
         let debug = format!("{lowered:#?}");
         assert!(!debug.contains("IteratedPlayer"), "{debug}");
         assert_eq!(debug.matches("chooser: You").count(), 2, "{debug}");

@@ -858,23 +858,22 @@ fn evaluate_value(
             use crate::target::ChooseSpec;
             let mut values = Vec::new();
             match target.as_ref() {
-                ChooseSpec::SurfaceHinted { spec, .. } => match spec.as_ref() {
-                    ChooseSpec::Source => {
-                        if let Some(chars) = baseline.get(&source) {
-                            let v = match value {
-                                Value::PowerOf(_) => chars.power,
-                                Value::ToughnessOf(_) => chars.toughness,
-                                _ => unreachable!(
-                                    "Value::PowerOf/ToughnessOf arm received non-PT value"
-                                ),
-                            };
-                            if let Some(v) = v {
-                                values.push(v);
+                ChooseSpec::SurfaceHinted { spec, .. } => {
+                    if spec.as_ref() == &ChooseSpec::Source
+                        && let Some(chars) = baseline.get(&source)
+                    {
+                        let v = match value {
+                            Value::PowerOf(_) => chars.power,
+                            Value::ToughnessOf(_) => chars.toughness,
+                            _ => {
+                                unreachable!("Value::PowerOf/ToughnessOf arm received non-PT value")
                             }
+                        };
+                        if let Some(v) = v {
+                            values.push(v);
                         }
                     }
-                    _ => {}
-                },
+                }
                 ChooseSpec::Source => {
                     if let Some(chars) = baseline.get(&source) {
                         let v = match value {

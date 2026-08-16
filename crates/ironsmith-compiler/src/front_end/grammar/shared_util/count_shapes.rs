@@ -1,16 +1,14 @@
 use crate::TagKey;
 use crate::cards::builders::IT_TAG;
 use crate::effect::Value;
-use crate::grammar::filters::{
-    parse_counter_type_from_tokens, parse_counter_type_words,
-};
+use crate::grammar::filters::{parse_counter_type_from_tokens, parse_counter_type_words};
 use crate::lexer::synthetic_word_tokens;
 use crate::object_filters::parse_object_filter_words;
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::util::{
     is_article, source_choose_spec_for_surface, source_reference_surface_for_words,
     this_source_surface_for_words,
 };
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 
 use super::super::permission_shapes;
 use super::value_helper_shapes;
@@ -38,9 +36,7 @@ fn parse_for_each_object_filter_words(
     restored.extend_from_slice(words);
     let tokens = synthetic_word_tokens(&restored);
     if let Some(filter) =
-        crate::grammar::filters::parse_subtype_color_shared_card_union_lexed(
-            &tokens, false,
-        )
+        crate::grammar::filters::parse_subtype_color_shared_card_union_lexed(&tokens, false)
     {
         return Some(filter);
     }
@@ -137,7 +133,15 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     if let Some(player) = super::value_helper_shapes::parse_commander_cast_count_player(
         &words[idx..commander_count_end],
     ) {
-        return Some((Value::CommanderCastCount(player), commander_count_end));
+        let mut value = Value::CommanderCastCount(player);
+        if words[idx..commander_count_end]
+            .windows(2)
+            .any(|window| window == ["a", "commander"])
+        {
+            value = value
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference);
+        }
+        return Some((value, commander_count_end));
     }
 
     if words

@@ -148,11 +148,9 @@ pub(crate) fn materialize_compiler_total_cost(
     let mut materialized = Vec::with_capacity(cost.branches.len());
     for branch in &cost.branches {
         if let [CompilerCost::VariableMana { generic }] = branch.as_slice() {
-            materialized.push(
-                crate::lowering::compile_support::waterbend_optional_total_cost(
-                    *generic,
-                ),
-            );
+            materialized.push(crate::compile_support::waterbend_optional_total_cost(
+                *generic,
+            ));
             continue;
         }
         if branch
@@ -230,7 +228,7 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
             surface: surface.clone(),
         },
         CompilerCost::Sacrifice {
-            count,
+            count: _,
             filter,
             all: true,
             ..
@@ -541,9 +539,7 @@ fn lower_materialization_costs(
                 if let Some(surface) = surface {
                     costs.push(Cost::validated_effect(Effect::new(
                         crate::effects::SacrificeTargetEffect::new(
-                            crate::target::ChooseSpec::Source.with_surface_hint(
-                                crate::target::ChooseSpecSurfaceHint::SourceReference(surface.clone()),
-                            ),
+                            crate::util::source_choose_spec_for_surface(surface.clone()),
                         ),
                     )));
                 } else {
@@ -569,7 +565,7 @@ fn lower_materialization_costs(
                     sacrifice_tag_id += 1;
                     costs.push(Cost::validated_effect(Effect::choose_objects(
                         filter,
-                        count.clone(),
+                        *count,
                         PlayerFilter::You,
                         tag.clone(),
                     )));
@@ -798,9 +794,7 @@ fn lower_materialization_costs(
             MaterializationCost::MoveSelfToLibraryBottom { surface } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::validated_effect(Effect::move_to_zone(
-                    crate::target::ChooseSpec::Source.with_surface_hint(
-                        crate::target::ChooseSpecSurfaceHint::SourceReference(surface.clone()),
-                    ),
+                    crate::util::source_choose_spec_for_surface(surface.clone()),
                     crate::zone::Zone::Library,
                     false,
                 )));

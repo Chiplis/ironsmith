@@ -194,18 +194,18 @@ pub fn expand_mana_cost_to_display_pips(
             continue;
         }
 
-        if pip.len() == 1 {
-            if let ManaSymbol::Generic(n) = pip[0] {
-                if n > 1 {
-                    for _ in 0..n {
-                        generic_pips.push(vec![ManaSymbol::Generic(1)]);
-                    }
-                    continue;
-                }
-                if n == 1 {
+        if pip.len() == 1
+            && let ManaSymbol::Generic(n) = pip[0]
+        {
+            if n > 1 {
+                for _ in 0..n {
                     generic_pips.push(vec![ManaSymbol::Generic(1)]);
-                    continue;
                 }
+                continue;
+            }
+            if n == 1 {
+                generic_pips.push(vec![ManaSymbol::Generic(1)]);
+                continue;
             }
         }
 
@@ -375,6 +375,7 @@ pub(super) fn prompt_pending_mana_ability_payment(
     mut pending: PendingManaAbility,
     subject: String,
 ) -> Result<GameProgress, GameLoopError> {
+    let refining_existing_plan = pending.pending_mana_payment.is_some();
     let spend_policy = game.mana_spend_policy(pending.activator, Some(pending.source));
     let mut request = crate::mana_payment::ManaPaymentRequest::new(
         pending.activator,
@@ -401,22 +402,27 @@ pub(super) fn prompt_pending_mana_ability_payment(
             Some(pending.source),
             crate::costs::PaymentReason::ActivateManaAbility,
         );
-    let plan = crate::mana_payment::plan_mana_payment(game, &request)
-        .map_err(|failure| {
-            state.rollback_action(game);
-            GameLoopError::ActionCancelled(format!(
-                "the mana ability's activation cost has no legal payment plan: {failure:?}"
-            ))
-        })?
-        .into_iter()
-        .next()
-        .ok_or_else(|| {
-            GameLoopError::InvalidState("planner returned no mana-ability payment plan".to_string())
-        })?;
-    pending.pending_mana_payment = Some(crate::mana_payment::PendingManaPayment::new(
-        request.clone(),
-        plan.clone(),
-    ));
+    let plan_result = if refining_existing_plan {
+        crate::mana_payment::plan_mana_payment(game, &request).and_then(|plans| {
+            plans
+                .into_iter()
+                .next()
+                .ok_or(crate::mana_payment::ManaPaymentFailure::NoLegalPlan)
+        })
+    } else {
+        crate::mana_payment::plan_first_mana_payment(game, &request)
+    };
+    let plan = plan_result.map_err(|failure| {
+        state.rollback_action(game);
+        GameLoopError::ActionCancelled(format!(
+            "the mana ability's activation cost has no legal payment plan: {failure:?}"
+        ))
+    })?;
+    pending.pending_mana_payment = Some(if refining_existing_plan {
+        crate::mana_payment::PendingManaPayment::new(request.clone(), plan.clone())
+    } else {
+        crate::mana_payment::PendingManaPayment::provisional(request.clone(), plan.clone())
+    });
     state.pending_mana_ability = Some(pending);
     Ok(GameProgress::NeedsDecisionCtx(
         crate::decisions::context::DecisionContext::ManaPayment(
@@ -2566,7 +2572,7 @@ pub(crate) fn propose_spell_cast(
                     .as_ref()
                     .expect("disturb linked face should be resolved before mutating the spell");
                 let front_colors = obj.colors();
-                obj.apply_definition_face(&other_def);
+                obj.apply_definition_face(other_def);
                 obj.cast_alternative_method = Some(Box::new(method.clone()));
                 if obj.mana_cost.is_none()
                     && obj.color_override.is_none()
@@ -2611,7 +2617,7 @@ pub(crate) fn propose_spell_cast(
                 let other_def = split_other_def
                     .as_ref()
                     .expect("split linked face should be resolved before mutating the spell");
-                obj.apply_definition_face(&other_def);
+                obj.apply_definition_face(other_def);
                 if let CastingMethod::SplitOtherHalfPlayFrom { .. } = casting_method
                     && let Some(method) = selected_method_for_overlay.clone()
                 {
@@ -2622,7 +2628,7 @@ pub(crate) fn propose_spell_cast(
                 let other_def = split_other_def
                     .as_ref()
                     .expect("fuse linked face should be resolved before mutating the spell");
-                obj.apply_fused_split_spell_overlay(&other_def);
+                obj.apply_fused_split_spell_overlay(other_def);
             }
             _ => {}
         }
@@ -2767,7 +2773,7 @@ fn apply_play_from_cast_this_way_grants(
 ///
 /// Per MTG rules, if casting fails at any point before completion,
 /// the game state returns to before the cast was proposed.
-
+///
 /// Result of finalizing a spell cast, containing info needed for triggers.
 pub(super) struct SpellCastResult {
     /// The new object ID of the spell on the stack
@@ -2845,10 +2851,8 @@ fn selected_alternative_cost_reference(
             .or_else(|| obj.cast_alternative_method_owned()),
         _ => None,
     }?;
-    let reference = ironsmith_core::AlternativeCostReference::paid_marker(
-        method.name(),
-        method.mana_cost(),
-    );
+    let reference =
+        ironsmith_core::AlternativeCostReference::paid_marker(method.name(), method.mana_cost());
     Some(crate::cost::OptionalCostRef::new(
         crate::cost::OptionalCostKind::AlternativeCast(reference),
     ))

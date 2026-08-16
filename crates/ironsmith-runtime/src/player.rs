@@ -1005,7 +1005,7 @@ impl Player {
         }
         let old_speed = self.speed.unwrap_or(0);
         let amount = amount.min(4) as u8;
-        let new_speed = (old_speed.saturating_add(amount)).min(4).max(1);
+        let new_speed = old_speed.saturating_add(amount).clamp(1, 4);
         self.speed = Some(new_speed);
         u32::from(new_speed.saturating_sub(old_speed))
     }

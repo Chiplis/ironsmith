@@ -2,9 +2,7 @@ use winnow::combinator::{alt, opt};
 use winnow::prelude::*;
 
 use crate::cards::builders::LibraryBottomOrderAst;
-use crate::front_end::lexer::{
-    LexStream, LexedClause, OwnedLexToken, split_lexed_sentences,
-};
+use crate::lexer::{LexStream, LexedClause, OwnedLexToken, split_lexed_sentences};
 use crate::zone::Zone;
 
 use super::super::super::{
@@ -71,9 +69,8 @@ pub(crate) fn parse_consult_matched_move_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultMatchedMoveShape> {
     let tokens = trimmed(tokens);
-    let ((), after_put) = crate::grammar::primitives::parse_prefix(
-        tokens,
-        |input: &mut LexStream<'_>| {
+    let ((), after_put) =
+        crate::grammar::primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
             sequence_any_phrase(&[
                 &["put"],
                 &["puts"],
@@ -82,8 +79,7 @@ pub(crate) fn parse_consult_matched_move_shape(
                 &["the", "player", "puts"],
             ])
             .parse_next(input)
-        },
-    )?;
+        })?;
     let mut destination_input = LexStream::new(after_put);
     let destination_at = seek_sequence_phrase(
         &mut destination_input,
@@ -162,10 +158,10 @@ fn parse_repeated_move_shape(tokens: &[OwnedLexToken]) -> Option<ConsultRepeated
     }
 
     let first = trimmed(&tokens[..repeated_at]);
-    let ((), after_put) = crate::grammar::primitives::parse_prefix(
-        first,
-        |input: &mut LexStream<'_>| sequence_phrase(&["put", "all"]).parse_next(input),
-    )?;
+    let ((), after_put) =
+        crate::grammar::primitives::parse_prefix(first, |input: &mut LexStream<'_>| {
+            sequence_phrase(&["put", "all"]).parse_next(input)
+        })?;
     let mut revealed_input = LexStream::new(after_put);
     let revealed_at =
         seek_sequence_phrase(&mut revealed_input, &[&["revealed", "this", "way"]]).ok()?;
@@ -290,9 +286,7 @@ fn split_terminal_remainder(
         return Some((Vec::new(), remainder));
     }
     let (remainder_at, remainder, trailing) =
-        crate::grammar::primitives::find_prefix(tokens, || {
-            parse_remainder_shape_inner
-        })?;
+        crate::grammar::primitives::find_prefix(tokens, || parse_remainder_shape_inner)?;
     if !trailing.is_empty() {
         return None;
     }
@@ -376,7 +370,7 @@ pub(crate) fn parse_reveal_repeated_disposition_sequence_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(raw: &str) -> ConsultDispositionSequenceShape {
         let tokens = lex_line(raw, 0).unwrap();

@@ -2,7 +2,7 @@ use winnow::combinator::{alt, eof, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
-use crate::front_end::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use crate::util::parse_number;
 
 use super::super::super::{permission_shapes, primitives};
@@ -197,7 +197,7 @@ pub(crate) fn is_put_rest_on_library_bottom(tokens: &[OwnedLexToken]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

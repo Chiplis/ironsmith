@@ -9,7 +9,7 @@ use super::{
     CreationPhrase, CreationWordClass, CreationWords, parse_pt_word, parse_unsigned_pt_word,
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct CopyModifierSpec {
     pub(crate) set_colors: Option<ColorSet>,
     pub(crate) set_card_types: Option<Vec<CardType>>,
@@ -26,24 +26,6 @@ pub(crate) struct CopyModifierSpec {
     /// "except it has haste and loses soulbond": the copy is created without
     /// the soulbond pairing ability.
     pub(crate) loses_soulbond: bool,
-}
-
-impl Default for CopyModifierSpec {
-    fn default() -> Self {
-        Self {
-            set_colors: None,
-            set_card_types: None,
-            set_subtypes: None,
-            added_card_types: Vec::new(),
-            added_subtypes: Vec::new(),
-            removed_supertypes: Vec::new(),
-            set_base_power_toughness: None,
-            set_base_power_toughness_to_source_totals: false,
-            starting_loyalty: None,
-            granted_abilities: Vec::new(),
-            loses_soulbond: false,
-        }
-    }
 }
 
 fn last_class_location(words: &[&str], class: CreationWordClass) -> Option<usize> {
@@ -148,9 +130,7 @@ pub(crate) fn parse_copy_modifier_words(
     spec.starting_loyalty = modifier_words
         .windows(4)
         .find(|words| words[..3] == ["starting", "loyalty", "is"])
-        .and_then(|words| {
-            crate::util::parse_number_word_u32(words[3])
-        });
+        .and_then(|words| crate::util::parse_number_word_u32(words[3]));
 
     let grants_keyword = |phrase, keyword: &str| {
         surface.has_phrase(phrase)
@@ -179,9 +159,10 @@ pub(crate) fn parse_copy_modifier_words(
         while CreationWords::new(tail).first_is(CreationWordClass::ArticleOrThe) {
             tail = &tail[1..];
         }
-        if let Some(subtype) = tail.first().and_then(|word| {
-            crate::util::parse_subtype_flexible(word)
-        }) && CreationWords::new(tail).has_phrase(CreationPhrase::YouControl)
+        if let Some(subtype) = tail
+            .first()
+            .and_then(|word| crate::util::parse_subtype_flexible(word))
+            && CreationWords::new(tail).has_phrase(CreationPhrase::YouControl)
         {
             let mut filter = ObjectFilter::default();
             filter.zone = Some(Zone::Battlefield);
@@ -199,18 +180,13 @@ pub(crate) fn parse_copy_modifier_words(
     if let Some(addition) = surface.phrase_location(CreationPhrase::AdditionToOtherTypes) {
         let mut colors = ColorSet::new();
         for word in &modifier_words[..addition] {
-            if let Some(color) = crate::util::parse_color(word)
-            {
+            if let Some(color) = crate::util::parse_color(word) {
                 colors = colors.union(color);
             }
-            if let Some(card_type) =
-                crate::util::parse_card_type(word)
-            {
+            if let Some(card_type) = crate::util::parse_card_type(word) {
                 push_unique(&mut spec.added_card_types, card_type);
             }
-            if let Some(subtype) =
-                crate::util::parse_subtype_flexible(word)
-            {
+            if let Some(subtype) = crate::util::parse_subtype_flexible(word) {
                 push_unique(&mut spec.added_subtypes, subtype);
             }
         }
@@ -244,18 +220,13 @@ pub(crate) fn parse_copy_modifier_words(
             {
                 continue;
             }
-            if let Some(color) = crate::util::parse_color(word)
-            {
+            if let Some(color) = crate::util::parse_color(word) {
                 colors = colors.union(color);
             }
-            if let Some(card_type) =
-                crate::util::parse_card_type(word)
-            {
+            if let Some(card_type) = crate::util::parse_card_type(word) {
                 push_unique(&mut card_types, card_type);
             }
-            if let Some(subtype) =
-                crate::util::parse_subtype_flexible(word)
-            {
+            if let Some(subtype) = crate::util::parse_subtype_flexible(word) {
                 push_unique(&mut subtypes, subtype);
             }
         }

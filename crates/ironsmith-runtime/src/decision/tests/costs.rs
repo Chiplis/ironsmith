@@ -770,7 +770,7 @@ fn compute_legal_attackers_reuses_one_derived_view_for_many_candidates() {
     for index in 0..32 {
         let creature = CardBuilder::new(
             CardId::from_raw(701_100 + index),
-            &format!("Attack Candidate {index}"),
+            format!("Attack Candidate {index}"),
         )
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
@@ -915,7 +915,7 @@ fn test_compute_legal_attackers_respects_graveyard_threshold_attack_restriction(
     );
 
     for idx in 0..5 {
-        let filler = CardBuilder::new(CardId::from_raw(1000 + idx), &format!("Filler {}", idx + 1))
+        let filler = CardBuilder::new(CardId::from_raw(1000 + idx), format!("Filler {}", idx + 1))
             .card_types(vec![CardType::Creature])
             .build();
         let _ = game.create_object_from_card(&filler, alice, Zone::Graveyard);

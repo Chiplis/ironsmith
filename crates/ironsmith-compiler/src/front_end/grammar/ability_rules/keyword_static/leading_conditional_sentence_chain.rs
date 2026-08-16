@@ -31,9 +31,9 @@ fn selectors_for_borrowed_keyword(phrase: &str) -> Option<Vec<StaticAbilityVaria
 }
 
 fn words_without_exact_phrase(text: &str, phrase: &str) -> Option<Vec<String>> {
-    let tokens = crate::front_end::lexer::lex_line(text, 0).ok()?;
+    let tokens = crate::lexer::lex_line(text, 0).ok()?;
     let words = parser_token_word_refs(&tokens);
-    let phrase_tokens = crate::front_end::lexer::lex_line(phrase, 0).ok()?;
+    let phrase_tokens = crate::lexer::lex_line(phrase, 0).ok()?;
     let phrase_words = parser_token_word_refs(&phrase_tokens);
     let matching_starts = words
         .windows(phrase_words.len())
@@ -63,7 +63,7 @@ fn condition_matching_filter(
     // Re-running the pre-rewrite surface parser here rejects both shapes even
     // though the semantic condition parser below has proved the exact typed
     // matching-filter form we need.
-    let tokens = crate::front_end::lexer::lex_line(condition_text, 0).ok()?;
+    let tokens = crate::lexer::lex_line(condition_text, 0).ok()?;
     let condition = parse_static_condition_clause(&tokens).ok()?;
     let crate::ConditionExpr::CountComparison {
         count: AnthemCountExpression::MatchingFilter(mut filter),
@@ -105,16 +105,11 @@ fn parse_borrowed_static_variant_chain(
         let crate::grammar::preprocess::BorrowStaticSentenceSurface::Leading {
             condition,
             consequence,
-        } = crate::grammar::preprocess::parse_borrow_static_sentence_surface(
-            &rendered,
-        )?
+        } = crate::grammar::preprocess::parse_borrow_static_sentence_surface(&rendered)?
         else {
             return None;
         };
-        let phrase = crate::grammar::preprocess::parse_borrow_ability_surface(
-            &consequence,
-        )?
-        .phrase;
+        let phrase = crate::grammar::preprocess::parse_borrow_ability_surface(&consequence)?.phrase;
         let sentence_selectors = selectors_for_borrowed_keyword(phrase)?;
         let required_id = sentence_selectors.first()?.ability_id();
         let filter = condition_matching_filter(&condition, required_id)?;

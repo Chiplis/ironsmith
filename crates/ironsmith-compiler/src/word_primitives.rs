@@ -110,9 +110,7 @@ pub(crate) fn at_is(words: &[&str], idx: usize, expected: &str) -> bool {
 }
 
 pub(crate) fn at_is_any(words: &[&str], idx: usize, expected: &[&str]) -> bool {
-    words
-        .get(idx)
-        .is_some_and(|word| expected.iter().any(|candidate| *word == *candidate))
+    words.get(idx).is_some_and(|word| expected.contains(word))
 }
 
 pub(crate) fn first_is(words: &[&str], expected: &str) -> bool {
@@ -128,9 +126,7 @@ pub(crate) fn last_is(words: &[&str], expected: &str) -> bool {
 }
 
 pub(crate) fn last_is_any(words: &[&str], expected: &[&str]) -> bool {
-    words
-        .last()
-        .is_some_and(|word| expected.iter().any(|candidate| *word == *candidate))
+    words.last().is_some_and(|word| expected.contains(word))
 }
 
 pub(crate) fn matching_phrase<'p>(
@@ -234,7 +230,7 @@ pub(crate) fn strip_suffix_value<'w, 'a, T: Clone>(
 }
 
 pub(crate) fn contains_word(words: &[&str], expected: &str) -> bool {
-    words.iter().any(|word| *word == expected)
+    words.contains(&expected)
 }
 
 pub(crate) fn find_word(words: &[&str], expected: &str) -> Option<usize> {
@@ -242,9 +238,7 @@ pub(crate) fn find_word(words: &[&str], expected: &str) -> Option<usize> {
 }
 
 pub(crate) fn find_any_word(words: &[&str], expected: &[&str]) -> Option<usize> {
-    find_word_where(words, |word| {
-        expected.iter().any(|expected_word| word == *expected_word)
-    })
+    find_word_where(words, |word| expected.contains(&word))
 }
 
 pub(crate) fn find_word_where(

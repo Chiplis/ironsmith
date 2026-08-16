@@ -3,10 +3,10 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::object::CounterType;
 use crate::model::token_definition::{
     CreatureTokenRulesShape, CreatureTokenShape, TokenDefinitionSpec,
 };
+use crate::object::CounterType;
 use ironsmith_core::DamagedBySource;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
@@ -137,10 +137,7 @@ fn parse_exile_to_graveyard_replacement_lexed<'a>(
 fn classify_exile_graveyard_filter(tokens: &[OwnedLexToken]) -> ExileGraveyardFilterKind {
     let words = TokenWordView::new(tokens).word_refs();
     if leaf::parse_leaf_this_source_reference_words(&words).is_some()
-        || crate::util::source_reference_surface_for_words(
-            &words,
-        )
-        .is_some()
+        || crate::util::source_reference_surface_for_words(&words).is_some()
     {
         return ExileGraveyardFilterKind::Source;
     }
@@ -361,10 +358,7 @@ fn exact_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bo
 fn is_named_source_reference(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     if leaf::parse_leaf_this_source_reference_words(&words).is_some()
-        || crate::util::source_reference_surface_for_words(
-            &words,
-        )
-        .is_some()
+        || crate::util::source_reference_surface_for_words(&words).is_some()
     {
         return true;
     }

@@ -37,7 +37,7 @@ fn brainspoil_keeps_the_unenchanted_target_on_its_no_regeneration_destroy() {
         .as_ref()
         .expect("Brainspoil should have a spell program")
         .flattened_default_effects()
-        .into_iter()
+        .iter()
         .find_map(find_destroy_no_regeneration)
         .expect("Brainspoil should lower to one no-regeneration destroy");
     let ChooseSpec::Target(inner) = destroy.spec.unhinted() else {

@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::model::semantic::GiftTimingAst;
+use crate::model::compiler_semantic::GiftTimingAst;
 
 use super::super::super::lexer::{
     LexStream, OwnedLexToken, TokenKind, TokenWordView, lex_line, parser_token_word_refs,
@@ -196,9 +196,9 @@ pub(crate) fn parse_standard_gift_spec_tokens(
         return None;
     };
     let all_words = parser_token_word_refs(tokens);
-    let timing = if phrase_is_present(&all_words, &["when", "it", "enters"]) {
-        GiftTimingAst::PermanentEtb
-    } else if variant == StandardGiftVariant::Octopus {
+    let timing = if phrase_is_present(&all_words, &["when", "it", "enters"])
+        || variant == StandardGiftVariant::Octopus
+    {
         GiftTimingAst::PermanentEtb
     } else {
         GiftTimingAst::SpellResolution

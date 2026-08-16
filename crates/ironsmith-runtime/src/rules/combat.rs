@@ -87,11 +87,11 @@ pub(crate) fn can_block_with_view(
         .unwrap_or_else(|| get_static_abilities(blocker).into());
     let attacker_colors = attacker_chars
         .as_ref()
-        .map(|c| c.colors.clone())
+        .map(|c| c.colors)
         .unwrap_or_else(|| attacker.colors());
     let blocker_colors = blocker_chars
         .as_ref()
-        .map(|c| c.colors.clone())
+        .map(|c| c.colors)
         .unwrap_or_else(|| blocker.colors());
     let attacker_subtypes = attacker_chars
         .as_ref()
@@ -133,7 +133,7 @@ pub(crate) fn can_block_with_view(
 
             ability
                 .can_block_as_though_reach_subtype()
-                .map_or(true, |subtype| attacker_subtypes.contains(&subtype))
+                .is_none_or(|subtype| attacker_subtypes.contains(&subtype))
         });
 
         if !blocker_has_flying && !blocker_has_reach && !blocker_can_block_flying {
@@ -416,7 +416,7 @@ fn protection_prevents_blocking_with_view(
     let blocker_chars = view.calculated_characteristics(blocker.id);
     let blocker_colors = blocker_chars
         .as_ref()
-        .map(|c| c.colors.clone())
+        .map(|c| c.colors)
         .unwrap_or_else(|| blocker.colors());
     let blocker_card_types = blocker_chars
         .as_ref()

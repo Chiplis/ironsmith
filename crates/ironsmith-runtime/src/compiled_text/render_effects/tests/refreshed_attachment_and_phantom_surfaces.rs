@@ -60,6 +60,81 @@ fn attachment_fold_requires_the_destination_tag_consumed_by_attach() {
 }
 
 #[test]
+fn attachment_followup_fold_requires_the_same_destination_tag() {
+    let triggering_tag = TagKey::from("triggering");
+    let destination_tag = TagKey::from("attachment_target_a");
+    let triggering = Effect::new(crate::effects::TagTriggeringObjectEffect::new(
+        triggering_tag.clone(),
+    ));
+    let destination = Effect::new(crate::effects::TargetOnlyEffect::new(
+        ChooseSpec::target_creature(),
+    ))
+    .tag(destination_tag.clone());
+    let attached_object = ChooseSpec::All(ObjectFilter::default().match_tagged(
+        triggering_tag,
+        crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+    ));
+    let attach = Effect::new(crate::effects::AttachObjectsEffect::new(
+        attached_object,
+        ChooseSpec::Tagged(destination_tag),
+    ));
+    let followup = Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::Tagged(
+        TagKey::from("attachment_target_b"),
+    )));
+
+    assert_ne!(
+        describe_effect_list(&[triggering, destination, attach, followup]),
+        "Attach it to target creature. Untap that creature"
+    );
+}
+
+#[test]
+fn coordinated_attachment_grants_share_the_trailing_duration() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Celestial Armor Duration Probe",
+    )
+    .card_types(vec![CardType::Artifact])
+    .subtypes(vec![Subtype::Equipment])
+    .parse_text(
+        "When this Equipment enters, attach it to target creature you control. That creature gains hexproof and indestructible until end of turn.",
+    )
+    .expect("coordinated Equipment entry grants should compile");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("the Equipment entry ability should be triggered");
+
+    fn collect_durations(effect: &Effect, durations: &mut Vec<crate::effect::Until>) {
+        if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
+            durations.push(apply.until.clone());
+        }
+        effect.visit_child_effects(&mut |child| collect_durations(child, durations));
+    }
+
+    let mut durations = Vec::new();
+    for effect in triggered
+        .effects
+        .segments
+        .iter()
+        .flat_map(|segment| &segment.default_effects)
+    {
+        collect_durations(effect, &mut durations);
+    }
+    assert_eq!(
+        durations,
+        [
+            crate::effect::Until::EndOfTurn,
+            crate::effect::Until::EndOfTurn
+        ]
+    );
+}
+
+#[test]
 fn searched_attachment_and_equipment_entry_targets_stay_inline() {
     assert_round_trip(
         "Arachnus Spinner",

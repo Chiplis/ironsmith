@@ -60,7 +60,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
 pub(crate) fn parse_for_each_opponent_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     if let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, true)? {
         return Ok(Some(effect));
     }
@@ -85,7 +85,7 @@ pub(crate) fn parse_for_each_opponent_doesnt(
 pub(crate) fn parse_for_each_player_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::token_word_refs(tokens);
+    let clause_words = crate::lexer::token_word_refs(tokens);
     if let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, false)? {
         return Ok(Some(effect));
     }
@@ -152,7 +152,7 @@ fn parse_negated_who_this_way_predicate(
         return Ok(None);
     };
 
-    let filter = match parse_object_filter(&filter_tokens, false) {
+    let filter = match parse_object_filter(filter_tokens, false) {
         Ok(filter) => filter,
         Err(_) => return Ok(None),
     };

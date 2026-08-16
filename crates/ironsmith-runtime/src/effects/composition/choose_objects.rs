@@ -344,7 +344,7 @@ impl EffectExecutor for ChooseObjectsEffect {
                 n => format!("{}", n),
             },
             (min, Some(max)) => format!("{} to {}", min, max),
-            (min, None) if min == 1 => "one or more".to_string(),
+            (1, None) => "one or more".to_string(),
             (min, None) => format!("{} or more", min),
         };
 

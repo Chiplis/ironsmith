@@ -374,11 +374,7 @@ pub(crate) fn parse_assigns_no_combat_damage_shape(
     let (subject_tokens, tail_tokens) = primitives::split_lexed_once_on_separator(tokens, || {
         alt((primitives::kw("assign"), primitives::kw("assigns"))).void()
     })?;
-    if primitives::parse_prefix(tail_tokens, primitives::phrase(&["no", "combat", "damage"]))
-        .is_none()
-    {
-        return None;
-    }
+    primitives::parse_prefix(tail_tokens, primitives::phrase(&["no", "combat", "damage"]))?;
     let duration = primitives::parse_all(
         tail_tokens,
         (

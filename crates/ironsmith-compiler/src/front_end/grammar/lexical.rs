@@ -69,12 +69,10 @@ fn parse_word_choice_at<'p>(
     expected: &'p [&'p str],
 ) -> Option<&'p str> {
     let actual = *words.get(start)?;
-    for candidate in expected {
-        if actual == *candidate {
-            return Some(candidate);
-        }
-    }
-    None
+    expected
+        .iter()
+        .find(|&candidate| actual == *candidate)
+        .map(|v| v as _)
 }
 
 fn parse_first_word_choice<'p>(
@@ -321,162 +319,7 @@ pub(crate) fn token_slice_all_are_kind(tokens: &[OwnedLexToken], expected: Token
     true
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TokenWordView<'a> {
-    words: Vec<&'a str>,
-    token_start_indices: Vec<usize>,
-    token_end_indices: Vec<usize>,
-    token_len: usize,
-}
-
-impl<'a> TokenWordView<'a> {
-    pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
-        let mut words = Vec::new();
-        let mut token_start_indices = Vec::new();
-        let mut token_end_indices = Vec::new();
-        let mut token_idx = 0usize;
-        while token_idx < tokens.len() {
-            let token = &tokens[token_idx];
-            let pieces = token_word_pieces_for_token(token);
-            if pieces.is_empty() {
-                token_idx += 1;
-                continue;
-            }
-            for piece in pieces {
-                words.push(piece.text.as_str());
-                token_start_indices.push(token_idx);
-                token_end_indices.push(token_idx + 1);
-            }
-            token_idx += 1;
-        }
-        Self {
-            words,
-            token_start_indices,
-            token_end_indices,
-            token_len: tokens.len(),
-        }
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.words.is_empty()
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.words.len()
-    }
-
-    pub(crate) fn get(&self, idx: usize) -> Option<&'a str> {
-        self.words.get(idx).copied()
-    }
-
-    pub(crate) fn starts_with(&self, expected: &[&str]) -> bool {
-        word_prefix_present(&self.words, expected)
-    }
-
-    pub(crate) fn slice_eq(&self, start: usize, expected: &[&str]) -> bool {
-        self.words
-            .get(start..start.saturating_add(expected.len()))
-            .is_some_and(|slice| {
-                slice
-                    .iter()
-                    .copied()
-                    .zip(expected.iter().copied())
-                    .all(|(actual, expected)| actual == expected)
-            })
-    }
-
-    pub(crate) fn find_window_by(
-        &self,
-        window_len: usize,
-        predicate: impl FnMut(&[&str]) -> bool,
-    ) -> Option<usize> {
-        word_slice_find_window_by(&self.words, window_len, predicate)
-    }
-
-    pub(crate) fn find_any_word_from(&self, expected: &[&str], start: usize) -> Option<usize> {
-        word_slice_find_any_word_from(&self.words, expected, start)
-    }
-
-    pub(crate) fn rfind_word(&self, expected: &str) -> Option<usize> {
-        locate_last_word_by(&self.words, |word| word == expected)
-    }
-
-    pub(crate) fn first(&self) -> Option<&str> {
-        self.get(0)
-    }
-
-    pub(crate) fn word_refs(&self) -> Vec<&'a str> {
-        self.words.clone()
-    }
-
-    pub(crate) fn join(&self, separator: &str) -> String {
-        self.words.join(separator)
-    }
-
-    pub(crate) fn owned_words(&self) -> Vec<String> {
-        self.words.iter().map(|word| (*word).to_string()).collect()
-    }
-
-    pub(crate) fn to_word_refs(&self) -> Vec<&'a str> {
-        self.word_refs()
-    }
-
-    pub(crate) fn token_boundary_for_word(&self, word_idx: usize) -> Option<usize> {
-        self.token_start_indices.get(word_idx).copied()
-    }
-
-    pub(crate) fn token_boundary_for_word_or_end(&self, word_idx: usize) -> Option<usize> {
-        if word_idx == self.len() {
-            Some(self.token_len)
-        } else {
-            self.token_boundary_for_word(word_idx)
-        }
-    }
-
-    pub(crate) fn token_start_indices(&self) -> &[usize] {
-        &self.token_start_indices
-    }
-
-    pub(crate) fn token_index_after_words(&self, word_count: usize) -> Option<usize> {
-        if word_count == 0 {
-            return Some(0);
-        }
-        if word_count > self.len() {
-            return None;
-        }
-        self.token_end_indices.get(word_count - 1).copied()
-    }
-
-    pub(crate) fn token_index_after_words_or_end(&self, word_count: usize) -> Option<usize> {
-        if word_count == 0 {
-            return Some(0);
-        }
-        if word_count > self.len() {
-            return None;
-        }
-        if word_count == self.len() {
-            return Some(self.token_len);
-        }
-        self.token_index_after_words(word_count)
-    }
-
-    pub(crate) fn token_span_for_words(
-        &self,
-        start_word: usize,
-        end_word: usize,
-    ) -> Option<std::ops::Range<usize>> {
-        if start_word > end_word || end_word > self.len() {
-            return None;
-        }
-        let start = if start_word == end_word {
-            self.token_index_after_words(start_word)?
-        } else {
-            self.token_boundary_for_word(start_word)?
-        };
-        let end = self.token_index_after_words(end_word)?;
-        Some(start..end)
-    }
-}
+pub(crate) use crate::lexer::TokenWordView;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LexedClause<'a> {

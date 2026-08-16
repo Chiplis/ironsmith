@@ -71,11 +71,11 @@ impl DecisionMaker for FeralEncounterDecisions {
                 })
             });
             if let Some(target) = desired {
-                selected.push(target.clone());
+                selected.push(*target);
             } else if requirement.min_targets > 0
                 && let Some(target) = requirement.legal_targets.first()
             {
-                selected.push(target.clone());
+                selected.push(*target);
             }
         }
         selected

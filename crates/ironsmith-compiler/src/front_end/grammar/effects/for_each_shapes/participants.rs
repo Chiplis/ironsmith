@@ -5,7 +5,7 @@ use winnow::token::any;
 use crate::cards::builders::CardTextError;
 use crate::grammar::effects::chain_splitting;
 use crate::grammar::primitives;
-use crate::front_end::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken};
 use crate::util::{
     parse_greater_than_or_equal_quantity_prefix, parse_quantity_comparison_prefix,
     trim_edge_punctuation_tokens,
@@ -543,9 +543,7 @@ fn ignore_scry_or_surveil(tokens: &[OwnedLexToken]) -> bool {
     ) else {
         return false;
     };
-    let Some(parsed) =
-        crate::grammar::leaf::parse_leaf_number_prefix_tokens(amount)
-    else {
+    let Some(parsed) = crate::grammar::leaf::parse_leaf_number_prefix_tokens(amount) else {
         return false;
     };
     trim(amount.get(parsed.consumed..).unwrap_or_default()).is_empty()
@@ -638,7 +636,7 @@ pub(crate) fn parse_opponent_special_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn parses_participant_and_who_shapes() {

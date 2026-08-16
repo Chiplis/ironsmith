@@ -74,12 +74,7 @@ fn parse_single_cardinal_word(word: &str) -> Option<u32> {
     if let Some(value) = parse_numeric_cardinal_word(&word) {
         return Some(value);
     }
-    for value in 0..=100 {
-        if cardinal_word(value).as_deref() == Some(word.as_str()) {
-            return Some(value);
-        }
-    }
-    None
+    (0..=100).find(|&value| cardinal_word(value).as_deref() == Some(word.as_str()))
 }
 
 /// Parse one cardinal token, accepting hyphenated words and raw numeric forms.

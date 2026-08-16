@@ -100,9 +100,8 @@ pub(crate) fn parse_cost_prefix_condition_tokens(
 pub(crate) fn parse_equip_cost_modifier_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EquipCostModifierHead> {
-    let words = crate::util::possessive_normalized_word_refs(
-        &crate::lexer::parser_token_word_refs(tokens),
-    );
+    let words =
+        crate::util::possessive_normalized_word_refs(&crate::lexer::parser_token_word_refs(tokens));
     let starts_with = |prefix: &[&str]| {
         words.len() >= prefix.len()
             && words

@@ -156,12 +156,10 @@ fn parse_double_counters_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DoubleC
         None
     } else {
         Some(
-            crate::grammar::filters::parse_counter_type_from_tokens(
-                counter_phrase_tokens,
-            )
-            .ok_or_else(|| {
-                primitives::backtrack_err("double counters", "recognized counter type")
-            })?,
+            crate::grammar::filters::parse_counter_type_from_tokens(counter_phrase_tokens)
+                .ok_or_else(|| {
+                    primitives::backtrack_err("double counters", "recognized counter type")
+                })?,
         )
     };
 

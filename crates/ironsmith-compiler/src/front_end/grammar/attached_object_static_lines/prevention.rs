@@ -390,10 +390,7 @@ fn parse_counter_destination<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 fn validate_source_reference(tokens: &[OwnedLexToken]) -> WResult<()> {
     let words = parser_token_word_refs(tokens);
     if leaf::parse_leaf_this_source_reference_words(&words).is_some()
-        || crate::util::source_reference_surface_for_words(
-            &words,
-        )
-        .is_some()
+        || crate::util::source_reference_surface_for_words(&words).is_some()
     {
         Ok(())
     } else {

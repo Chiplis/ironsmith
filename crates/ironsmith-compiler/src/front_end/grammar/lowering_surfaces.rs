@@ -120,7 +120,7 @@ fn consume_tail(input: &mut LexStream<'_>) -> WResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_this_spell_cost_and_cap() {
@@ -152,9 +152,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             parse_statement_replacement_surface_tokens(&tokens),
-            Some(
-                crate::runtime_backend::shared_types::StatementReplacementSurfaceKind::ClashWinTopOfLibrary
-            )
+            Some(crate::model::facts::StatementReplacementSurfaceKind::ClashWinTopOfLibrary)
         );
     }
 

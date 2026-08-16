@@ -968,7 +968,7 @@ pub(super) fn describe_token_blueprint_with_presentation(
     let card = &token.card;
     if card.subtypes.contains(&crate::types::Subtype::Role)
         && !card.name.trim().is_empty()
-        && card.name.to_ascii_lowercase() != "token"
+        && !card.name.eq_ignore_ascii_case("token")
     {
         return format!("{} token", card.name);
     }
@@ -985,7 +985,7 @@ pub(super) fn describe_token_blueprint_with_presentation(
     });
     let is_named_noncreature_subtype_token = !card.is_creature()
         && !card.name.trim().is_empty()
-        && card.name.to_ascii_lowercase() != "token"
+        && !card.name.eq_ignore_ascii_case("token")
         && !card.subtypes.is_empty()
         && card
             .subtypes
@@ -1036,7 +1036,7 @@ pub(super) fn describe_token_blueprint_with_presentation(
         && !card.is_creature()
         && card.card_types.contains(&CardType::Artifact)
         && !card.name.trim().is_empty()
-        && card.name.to_ascii_lowercase() != "token"
+        && !card.name.eq_ignore_ascii_case("token")
     {
         // Prefer the oracle-style "artifact token named <Name>" for explicitly named tokens.
         // (Common named tokens like Treasure/Clue/Food/Blood/Powerstone are handled elsewhere.)
@@ -1079,8 +1079,7 @@ pub(super) fn describe_token_blueprint_with_presentation(
                 .map(std::string::ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(" ");
-            let name_matches_any_subtype =
-                subtype_words_lower.iter().any(|word| *word == name_lower);
+            let name_matches_any_subtype = subtype_words_lower.contains(&name_lower);
             let name_is_distinct = !card.name.trim().is_empty()
                 && name_lower != "token"
                 && name_lower != subtype_text.to_ascii_lowercase()
@@ -1700,7 +1699,7 @@ fn compact_separate_sentence_equipment_token_ability_payload(
             AbilityKind::Static(static_ability) => {
                 let text =
                     normalize_token_granted_static_ability_text(static_ability.display().as_str());
-                let text = text.trim().trim_end_matches(|ch| ch == '.' || ch == ',');
+                let text = text.trim().trim_end_matches(['.', ',']);
                 if let Some(rest) = text.strip_prefix("Equipped creature gets ") {
                     if pump_text.replace(rest.to_string()).is_some() {
                         return None;
@@ -2042,8 +2041,8 @@ pub(super) fn normalize_you_verb_phrase(text: &str) -> String {
         ("Behold ", "behold "),
     ];
     for (from, to) in replacements {
-        if text.starts_with(from) {
-            return format!("{to}{}", &text[from.len()..]);
+        if let Some(stripped) = text.strip_prefix(from) {
+            return format!("{to}{stripped}");
         }
     }
     text.to_string()
@@ -2070,8 +2069,8 @@ pub(super) fn normalize_third_person_verb_phrase(text: &str) -> String {
         ("shuffle ", "shuffles "),
     ];
     for (from, to) in replacements {
-        if text.starts_with(from) {
-            return format!("{to}{}", &text[from.len()..]);
+        if let Some(stripped) = text.strip_prefix(from) {
+            return format!("{to}{stripped}");
         }
     }
     text.to_string()
@@ -2487,10 +2486,10 @@ pub(super) fn normalize_sacrifice_implied_choice(sentence: &str) -> Option<Strin
     let mut split_at = body.len();
     let split_markers = [" unless ", " if ", " then "];
     for marker in split_markers {
-        if let Some(idx) = body.to_ascii_lowercase().find(marker) {
-            if idx < split_at {
-                split_at = idx;
-            }
+        if let Some(idx) = body.to_ascii_lowercase().find(marker)
+            && idx < split_at
+        {
+            split_at = idx;
         }
     }
 
@@ -3035,7 +3034,7 @@ fn normalize_token_death_trigger_quote_surface(line: &str) -> String {
     )
 }
 
-fn split_choose_sacrifice_tail<'a>(rest: &'a str) -> Option<(&'a str, &'a str)> {
+fn split_choose_sacrifice_tail(rest: &str) -> Option<(&str, &str)> {
     for needle in [
         ". you sacrifice all permanents you control",
         ". sacrifice all permanents you control",

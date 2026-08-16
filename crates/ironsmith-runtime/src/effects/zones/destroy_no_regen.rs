@@ -103,7 +103,7 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
                 game,
                 ctx,
                 &self.spec,
-                |game, ctx, object_id| Self::destroy_object_no_regen(game, ctx, object_id),
+                Self::destroy_object_no_regen,
             );
         }
 

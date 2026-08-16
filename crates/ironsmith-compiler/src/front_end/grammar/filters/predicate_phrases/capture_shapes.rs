@@ -410,24 +410,20 @@ pub(crate) struct WinnowSequenceMatch<'p> {
 
 impl<'p> WinnowSequenceMatch<'p> {
     pub(crate) fn capture(&self, name: &str) -> Option<&WinnowSequenceCapture<'p>> {
-        for capture in &self.captures {
-            if capture.name == name {
-                return Some(capture);
-            }
-        }
-        None
+        self.captures
+            .iter()
+            .find(|&capture| capture.name == name)
+            .map(|v| v as _)
     }
 
     pub(crate) fn capture_by_role(
         &self,
         role: WinnowCaptureRole,
     ) -> Option<&WinnowSequenceCapture<'p>> {
-        for capture in &self.captures {
-            if capture.role == Some(role) {
-                return Some(capture);
-            }
-        }
-        None
+        self.captures
+            .iter()
+            .find(|&capture| capture.role == Some(role))
+            .map(|v| v as _)
     }
 
     pub(crate) fn capture_word_range(&self, name: &str) -> Option<Range<usize>> {
@@ -469,7 +465,7 @@ impl WinnowSequenceCapture<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn winnow_sequence_returns_typed_capture_ranges() {

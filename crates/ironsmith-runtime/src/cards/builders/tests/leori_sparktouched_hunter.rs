@@ -90,14 +90,14 @@ fn leori_preserves_chosen_planeswalker_type_and_plural_copy_provenance() {
     let effects = triggered.effects.flattened_default_effects();
     let choose = effects
         .iter()
-        .find_map(|effect| nested_choose_subtype(effect))
+        .find_map(nested_choose_subtype)
         .expect("the trigger should choose one subtype family");
     assert_eq!(choose.family, crate::types::SubtypeFamily::Planeswalker);
     assert!(choose.excluded_subtypes.is_empty());
 
     let schedule = effects
         .iter()
-        .find_map(|effect| nested_schedule(effect))
+        .find_map(nested_schedule)
         .expect("the trigger should schedule the rest-of-turn activation trigger");
     assert!(schedule.until_end_of_turn);
     assert!(!schedule.one_shot);
@@ -136,7 +136,7 @@ fn planeswalker_card_type_choice_does_not_become_a_subtype_choice() {
     );
     let choose = effects
         .iter()
-        .find_map(|effect| nested_choose_card_type(effect))
+        .find_map(nested_choose_card_type)
         .expect("an ordinary planeswalker noun should choose that card type");
     assert_eq!(choose.chooser, PlayerFilter::You);
     assert_eq!(choose.options, [CardType::Planeswalker]);

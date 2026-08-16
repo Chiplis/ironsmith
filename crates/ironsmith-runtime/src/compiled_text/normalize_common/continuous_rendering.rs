@@ -2822,9 +2822,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         text.push_str(ability_connector);
         text.push_str(&join_with_and(&ability_text));
     }
-    let adds_artifact_type = card_types
-        .iter()
-        .any(|card_type| *card_type == CardType::Artifact);
+    let adds_artifact_type = card_types.contains(&CardType::Artifact);
     let target_is_guaranteed_artifact = effect
         .target_spec
         .as_ref()
@@ -3013,7 +3011,10 @@ pub(crate) fn describe_apply_continuous_effect(
         && effect.additional_modifications.is_empty()
         && effect.runtime_modifications.is_empty()
         && matches!(effect.target, crate::continuous::EffectTarget::Source)
-        && effect.target_spec.as_ref().is_some_and(|spec| matches!(spec.base(), ChooseSpec::Source))
+        && effect
+            .target_spec
+            .as_ref()
+            .is_some_and(|spec| matches!(spec.base(), ChooseSpec::Source))
         && matches!(effect.until, Until::EndOfTurn)
         && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
         && let Some(model) = ability.compiled_model()
@@ -3025,10 +3026,7 @@ pub(crate) fn describe_apply_continuous_effect(
             .strip_prefix("this can ")
             .map(|tail| format!("{} can {tail}", lowercase_first(&target)))
             .unwrap_or_else(|| spec.display.clone());
-        return Some(format!(
-            "Until end of turn, {}",
-            lowercase_first(&display)
-        ));
+        return Some(format!("Until end of turn, {}", lowercase_first(&display)));
     }
     if effect.condition.is_none()
         && effect.additional_modifications.is_empty()

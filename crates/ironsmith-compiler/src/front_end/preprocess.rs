@@ -183,7 +183,7 @@ mod tests {
     fn normalize_trimmed_line_collapses_whitespace_and_tracks_chars() {
         let normalized = normalize_trimmed_line("  Draw   a\tcard. ").expect("normalized line");
 
-        assert_eq!(normalized.original, "Draw   a\tcard.");
+        assert_eq!(normalized.original, "  Draw   a\tcard. ");
         assert_eq!(normalized.normalized, "Draw a card.");
         assert!(!normalized.char_map.is_empty());
     }

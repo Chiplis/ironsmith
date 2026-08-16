@@ -36,7 +36,7 @@ fn damage_target_spec(definition: &CardDefinition) -> ChooseSpec {
         .expect("damage spell should have a resolution program")
         .flattened_default_effects()
         .iter()
-        .find_map(|effect| find(effect))
+        .find_map(find)
         .expect("damage spell should have a target specification")
 }
 

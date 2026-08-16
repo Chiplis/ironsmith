@@ -147,7 +147,7 @@ impl GameState {
         if first == second {
             return false;
         }
-        self.teams.as_ref().map_or(true, |state| {
+        self.teams.as_ref().is_none_or(|state| {
             state
                 .team_index(first)
                 .zip(state.team_index(second))

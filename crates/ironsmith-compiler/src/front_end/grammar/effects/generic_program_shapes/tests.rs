@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::lexer::lex_line;
+use crate::lexer::lex_line;
 
 #[test]
 fn parses_damage_and_choice_program_shapes() {

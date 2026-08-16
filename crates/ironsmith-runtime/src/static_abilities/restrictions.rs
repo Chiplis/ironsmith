@@ -254,13 +254,11 @@ impl StaticAbilityKind for OpponentsCantCastSpells {
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
-        Some(
-            StaticAbility::restriction(
-                Restriction::cast_spells(PlayerFilter::Opponent),
-                self.display(),
-            )
-            .with_condition(condition)?,
+        StaticAbility::restriction(
+            Restriction::cast_spells(PlayerFilter::Opponent),
+            self.display(),
         )
+        .with_condition(condition)
     }
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {

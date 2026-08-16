@@ -290,7 +290,7 @@ fn simple_spell_type_list(input: &mut LexStream<'_>) -> WResult<Vec<CardType>> {
             }
         }
         let parsed_type = card_type.parse_next(input)?;
-        if !card_types.iter().any(|card_type| *card_type == parsed_type) {
+        if !card_types.contains(&parsed_type) {
             card_types.push(parsed_type);
         }
     }
@@ -323,7 +323,7 @@ fn card_type(input: &mut LexStream<'_>) -> WResult<CardType> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("permission subject fixture should lex")

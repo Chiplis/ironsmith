@@ -140,7 +140,7 @@ fn parse_leaf_condition_intro_word_slice(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn condition_intro_prefixes_are_typed_across_surfaces() {

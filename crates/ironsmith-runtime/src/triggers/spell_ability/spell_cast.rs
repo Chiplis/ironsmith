@@ -136,10 +136,10 @@ impl TriggerMatcher for SpellCastTrigger {
             return false;
         }
 
-        if let Some(turn_filter) = &self.during_turn {
-            if !current_turn_matches_player_filter(turn_filter, ctx, None) {
-                return false;
-            }
+        if let Some(turn_filter) = &self.during_turn
+            && !current_turn_matches_player_filter(turn_filter, ctx, None)
+        {
+            return false;
         }
 
         let cast_count = if self.count_all_spells_this_turn {
@@ -157,10 +157,10 @@ impl TriggerMatcher for SpellCastTrigger {
             if cast_count != exact_spells {
                 return false;
             }
-        } else if let Some(min_spells) = self.min_spells_this_turn {
-            if cast_count < min_spells {
-                return false;
-            }
+        } else if let Some(min_spells) = self.min_spells_this_turn
+            && cast_count < min_spells
+        {
+            return false;
         }
         if self.first_spell_of_game
             && ctx

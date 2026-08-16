@@ -172,7 +172,7 @@ fn parse_type_word(input: &mut LexStream<'_>) -> WResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("lex fixture")

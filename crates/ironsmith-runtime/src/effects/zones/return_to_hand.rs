@@ -76,10 +76,11 @@ impl EffectExecutor for ReturnToHandEffect {
                 && let Some(tagged) = ctx.get_tagged_all(tag)
             {
                 for (idx, snapshot) in tagged.iter().enumerate() {
-                    if idx < object_ids.len() && game.object(object_ids[idx]).is_none() {
-                        if let Some(resolved) = resolve_tagged_object_id(game, snapshot) {
-                            object_ids[idx] = resolved;
-                        }
+                    if idx < object_ids.len()
+                        && game.object(object_ids[idx]).is_none()
+                        && let Some(resolved) = resolve_tagged_object_id(game, snapshot)
+                    {
+                        object_ids[idx] = resolved;
                     }
                 }
             }
@@ -164,7 +165,7 @@ impl EffectExecutor for ReturnToHandEffect {
                 game,
                 ctx,
                 &self.spec,
-                |game, ctx, object_id| return_object_to_hand(game, ctx, object_id),
+                return_object_to_hand,
             );
         }
 

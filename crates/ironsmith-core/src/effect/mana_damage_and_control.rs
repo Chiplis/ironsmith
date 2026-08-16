@@ -178,6 +178,10 @@ impl PayAnyLifeEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "consult stop rules retain typed values without an extra allocation"
+)]
 pub enum ConsultTopOfLibraryStopRule {
     FirstMatch,
     MatchCount(Value),
@@ -980,6 +984,9 @@ pub struct RegisterNextBatchEnterWithCountersEffect {
     pub filter: crate::filter_model::ObjectFilter,
     pub counter_type: CounterType,
     pub count: Value,
+    /// When present, the replacement matches only the future zone object
+    /// whose stable identity was captured under this resolution tag.
+    pub same_stable_id_tag: Option<crate::tag::TagKey>,
 }
 
 impl RegisterNextBatchEnterWithCountersEffect {
@@ -992,7 +999,13 @@ impl RegisterNextBatchEnterWithCountersEffect {
             filter,
             counter_type,
             count,
+            same_stable_id_tag: None,
         }
+    }
+
+    pub fn same_stable_id_as_tag(mut self, tag: impl Into<crate::tag::TagKey>) -> Self {
+        self.same_stable_id_tag = Some(tag.into());
+        self
     }
 }
 
@@ -1090,7 +1103,7 @@ impl RegisterDamagedBySourceZoneReplacementEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LearnEffect;
 
 impl LearnEffect {
@@ -1393,7 +1406,7 @@ impl RenownEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SolveCaseEffect;
 
 impl SolveCaseEffect {
@@ -1989,7 +2002,7 @@ impl ExchangeZonesEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AuraSwapEffect;
 
 impl AuraSwapEffect {
@@ -2642,6 +2655,10 @@ impl ControlPlayerEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "combat prevention targets preserve typed choice specifications inline"
+)]
 pub enum CombatDamagePreventionTarget {
     All,
     Players,
@@ -3544,7 +3561,11 @@ impl MayMoveToZoneEffect {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LookAtTopCardsEffect {
+    /// The player whose library supplies the cards.
     pub player: PlayerFilter,
+    /// The player who is allowed to see the cards. Public reveals ignore this
+    /// field and remain visible to every player.
+    pub viewer: PlayerFilter,
     pub count: Value,
     pub tag: TagKey,
     pub reveal: bool,
@@ -3554,6 +3575,7 @@ impl LookAtTopCardsEffect {
     pub fn new(player: PlayerFilter, count: impl Into<Value>, tag: impl Into<TagKey>) -> Self {
         Self {
             player,
+            viewer: PlayerFilter::You,
             count: count.into(),
             tag: tag.into(),
             reveal: false,
@@ -3567,10 +3589,16 @@ impl LookAtTopCardsEffect {
     ) -> Self {
         Self {
             player,
+            viewer: PlayerFilter::You,
             count: count.into(),
             tag: tag.into(),
             reveal: true,
         }
+    }
+
+    pub fn viewed_by(mut self, viewer: PlayerFilter) -> Self {
+        self.viewer = viewer;
+        self
     }
 }
 

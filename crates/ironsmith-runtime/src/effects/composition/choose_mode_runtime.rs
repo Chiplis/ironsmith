@@ -390,7 +390,7 @@ mod tests {
     use crate::decisions::SelectOptionsContext;
     use crate::effect::{Effect, EffectMode, Value};
     use crate::effects::ChooseModeEffect;
-    use crate::filter::ObjectFilterExt;
+
     use crate::game_state::TargetAssignment;
     use crate::ids::CardId;
     use crate::target::{ChooseSpec, PlayerFilter};

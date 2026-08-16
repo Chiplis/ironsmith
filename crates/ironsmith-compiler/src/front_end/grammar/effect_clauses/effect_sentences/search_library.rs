@@ -11,7 +11,7 @@ use super::sentence_helpers::*;
 use crate::cards::builders::{
     CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
     LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
@@ -29,6 +29,34 @@ struct SearchZonePairClause {
 
 fn segment_starts_effect_lexed(tokens: &[OwnedLexToken]) -> bool {
     super::lex_chain_helpers::segment_has_effect_head_lexed(tokens)
+}
+
+fn bind_owner_subject_same_sentence_tail(
+    effect: &mut EffectAst,
+    owner: PlayerAst,
+    trailing_tokens: &[OwnedLexToken],
+) {
+    super::chain_carry::bind_implicit_player_context(effect, owner);
+
+    let refers_to_their_library = token_word_refs(trailing_tokens)
+        .windows(2)
+        .any(|window| window == ["their", "library"]);
+    if owner == PlayerAst::ItsOwner
+        && refers_to_their_library
+        && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action: SubjectVerbActionAst::ExileTopOfLibrary { .. } | SubjectVerbActionAst::RevealTop,
+        }) = effect
+        && subject.player == PlayerAst::ItsController
+    {
+        subject.player = PlayerAst::ItsOwner;
+    }
+
+    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+        for nested_effect in nested {
+            bind_owner_subject_same_sentence_tail(nested_effect, owner, trailing_tokens);
+        }
+    });
 }
 
 pub(crate) fn parse_search_library_sentence(
@@ -81,10 +109,7 @@ pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
                 | Subtype::Forest
                 | Subtype::Desert
         )
-    }) && !filter
-        .card_types
-        .iter()
-        .any(|card_type| *card_type == CardType::Land)
+    }) && !filter.card_types.contains(&CardType::Land)
     {
         filter.card_types.push(CardType::Land);
     }
@@ -108,7 +133,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     } else if each_player_subject {
         SubjectAst::Player(PlayerAst::Implicit)
     } else {
-        parse_subject(&subject_tokens)
+        parse_subject(subject_tokens)
     };
     let player = match subject {
         SubjectAst::Player(player) => player,
@@ -218,7 +243,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
 
     let target_tokens = shape.target_tokens;
     let has_target_selector = shape.has_target_selector;
-    let target_words = crate::token_word_refs(&target_tokens);
+    let target_words = crate::lexer::token_word_refs(target_tokens);
     let explicit_all_cards_from = target_words
         .get(..3)
         .is_some_and(|prefix| prefix == ["all", "cards", "from"]);
@@ -248,7 +273,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         && !whole_graveyard_target
         && !shape.has_source_and_graveyard_clause
         && !shape.has_hand_clause
-        && parse_target_phrase(&target_tokens).is_ok();
+        && parse_target_phrase(target_tokens).is_ok();
     if !has_target_selector && !filtered_graveyard_target {
         let mut effects = Vec::new();
         let has_source_and_graveyard_clause = shape.has_source_and_graveyard_clause;
@@ -273,7 +298,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
                 player,
             ));
         } else if has_hand_clause {
-            let words = crate::token_word_refs(tokens);
+            let words = crate::lexer::token_word_refs(tokens);
             let includes_owned_permanents = words
                 .windows(4)
                 .any(|window| matches!(window, ["all", "permanents", "you" | "they", "own"]));
@@ -300,7 +325,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         return append_trailing(wrap_optional(effects));
     }
 
-    let mut target = parse_target_phrase(&target_tokens)?;
+    let mut target = parse_target_phrase(target_tokens)?;
     apply_shuffle_subject_graveyard_owner_context(&mut target, subject);
     let shuffle_player = if owner_library_destination {
         match super::zone_counter_helpers::target_object_filter_mut(&mut target)
@@ -317,7 +342,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         player
     };
 
-    let shuffle = if shuffle_target_moves_all(&target_tokens) {
+    let shuffle = if shuffle_target_moves_all(target_tokens) {
         EffectAst::subject_verb_shuffle_all_objects_into_library(shuffle_player, target)
     } else {
         EffectAst::subject_verb_shuffle_objects_into_library(shuffle_player, target)
@@ -343,7 +368,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     } else if subject_tokens.is_empty() {
         SubjectAst::Player(PlayerAst::You)
     } else {
-        parse_subject(&subject_tokens)
+        parse_subject(subject_tokens)
     };
     let player = match subject {
         SubjectAst::Player(player) => player,
@@ -351,7 +376,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     };
     let owner_library_destination = shape.owner_library_destination;
 
-    let trailing_tokens = shape.trailing_tokens.to_vec();
+    let trailing_tokens = trim_edge_punctuation(shape.trailing_tokens);
     let append_trailing =
         |mut effects: Vec<EffectAst>| -> Result<Option<Vec<EffectAst>>, CardTextError> {
             if trailing_tokens.is_empty() {
@@ -359,11 +384,12 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
             }
             let mut trailing_effects = parse_effect_chain(&trailing_tokens)?;
             for effect in &mut trailing_effects {
-                maybe_apply_carried_player_with_clause(
-                    effect,
-                    CarryContext::Player(player),
-                    &trailing_tokens,
-                );
+                // This tail remains in the same grammatical sentence as the
+                // explicit owner subject. A bare conjugated follow-up such as
+                // `then draws two cards` therefore belongs to that owner, not
+                // to the spell's controller. Explicit subjects (`then you
+                // draw`) are already non-implicit and remain unchanged.
+                bind_owner_subject_same_sentence_tail(effect, player, &trailing_tokens);
             }
             effects.extend(trailing_effects);
             Ok(Some(effects))
@@ -372,23 +398,6 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     let target_tokens = shape.target_tokens;
     if let Some(target) = owner_of_subject_target {
         if shape.reference == search_grammar::SearchShuffleObjectReference::SingularBackReference {
-            if !trailing_tokens.is_empty() {
-                return append_trailing(vec![
-                    EffectAst::subject_verb_move_to_zone(
-                        target,
-                        Zone::Library,
-                        false,
-                        ReturnControllerAst::Preserve,
-                        false,
-                        None,
-                    ),
-                    EffectAst::subject_verb(
-                        SubjectVerbRoleAst::LibraryOwner,
-                        PlayerAst::ItsOwner,
-                        SubjectVerbActionAst::ShuffleLibrary,
-                    ),
-                ]);
-            }
             let shuffle = if owner_library_destination {
                 EffectAst::subject_verb_shuffle_objects_into_owner_library(target)
             } else if shape.possessive_owner_subject {
@@ -407,7 +416,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
             tag: TagKey::from(IT_TAG),
             effects: vec![
                 EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens)),
+                    TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens)),
                     Zone::Library,
                     false,
                     ReturnControllerAst::Preserve,
@@ -422,8 +431,8 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
             ],
         }]);
     }
-    let target = parse_target_phrase(&target_tokens)?;
-    let moves_all = shuffle_target_moves_all(&target_tokens);
+    let target = parse_target_phrase(target_tokens)?;
+    let moves_all = shuffle_target_moves_all(target_tokens);
     let shuffle = if owner_library_destination && moves_all {
         EffectAst::subject_verb_shuffle_all_objects_into_owner_library(target)
     } else if owner_library_destination {
@@ -438,7 +447,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
 }
 
 fn shuffle_target_moves_all(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     matches!(words.as_slice(), ["all" | "each", ..])
         || matches!(
             words.as_slice(),
@@ -667,15 +676,13 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
 #[cfg(test)]
 mod typed_exiled_result_iterator_tests {
     use super::*;
-    use crate::runtime_backend::model::ast::SubjectVerbEffectAst;
+    use crate::model::ast::SubjectVerbEffectAst;
 
     #[test]
     fn creature_card_exiled_this_way_keeps_a_typed_lki_gate() {
-        let tokens = crate::runtime_backend::lex_line(
-            "For each creature card exiled this way, you gain 1 life",
-            0,
-        )
-        .expect("typed exiled-result iterator should lex");
+        let tokens =
+            crate::lexer::lex_line("For each creature card exiled this way, you gain 1 life", 0)
+                .expect("typed exiled-result iterator should lex");
         let effects = parse_for_each_exiled_this_way_sentence(&tokens)
             .expect("typed iterator should parse")
             .expect("typed iterator should be recognized");
@@ -818,15 +825,11 @@ fn bind_sacrificed_snapshot_controller(effect: &mut EffectAst) {
         _ => {}
     }
 
-    crate::model::visit::for_each_nested_effects_mut(
-        effect,
-        true,
-        |nested| {
-            for nested_effect in nested {
-                bind_sacrificed_snapshot_controller(nested_effect);
-            }
-        },
-    );
+    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+        for nested_effect in nested {
+            bind_sacrificed_snapshot_controller(nested_effect);
+        }
+    });
 }
 
 /// Parse a typed iterator over the actual objects sacrificed by the preceding
@@ -946,7 +949,7 @@ mod typed_put_into_graveyard_result_iterator_tests {
 
     #[test]
     fn creature_card_put_into_graveyard_this_way_keeps_a_typed_lki_gate() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "For each creature card put into a graveyard this way, you create a tapped 2/2 black Zombie creature token",
             0,
         )
@@ -976,7 +979,7 @@ mod typed_put_into_graveyard_result_iterator_tests {
 
     #[test]
     fn unqualified_card_iterator_keeps_only_an_equality_transparent_surface_gate() {
-        let tokens = crate::runtime_backend::lex_line(
+        let tokens = crate::lexer::lex_line(
             "For each card put into a graveyard this way, you gain 1 life",
             0,
         )
@@ -1006,9 +1009,9 @@ pub(crate) fn parse_earthbend_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let words = token_word_refs(tokens);
-    if !words
+    if words
         .first()
-        .is_some_and(|word| *word == SEARCH_EARTHBEND_WORD)
+        .is_none_or(|word| *word != SEARCH_EARTHBEND_WORD)
     {
         return Ok(None);
     }

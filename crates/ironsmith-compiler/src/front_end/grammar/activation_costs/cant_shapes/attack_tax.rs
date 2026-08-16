@@ -96,7 +96,7 @@ fn parse_generic_mana_amount(input: &mut LexStream<'_>) -> WResult<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn parses_typed_per_attacker_tax() {

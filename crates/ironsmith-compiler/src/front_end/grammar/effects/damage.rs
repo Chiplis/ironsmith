@@ -204,8 +204,8 @@ fn parse_serial_damage_part_lexed<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::TokenWordView;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::TokenWordView;
+    use crate::lexer::lex_line;
 
     #[test]
     fn paired_damage_split_requires_a_second_typed_damage_head() {

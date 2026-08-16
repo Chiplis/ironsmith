@@ -319,7 +319,7 @@ fn parse_target_count_selector_modifier_lexed<'a>(input: &mut LexStream<'a>) -> 
 
 fn parse_target_count_object_selector_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::word_parser_text
-        .verify(|word| is_target_count_object_selector(word))
+        .verify(is_target_count_object_selector)
         .void()
         .parse_next(input)
 }
@@ -592,7 +592,7 @@ fn parse_word_phrase(
     expected: &[&'static str],
 ) -> WResult<()> {
     for word in expected {
-        primitives::word_slice_exact(*word)
+        primitives::word_slice_exact(word)
             .void()
             .parse_next(input)?;
     }
@@ -602,7 +602,7 @@ fn parse_word_phrase(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn parse(raw: &str) -> LeafTargetHead<'static> {
         let tokens = lex_line(raw, 0).expect("lex target-head fixture");

@@ -1,16 +1,13 @@
 use super::*;
-use crate::runtime_backend::lexer::lex_line;
+use crate::lexer::lex_line;
 use winnow::combinator::cut_err;
 
 #[test]
 fn words_match_prefix_basic() {
     let tokens = lex_line("target creature gets", 0).unwrap();
-    assert!(matches!(
-        match_word_prefix(&tokens, &["target", "creature"]),
-        Some(_)
-    ));
+    assert!(match_word_prefix(&tokens, &["target", "creature"]).is_some());
     assert!(match_word_prefix(&tokens, &["target", "gets"]).is_none());
-    assert!(matches!(match_word_prefix(&tokens, &[]), Some(_)));
+    assert!(match_word_prefix(&tokens, &[]).is_some());
 }
 
 #[test]

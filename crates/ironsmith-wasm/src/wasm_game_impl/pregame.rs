@@ -1733,16 +1733,15 @@ impl WasmGame {
                     "commander main decks must contain {expected_deck_size} cards for {count} commander(s)",
                     count = commander_list.len()
                 ));
-            } else if let Some(manifest) = manifest {
-                if (manifest.deck_count != 0 && manifest.deck_count != expected_deck_size)
+            } else if let Some(manifest) = manifest
+                && ((manifest.deck_count != 0 && manifest.deck_count != expected_deck_size)
                     || (manifest.commander_count != 0
-                        && manifest.commander_count != commander_list.len())
-                {
+                        && manifest.commander_count != commander_list.len()))
+            {
                     return Err(format!(
                         "Commander player {} manifest counts do not match the explicit setup",
                         player_index + 1
                     ));
-                }
             }
 
             self.registry

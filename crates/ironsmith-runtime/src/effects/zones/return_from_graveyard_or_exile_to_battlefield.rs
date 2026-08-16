@@ -6,7 +6,6 @@ use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_e
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
-use crate::zone::Zone;
 pub use ironsmith_core::ReturnFromGraveyardOrExileToBattlefieldEffect;
 
 /// Find a card in the graveyard or exile by stable identity.
@@ -93,6 +92,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::ids::CardId;
     use crate::types::CardType;
+    use crate::zone::Zone;
 
     #[test]
     fn source_return_executes_from_graveyard_and_exile_but_not_battlefield() {

@@ -9,19 +9,17 @@ use crate::cards::builders::{
     SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::ChoiceCount;
-use crate::filter::TaggedObjectConstraint;
 use crate::effect_sentences;
 use crate::effect_sentences::SentenceInput;
-use crate::grammar::sentence_markers::{self, LeadingMayActor};
-use crate::front_end::lexer::{LexedClause, OwnedLexToken};
+use crate::filter::TaggedObjectConstraint;
 use crate::grammar::effects::sequence_quad_shapes as quad_grammar;
 use crate::grammar::effects::triple_sequence_shapes as triple_grammar;
+use crate::grammar::sentence_markers::{self, LeadingMayActor};
+use crate::lexer::{LexedClause, OwnedLexToken};
 use crate::object_filters::parse_object_filter_lexed;
 use crate::permission_helpers::parse_cast_or_play_tagged_clause;
-use crate::util::{
-    helper_tag_for_tokens, strip_leading_token_words_any, trim_commas,
-};
 use crate::target::TaggedOpbjectRelation;
+use crate::util::{helper_tag_for_tokens, strip_leading_token_words_any, trim_commas};
 use crate::zone::Zone;
 
 fn look_at_top_cards_player(effect: &EffectAst) -> Option<PlayerAst> {
@@ -97,7 +95,7 @@ fn rebind_one_of_those_cards_target(target: &mut TargetAst, looked_tag: &TagKey)
         TargetAst::Object(filter, _, reference_span)
             if *filter == ObjectFilter::tagged(crate::cards::builders::IT_TAG) =>
         {
-            *target = TargetAst::Tagged(looked_tag.clone(), reference_span.clone());
+            *target = TargetAst::Tagged(looked_tag.clone(), *reference_span);
             true
         }
         _ => false,
@@ -127,7 +125,10 @@ fn parse_looked_card_move_result_branch(
     else {
         return Ok(None);
     };
-    if *parsed_predicate != predicate {
+    if *parsed_predicate != predicate
+        && !(predicate == IfResultPredicate::DidNot
+            && *parsed_predicate == IfResultPredicate::ExplicitDidNot)
+    {
         return Ok(None);
     }
     let [
@@ -316,10 +317,9 @@ pub(crate) fn parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_o
     else {
         return Ok(None);
     };
-    let predicate =
-        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
-            replacement_shape.predicate_tokens,
-        )?;
+    let predicate = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
+        replacement_shape.predicate_tokens,
+    )?;
     if !matches!(
         &predicate,
         PredicateAst::ValueComparison {
@@ -501,18 +501,14 @@ pub(crate) fn parse_look_reveal_one_or_instead_two_then_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(conditional) =
-        crate::grammar::static_line_support::parse_leading_if_clause(
-            sentences[sentence_idx + 2].lowered(),
-        )
-    else {
+    let Some(conditional) = crate::grammar::static_line_support::parse_leading_if_clause(
+        sentences[sentence_idx + 2].lowered(),
+    ) else {
         return Ok(None);
     };
     let condition_tokens = trim_commas(conditional.condition_tokens);
     let Ok(predicate) =
-        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
-            &condition_tokens,
-        )
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&condition_tokens)
     else {
         return Ok(None);
     };
@@ -930,9 +926,7 @@ pub(crate) fn parse_look_at_top_conditional_hand_counts_then_rest_bottom(
     if !is_put_rest_on_bottom_of_library_sentence(remainder_tokens) {
         return Ok(None);
     }
-    let Some(order) =
-        crate::grammar::effects::parse_bottom_order(remainder_tokens)
-    else {
+    let Some(order) = crate::grammar::effects::parse_bottom_order(remainder_tokens) else {
         return Ok(None);
     };
 
@@ -1103,12 +1097,12 @@ pub(crate) fn parse_look_then_may_sacrifice_if_did_select_battlefield_rest_botto
     }
 
     let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
-    let Some(followup) = crate::grammar::sentence_markers::parse_conditional_followup_tokens(&third_tokens) else {
+    let Some(followup) =
+        crate::grammar::sentence_markers::parse_conditional_followup_tokens(&third_tokens)
+    else {
         return Ok(None);
     };
-    if followup.actor
-        != crate::grammar::sentence_markers::ConditionalFollowupActor::You
-    {
+    if followup.actor != crate::grammar::sentence_markers::ConditionalFollowupActor::You {
         return Ok(None);
     }
     let where_x_at = followup
@@ -1127,8 +1121,7 @@ pub(crate) fn parse_look_then_may_sacrifice_if_did_select_battlefield_rest_botto
     };
     if let Some(where_x_at) = where_x_at {
         let where_x_tokens = trim_commas(&followup.tail_tokens[where_x_at..]);
-        let Some(x_value) =
-            crate::keyword_static::parse_value_binding_clause(&where_x_tokens)
+        let Some(x_value) = crate::keyword_static::parse_value_binding_clause(&where_x_tokens)
         else {
             return Ok(None);
         };
@@ -1148,9 +1141,7 @@ pub(crate) fn parse_look_then_may_sacrifice_if_did_select_battlefield_rest_botto
     if !is_put_rest_on_bottom_of_library_sentence(&remainder_tokens) {
         return Ok(None);
     }
-    let Some(order) =
-        crate::grammar::effects::parse_bottom_order(&remainder_tokens)
-    else {
+    let Some(order) = crate::grammar::effects::parse_bottom_order(&remainder_tokens) else {
         return Ok(None);
     };
 
@@ -1229,28 +1220,20 @@ pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_ov
     if !is_put_rest_on_bottom_of_library_sentence(sentences[sentence_idx + 3].lowered()) {
         return Ok(None);
     }
-    let Some(bottom_order) = crate::grammar::effects::parse_bottom_order(
-        sentences[sentence_idx + 3].lowered(),
-    ) else {
+    let Some(bottom_order) =
+        crate::grammar::effects::parse_bottom_order(sentences[sentence_idx + 3].lowered())
+    else {
         return Ok(None);
     };
 
-    let kicked_looked_tag = crate::util::helper_tag_for_tokens(
-        sentences[sentence_idx + 2].lowered(),
-        "looked",
-    );
-    let base_looked_tag = crate::util::helper_tag_for_tokens(
-        sentences[sentence_idx + 1].lowered(),
-        "looked",
-    );
-    let kicked_chosen_tag = crate::util::helper_tag_for_tokens(
-        sentences[sentence_idx + 2].lowered(),
-        "chosen",
-    );
-    let base_chosen_tag = crate::util::helper_tag_for_tokens(
-        sentences[sentence_idx + 1].lowered(),
-        "chosen",
-    );
+    let kicked_looked_tag =
+        crate::util::helper_tag_for_tokens(sentences[sentence_idx + 2].lowered(), "looked");
+    let base_looked_tag =
+        crate::util::helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "looked");
+    let kicked_chosen_tag =
+        crate::util::helper_tag_for_tokens(sentences[sentence_idx + 2].lowered(), "chosen");
+    let base_chosen_tag =
+        crate::util::helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
     Ok(Some(vec![
         first_effects[0].clone(),
         EffectAst::Conditional {
@@ -1631,7 +1614,7 @@ pub(crate) fn parse_reveal_top_optional_battlefield_then_hand_rest_graveyard(
 }
 
 fn is_may_put_selected_onto_battlefield_on_your_turn(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     matches!(
         words.as_slice(),
         [
@@ -1675,7 +1658,7 @@ fn is_may_put_selected_onto_battlefield_on_your_turn(tokens: &[OwnedLexToken]) -
 }
 
 fn is_if_selected_not_put_onto_battlefield_put_into_hand(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     matches!(
         words.as_slice(),
         [
@@ -2036,7 +2019,7 @@ fn parse_may_exile_filtered_looked_card(
         };
         filter
     } else {
-        let words = crate::token_word_refs(tokens);
+        let words = crate::lexer::token_word_refs(tokens);
         if !matches!(
             words.as_slice(),
             ["you", "may", "exile", "one", "of", "those", "cards"]
@@ -2315,11 +2298,7 @@ pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
     choice_filter.zone = Some(Zone::Library);
 
     Ok(Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(
-            library_owner.clone(),
-            count.clone(),
-            looked_tag.clone(),
-        ),
+        EffectAst::subject_verb_look_at_top_cards(library_owner, count.clone(), looked_tag.clone()),
         EffectAst::ChooseTaggedObjectsInZone {
             filter: choice_filter,
             count: exile_count,
@@ -2398,7 +2377,7 @@ pub(crate) fn parse_search_reveal_named_match_battlefield_else_hand_then_shuffle
 #[cfg(test)]
 mod looked_partition_tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn conditional_instead_count_keeps_two_exact_optional_looked_partitions() {
@@ -3237,7 +3216,7 @@ mod looked_partition_tests {
             looked_tag.clone()
         );
         assert_eq!(
-            branch_target(did_not, IfResultPredicate::DidNot),
+            branch_target(did_not, IfResultPredicate::ExplicitDidNot),
             looked_tag.clone()
         );
     }

@@ -95,21 +95,11 @@ pub(crate) struct ControlConditionAst {
     pub(crate) requires_different_powers: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct OwnershipConditionOptions {
     pub(crate) allow_opponent_players: bool,
     pub(crate) bind_filter_owner_to_subject: bool,
     pub(crate) default_filter_zone: Option<Zone>,
-}
-
-impl Default for OwnershipConditionOptions {
-    fn default() -> Self {
-        Self {
-            allow_opponent_players: false,
-            bind_filter_owner_to_subject: false,
-            default_filter_zone: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -204,10 +194,10 @@ pub(crate) fn parse_removed_from_draft_condition(
     if filter_tokens.is_empty() || name_tokens.is_empty() {
         return None;
     }
-    let filter_words = crate::token_word_refs(filter_tokens);
-    let has_authored_zone = filter_words.iter().any(|word| {
-        crate::util::parse_zone_word(word).is_some()
-    });
+    let filter_words = crate::lexer::token_word_refs(filter_tokens);
+    let has_authored_zone = filter_words
+        .iter()
+        .any(|word| crate::util::parse_zone_word(word).is_some());
     let mut filter = parse_object_filter_with_grammar_entrypoint(filter_tokens, false)
         .or_else(|_| parse_object_filter_words(&filter_words, false))
         .ok()?;
@@ -218,9 +208,8 @@ pub(crate) fn parse_removed_from_draft_condition(
     // zone. The permissive word parser may default an otherwise zone-free
     // card descriptor to the battlefield; remove only that unauthored default.
     filter.zone = None;
-    let mut with_cards_named = crate::token_word_refs(name_tokens).join(" ");
-    if let Some(source_name) =
-        crate::util::current_source_reference_name()
+    let mut with_cards_named = crate::lexer::token_word_refs(name_tokens).join(" ");
+    if let Some(source_name) = crate::util::current_source_reference_name()
         && source_name.eq_ignore_ascii_case(&with_cards_named)
     {
         with_cards_named = source_name;
@@ -1125,7 +1114,7 @@ pub(crate) fn parse_object_attached_to_object_condition(
         attachment_filter,
         attached_to_filter,
         comparison,
-        display: crate::token_word_refs(tokens).join(" "),
+        display: crate::lexer::token_word_refs(tokens).join(" "),
     })
 }
 
@@ -1284,7 +1273,7 @@ pub(crate) fn parse_player_life_relation_condition(
 fn parse_player_life_relation_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeRelationConditionAst> {
-    let words = crate::token_word_refs(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
     if words
         == [
             "you", "have", "the", "most", "life", "or", "are", "tied", "for", "most", "life",
@@ -1701,10 +1690,11 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
             object_tokens,
             window,
             other,
+            you_had_surface,
         } => {
             let mut object_tokens = object_tokens;
             let mut min_count = None;
-            let leading_words = crate::token_word_refs(object_tokens);
+            let leading_words = crate::lexer::token_word_refs(object_tokens);
             let counted = match leading_words.as_slice() {
                 ["two", "or", "more", ..] => Some(2u32),
                 ["three", "or", "more", ..] => Some(3u32),
@@ -1735,6 +1725,7 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
             if other {
                 filter.other = true;
             }
+            filter.set_you_had_entry_surface(you_had_surface);
             Some(BattlefieldEntryConditionAst::ObjectEntered {
                 filter,
                 min_count,
@@ -1831,9 +1822,9 @@ fn parse_spell_cast_filter_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<Object
     Some(vec![parse_spell_cast_filter_tokens_single(tokens)?])
 }
 
-fn split_both_spell_cast_filter_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
+fn split_both_spell_cast_filter_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let shape = event_shapes::parse_spell_cast_filter_pair(tokens)?;
     Some((shape.left_tokens, shape.right_tokens))
 }
@@ -1978,7 +1969,7 @@ mod tests {
         .expect("lex near miss");
         assert!(parse_removed_from_draft_condition(&near_miss).is_none());
     }
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn life_change_condition_accepts_any_player_subject() {

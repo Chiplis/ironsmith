@@ -2,7 +2,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::grammar::primitives::{self, WordSliceInput};
-use crate::front_end::lexer::OwnedLexToken;
+use crate::lexer::OwnedLexToken;
 
 pub(crate) fn parse_protection_from_colored_spells_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(

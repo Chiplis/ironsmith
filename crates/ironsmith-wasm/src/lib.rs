@@ -1,3 +1,12 @@
+#![expect(
+    clippy::too_many_arguments,
+    reason = "snapshot and JS choice boundaries carry explicit perspective, visibility, identity, and cache state"
+)]
+#![expect(
+    clippy::type_complexity,
+    reason = "WASM session and cryptographic setup state retain their typed components across suspension boundaries"
+)]
+
 //! WASM-facing API for browser integration.
 //!
 //! This module provides a small wrapper around `GameState` so JavaScript can:
@@ -354,6 +363,7 @@ struct ManaPaymentView {
     excluded_source_ids: Vec<String>,
     preserved_source_ids: Vec<String>,
     prefer_life: bool,
+    planning_complete: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -661,6 +671,7 @@ fn mana_payment_view_from_pending_cast(
             .map(|id| id.0.to_string())
             .collect(),
         prefer_life: payment.request.preferences.prefer_life,
+        planning_complete: payment.planning_complete,
     })
 }
 
@@ -728,6 +739,7 @@ fn mana_payment_view_from_pending_activation(
             .map(|id| id.0.to_string())
             .collect(),
         prefer_life: payment.request.preferences.prefer_life,
+        planning_complete: payment.planning_complete,
     })
 }
 
@@ -789,6 +801,7 @@ fn mana_payment_view_from_context(
             .map(|id| id.0.to_string())
             .collect(),
         prefer_life: context.request.preferences.prefer_life,
+        planning_complete: true,
     }
 }
 

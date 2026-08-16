@@ -195,7 +195,7 @@ pub fn str_split_once<'a>(text: &'a str, needle: &str) -> Option<(&'a str, &'a s
     crate::string_primitives::split_once(text, needle)
 }
 
-pub fn str_split_once_char<'a>(text: &'a str, needle: char) -> Option<(&'a str, &'a str)> {
+pub fn str_split_once_char(text: &str, needle: char) -> Option<(&str, &str)> {
     crate::string_primitives::split_once_char(text, needle)
 }
 

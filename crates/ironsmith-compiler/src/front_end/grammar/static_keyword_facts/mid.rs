@@ -907,7 +907,7 @@ fn contains_all_words(words: &[&str], expected: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("static keyword fact fixture should lex")

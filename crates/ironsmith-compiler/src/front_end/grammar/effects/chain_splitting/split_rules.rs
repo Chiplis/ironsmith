@@ -49,10 +49,10 @@ pub(crate) fn split_effect_chain_on_and_tokens(
     segments
 }
 
-pub(crate) fn split_segments_on_comma_then_tokens<'a>(
-    segments: Vec<&'a [OwnedLexToken]>,
+pub(crate) fn split_segments_on_comma_then_tokens(
+    segments: Vec<&[OwnedLexToken]>,
     mut is_ability_head: impl FnMut(&[OwnedLexToken]) -> bool,
-) -> Vec<&'a [OwnedLexToken]> {
+) -> Vec<&[OwnedLexToken]> {
     let mut result = Vec::new();
     for segment in segments {
         // A source sentence may contain more than one authored `, then`
@@ -203,8 +203,8 @@ pub(crate) fn split_segments_on_comma_effect_head_tokens(
                 if std::env::var_os("IRONSMITH_CHOICE_TRACE").is_some() {
                     eprintln!(
                         "comma-effect-head split: before='{}' after='{}'",
-                        crate::token_word_refs(before).join(" "),
-                        crate::token_word_refs(after).join(" ")
+                        crate::lexer::token_word_refs(before).join(" "),
+                        crate::lexer::token_word_refs(after).join(" ")
                     );
                 }
                 result.push(before);
@@ -421,11 +421,11 @@ mod tests {
 
         assert_eq!(segments.len(), 2, "{segments:#?}");
         assert_eq!(
-            crate::runtime_backend::front_end::lexer::parser_token_word_refs(segments[0]),
+            crate::lexer::parser_token_word_refs(segments[0]),
             ["reveal", "the", "top", "card", "of", "their", "library"]
         );
         assert_eq!(
-            crate::runtime_backend::front_end::lexer::parser_token_word_refs(segments[1]),
+            crate::lexer::parser_token_word_refs(segments[1]),
             [
                 "put",
                 "it",
@@ -450,9 +450,7 @@ mod tests {
         assert_eq!(segments.len(), 3, "{segments:#?}");
         let words = segments
             .iter()
-            .map(|segment| {
-                crate::runtime_backend::front_end::lexer::parser_token_word_refs(segment)
-            })
+            .map(|segment| crate::lexer::parser_token_word_refs(segment))
             .collect::<Vec<_>>();
         assert_eq!(
             words,

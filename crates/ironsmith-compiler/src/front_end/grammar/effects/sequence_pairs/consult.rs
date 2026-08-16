@@ -4,7 +4,7 @@ use winnow::combinator::opt;
 use winnow::prelude::*;
 
 use crate::cards::builders::LibraryBottomOrderAst;
-use crate::front_end::lexer::{LexStream, OwnedLexToken, TokenKind};
+use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 use crate::zone::Zone;
 
 use super::library::parse_bottom_order;
@@ -315,7 +315,7 @@ pub(crate) fn parse_consult_battlefield_graveyard_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

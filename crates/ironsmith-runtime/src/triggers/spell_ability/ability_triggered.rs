@@ -116,7 +116,6 @@ mod tests {
     use super::*;
     use crate::cards::CardDefinitionBuilder;
     use crate::events::{AbilityTriggerZoneChangeCause, RawEvent};
-    use crate::filter::ObjectFilterExt as _;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId, StableId};
     use crate::provenance::ProvNodeId;

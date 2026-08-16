@@ -1,9 +1,9 @@
 use super::grammar::activation_costs::ActivationCostCst;
 use super::lexer::OwnedLexToken;
-use super::shared_types::{LineInfo, MetadataLine};
 use crate::ability::PresentationLabel;
 use crate::cards::builders::{EffectAst, LineAst, ParsedLevelAbilityItemAst, PredicateAst};
 use crate::ir::ChosenOptionContext;
+use crate::model::facts::{LineInfo, MetadataLine};
 
 #[derive(Debug, Clone)]
 pub(crate) enum KeywordLinePayloadCst {
