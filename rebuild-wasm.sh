@@ -26,6 +26,8 @@ FRONTEND_CARDS_DIR="${IRONSMITH_FRONTEND_CARDS_DIR:-$DEFAULT_FRONTEND_CARDS_DIR}
 SYNC_SCRYFALL_CARDS="${IRONSMITH_SYNC_SCRYFALL_CARDS:-1}"
 NO_DEFAULT_FEATURES=1
 WASM_OPT_LEVEL="${IRONSMITH_WASM_OPT_LEVEL:--O1}"
+WASM_CARGO_PROFILE="wasm-release"
+ARTIFACT_COMPILER_FINGERPRINT=""
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -52,7 +54,8 @@ Examples:
   ./rebuild-wasm.sh --features wasm,generated-registry --default-features
 
 Notes:
-  - Cargo always builds the WASM crate in release mode.
+  - Cargo builds WASM with the Binaryen-oriented wasm-release profile.
+  - Native corpus tools use the optimized release profile.
   - wasm-opt is skipped by default for faster iteration; pass --release to enable it.
   - Scryfall Default Cards are downloaded to $DEFAULT_CARDS_FILE when Scryfall publishes a newer bulk-data updated_at.
   - Registry DB rows are inserted only for cards not already present; existing registry cards are not updated or pruned during this rebuild preflight.
@@ -69,7 +72,7 @@ USAGE
 
 write_frontend_cards_cache_manifest() {
   local target="$1"
-  python3 - "$ROOT_DIR" "$DB_PATH" "$target" <<'PY'
+  python3 - "$ROOT_DIR" "$DB_PATH" "$target" "$ARTIFACT_COMPILER_FINGERPRINT" <<'PY'
 import hashlib
 import json
 import sys
@@ -78,6 +81,7 @@ from pathlib import Path
 root = Path(sys.argv[1]).resolve()
 db_path = Path(sys.argv[2]).resolve()
 target = Path(sys.argv[3])
+artifact_compiler_fingerprint = sys.argv[4]
 
 
 def file_sha256(path: Path) -> str:
@@ -93,11 +97,13 @@ inputs = [
     ("scripts/generate_baked_registry.py", root / "scripts" / "generate_baked_registry.py"),
     ("scripts/stream_scryfall_blocks.py", root / "scripts" / "stream_scryfall_blocks.py"),
     ("artifact-baker", root / "crates" / "ironsmith-artifact-baker" / "src" / "main.rs"),
+    ("artifact-compiler-fingerprint", root / "scripts" / "artifact_compiler_fingerprint.py"),
     ("registry-db", db_path),
 ]
 
 payload = {
     "schemaVersion": 1,
+    "artifactCompilerFingerprint": artifact_compiler_fingerprint,
     "inputs": [
         {
             "label": label,
@@ -385,6 +391,7 @@ require_cmd wasm-bindgen
 require_cmd python3
 
 mkdir -p "$ROOT_DIR/target"
+ARTIFACT_COMPILER_FINGERPRINT="$(python3 "$ROOT_DIR/scripts/artifact_compiler_fingerprint.py")"
 sync_scryfall_cards_for_rebuild
 
 if [[ ! -f "$DB_PATH" ]]; then
@@ -473,8 +480,9 @@ PY
     --db-path "$DB_PATH" \
     --out "$ROOT_DIR/target/generated_registry_for_frontend_assets.rs" \
     --frontend-cards-dir "$FRONTEND_CARDS_DIR"
-  cargo run --release -p ironsmith-artifact-baker --bin bake_card_artifacts -- \
-    --cards-dir "$FRONTEND_CARDS_DIR"
+  IRONSMITH_ARTIFACT_COMPILER_FINGERPRINT="$ARTIFACT_COMPILER_FINGERPRINT" \
+    cargo run --release -p ironsmith-artifact-baker --bin bake_card_artifacts -- \
+      --cards-dir "$FRONTEND_CARDS_DIR"
   mkdir -p "$FRONTEND_CARDS_DIR"
   mv -f "$PENDING_FRONTEND_CARDS_CACHE_MANIFEST" "$FRONTEND_CARDS_CACHE_MANIFEST"
   echo "[INFO] synced frontend card compilation assets: $FRONTEND_CARDS_DIR"
@@ -486,7 +494,7 @@ if feature_enabled "generated-registry"; then
 else
   echo "[INFO] generated registry disabled; WASM will load card compilation assets from frontend cards/"
 fi
-echo "[INFO] wasm build profile: release"
+echo "[INFO] wasm build profile: $WASM_CARGO_PROFILE"
 if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
   echo "[INFO] cargo default features: disabled"
 else
@@ -538,7 +546,7 @@ build_split_wasm_package() {
     build
     "${cargo_packages[@]}"
     --target wasm32-unknown-unknown
-    --release
+    --profile "$WASM_CARGO_PROFILE"
   )
   if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
     cargo_args+=(--no-default-features)
@@ -547,9 +555,9 @@ build_split_wasm_package() {
   cargo "${cargo_args[@]}"
 
   raw_wasm_files=(
-    "$ROOT_DIR/target/wasm32-unknown-unknown/release/ironsmith_engine_wasm.wasm"
-    "$ROOT_DIR/target/wasm32-unknown-unknown/release/ironsmith_compiler_wasm.wasm"
-    "$ROOT_DIR/target/wasm32-unknown-unknown/release/ironsmith_verifier_wasm.wasm"
+    "$ROOT_DIR/target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_engine_wasm.wasm"
+    "$ROOT_DIR/target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_compiler_wasm.wasm"
+    "$ROOT_DIR/target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_verifier_wasm.wasm"
   )
   artifact_names=(engine compiler verifier)
   for artifact in "${raw_wasm_files[@]}"; do
