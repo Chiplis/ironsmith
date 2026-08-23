@@ -54,13 +54,13 @@ fn compile_artifact(input: CompileCardInput) -> Result<CompiledCardArtifact, Str
     };
     let wire_definition = wire_definition_from_serializable(&compiled.definition)
         .map_err(|error| format!("failed to encode compiled definition: {error}"))?;
-    let ability_labels = input
-        .text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect();
+    let runtime_definition =
+        ironsmith_runtime_catalog::artifact_materializer::materialize_definition(
+            wire_definition.clone(),
+        )
+        .map_err(|error| format!("failed to materialize compiled definition: {error}"))?;
+    let canonical_text = ironsmith_text::compiled_text_lines(&runtime_definition).join("\n");
+    let ability_labels = ironsmith_text::ability_surface_texts(&runtime_definition);
 
     let mut artifact = CompiledCardArtifact::new(
         ArtifactCardIdentity {
@@ -72,7 +72,7 @@ fn compile_artifact(input: CompileCardInput) -> Result<CompiledCardArtifact, Str
         },
         CompiledCardPayload {
             definition: wire_definition,
-            canonical_text: input.text.trim().to_string(),
+            canonical_text,
             ability_labels,
         },
         concat!("ironsmith-compiler/", env!("CARGO_PKG_VERSION")),

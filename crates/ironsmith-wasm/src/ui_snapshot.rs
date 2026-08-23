@@ -10,7 +10,7 @@ use serde::Serialize;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsValue;
 
-use ironsmith::cards::CardRegistry;
+use ironsmith::cards::{CardDefinition, CardRegistry};
 use ironsmith::combat_state::AttackTarget;
 use ironsmith::decision::GameResult;
 use ironsmith::decisions::context::DecisionContext;
@@ -2049,6 +2049,7 @@ impl GameSnapshot {
 pub(super) fn build_object_details_snapshot(
     game: &GameState,
     id: ObjectId,
+    definition: Option<&CardDefinition>,
 ) -> Option<ObjectDetailsSnapshot> {
     let obj = game.object(id)?;
     let current_name = game
@@ -2084,12 +2085,11 @@ pub(super) fn build_object_details_snapshot(
         &obj.subtypes,
     );
 
-    let abilities = game
+    let current_abilities = game
         .current_abilities(id)
-        .unwrap_or_else(|| obj.abilities_vec())
-        .iter()
-        .map(ironsmith::runtime_display::ability_surface_text)
-        .collect();
+        .unwrap_or_else(|| obj.abilities_vec());
+    let abilities =
+        ironsmith::runtime_display::current_ability_surface_texts(&current_abilities, definition);
 
     Some(ObjectDetailsSnapshot {
         id: obj.id.0,

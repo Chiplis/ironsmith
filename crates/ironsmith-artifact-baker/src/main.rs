@@ -3,7 +3,8 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use ironsmith_compiled_artifact::{
     ArtifactCardId, ArtifactCardIdentity, CompiledCardArtifact, CompiledCardPayload, sha256_hex,
@@ -60,6 +61,17 @@ struct CompileInput<'a> {
     layout: LinkedFaceLayout,
 }
 
+fn artifact_compiler_version() -> &'static str {
+    static VERSION: OnceLock<String> = OnceLock::new();
+    VERSION.get_or_init(|| {
+        format!(
+            "ironsmith-artifact-baker/{}+{}",
+            env!("CARGO_PKG_VERSION"),
+            option_env!("IRONSMITH_ARTIFACT_COMPILER_FINGERPRINT").unwrap_or("development")
+        )
+    })
+}
+
 fn compile_artifact(input: CompileInput<'_>) -> Result<CompiledCardArtifact, String> {
     let builder = CardDefinitionBuilder::new(CardId::from_raw(input.local_id), input.name);
     let mut compiled = CompilerFacade::new()
@@ -77,6 +89,13 @@ fn compile_artifact(input: CompileInput<'_>) -> Result<CompiledCardArtifact, Str
     compiled.definition.card.linked_face_layout = input.layout;
     let definition = wire_definition_from_serializable(&compiled.definition)
         .map_err(|error| format!("failed to encode {}: {error}", input.name))?;
+    let runtime_definition =
+        ironsmith_runtime_catalog::artifact_materializer::materialize_definition(
+            definition.clone(),
+        )
+        .map_err(|error| format!("failed to materialize {}: {error}", input.name))?;
+    let canonical_text = ironsmith_text::compiled_text_lines(&runtime_definition).join("\n");
+    let ability_labels = ironsmith_text::ability_surface_texts(&runtime_definition);
     let mut artifact = CompiledCardArtifact::new(
         ArtifactCardIdentity {
             local_id: ArtifactCardId(input.local_id),
@@ -87,16 +106,10 @@ fn compile_artifact(input: CompileInput<'_>) -> Result<CompiledCardArtifact, Str
         },
         CompiledCardPayload {
             definition,
-            canonical_text: input.text.trim().to_string(),
-            ability_labels: input
-                .text
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .map(str::to_string)
-                .collect(),
+            canonical_text,
+            ability_labels,
         },
-        concat!("ironsmith-artifact-baker/", env!("CARGO_PKG_VERSION")),
+        artifact_compiler_version(),
         input.text.as_bytes(),
     );
     artifact.semantic_score = input.score.map(|score| score.clamp(0.0, 1.0));
@@ -107,6 +120,11 @@ fn compile_artifact(input: CompileInput<'_>) -> Result<CompiledCardArtifact, Str
 fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, String> {
     match &source.group {
         CardSourceGroup::Single { name, block, score } => {
+            if score.is_none() {
+                return Err(format!(
+                    "{name}: no validated strict compilation snapshot is available"
+                ));
+            }
             Ok(vec![compile_artifact(CompileInput {
                 name,
                 text: block,
@@ -122,6 +140,12 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
                 return Err(format!(
                     "{}: linked source must contain exactly two faces",
                     source.canonical_name
+                ));
+            }
+            if let Some(face) = faces.iter().find(|face| face.score.is_none()) {
+                return Err(format!(
+                    "{}: no validated strict compilation snapshot is available",
+                    face.name
                 ));
             }
             let layout = if layout == "split" {
@@ -171,7 +195,9 @@ fn valid_existing_artifacts(
     let texts = source_texts(source);
     if artifacts.len() != texts.len()
         || artifacts.iter().zip(texts).any(|(artifact, text)| {
-            artifact.validate().is_err() || artifact.source_checksum != sha256_hex(text.as_bytes())
+            artifact.validate().is_err()
+                || artifact.compiler_version != artifact_compiler_version()
+                || artifact.source_checksum != sha256_hex(text.as_bytes())
         })
     {
         return None;
@@ -202,6 +228,17 @@ struct PendingRoute {
 struct CompileJob {
     source: CardSourceFile,
     routes: Vec<PendingRoute>,
+}
+
+struct BakeSummary {
+    written: usize,
+    retained: usize,
+    unique_sources: usize,
+    failed: usize,
+    workers: usize,
+    scan_time: Duration,
+    work_time: Duration,
+    total_time: Duration,
 }
 
 fn write_compiled_route(
@@ -235,7 +272,8 @@ fn write_compiled_route(
     Ok(failed)
 }
 
-fn bake(cards_dir: &Path) -> Result<(usize, usize, usize, usize), String> {
+fn bake(cards_dir: &Path, requested_workers: Option<usize>) -> Result<BakeSummary, String> {
+    let started = Instant::now();
     let paths = card_asset_paths(cards_dir)?;
     let mut jobs = HashMap::<String, CompileJob>::new();
     let mut source_keys = HashSet::new();
@@ -266,15 +304,20 @@ fn bake(cards_dir: &Path) -> Result<(usize, usize, usize, usize), String> {
             });
     }
 
+    let scan_time = started.elapsed();
     let pending_routes = paths.len() - retained;
     let queue = Arc::new(Mutex::new(jobs.into_values().collect::<VecDeque<_>>()));
     let written = Arc::new(AtomicUsize::new(0));
     let failed = Arc::new(AtomicUsize::new(0));
     let fatal_error = Arc::new(Mutex::new(None::<String>));
-    let worker_count = std::thread::available_parallelism()
-        .map(|count| count.get())
-        .unwrap_or(1)
-        .min(8);
+    let worker_count = requested_workers
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|count| count.get())
+                .unwrap_or(1)
+        })
+        .clamp(1, 64);
+    let work_started = Instant::now();
     let mut workers = Vec::with_capacity(worker_count);
     for worker_index in 0..worker_count {
         let queue = Arc::clone(&queue);
@@ -306,8 +349,11 @@ fn bake(cards_dir: &Path) -> Result<(usize, usize, usize, usize), String> {
                                     }
                                     let count = written.fetch_add(1, Ordering::Relaxed) + 1;
                                     if count % 500 == 0 || count == pending_routes {
+                                        let elapsed = work_started.elapsed().as_secs_f64();
+                                        let rate = count as f64 / elapsed.max(f64::EPSILON);
                                         println!(
-                                            "processed {count}/{pending_routes} pending card routes"
+                                            "processed {count}/{pending_routes} pending card routes \
+                                             ({rate:.1} routes/s, {elapsed:.1}s elapsed)"
                                         );
                                     }
                                 }
@@ -330,34 +376,58 @@ fn bake(cards_dir: &Path) -> Result<(usize, usize, usize, usize), String> {
     if let Some(error) = fatal_error.lock().expect("error lock poisoned").take() {
         return Err(error);
     }
-    Ok((
-        written.load(Ordering::Relaxed),
+    Ok(BakeSummary {
+        written: written.load(Ordering::Relaxed),
         retained,
-        source_keys.len(),
-        failed.load(Ordering::Relaxed),
-    ))
+        unique_sources: source_keys.len(),
+        failed: failed.load(Ordering::Relaxed),
+        workers: worker_count,
+        scan_time,
+        work_time: work_started.elapsed(),
+        total_time: started.elapsed(),
+    })
 }
 
 fn main() -> Result<(), String> {
     let mut args = env::args_os().skip(1);
     let mut cards_dir = None;
+    let mut workers = None;
     while let Some(argument) = args.next() {
         if argument == "--cards-dir" {
             cards_dir = args.next().map(PathBuf::from);
+        } else if argument == "--workers" {
+            let value = args
+                .next()
+                .ok_or_else(|| "--workers requires a value".to_string())?;
+            workers = Some(
+                value
+                    .to_string_lossy()
+                    .parse::<usize>()
+                    .map_err(|_| "--workers must be a positive integer".to_string())?,
+            );
         } else {
             return Err(format!("unknown argument: {}", argument.to_string_lossy()));
         }
     }
     let cards_dir = cards_dir.ok_or_else(|| "--cards-dir is required".to_string())?;
-    let (written, retained, unique_sources, failed) = std::thread::Builder::new()
+    let summary = std::thread::Builder::new()
         .name("artifact-baker".to_string())
         .stack_size(64 * 1024 * 1024)
-        .spawn(move || bake(&cards_dir))
+        .spawn(move || bake(&cards_dir, workers))
         .map_err(|error| format!("failed to start artifact baker: {error}"))?
         .join()
         .map_err(|_| "artifact baker worker panicked".to_string())??;
     println!(
-        "baked {unique_sources} source groups; wrote {written} routes, retained {retained} current routes, and recorded {failed} failed routes"
+        "baked {} source groups with {} workers; wrote {} routes, retained {} current routes, \
+         and recorded {} failed routes in {:.3}s (scan {:.3}s, compile/write {:.3}s)",
+        summary.unique_sources,
+        summary.workers,
+        summary.written,
+        summary.retained,
+        summary.failed,
+        summary.total_time.as_secs_f64(),
+        summary.scan_time.as_secs_f64(),
+        summary.work_time.as_secs_f64(),
     );
     Ok(())
 }
@@ -365,6 +435,20 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_strict_snapshot_skips_parser_work() {
+        let source = CardSourceFile {
+            canonical_name: "Unsupported Example".to_string(),
+            group: CardSourceGroup::Single {
+                name: "Unsupported Example".to_string(),
+                block: "Type: Sorcery\nPerform an unsupported action.".to_string(),
+                score: None,
+            },
+        };
+        let error = compile_source(&source).expect_err("unvalidated source should be skipped");
+        assert!(error.contains("no validated strict compilation snapshot"));
+    }
 
     #[test]
     fn linked_artifacts_keep_local_face_relationships() {

@@ -18,6 +18,26 @@ pub(super) fn yawgmoth_activation_stays_cancelable_through_target_and_cost_promp
         alice,
         Zone::Battlefield,
     );
+    assert_eq!(
+        describe_action(
+            &wasm.game,
+            &LegalAction::ActivateAbility {
+                source: yawgmoth_id,
+                ability_index: 1,
+            },
+        ),
+        "Activate Yawgmoth, Thran Physician: Pay 1 life, Sacrifice another creature: Put a -1/-1 counter on up to one target creature and draw a card."
+    );
+    assert_eq!(
+        describe_action(
+            &wasm.game,
+            &LegalAction::ActivateAbility {
+                source: yawgmoth_id,
+                ability_index: 2,
+            },
+        ),
+        "Activate Yawgmoth, Thran Physician: {B}{B}, Discard a card: Proliferate."
+    );
     let target_id =
         wasm.game
             .create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);

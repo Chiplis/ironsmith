@@ -253,16 +253,18 @@ pub fn compile_card_text_with_policy(
     allow_unsupported: bool,
 ) -> Result<facade::CompiledCardText<CardDefinition>, CardTextError> {
     let text = text.into();
-    stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, move || {
-        let mut context = parse_context_for_builder(&builder, &text, allow_unsupported);
-        compiler_pipeline::parse_text_with_annotations_lowered_with_facts_context(
-            &mut context,
-            builder,
-            text,
-        )
-        .map(|lowered| facade::CompiledCardText {
-            definition: lowered.definition,
-            annotations: lowered.annotations,
+    util::with_cached_parser_trace(move || {
+        stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, move || {
+            let mut context = parse_context_for_builder(&builder, &text, allow_unsupported);
+            compiler_pipeline::parse_text_with_annotations_lowered_with_facts_context(
+                &mut context,
+                builder,
+                text,
+            )
+            .map(|lowered| facade::CompiledCardText {
+                definition: lowered.definition,
+                annotations: lowered.annotations,
+            })
         })
     })
 }

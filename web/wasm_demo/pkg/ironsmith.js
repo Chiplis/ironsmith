@@ -1,1602 +1,283 @@
-/* @ts-self-types="./ironsmith.d.ts" */
+import initEngine, { WasmGame } from "./engine.js";
+import initCompiler, {
+  compileCardArtifact,
+  validateCompiledCardArtifact,
+} from "./compiler.js";
+import initVerifier, {
+  ziffleBuildRevealToken,
+  ziffleBuildRevealTokens,
+  ziffleBuildShuffleStep,
+  ziffleKeygen,
+  ziffleRevealCard,
+  ziffleRevealCards,
+  ziffleVerifyShuffle,
+} from "./verifier.js";
 
-export class WasmGame {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        WasmGameFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_wasmgame_free(ptr, 0);
-    }
-    /**
-     * Add a specific card by name to a player's hand.
-     * @param {number} player_index
-     * @param {string} card_name
-     * @returns {bigint}
-     */
-    addCardToHand(player_index, card_name) {
-        const ptr0 = passStringToWasm0(card_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmgame_addCardToHand(this.__wbg_ptr, player_index, ptr0, len0);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return BigInt.asUintN(64, ret[0]);
-    }
-    /**
-     * Add a specific card by name to a player's zone.
-     *
-     * When `skip_triggers` is true the card is placed directly without
-     * processing ETB or other zone-change triggers.
-     * @param {number} player_index
-     * @param {string} card_name
-     * @param {string} zone_name
-     * @param {boolean} skip_triggers
-     * @returns {bigint}
-     */
-    addCardToZone(player_index, card_name, zone_name, skip_triggers) {
-        const ptr0 = passStringToWasm0(card_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(zone_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmgame_addCardToZone(this.__wbg_ptr, player_index, ptr0, len0, ptr1, len1, skip_triggers);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return BigInt.asUintN(64, ret[0]);
-    }
-    /**
-     * Add many cards to player zones and recompute UI state once.
-     * @param {any} cards_js
-     * @returns {any}
-     */
-    addCardsToZones(cards_js) {
-        const ret = wasm.wasmgame_addCardsToZones(this.__wbg_ptr, cards_js);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Add a signed life delta (negative = damage, positive = gain).
-     * @param {number} player_index
-     * @param {number} delta
-     */
-    addLifeDelta(player_index, delta) {
-        const ret = wasm.wasmgame_addLifeDelta(this.__wbg_ptr, player_index, delta);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Advance to next phase (or next turn if ending phase).
-     * Resets the TurnRunner so it picks up from the new game state.
-     */
-    advancePhase() {
-        const ret = wasm.wasmgame_advancePhase(this.__wbg_ptr);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    applyVerifiedHiddenLibraryShuffle(input) {
-        const ret = wasm.wasmgame_applyVerifiedHiddenLibraryShuffle(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Return locally-known card name suggestions from the generated registry.
-     * @param {string} query
-     * @param {number | null} [limit]
-     * @returns {any}
-     */
-    autocompleteCardNames(query, limit) {
-        const ptr0 = passStringToWasm0(query, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmgame_autocompleteCardNames(this.__wbg_ptr, ptr0, len0, isLikeNone(limit) ? Number.MAX_SAFE_INTEGER : (limit) >>> 0);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Cancel the current pending decision chain.
-     *
-     * Rollback preference:
-     * 1. The active user-action checkpoint (start of this spell/ability chain).
-     * 2. The active replay-action checkpoint (for speculative nested prompts).
-     * 3. The priority-epoch checkpoint (start of this priority round).
-     *
-     * This mirrors "take back this action chain" behavior first, while still
-     * preserving the broader epoch rollback as a fallback.
-     * @returns {any}
-     */
-    cancelDecision() {
-        const ret = wasm.wasmgame_cancelDecision(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {string} card_name
-     * @param {string | null} [error_message]
-     * @returns {any}
-     */
-    cardLoadDiagnostics(card_name, error_message) {
-        const ptr0 = passStringToWasm0(card_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        var ptr1 = isLikeNone(error_message) ? 0 : passStringToWasm0(error_message, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        var len1 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmgame_cardLoadDiagnostics(this.__wbg_ptr, ptr0, len0, ptr1, len1);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Get the count of scored cards meeting the current threshold.
-     * @returns {number}
-     */
-    cardsMeetingThreshold() {
-        const ret = wasm.wasmgame_cardsMeetingThreshold(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
-     * Return the rules-defined chooser for a creature's combat-damage division.
-     * @param {bigint} source_id
-     * @returns {number | undefined}
-     */
-    combatDamageAssignmentPlayer(source_id) {
-        const ret = wasm.wasmgame_combatDamageAssignmentPlayer(this.__wbg_ptr, source_id);
-        return ret === 0xFFFFFF ? undefined : ret;
-    }
-    /**
-     * @param {any} payload_js
-     * @returns {bigint}
-     */
-    createCustomCard(payload_js) {
-        const ret = wasm.wasmgame_createCustomCard(this.__wbg_ptr, payload_js);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return BigInt.asUintN(64, ret[0]);
-    }
-    /**
-     * Apply a player command for the currently pending decision.
-     * @param {any} command
-     * @returns {any}
-     */
-    dispatch(command) {
-        const ret = wasm.wasmgame_dispatch(this.__wbg_ptr, command);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Draw one card for a player.
-     * @param {number} player_index
-     * @returns {number}
-     */
-    drawCard(player_index) {
-        const ret = wasm.wasmgame_drawCard(this.__wbg_ptr, player_index);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * Draw opening hands for all players.
-     * @param {number} cards_per_player
-     */
-    drawOpeningHands(cards_per_player) {
-        const ret = wasm.wasmgame_drawOpeningHands(this.__wbg_ptr, cards_per_player);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Move directly into an inserted combat phase without rebuilding from a sync checkpoint.
-     */
-    enterAdditionalCombatPhase() {
-        const ret = wasm.wasmgame_enterAdditionalCombatPhase(this.__wbg_ptr);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {bigint} object_id
-     * @returns {any}
-     */
-    exportHiddenCardOpening(object_id) {
-        const ret = wasm.wasmgame_exportHiddenCardOpening(this.__wbg_ptr, object_id);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Export a redacted checkpoint suitable for peer audit logs.
-     * @returns {any}
-     */
-    exportPublicAuditCheckpoint() {
-        const ret = wasm.wasmgame_exportPublicAuditCheckpoint(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Export an importable checkpoint redacted for one peer's legal knowledge.
-     * @param {number} perspective_index
-     * @returns {any}
-     */
-    exportRedactedSyncCheckpoint(perspective_index) {
-        const ret = wasm.wasmgame_exportRedactedSyncCheckpoint(this.__wbg_ptr, perspective_index);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Export a WASM-owned resync checkpoint that can hydrate another peer's engine.
-     * @returns {any}
-     */
-    exportSyncCheckpoint() {
-        const ret = wasm.wasmgame_exportSyncCheckpoint(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Finish a puzzle import after all requested zones have been populated.
-     */
-    finishPuzzleSetup() {
-        const ret = wasm.wasmgame_finishPuzzleSetup(this.__wbg_ptr);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Queue a forced die result for deterministic test harness scenarios.
-     * @param {number} result
-     */
-    forceNextDieRoll(result) {
-        wasm.wasmgame_forceNextDieRoll(this.__wbg_ptr, result);
-    }
-    /**
-     * Turn a face-down permanent face up without going through priority action
-     * enumeration. Ported tests use this when the UI has not exposed the
-     * special action because mana was supplied out of band.
-     * @param {number} player_index
-     * @param {bigint} object_id
-     */
-    forceTurnFaceUp(player_index, object_id) {
-        const ret = wasm.wasmgame_forceTurnFaceUp(this.__wbg_ptr, player_index, object_id);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Mark a player as having forfeited the match.
-     * @param {number} player_index
-     * @returns {any}
-     */
-    forfeitPlayer(player_index) {
-        const ret = wasm.wasmgame_forfeitPlayer(this.__wbg_ptr, player_index);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
-     * @param {string} card_name
-     * @returns {number}
-     */
-    getCardSemanticScore(card_name) {
-        const ptr0 = passStringToWasm0(card_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmgame_getCardSemanticScore(this.__wbg_ptr, ptr0, len0);
-        return ret;
-    }
-    /**
-     * Get the current semantic threshold as percentage points.
-     * @returns {number}
-     */
-    getSemanticThreshold() {
-        const ret = wasm.wasmgame_getSemanticThreshold(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {boolean}
-     */
-    hasDayNight() {
-        const ret = wasm.wasmgame_hasDayNight(this.__wbg_ptr);
-        return ret !== 0;
-    }
-    /**
-     * Replace this WASM engine with a checkpoint from the current authoritative host.
-     * @param {any} checkpoint
-     * @param {number} perspective_index
-     * @returns {any}
-     */
-    importSyncCheckpoint(checkpoint, perspective_index) {
-        const ret = wasm.wasmgame_importSyncCheckpoint(this.__wbg_ptr, checkpoint, perspective_index);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     */
-    injectTranscriptRandomSeeds(input) {
-        const ret = wasm.wasmgame_injectTranscriptRandomSeeds(this.__wbg_ptr, input);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @returns {boolean}
-     */
-    isDaytime() {
-        const ret = wasm.wasmgame_isDaytime(this.__wbg_ptr);
-        return ret !== 0;
-    }
-    /**
-     * Return whether the query resolves to a locally known card name.
-     * @param {string} query
-     * @returns {boolean}
-     */
-    isKnownCardName(query) {
-        const ptr0 = passStringToWasm0(query, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmgame_isKnownCardName(this.__wbg_ptr, ptr0, len0);
-        return ret !== 0;
-    }
-    /**
-     * @returns {any}
-     */
-    lastAdvanceUntilDecisionPerf() {
-        const ret = wasm.wasmgame_lastAdvanceUntilDecisionPerf(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @returns {any}
-     */
-    lastDispatchPerf() {
-        const ret = wasm.wasmgame_lastDispatchPerf(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @returns {any}
-     */
-    lastReplayExecutionPerf() {
-        const ret = wasm.wasmgame_lastReplayExecutionPerf(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @returns {any}
-     */
-    lastSnapshotPerf() {
-        const ret = wasm.wasmgame_lastSnapshotPerf(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @returns {any}
-     */
-    lastWorkCounters() {
-        const ret = wasm.wasmgame_lastWorkCounters(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Load explicit decks by card name. JS format: `string[][]` or
-     * `{ decks: string[][], sideboards?: string[][] }`.
-     *
-     * Deck list index maps to player index.
-     * Returns a JSON object with total and categorized failures:
-     * `{ loaded, failed, failedBelowThreshold, failedToParse }`.
-     * Unknown cards are skipped rather than aborting the entire load.
-     * @param {any} decks_js
-     * @returns {any}
-     */
-    loadDecks(decks_js) {
-        const ret = wasm.wasmgame_loadDecks(this.__wbg_ptr, decks_js);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Replace game state with demo decks and no battlefield/stack state.
-     */
-    loadDemoDecks() {
-        const ret = wasm.wasmgame_loadDemoDecks(this.__wbg_ptr);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {number} player
-     * @param {any} directive
-     * @returns {any}
-     */
-    manabrewApplyDirective(player, directive) {
-        const ret = wasm.wasmgame_manabrewApplyDirective(this.__wbg_ptr, player, directive);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Deprecated alias for a spectator-safe typed view.
-     * @returns {any}
-     */
-    manabrewPublicState() {
-        const ret = wasm.wasmgame_manabrewPublicState(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {number} player
-     * @param {number} prompt_id
-     * @param {any} output
-     * @returns {any}
-     */
-    manabrewRespond(player, prompt_id, output) {
-        const ret = wasm.wasmgame_manabrewRespond(this.__wbg_ptr, player, prompt_id, output);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Build a typed player-specific view. Passing no viewer produces a spectator-safe public view.
-     * @param {number | null} [viewer]
-     * @returns {any}
-     */
-    manabrewView(viewer) {
-        const ret = wasm.wasmgame_manabrewView(this.__wbg_ptr, isLikeNone(viewer) ? 0xFFFFFF : viewer);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Move a hand card onto the battlefield with the shared morph-style
-     * face-down overlay. This is used by ported test harnesses that set up a
-     * cast result directly when the UI has no payable cast action exposed.
-     * @param {number} player_index
-     * @param {bigint} object_id
-     * @param {number} ward_generic_cost
-     * @returns {bigint}
-     */
-    moveHandCardToBattlefieldFaceDown(player_index, object_id, ward_generic_cost) {
-        const ret = wasm.wasmgame_moveHandCardToBattlefieldFaceDown(this.__wbg_ptr, player_index, object_id, ward_generic_cost);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return BigInt.asUintN(64, ret[0]);
-    }
-    /**
-     * Construct a demo game with two players.
-     */
-    constructor() {
-        const ret = wasm.wasmgame_new();
-        this.__wbg_ptr = ret;
-        WasmGameFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
-    /**
-     * Return a detailed, human-readable object snapshot for inspector UI.
-     * @param {bigint} object_id
-     * @returns {any}
-     */
-    objectDetails(object_id) {
-        const ret = wasm.wasmgame_objectDetails(this.__wbg_ptr, object_id);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Parse/register the next batch of generated cards for startup warmup.
-     * @param {number} _chunk_size
-     * @returns {any}
-     */
-    preloadRegistryChunk(_chunk_size) {
-        const ret = wasm.wasmgame_preloadRegistryChunk(this.__wbg_ptr, _chunk_size);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Incremental generated-registry preload status.
-     * @returns {any}
-     */
-    preloadRegistryStatus() {
-        const ret = wasm.wasmgame_preloadRegistryStatus(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} command
-     * @returns {any}
-     */
-    previewCryptoRequirements(command) {
-        const ret = wasm.wasmgame_previewCryptoRequirements(this.__wbg_ptr, command);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} draft_js
-     * @returns {any}
-     */
-    previewCustomCard(draft_js) {
-        const ret = wasm.wasmgame_previewCustomCard(this.__wbg_ptr, draft_js);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} sources
-     * @returns {any}
-     */
-    registerExternalCardSources(sources) {
-        const ret = wasm.wasmgame_registerExternalCardSources(this.__wbg_ptr, sources);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {string} sources_json
-     * @returns {string}
-     */
-    registerExternalCardSourcesJson(sources_json) {
-        let deferred3_0;
-        let deferred3_1;
-        try {
-            const ptr0 = passStringToWasm0(sources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len0 = WASM_VECTOR_LEN;
-            const ret = wasm.wasmgame_registerExternalCardSourcesJson(this.__wbg_ptr, ptr0, len0);
-            var ptr2 = ret[0];
-            var len2 = ret[1];
-            if (ret[3]) {
-                ptr2 = 0; len2 = 0;
-                throw takeFromExternrefTable0(ret[2]);
-            }
-            deferred3_0 = ptr2;
-            deferred3_1 = len2;
-            return getStringFromWasm0(ptr2, len2);
-        } finally {
-            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
-        }
-    }
-    /**
-     * @param {any} decks
-     * @returns {any}
-     */
-    registerManabrewDeckSources(decks) {
-        const ret = wasm.wasmgame_registerManabrewDeckSources(this.__wbg_ptr, decks);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Number of cards currently available in the registry.
-     * @returns {number}
-     */
-    registrySize() {
-        const ret = wasm.wasmgame_registrySize(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
-     * Reset game with custom player names and starting life.
-     * @param {any} player_names
-     * @param {number} starting_life
-     */
-    reset(player_names, starting_life) {
-        const ret = wasm.wasmgame_reset(this.__wbg_ptr, player_names, starting_life);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Prepare an empty match for puzzle/board-position zone imports.
-     * @param {any} player_names
-     * @param {number} starting_life
-     */
-    resetEmpty(player_names, starting_life) {
-        const ret = wasm.wasmgame_resetEmpty(this.__wbg_ptr, player_names, starting_life);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    revealHiddenObject(input) {
-        const ret = wasm.wasmgame_revealHiddenObject(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    revealHiddenPosition(input) {
-        const ret = wasm.wasmgame_revealHiddenPosition(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    revealHiddenPositions(input) {
-        const ret = wasm.wasmgame_revealHiddenPositions(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    revealHiddenSlot(input) {
-        const ret = wasm.wasmgame_revealHiddenSlot(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {number} player_index
-     * @returns {any}
-     */
-    sampleLoadedDeckSeed(player_index) {
-        const ret = wasm.wasmgame_sampleLoadedDeckSeed(this.__wbg_ptr, player_index);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {number} player_index
-     * @param {number} marker
-     * @returns {any}
-     */
-    selectGrandMeleeStack(player_index, marker) {
-        const ret = wasm.wasmgame_selectGrandMeleeStack(this.__wbg_ptr, player_index, marker);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Enable or disable the CR 803 attack-left/attack-right option.
-     * @param {string | null} [direction]
-     */
-    setAttackDirection(direction) {
-        var ptr0 = isLikeNone(direction) ? 0 : passStringToWasm0(direction, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        var len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmgame_setAttackDirection(this.__wbg_ptr, ptr0, len0);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Record an attacking band for the current combat.
-     * @param {Array<any>} member_ids
-     */
-    setAttackingBand(member_ids) {
-        const ret = wasm.wasmgame_setAttackingBand(this.__wbg_ptr, member_ids);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {boolean} enabled
-     */
-    setAutoChooseSingleObjectDecisions(enabled) {
-        wasm.wasmgame_setAutoChooseSingleObjectDecisions(this.__wbg_ptr, enabled);
-    }
-    /**
-     * Toggle automatic cleanup discard (random cards).
-     * @param {boolean} enabled
-     */
-    setAutoCleanupDiscard(enabled) {
-        wasm.wasmgame_setAutoCleanupDiscard(this.__wbg_ptr, enabled);
-    }
-    /**
-     * Set an explicit combat damage assignment for the next combat damage step.
-     * @param {bigint} attacker_id
-     * @param {bigint} recipient_id
-     * @param {number} amount
-     */
-    setCombatDamageAssignment(attacker_id, recipient_id, amount) {
-        wasm.wasmgame_setCombatDamageAssignment(this.__wbg_ptr, attacker_id, recipient_id, amount);
-    }
-    /**
-     * Set a combat-damage assignment on behalf of the rules-defined chooser.
-     * @param {number} assigning_player
-     * @param {bigint} source_id
-     * @param {bigint} recipient_id
-     * @param {number} amount
-     */
-    setCombatDamageAssignmentForPlayer(assigning_player, source_id, recipient_id, amount) {
-        const ret = wasm.wasmgame_setCombatDamageAssignmentForPlayer(this.__wbg_ptr, assigning_player, source_id, recipient_id, amount);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {boolean} daytime
-     * @returns {any}
-     */
-    setDaytime(daytime) {
-        const ret = wasm.wasmgame_setDaytime(this.__wbg_ptr, daytime);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Enable or disable the CR 804 deploy-creatures option.
-     * @param {boolean} enabled
-     */
-    setDeployCreatures(enabled) {
-        wasm.wasmgame_setDeployCreatures(this.__wbg_ptr, enabled);
-    }
-    /**
-     * Set a player's life total.
-     * @param {number} player_index
-     * @param {number} life
-     */
-    setLife(player_index, life) {
-        const ret = wasm.wasmgame_setLife(this.__wbg_ptr, player_index, life);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Enable the CR 801 multiplayer option in current player-seat order.
-     * @param {any} ranges
-     */
-    setLimitedRangeOfInfluence(ranges) {
-        const ret = wasm.wasmgame_setLimitedRangeOfInfluence(this.__wbg_ptr, ranges);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Set local perspective explicitly.
-     * @param {number} player_index
-     */
-    setPerspective(player_index) {
-        const ret = wasm.wasmgame_setPerspective(this.__wbg_ptr, player_index);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Set the semantic similarity threshold for card addition (0..100%, 0 = off).
-     * @param {number} threshold
-     */
-    setSemanticThreshold(threshold) {
-        wasm.wasmgame_setSemanticThreshold(this.__wbg_ptr, threshold);
-    }
-    /**
-     * Record one team's chosen within-team order for CR 805 simultaneous
-     * choices, actions, and trigger placement.
-     * @param {number} team
-     * @param {any} order
-     */
-    setSharedTeamMemberOrder(team, order) {
-        const ret = wasm.wasmgame_setSharedTeamMemberOrder(this.__wbg_ptr, team, order);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Enable or disable the CR 805 shared-team-turns option.
-     * @param {boolean} enabled
-     */
-    setSharedTeamTurns(enabled) {
-        const ret = wasm.wasmgame_setSharedTeamTurns(this.__wbg_ptr, enabled);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Configure explicit multiplayer teams as arrays of player indices.
-     * @param {any} teams
-     */
-    setTeams(teams) {
-        const ret = wasm.wasmgame_setTeams(this.__wbg_ptr, teams);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Return a JS object snapshot of public game state.
-     * @returns {any}
-     */
-    snapshot() {
-        const ret = wasm.wasmgame_snapshot(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Return game snapshot as pretty JSON.
-     * @returns {string}
-     */
-    snapshotJson() {
-        let deferred2_0;
-        let deferred2_1;
-        try {
-            const ret = wasm.wasmgame_snapshotJson(this.__wbg_ptr);
-            var ptr1 = ret[0];
-            var len1 = ret[1];
-            if (ret[3]) {
-                ptr1 = 0; len1 = 0;
-                throw takeFromExternrefTable0(ret[2]);
-            }
-            deferred2_0 = ptr1;
-            deferred2_1 = len1;
-            return getStringFromWasm0(ptr1, len1);
-        } finally {
-            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-        }
-    }
-    /**
-     * @param {any} config
-     * @returns {any}
-     */
-    startManabrewMatch(config) {
-        const ret = wasm.wasmgame_startManabrewMatch(this.__wbg_ptr, config);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Start a fully specified match from a synchronized lobby payload.
-     * @param {any} config
-     * @returns {any}
-     */
-    startMatch(config) {
-        const ret = wasm.wasmgame_startMatch(this.__wbg_ptr, config);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * Switch local perspective to the next player.
-     * @returns {number}
-     */
-    switchPerspective() {
-        const ret = wasm.wasmgame_switchPerspective(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0];
-    }
-    /**
-     * Return the current UI state from the selected player perspective.
-     * @returns {any}
-     */
-    uiState() {
-        const ret = wasm.wasmgame_uiState(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} config
-     * @returns {any}
-     */
-    validateManabrewMatchConfig(config) {
-        const ret = wasm.wasmgame_validateManabrewMatchConfig(this.__wbg_ptr, config);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} config
-     * @returns {any}
-     */
-    validateMatchConfig(config) {
-        const ret = wasm.wasmgame_validateMatchConfig(this.__wbg_ptr, config);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    ziffleBuildRevealToken(input) {
-        const ret = wasm.wasmgame_ziffleBuildRevealToken(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    ziffleBuildRevealTokens(input) {
-        const ret = wasm.wasmgame_ziffleBuildRevealTokens(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    ziffleBuildShuffleStep(input) {
-        const ret = wasm.wasmgame_ziffleBuildShuffleStep(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    ziffleKeygen(input) {
-        const ret = wasm.wasmgame_ziffleKeygen(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    ziffleRevealCard(input) {
-        const ret = wasm.wasmgame_ziffleRevealCard(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    ziffleRevealCards(input) {
-        const ret = wasm.wasmgame_ziffleRevealCards(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {any} input
-     * @returns {any}
-     */
-    ziffleVerifyShuffle(input) {
-        const ret = wasm.wasmgame_ziffleVerifyShuffle(this.__wbg_ptr, input);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-}
-if (Symbol.dispose) WasmGame.prototype[Symbol.dispose] = WasmGame.prototype.free;
+export * from "./engine.js";
+export {
+  compileCardArtifact,
+  validateCompiledCardArtifact,
+  ziffleBuildRevealToken,
+  ziffleBuildRevealTokens,
+  ziffleBuildShuffleStep,
+  ziffleKeygen,
+  ziffleRevealCard,
+  ziffleRevealCards,
+  ziffleVerifyShuffle,
+};
 
-export function wasm_start() {
-    wasm.wasm_start();
-}
-function __wbg_get_imports() {
-    const import0 = {
-        __proto__: null,
-        __wbg_Error_3639a60ed15f87e7: function(arg0, arg1) {
-            const ret = Error(getStringFromWasm0(arg0, arg1));
-            return ret;
-        },
-        __wbg_Number_a3d737fd183f7dca: function(arg0) {
-            const ret = Number(arg0);
-            return ret;
-        },
-        __wbg_String_8564e559799eccda: function(arg0, arg1) {
-            const ret = String(arg1);
-            const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
-        __wbg___wbindgen_bigint_get_as_i64_3af6d4ca77193a4b: function(arg0, arg1) {
-            const v = arg1;
-            const ret = typeof(v) === 'bigint' ? v : undefined;
-            getDataViewMemory0().setBigInt64(arg0 + 8 * 1, isLikeNone(ret) ? BigInt(0) : ret, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
-        },
-        __wbg___wbindgen_boolean_get_c3dd5c39f1b5a12b: function(arg0) {
-            const v = arg0;
-            const ret = typeof(v) === 'boolean' ? v : undefined;
-            return isLikeNone(ret) ? 0xFFFFFF : ret ? 1 : 0;
-        },
-        __wbg___wbindgen_debug_string_07cb72cfcc952e2b: function(arg0, arg1) {
-            const ret = debugString(arg1);
-            const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
-        __wbg___wbindgen_in_2617fa76397620d3: function(arg0, arg1) {
-            const ret = arg0 in arg1;
-            return ret;
-        },
-        __wbg___wbindgen_is_bigint_d6a8167cac401b95: function(arg0) {
-            const ret = typeof(arg0) === 'bigint';
-            return ret;
-        },
-        __wbg___wbindgen_is_function_2f0fd7ceb86e64c5: function(arg0) {
-            const ret = typeof(arg0) === 'function';
-            return ret;
-        },
-        __wbg___wbindgen_is_object_5b22ff2418063a9c: function(arg0) {
-            const val = arg0;
-            const ret = typeof(val) === 'object' && val !== null;
-            return ret;
-        },
-        __wbg___wbindgen_is_string_eddc07a3efad52e6: function(arg0) {
-            const ret = typeof(arg0) === 'string';
-            return ret;
-        },
-        __wbg___wbindgen_is_undefined_244a92c34d3b6ec0: function(arg0) {
-            const ret = arg0 === undefined;
-            return ret;
-        },
-        __wbg___wbindgen_jsval_eq_403eaa3610500a25: function(arg0, arg1) {
-            const ret = arg0 === arg1;
-            return ret;
-        },
-        __wbg___wbindgen_jsval_loose_eq_1978f1e77b4bce62: function(arg0, arg1) {
-            const ret = arg0 == arg1;
-            return ret;
-        },
-        __wbg___wbindgen_number_get_dd6d69a6079f26f1: function(arg0, arg1) {
-            const obj = arg1;
-            const ret = typeof(obj) === 'number' ? obj : undefined;
-            getDataViewMemory0().setFloat64(arg0 + 8 * 1, isLikeNone(ret) ? 0 : ret, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
-        },
-        __wbg___wbindgen_string_get_965592073e5d848c: function(arg0, arg1) {
-            const obj = arg1;
-            const ret = typeof(obj) === 'string' ? obj : undefined;
-            var ptr1 = isLikeNone(ret) ? 0 : passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            var len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
-        __wbg___wbindgen_throw_9c75d47bf9e7731e: function(arg0, arg1) {
-            throw new Error(getStringFromWasm0(arg0, arg1));
-        },
-        __wbg_call_add9e5a76382e668: function() { return handleError(function (arg0, arg1) {
-            const ret = arg0.call(arg1);
-            return ret;
-        }, arguments); },
-        __wbg_done_b1afd6201ac045e0: function(arg0) {
-            const ret = arg0.done;
-            return ret;
-        },
-        __wbg_entries_bb9843ba73dc70d6: function(arg0) {
-            const ret = Object.entries(arg0);
-            return ret;
-        },
-        __wbg_error_a6fa202b58aa1cd3: function(arg0, arg1) {
-            let deferred0_0;
-            let deferred0_1;
-            try {
-                deferred0_0 = arg0;
-                deferred0_1 = arg1;
-                console.error(getStringFromWasm0(arg0, arg1));
-            } finally {
-                wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
-            }
-        },
-        __wbg_get_652f640b3b0b6e3e: function(arg0, arg1) {
-            const ret = arg0[arg1 >>> 0];
-            return ret;
-        },
-        __wbg_get_9cfea9b7bbf12a15: function() { return handleError(function (arg0, arg1) {
-            const ret = Reflect.get(arg0, arg1);
-            return ret;
-        }, arguments); },
-        __wbg_get_unchecked_be562b1421656321: function(arg0, arg1) {
-            const ret = arg0[arg1 >>> 0];
-            return ret;
-        },
-        __wbg_get_with_ref_key_6412cf3094599694: function(arg0, arg1) {
-            const ret = arg0[arg1];
-            return ret;
-        },
-        __wbg_instanceof_ArrayBuffer_eab9f28fbec23477: function(arg0) {
-            let result;
-            try {
-                result = arg0 instanceof ArrayBuffer;
-            } catch (_) {
-                result = false;
-            }
-            const ret = result;
-            return ret;
-        },
-        __wbg_instanceof_Map_10d4edf60fcf9327: function(arg0) {
-            let result;
-            try {
-                result = arg0 instanceof Map;
-            } catch (_) {
-                result = false;
-            }
-            const ret = result;
-            return ret;
-        },
-        __wbg_instanceof_Uint8Array_57d77acd50e4c44d: function(arg0) {
-            let result;
-            try {
-                result = arg0 instanceof Uint8Array;
-            } catch (_) {
-                result = false;
-            }
-            const ret = result;
-            return ret;
-        },
-        __wbg_isArray_c6c6ef8308995bcf: function(arg0) {
-            const ret = Array.isArray(arg0);
-            return ret;
-        },
-        __wbg_isSafeInteger_3c56c421a5b4cce4: function(arg0) {
-            const ret = Number.isSafeInteger(arg0);
-            return ret;
-        },
-        __wbg_iterator_9d68985a1d096fc2: function() {
-            const ret = Symbol.iterator;
-            return ret;
-        },
-        __wbg_length_0a6ce016dc1460b0: function(arg0) {
-            const ret = arg0.length;
-            return ret;
-        },
-        __wbg_length_ba3c032602efe310: function(arg0) {
-            const ret = arg0.length;
-            return ret;
-        },
-        __wbg_new_227d7c05414eb861: function() {
-            const ret = new Error();
-            return ret;
-        },
-        __wbg_new_2fad8ca02fd00684: function() {
-            const ret = new Object();
-            return ret;
-        },
-        __wbg_new_3baa8d9866155c79: function() {
-            const ret = new Array();
-            return ret;
-        },
-        __wbg_new_46ae4e4ff2a07a64: function() {
-            const ret = new Map();
-            return ret;
-        },
-        __wbg_new_8454eee672b2ba6e: function(arg0) {
-            const ret = new Uint8Array(arg0);
-            return ret;
-        },
-        __wbg_next_261c3c48c6e309a5: function(arg0) {
-            const ret = arg0.next;
-            return ret;
-        },
-        __wbg_next_aacee310bcfe6461: function() { return handleError(function (arg0) {
-            const ret = arg0.next();
-            return ret;
-        }, arguments); },
-        __wbg_now_4f457f10f864aec5: function() {
-            const ret = Date.now();
-            return ret;
-        },
-        __wbg_prototypesetcall_fd4050e806e1d519: function(arg0, arg1, arg2) {
-            Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
-        },
-        __wbg_push_60a5366c0bb22a7d: function(arg0, arg1) {
-            const ret = arg0.push(arg1);
-            return ret;
-        },
-        __wbg_random_fc287e2ecb3e2805: function() {
-            const ret = Math.random();
-            return ret;
-        },
-        __wbg_set_5337f8ac82364a3f: function() { return handleError(function (arg0, arg1, arg2) {
-            const ret = Reflect.set(arg0, arg1, arg2);
-            return ret;
-        }, arguments); },
-        __wbg_set_6be42768c690e380: function(arg0, arg1, arg2) {
-            arg0[arg1] = arg2;
-        },
-        __wbg_set_82f7a370f604db70: function(arg0, arg1, arg2) {
-            const ret = arg0.set(arg1, arg2);
-            return ret;
-        },
-        __wbg_set_f614f6a0608d1d1d: function(arg0, arg1, arg2) {
-            arg0[arg1 >>> 0] = arg2;
-        },
-        __wbg_stack_3b0d974bbf31e44f: function(arg0, arg1) {
-            const ret = arg1.stack;
-            const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
-        __wbg_value_f852716acdeb3e82: function(arg0) {
-            const ret = arg0.value;
-            return ret;
-        },
-        __wbindgen_cast_0000000000000001: function(arg0) {
-            // Cast intrinsic for `F64 -> Externref`.
-            const ret = arg0;
-            return ret;
-        },
-        __wbindgen_cast_0000000000000002: function(arg0) {
-            // Cast intrinsic for `I64 -> Externref`.
-            const ret = arg0;
-            return ret;
-        },
-        __wbindgen_cast_0000000000000003: function(arg0, arg1) {
-            // Cast intrinsic for `Ref(String) -> Externref`.
-            const ret = getStringFromWasm0(arg0, arg1);
-            return ret;
-        },
-        __wbindgen_cast_0000000000000004: function(arg0) {
-            // Cast intrinsic for `U64 -> Externref`.
-            const ret = BigInt.asUintN(64, arg0);
-            return ret;
-        },
-        __wbindgen_init_externref_table: function() {
-            const table = wasm.__wbindgen_externrefs;
-            const offset = table.grow(4);
-            table.set(0, undefined);
-            table.set(offset + 0, undefined);
-            table.set(offset + 1, null);
-            table.set(offset + 2, true);
-            table.set(offset + 3, false);
-        },
-    };
-    return {
-        __proto__: null,
-        "./ironsmith_bg.js": import0,
-    };
+/** Compile source in the compiler module and register the typed artifact in an engine session. */
+export function compileAndRegisterCard(game, input) {
+  const artifact = compileCardArtifact(input);
+  game.registerCompiledCardArtifact(artifact);
+  return artifact;
 }
 
-const WasmGameFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_wasmgame_free(ptr, 1));
-
-function addToExternrefTable0(obj) {
-    const idx = wasm.__externref_table_alloc();
-    wasm.__wbindgen_externrefs.set(idx, obj);
-    return idx;
+function sourceArtifacts(source) {
+  if (Array.isArray(source?.artifacts) && source.artifacts.length > 0) {
+    return source.artifacts;
+  }
+  const group = source?.group;
+  if (!group || typeof group !== "object") {
+    throw new TypeError("card source is missing its group");
+  }
+  if (group.kind === "single") {
+    return [compileCardArtifact({
+      name: group.name,
+      text: group.block,
+      semanticScore: group.score,
+      localId: 1,
+    })];
+  }
+  if (group.kind !== "linked" || !Array.isArray(group.faces) || group.faces.length < 2) {
+    throw new TypeError(`unsupported card source group: ${String(group.kind)}`);
+  }
+  return group.faces.map((face, index) => {
+    const otherIndex = index === 0 ? 1 : 0;
+    const other = group.faces[otherIndex];
+    return compileCardArtifact({
+      name: face.name,
+      text: face.block,
+      semanticScore: face.score,
+      localId: index + 1,
+      otherFaceId: otherIndex + 1,
+      otherFaceName: other?.name,
+      linkedFaceLayout: group.layout === "split" ? "split" : "transform_like",
+    });
+  });
 }
 
-function debugString(val) {
-    // primitive types
-    const type = typeof val;
-    if (type == 'number' || type == 'boolean' || val == null) {
-        return  `${val}`;
-    }
-    if (type == 'string') {
-        return `"${val}"`;
-    }
-    if (type == 'symbol') {
-        const description = val.description;
-        if (description == null) {
-            return 'Symbol';
-        } else {
-            return `Symbol(${description})`;
-        }
-    }
-    if (type == 'function') {
-        const name = val.name;
-        if (typeof name == 'string' && name.length > 0) {
-            return `Function(${name})`;
-        } else {
-            return 'Function';
-        }
-    }
-    // objects
-    if (Array.isArray(val)) {
-        const length = val.length;
-        let debug = '[';
-        if (length > 0) {
-            debug += debugString(val[0]);
-        }
-        for(let i = 1; i < length; i++) {
-            debug += ', ' + debugString(val[i]);
-        }
-        debug += ']';
-        return debug;
-    }
-    // Test for built-in
-    const builtInMatches = /\[object ([^\]]+)\]/.exec(toString.call(val));
-    let className;
-    if (builtInMatches && builtInMatches.length > 1) {
-        className = builtInMatches[1];
-    } else {
-        // Failed to match the standard '[object ClassName]'
-        return toString.call(val);
-    }
-    if (className == 'Object') {
-        // we're a user defined class or Object
-        // JSON.stringify avoids problems with cycles, and is generally much
-        // easier than looping through ownProperties of `val`.
-        try {
-            return 'Object(' + JSON.stringify(val) + ')';
-        } catch (_) {
-            return 'Object';
-        }
-    }
-    // errors
-    if (val instanceof Error) {
-        return `${val.name}: ${val.message}\n${val.stack}`;
-    }
-    // TODO we could test for more things here, like `Set`s and `Map`s.
-    return className;
-}
-
-function getArrayU8FromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
-}
-
-let cachedDataViewMemory0 = null;
-function getDataViewMemory0() {
-    if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || (cachedDataViewMemory0.buffer.detached === undefined && cachedDataViewMemory0.buffer !== wasm.memory.buffer)) {
-        cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
-    }
-    return cachedDataViewMemory0;
-}
-
-function getStringFromWasm0(ptr, len) {
-    return decodeText(ptr >>> 0, len);
-}
-
-let cachedUint8ArrayMemory0 = null;
-function getUint8ArrayMemory0() {
-    if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
-        cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
-    }
-    return cachedUint8ArrayMemory0;
-}
-
-function handleError(f, args) {
+/** Compile legacy frontend card-source groups in the compiler module and load their artifacts. */
+export function compileAndRegisterCardSources(game, input) {
+  const sources = Array.isArray(input) ? input : [input];
+  const summary = { loaded: 0, failed: [] };
+  for (const source of sources) {
+    const failureName = source?.group?.name
+      ?? source?.group?.faces?.[0]?.name
+      ?? source?.group?.combinedName
+      ?? source?.canonicalName
+      ?? "unknown card source";
     try {
-        return f.apply(this, args);
-    } catch (e) {
-        const idx = addToExternrefTable0(e);
-        wasm.__wbindgen_exn_store(idx);
+      const registered = game.registerCompiledCardSourceArtifacts(
+        source,
+        sourceArtifacts(source),
+      );
+      summary.loaded += Number(registered?.loaded ?? 0);
+      if (Array.isArray(registered?.failed)) summary.failed.push(...registered.failed);
+    } catch (error) {
+      summary.failed.push({
+        name: String(failureName),
+        error: String(error?.message ?? error),
+      });
     }
+  }
+  return summary;
 }
 
-function isLikeNone(x) {
-    return x === undefined || x === null;
+function manabrewCardName(card) {
+  return String(card?.identity?.name ?? card?.name ?? "").trim();
 }
 
-function passStringToWasm0(arg, malloc, realloc) {
-    if (realloc === undefined) {
-        const buf = cachedTextEncoder.encode(arg);
-        const ptr = malloc(buf.length, 1) >>> 0;
-        getUint8ArrayMemory0().subarray(ptr, ptr + buf.length).set(buf);
-        WASM_VECTOR_LEN = buf.length;
-        return ptr;
-    }
-
-    let len = arg.length;
-    let ptr = malloc(len, 1) >>> 0;
-
-    const mem = getUint8ArrayMemory0();
-
-    let offset = 0;
-
-    for (; offset < len; offset++) {
-        const code = arg.charCodeAt(offset);
-        if (code > 0x7F) break;
-        mem[ptr + offset] = code;
-    }
-    if (offset !== len) {
-        if (offset !== 0) {
-            arg = arg.slice(offset);
-        }
-        ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
-        const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
-        const ret = cachedTextEncoder.encodeInto(arg, view);
-
-        offset += ret.written;
-        ptr = realloc(ptr, len, offset, 1) >>> 0;
-    }
-
-    WASM_VECTOR_LEN = offset;
-    return ptr;
+function manabrewTypeLine(card) {
+  const explicit = String(card?.typeLine ?? card?.type_line ?? "").trim();
+  if (explicit) return explicit;
+  const front = [...(card?.supertypes ?? []), ...(card?.types ?? [])]
+    .map(String).filter(Boolean).join(" ");
+  const subtypes = (card?.subtypes ?? []).map(String).filter(Boolean).join(" ");
+  if (front && subtypes) return `${front} — ${subtypes}`;
+  return front || subtypes || "Card";
 }
 
-function takeFromExternrefTable0(idx) {
-    const value = wasm.__wbindgen_externrefs.get(idx);
-    wasm.__externref_table_dealloc(idx);
-    return value;
+function manabrewCardBlock(card) {
+  const lines = [];
+  const manaCost = String(card?.manaCost ?? card?.mana_cost ?? "").trim();
+  if (manaCost) lines.push(`Mana cost: ${manaCost}`);
+  lines.push(`Type: ${manabrewTypeLine(card)}`);
+  if (card?.power != null && card?.toughness != null) {
+    lines.push(`Power/Toughness: ${card.power}/${card.toughness}`);
+  }
+  if (card?.loyalty != null) lines.push(`Loyalty: ${card.loyalty}`);
+  if (card?.defense != null) lines.push(`Defense: ${card.defense}`);
+  const text = String(card?.text ?? card?.oracleText ?? card?.oracle_text ?? "").trim();
+  if (text) lines.push(text);
+  return lines.join("\n");
 }
 
-let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
-cachedTextDecoder.decode();
-const MAX_SAFARI_DECODE_BYTES = 2146435072;
-let numBytesDecoded = 0;
-function decodeText(ptr, len) {
-    numBytesDecoded += len;
-    if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
-        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
-        cachedTextDecoder.decode();
-        numBytesDecoded = len;
-    }
-    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
-}
-
-const cachedTextEncoder = new TextEncoder();
-
-if (!('encodeInto' in cachedTextEncoder)) {
-    cachedTextEncoder.encodeInto = function (arg, view) {
-        const buf = cachedTextEncoder.encode(arg);
-        view.set(buf);
-        return {
-            read: arg.length,
-            written: buf.length
-        };
+function manabrewCardSource(card) {
+  const deckName = manabrewCardName(card);
+  if (!deckName) return null;
+  const rawFaces = card?.cardFaces ?? card?.card_faces ?? card?.faces ?? [];
+  const faces = Array.isArray(rawFaces)
+    ? rawFaces.slice(0, 2).map((face) => ({
+        name: manabrewCardName(face),
+        block: manabrewCardBlock(face),
+        score: 1,
+      })).filter((face) => face.name)
+    : [];
+  if (faces.length === 2) {
+    const combinedName = String(
+      card?.combinedName ?? card?.combined_name
+      ?? (deckName.includes(" // ") ? deckName : `${faces[0].name} // ${faces[1].name}`)
+    ).trim();
+    const aliases = [deckName, combinedName]
+      .filter((alias, index, values) =>
+        alias && alias.toLowerCase() !== faces[0].name.toLowerCase()
+        && values.findIndex((candidate) => candidate.toLowerCase() === alias.toLowerCase()) === index)
+      .map((alias) => ({ alias, canonical: faces[0].name }));
+    return {
+      canonicalName: faces[0].name,
+      aliases,
+      group: {
+        kind: "linked",
+        layout: String(card?.layout ?? "").toLowerCase() === "split" ? "split" : "transform_like",
+        combinedName,
+        hasFuse: Boolean(card?.hasFuse ?? card?.has_fuse),
+        faces,
+      },
     };
+  }
+  return {
+    canonicalName: deckName,
+    aliases: [],
+    group: {
+      kind: "single",
+      name: deckName,
+      block: manabrewCardBlock(card),
+      score: 1,
+    },
+  };
 }
 
-let WASM_VECTOR_LEN = 0;
-
-let wasmModule, wasmInstance, wasm;
-function __wbg_finalize_init(instance, module) {
-    wasmInstance = instance;
-    wasm = instance.exports;
-    wasmModule = module;
-    cachedDataViewMemory0 = null;
-    cachedUint8ArrayMemory0 = null;
-    wasm.__wbindgen_start();
-    return wasm;
+function manabrewDeckSources(decks) {
+  const sections = [
+    "cards", "sideboard", "commanders", "attractions", "contraptions",
+    "schemes", "planes", "maybeboard", "tokens",
+  ];
+  const seen = new Set();
+  const sources = [];
+  for (const deck of Array.isArray(decks) ? decks : []) {
+    const cards = sections.flatMap((section) => Array.isArray(deck?.[section]) ? deck[section] : []);
+    if (deck?.companion) cards.push(deck.companion);
+    for (const card of cards) {
+      const source = manabrewCardSource(card);
+      if (!source) continue;
+      const names = source.group.kind === "linked"
+        ? source.group.faces.map((face) => face.name)
+        : [source.group.name];
+      if (names.some((name) => seen.has(name.toLowerCase()))) continue;
+      names.forEach((name) => seen.add(name.toLowerCase()));
+      sources.push(source);
+    }
+  }
+  return sources;
 }
 
-async function __wbg_load(module, imports) {
-    if (typeof Response === 'function' && module instanceof Response) {
-        if (typeof WebAssembly.instantiateStreaming === 'function') {
-            try {
-                return await WebAssembly.instantiateStreaming(module, imports);
-            } catch (e) {
-                const validResponse = module.ok && expectedResponseType(module.type);
+const verifierMethods = {
+  ziffleBuildRevealToken,
+  ziffleBuildRevealTokens,
+  ziffleBuildShuffleStep,
+  ziffleKeygen,
+  ziffleRevealCard,
+  ziffleRevealCards,
+  ziffleVerifyShuffle,
+};
 
-                if (validResponse && module.headers.get('Content-Type') !== 'application/wasm') {
-                    console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
+let initialized;
 
-                } else { throw e; }
-            }
-        }
-
-        const bytes = await module.arrayBuffer();
-        return await WebAssembly.instantiate(bytes, imports);
-    } else {
-        const instance = await WebAssembly.instantiate(module, imports);
-
-        if (instance instanceof WebAssembly.Instance) {
-            return { instance, module };
-        } else {
-            return instance;
-        }
-    }
-
-    function expectedResponseType(type) {
-        switch (type) {
-            case 'basic': case 'cors': case 'default': return true;
-        }
-        return false;
-    }
+function wasmInitOptions(input) {
+  if (input === undefined) return undefined;
+  if (input && typeof input === "object" && "module_or_path" in input) return input;
+  return { module_or_path: input };
 }
 
-function initSync(module) {
-    if (wasm !== undefined) return wasm;
-
-
-    if (module !== undefined) {
-        if (Object.getPrototypeOf(module) === Object.prototype) {
-            ({module} = module)
-        } else {
-            console.warn('using deprecated parameters for `initSync()`; pass a single object instead')
-        }
+function installCompatibilityMethods() {
+  for (const [name, operation] of Object.entries(verifierMethods)) {
+    if (typeof WasmGame.prototype[name] === "function") continue;
+    Object.defineProperty(WasmGame.prototype, name, {
+      configurable: true,
+      value(input) {
+        return operation(input);
+      },
+    });
+  }
+  const proto = WasmGame.prototype;
+  if (typeof proto.registerCompiledCardSourceArtifacts === "function") {
+    Object.defineProperty(proto, "registerExternalCardSources", {
+      configurable: true,
+      value(input) {
+        return compileAndRegisterCardSources(this, input);
+      },
+    });
+    Object.defineProperty(proto, "registerExternalCardSourcesJson", {
+      configurable: true,
+      value(input) {
+        return JSON.stringify(compileAndRegisterCardSources(this, JSON.parse(input)));
+      },
+    });
+    const validateManabrewMatchConfig = proto.validateManabrewMatchConfig;
+    const startManabrewMatch = proto.startManabrewMatch;
+    Object.defineProperty(proto, "registerManabrewDeckSources", {
+      configurable: true,
+      value(decks) {
+        return compileAndRegisterCardSources(this, manabrewDeckSources(decks));
+      },
+    });
+    if (typeof validateManabrewMatchConfig === "function") {
+      Object.defineProperty(proto, "validateManabrewMatchConfig", {
+        configurable: true,
+        value(config) {
+          compileAndRegisterCardSources(this, manabrewDeckSources(config?.decks));
+          return validateManabrewMatchConfig.call(this, config);
+        },
+      });
     }
-
-    const imports = __wbg_get_imports();
-    if (!(module instanceof WebAssembly.Module)) {
-        module = new WebAssembly.Module(module);
+    if (typeof startManabrewMatch === "function") {
+      Object.defineProperty(proto, "startManabrewMatch", {
+        configurable: true,
+        value(config) {
+          compileAndRegisterCardSources(this, manabrewDeckSources(config?.decks));
+          return startManabrewMatch.call(this, config);
+        },
+      });
     }
-    const instance = new WebAssembly.Instance(module, imports);
-    return __wbg_finalize_init(instance, module);
+  }
 }
 
-async function __wbg_init(module_or_path) {
-    if (wasm !== undefined) return wasm;
-
-
-    if (module_or_path !== undefined) {
-        if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
-            ({module_or_path} = module_or_path)
-        } else {
-            console.warn('using deprecated parameters for the initialization function; pass a single object instead')
-        }
-    }
-
-    if (module_or_path === undefined) {
-        module_or_path = new URL('ironsmith_bg.wasm', import.meta.url);
-    }
-    const imports = __wbg_get_imports();
-
-    if (typeof module_or_path === 'string' || (typeof Request === 'function' && module_or_path instanceof Request) || (typeof URL === 'function' && module_or_path instanceof URL)) {
-        module_or_path = fetch(module_or_path);
-    }
-
-    const { instance, module } = await __wbg_load(await module_or_path, imports);
-
-    return __wbg_finalize_init(instance, module);
+export default function init(input) {
+  if (initialized) return initialized;
+  const splitInput =
+    input &&
+    typeof input === "object" &&
+    ("engine" in input || "compiler" in input || "verifier" in input)
+      ? input
+      : { engine: input };
+  initialized = Promise.all([
+    initEngine(wasmInitOptions(splitInput.engine)),
+    initCompiler(wasmInitOptions(splitInput.compiler)),
+    initVerifier(wasmInitOptions(splitInput.verifier)),
+  ]).then(([engine]) => {
+    installCompatibilityMethods();
+    return engine;
+  });
+  return initialized;
 }
-
-export { initSync, __wbg_init as default };

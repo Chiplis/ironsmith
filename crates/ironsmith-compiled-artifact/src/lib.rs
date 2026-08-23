@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 pub const ENGINE_SCHEMA_HASH: &str =
     "1bd9697f2fe94a47ca56213313de037949dfc7e3df8ea5db33e92d35b82fa99a";
 
@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn golden_json_is_stable() {
         let actual = String::from_utf8(fixture().to_json().unwrap()).unwrap();
-        assert_eq!(actual.trim(), include_str!("../fixtures/v2.json").trim());
+        assert_eq!(actual.trim(), include_str!("../fixtures/v3.json").trim());
     }
 
     #[test]

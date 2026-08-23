@@ -85,15 +85,8 @@ lto = false
 codegen-units = 16
 incremental = false
 
-# The browser pipeline always runs Binaryen over every linked module.  Running
-# LLVM's full optimizer over the two very large Rust bodies first duplicated
-# more than three minutes of work without changing the shipped optimization
-# mode.  Keep dependencies (including the verifier's field arithmetic) at the
-# normal release setting, but make the product bodies fast code-generation
-# inputs for the measured `wasm-opt -O1` packaging pass.
-[profile.release.package.ironsmith-compiler]
-opt-level = 0
-
+# These crates are executed only for the lightweight native registry preflight.
+# Keeping them cheap to code-generate does not slow the card compiler or baker.
 [profile.release.package.ironsmith-card-source]
 opt-level = 0
 
@@ -106,96 +99,107 @@ opt-level = 0
 [profile.release.package.rusqlite]
 opt-level = 0
 
-[profile.release.package.ironsmith-core]
+# The browser pipeline always runs Binaryen over every linked module. Running
+# LLVM's full optimizer over the large Rust bodies first duplicates minutes of
+# work, but applying those overrides to native release tools makes the corpus
+# baker dramatically slower. Keep native `release` optimized and reserve these
+# fast-codegen inputs for the wasm build's explicit custom profile.
+[profile.wasm-release]
+inherits = "release"
+
+[profile.wasm-release.package.ironsmith-compiler]
 opt-level = 0
 
-[profile.release.package.ironsmith-compiler-syntax]
+[profile.wasm-release.package.ironsmith-core]
 opt-level = 0
 
-[profile.release.package.ironsmith-compiler-source]
+[profile.wasm-release.package.ironsmith-compiler-syntax]
 opt-level = 0
 
-[profile.release.package.ironsmith-compiler-ast]
+[profile.wasm-release.package.ironsmith-compiler-source]
 opt-level = 0
 
-[profile.release.package.ironsmith-compiler-semantic]
+[profile.wasm-release.package.ironsmith-compiler-ast]
 opt-level = 0
 
-[profile.release.package.ironsmith-compiler-resolve]
+[profile.wasm-release.package.ironsmith-compiler-semantic]
 opt-level = 0
 
-[profile.release.package.ironsmith-grammar-common]
+[profile.wasm-release.package.ironsmith-compiler-resolve]
 opt-level = 0
 
-[profile.release.package.ironsmith-compiler-grammar]
+[profile.wasm-release.package.ironsmith-grammar-common]
 opt-level = 0
 
-[profile.release.package.ironsmith-engine]
+[profile.wasm-release.package.ironsmith-compiler-grammar]
 opt-level = 0
 
-[profile.release.package.ironsmith-runtime-catalog]
+[profile.wasm-release.package.ironsmith-engine]
+opt-level = 0
+
+[profile.wasm-release.package.ironsmith-runtime-catalog]
 opt-level = 1
 
-[profile.release.package.ironsmith-web-session]
+[profile.wasm-release.package.ironsmith-web-session]
 opt-level = 0
 
-[profile.release.package.ironsmith-compiled-artifact]
+[profile.wasm-release.package.ironsmith-compiled-artifact]
 opt-level = 0
 
 # These independent families own the large serde monomorphization set used to
 # decode compiled effects. Binaryen optimizes their linked browser code in the
 # shipped pipeline; LLVM optimization here costs more cold wall time than it
 # saves downstream.
-[profile.release.package.ironsmith-runtime-effect-zone-library]
+[profile.wasm-release.package.ironsmith-runtime-effect-zone-library]
 opt-level = 0
-[profile.release.package.ironsmith-runtime-effect-player]
+[profile.wasm-release.package.ironsmith-runtime-effect-player]
 opt-level = 0
-[profile.release.package.ironsmith-runtime-effect-resources]
+[profile.wasm-release.package.ironsmith-runtime-effect-resources]
 opt-level = 0
-[profile.release.package.ironsmith-runtime-effect-permanent]
+[profile.wasm-release.package.ironsmith-runtime-effect-permanent]
 opt-level = 0
-[profile.release.package.ironsmith-runtime-effect-combat]
+[profile.wasm-release.package.ironsmith-runtime-effect-combat]
 opt-level = 0
-[profile.release.package.ironsmith-runtime-effect-stack-event]
+[profile.wasm-release.package.ironsmith-runtime-effect-stack-event]
 opt-level = 0
-[profile.release.package.ironsmith-runtime-effect-composition-a-l]
+[profile.wasm-release.package.ironsmith-runtime-effect-composition-a-l]
 opt-level = 0
-[profile.release.package.ironsmith-runtime-effect-composition-m-z]
+[profile.wasm-release.package.ironsmith-runtime-effect-composition-m-z]
 opt-level = 0
 
 # Deck-count specialization is deliberately spread across sixteen sibling
 # leaves. Keep the arithmetic dependency optimized, but defer specialization
 # cleanup to the shipped Binaryen pass; per-leaf LLVM work otherwise delays
 # ready engine and compiler crates on an eight-core cold build.
-[profile.release.package.ironsmith-verifier-shard-02-07]
+[profile.wasm-release.package.ironsmith-verifier-shard-02-07]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-08-13]
+[profile.wasm-release.package.ironsmith-verifier-shard-08-13]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-14-19]
+[profile.wasm-release.package.ironsmith-verifier-shard-14-19]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-20-25]
+[profile.wasm-release.package.ironsmith-verifier-shard-20-25]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-26-31]
+[profile.wasm-release.package.ironsmith-verifier-shard-26-31]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-32-37]
+[profile.wasm-release.package.ironsmith-verifier-shard-32-37]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-38-43]
+[profile.wasm-release.package.ironsmith-verifier-shard-38-43]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-44-49]
+[profile.wasm-release.package.ironsmith-verifier-shard-44-49]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-50-56]
+[profile.wasm-release.package.ironsmith-verifier-shard-50-56]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-57-62]
+[profile.wasm-release.package.ironsmith-verifier-shard-57-62]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-63-69]
+[profile.wasm-release.package.ironsmith-verifier-shard-63-69]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-70-75]
+[profile.wasm-release.package.ironsmith-verifier-shard-70-75]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-76-82]
+[profile.wasm-release.package.ironsmith-verifier-shard-76-82]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-83-88]
+[profile.wasm-release.package.ironsmith-verifier-shard-83-88]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-89-94]
+[profile.wasm-release.package.ironsmith-verifier-shard-89-94]
 opt-level = 0
-[profile.release.package.ironsmith-verifier-shard-95-100]
+[profile.wasm-release.package.ironsmith-verifier-shard-95-100]
 opt-level = 0

@@ -8,14 +8,36 @@ pub use ironsmith_compiler_semantic::*;
 pub use ironsmith_compiler_syntax::lexer;
 
 pub mod util {
+    use std::cell::Cell;
+
     use ironsmith_compiler_api::TextSpan;
     use ironsmith_compiler_semantic::color::ColorSet;
     use ironsmith_compiler_semantic::target::{SacrificedObjectKind, SourceReferenceSurface};
     use ironsmith_compiler_semantic::types::{CardType, Subtype};
     use ironsmith_compiler_semantic::zone::Zone;
 
+    thread_local! {
+        static PARSER_TRACE_OVERRIDE: Cell<Option<bool>> = const { Cell::new(None) };
+    }
+
+    struct ParserTraceOverrideGuard(Option<bool>);
+
+    impl Drop for ParserTraceOverrideGuard {
+        fn drop(&mut self) {
+            PARSER_TRACE_OVERRIDE.set(self.0);
+        }
+    }
+
+    pub fn with_parser_trace_enabled<T>(enabled: bool, callback: impl FnOnce() -> T) -> T {
+        let previous = PARSER_TRACE_OVERRIDE.replace(Some(enabled));
+        let _guard = ParserTraceOverrideGuard(previous);
+        callback()
+    }
+
     pub fn parser_trace_enabled() -> bool {
-        std::env::var_os("IRONSMITH_PARSER_TRACE").is_some()
+        PARSER_TRACE_OVERRIDE
+            .get()
+            .unwrap_or_else(|| std::env::var_os("IRONSMITH_PARSER_TRACE").is_some())
     }
 
     pub fn is_article(word: &str) -> bool {

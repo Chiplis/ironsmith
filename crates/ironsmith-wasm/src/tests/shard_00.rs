@@ -457,7 +457,8 @@ pub(super) fn object_details_reports_calculated_battlefield_power_toughness() {
             Until::EndOfTurn,
         ));
 
-    let details = build_object_details_snapshot(&game, bears_id).expect("expected object details");
+    let details =
+        build_object_details_snapshot(&game, bears_id, None).expect("expected object details");
     assert_eq!(details.power, Some(5));
     assert_eq!(details.toughness, Some(2));
 }
@@ -479,7 +480,8 @@ pub(super) fn object_details_reports_current_granted_abilities() {
             Modification::AddAbility(StaticAbility::lifelink()),
         ));
 
-    let details = build_object_details_snapshot(&game, bears_id).expect("expected object details");
+    let details =
+        build_object_details_snapshot(&game, bears_id, None).expect("expected object details");
     assert!(
         details
             .abilities
@@ -488,6 +490,19 @@ pub(super) fn object_details_reports_current_granted_abilities() {
         "expected object details to expose current granted lifelink, got {:?}",
         details.abilities
     );
+}
+
+#[test]
+pub(super) fn object_details_renders_intrinsic_basic_land_mana_abilities() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let definition = basic_swamp();
+    let swamp_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    let details = build_object_details_snapshot(&game, swamp_id, Some(&definition))
+        .expect("expected Swamp object details");
+
+    assert_eq!(details.abilities, vec!["{T}: Add {B}."]);
 }
 
 #[test]
@@ -502,7 +517,8 @@ pub(super) fn object_details_compacts_changeling_type_line_display() {
         .build();
     let object_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
 
-    let details = build_object_details_snapshot(&game, object_id).expect("expected object details");
+    let details =
+        build_object_details_snapshot(&game, object_id, None).expect("expected object details");
 
     assert!(
         details.type_line.matches(' ').count() > Subtype::all_creature_types().len() / 2,
@@ -526,7 +542,8 @@ pub(super) fn object_details_include_compiled_spell_effects_for_spells_with_stat
         .expect("Nexus of Fate test definition should parse");
     let object_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
 
-    let details = build_object_details_snapshot(&game, object_id).expect("expected object details");
+    let details = build_object_details_snapshot(&game, object_id, Some(&definition))
+        .expect("expected object details");
 
     assert!(
         details
@@ -561,7 +578,8 @@ pub(super) fn object_details_debug_compiled_text_keeps_spell_effects_when_oracle
     .expect("Rout test definition should parse");
     let object_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
 
-    let details = build_object_details_snapshot(&game, object_id).expect("expected object details");
+    let details = build_object_details_snapshot(&game, object_id, Some(&definition))
+        .expect("expected object details");
     let compiled_text = details.compiled_text.join("\n");
 
     assert!(
@@ -589,7 +607,8 @@ pub(super) fn object_details_compiled_text_uses_normalized_surface_for_possessiv
     .expect("Territorial Kavu-style domain CDA should parse");
     let object_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
 
-    let details = build_object_details_snapshot(&game, object_id).expect("expected object details");
+    let details = build_object_details_snapshot(&game, object_id, Some(&definition))
+        .expect("expected object details");
     let compiled_text = details.compiled_text.join("\n");
 
     assert!(
@@ -611,7 +630,8 @@ pub(super) fn object_details_include_convoke_for_builtin_cards() {
     let definition = stoke_the_flames();
     let object_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
 
-    let details = build_object_details_snapshot(&game, object_id).expect("expected object details");
+    let details = build_object_details_snapshot(&game, object_id, Some(&definition))
+        .expect("expected object details");
 
     assert!(
         details.oracle_text.contains("Convoke"),
@@ -1111,7 +1131,7 @@ pub(super) fn add_card_to_zone_battlefield_commits_roaming_throne_after_choice()
         "Roaming Throne should gain the selected creature subtype once its choice resolves"
     );
 
-    let details = build_object_details_snapshot(&wasm.game, throne.id)
+    let details = build_object_details_snapshot(&wasm.game, throne.id, None)
         .expect("Roaming Throne inspector details should exist");
     assert!(
         details.type_line.contains("Angel"),

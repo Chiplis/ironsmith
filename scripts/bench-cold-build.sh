@@ -11,6 +11,7 @@ KEEP_TARGET=0
 BUILD_PREFLIGHT=1
 CARGO_JOBS="${IRONSMITH_CARGO_JOBS:-8}"
 WASM_OPT_LEVEL="${IRONSMITH_WASM_OPT_LEVEL:--O1}"
+WASM_CARGO_PROFILE="wasm-release"
 EXPECTED_RUSTC_PREFIX="rustc 1.90.0 "
 EXPECTED_WASM_BINDGEN="wasm-bindgen 0.2.120"
 EXPECTED_WASM_OPT="wasm-opt version 117 (version_117)"
@@ -296,6 +297,7 @@ mkdir -p "$SET_DIR"
   printf 'cargoJobs=%s\n' "$CARGO_JOBS"
   printf 'targetRoot=%s\n' "$TARGET_ROOT"
   printf 'wasmOptLevel=%s\n' "$WASM_OPT_LEVEL"
+  printf 'wasmCargoProfile=%s\n' "$WASM_CARGO_PROFILE"
 } > "$SET_DIR/tool-versions.txt"
 
 for ((run_number = 1; run_number <= RUNS; run_number += 1)); do
@@ -339,7 +341,7 @@ for ((run_number = 1; run_number <= RUNS; run_number += 1)); do
     -p ironsmith-verifier-wasm
   )
   time_command "$run_dir/wasm-cargo-time.txt" \
-    cargo build --locked --offline --release \
+    cargo build --locked --offline --profile "$WASM_CARGO_PROFILE" \
       -j "$CARGO_JOBS" \
       "${cargo_packages[@]}" \
       --target wasm32-unknown-unknown \
@@ -354,9 +356,9 @@ for ((run_number = 1; run_number <= RUNS; run_number += 1)); do
     "$run_dir/cargo-timing.html" \
     --output "$run_dir/cargo-summary.json"
 
-  engine_raw="$run_target/wasm32-unknown-unknown/release/ironsmith_engine_wasm.wasm"
-  compiler_raw="$run_target/wasm32-unknown-unknown/release/ironsmith_compiler_wasm.wasm"
-  verifier_raw="$run_target/wasm32-unknown-unknown/release/ironsmith_verifier_wasm.wasm"
+  engine_raw="$run_target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_engine_wasm.wasm"
+  compiler_raw="$run_target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_compiler_wasm.wasm"
+  verifier_raw="$run_target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_verifier_wasm.wasm"
   raw_wasm_files=("$engine_raw" "$compiler_raw" "$verifier_raw")
   for raw_wasm in "${raw_wasm_files[@]}"; do
     [[ -f "$raw_wasm" ]] || { echo "missing raw wasm artifact: $raw_wasm" >&2; exit 1; }

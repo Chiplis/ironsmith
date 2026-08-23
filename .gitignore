@@ -14,6 +14,7 @@ scripts/__pycache__*
 *.json
 !/fixtures/audit/*.json
 !/fixtures/determinism/*.json
+!/crates/ironsmith-compiled-artifact/fixtures/v3.json
 !/web/ui/package.json
 !/npm/ironsmith-wasm/package.template.json
 *.csv

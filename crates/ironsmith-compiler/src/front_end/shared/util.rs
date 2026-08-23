@@ -564,10 +564,35 @@ pub fn parser_stacktrace_enabled() -> bool {
         .unwrap_or(false)
 }
 
+thread_local! {
+    static PARSER_TRACE_OVERRIDE: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+struct ParserTraceOverrideGuard(Option<bool>);
+
+impl Drop for ParserTraceOverrideGuard {
+    fn drop(&mut self) {
+        PARSER_TRACE_OVERRIDE.set(self.0);
+    }
+}
+
+pub fn with_cached_parser_trace<T>(callback: impl FnOnce() -> T) -> T {
+    let raw = std::env::var_os("IRONSMITH_PARSER_TRACE");
+    let enabled = raw
+        .as_deref()
+        .and_then(std::ffi::OsStr::to_str)
+        .is_some_and(|value| matches!(value, "1" | "true" | "TRUE" | "yes" | "YES"));
+    let previous = PARSER_TRACE_OVERRIDE.replace(Some(enabled));
+    let _guard = ParserTraceOverrideGuard(previous);
+    ironsmith_grammar_common::util::with_parser_trace_enabled(raw.is_some(), callback)
+}
+
 pub fn parser_trace_enabled() -> bool {
-    std::env::var("IRONSMITH_PARSER_TRACE")
-        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
-        .unwrap_or(false)
+    PARSER_TRACE_OVERRIDE.get().unwrap_or_else(|| {
+        std::env::var("IRONSMITH_PARSER_TRACE")
+            .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false)
+    })
 }
 
 pub fn parser_trace(stage: &str, tokens: &[OwnedLexToken]) {

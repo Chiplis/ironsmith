@@ -8,6 +8,6 @@ pub(crate) mod perf;
 pub(crate) mod text_cleanup;
 
 pub use compiled_text::{
-    ability_surface_text, canonical_compiled_lines, compile_effect_list, compiled_text_lines,
-    debug_compiled_lines, unprocessed_compiled_lines,
+    ability_surface_text, ability_surface_texts, canonical_compiled_lines, compile_effect_list,
+    compiled_text_lines, debug_compiled_lines, unprocessed_compiled_lines,
 };

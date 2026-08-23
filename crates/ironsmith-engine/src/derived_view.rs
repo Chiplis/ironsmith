@@ -597,7 +597,16 @@ impl<'a> DerivedGameView<'a> {
             .requires_battlefield_characteristic_calculation(object_id)
             || (self.game.deploy_creatures_enabled() && object.zone == Zone::Battlefield);
         let abilities = if !needs_calculated_abilities {
-            object.abilities_vec()
+            let mut abilities = object.abilities_vec();
+            for ability in crate::continuous::intrinsic_basic_land_mana_abilities(
+                &object.card_types,
+                &object.subtypes,
+            ) {
+                if !abilities.contains(&ability) {
+                    abilities.push(ability);
+                }
+            }
+            abilities
         } else {
             self.calculated_characteristics_arc(object_id)?
                 .abilities
@@ -2209,6 +2218,34 @@ mod tests {
         assert_eq!(
             potential.red, 1,
             "stolen untapped Mountains should contribute to potential mana"
+        );
+    }
+
+    #[test]
+    fn simple_mana_analysis_includes_unprinted_intrinsic_basic_land_abilities() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let mountain = CardBuilder::new(CardId::from_raw(90_004), "Generated Mountain")
+            .card_types(vec![CardType::Land])
+            .subtypes(vec![Subtype::Mountain])
+            .build();
+        let mountain_id = game.create_object_from_card(&mountain, alice, Zone::Battlefield);
+        assert!(
+            game.object(mountain_id)
+                .expect("generated Mountain")
+                .abilities
+                .is_empty(),
+            "the generated artifact fixture should rely on the intrinsic land-type ability"
+        );
+        let view = DerivedGameView::new(&game);
+        let abilities = view.abilities_rc(mountain_id).expect("derived abilities");
+        assert_eq!(abilities.len(), 1);
+        assert!(abilities[0].is_mana_ability());
+
+        let potential = crate::decision::compute_potential_mana_with_view(&game, alice, &view);
+        assert_eq!(
+            potential.red, 1,
+            "an unprinted intrinsic Mountain ability should contribute to potential mana"
         );
     }
 

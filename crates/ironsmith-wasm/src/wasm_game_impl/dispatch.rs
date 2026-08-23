@@ -2044,7 +2044,12 @@ impl WasmGame {
                 "a face-down conspiracy may be inspected only by its controller",
             ));
         }
-        let details = build_object_details_snapshot(&self.game, object_id)
+        let definition = self
+            .game
+            .object(object_id)
+            .and_then(|object| object.card)
+            .and_then(|card_id| self.registry.get_by_id(card_id));
+        let details = build_object_details_snapshot(&self.game, object_id, definition)
             .ok_or_else(|| JsValue::from_str(&format!("unknown object id: {}", object_id.0)))?;
         serde_wasm_bindgen::to_value(&details)
             .map_err(|e| JsValue::from_str(&format!("objectDetails encode failed: {e}")))

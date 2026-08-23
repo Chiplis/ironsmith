@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
 use winnow::error::{ModalResult as WResult, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::token::{literal, rest};
@@ -262,23 +265,7 @@ fn classify_subtype_word(raw: &str) -> Option<Subtype> {
         }
     }
 
-    for family in [
-        SubtypeFamily::Land,
-        SubtypeFamily::Creature,
-        SubtypeFamily::Artifact,
-        SubtypeFamily::Enchantment,
-        SubtypeFamily::Spell,
-        SubtypeFamily::Planeswalker,
-        SubtypeFamily::Battle,
-    ] {
-        for subtype in family.all_subtypes() {
-            if subtype_surface_matches(*subtype, candidate.as_str()) {
-                return Some(*subtype);
-            }
-        }
-    }
-
-    None
+    subtype_surface_map().get(candidate.as_str()).copied()
 }
 
 fn classify_flexible_subtype(raw: &str) -> Option<Subtype> {
@@ -301,6 +288,59 @@ fn classify_flexible_subtype(raw: &str) -> Option<Subtype> {
 /// the broad rules-text filter parser intentionally rejects them as ordinary
 /// English nouns.
 pub fn classify_token_definition_subtype(raw: &str) -> Option<Subtype> {
+    let candidate = normalized_atom_word(raw);
+    subtype_surface_map().get(candidate.as_str()).copied()
+}
+
+fn subtype_surface_map() -> &'static HashMap<String, Subtype> {
+    static SURFACES: OnceLock<HashMap<String, Subtype>> = OnceLock::new();
+    SURFACES.get_or_init(|| {
+        let mut surfaces = HashMap::new();
+        for family in [
+            SubtypeFamily::Land,
+            SubtypeFamily::Creature,
+            SubtypeFamily::Artifact,
+            SubtypeFamily::Enchantment,
+            SubtypeFamily::Spell,
+            SubtypeFamily::Planeswalker,
+            SubtypeFamily::Battle,
+        ] {
+            for subtype in family.all_subtypes() {
+                for surface in subtype_surfaces(*subtype) {
+                    surfaces.entry(surface).or_insert(*subtype);
+                }
+            }
+        }
+        for (surface, subtype) in [
+            ("fungi", Subtype::Fungus),
+            ("mice", Subtype::Mouse),
+            ("ouphe", Subtype::Ouphe),
+            ("oxen", Subtype::Ox),
+            ("spacecraft", Subtype::Spacecraft),
+        ] {
+            surfaces.insert(surface.to_string(), subtype);
+        }
+        surfaces
+    })
+}
+
+fn subtype_surfaces(subtype: Subtype) -> Vec<String> {
+    let base = normalized_atom_word(&subtype.to_string());
+    let mut surfaces = vec![base.clone(), format!("{base}s")];
+    if let Some(stem) = stem_before_tail(base.as_str(), b"y") {
+        surfaces.push(format!("{stem}ies"));
+    }
+    if let Some(stem) = stem_before_tail(base.as_str(), b"fe") {
+        surfaces.push(format!("{stem}ves"));
+    }
+    if let Some(stem) = stem_before_tail(base.as_str(), b"f") {
+        surfaces.push(format!("{stem}ves"));
+    }
+    surfaces
+}
+
+#[cfg(test)]
+fn classify_token_definition_subtype_slow(raw: &str) -> Option<Subtype> {
     let candidate = normalized_atom_word(raw);
     for family in [
         SubtypeFamily::Land,
@@ -426,6 +466,29 @@ mod tests {
             parse_leaf_subtype_flexible_complete("wolves").unwrap(),
             Subtype::Wolf
         );
+    }
+
+    #[test]
+    fn subtype_surface_index_matches_exhaustive_lookup() {
+        for family in [
+            SubtypeFamily::Land,
+            SubtypeFamily::Creature,
+            SubtypeFamily::Artifact,
+            SubtypeFamily::Enchantment,
+            SubtypeFamily::Spell,
+            SubtypeFamily::Planeswalker,
+            SubtypeFamily::Battle,
+        ] {
+            for subtype in family.all_subtypes() {
+                for surface in subtype_surfaces(*subtype) {
+                    assert_eq!(
+                        classify_token_definition_subtype(surface.as_str()),
+                        classify_token_definition_subtype_slow(surface.as_str()),
+                        "surface {surface:?} for {subtype:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

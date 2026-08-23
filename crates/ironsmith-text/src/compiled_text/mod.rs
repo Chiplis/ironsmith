@@ -194,6 +194,20 @@ pub fn ability_surface_text(ability: &Ability) -> String {
     self::render_effects::describe_inline_ability(ability)
 }
 
+/// Render labels for the executable abilities on a definition.
+///
+/// Prefer the canonical card lines when they map one-to-one to abilities. That
+/// keeps labels on the same normalized surface as compiled oracle text and
+/// avoids exposing a lower-level single-effect fallback in inspector UIs.
+pub fn ability_surface_texts(def: &CardDefinition) -> Vec<String> {
+    let canonical = compiled_text_lines(def);
+    if canonical.len() == def.abilities.len() {
+        return canonical;
+    }
+
+    def.abilities.iter().map(ability_surface_text).collect()
+}
+
 fn substitute_spell_caster_source_reference(line: &str, def: &CardDefinition) -> String {
     if !(def.card.is_instant() || def.card.is_sorcery()) || def.card.name.contains(" // ") {
         return line.to_string();

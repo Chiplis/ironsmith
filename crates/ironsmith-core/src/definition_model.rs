@@ -4,6 +4,15 @@ use crate::{AuraAttachmentFilter, Card, CostComponent, ResolutionProgram, TotalC
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardDefinition<A, E, C, AC, OC> {
     pub card: Card,
+    /// Canonical rules text rendered by the compiler-side presentation layer.
+    ///
+    /// This is runtime metadata rather than part of the executable wire model,
+    /// so compiled artifacts transport it in their payload envelope.
+    #[cfg_attr(feature = "serde", serde(skip, default))]
+    pub canonical_text: String,
+    /// Canonical labels for the executable abilities in `abilities`.
+    #[cfg_attr(feature = "serde", serde(skip, default))]
+    pub ability_labels: Vec<String>,
     pub abilities: Vec<A>,
     pub spell_effect: Option<ResolutionProgram<E>>,
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
@@ -23,6 +32,8 @@ where
     pub fn new(card: Card) -> Self {
         Self {
             card,
+            canonical_text: String::new(),
+            ability_labels: Vec::new(),
             abilities: Vec::new(),
             spell_effect: None,
             aura_attach_filter: None,
@@ -37,6 +48,8 @@ where
     pub fn with_abilities(card: Card, abilities: Vec<A>) -> Self {
         Self {
             card,
+            canonical_text: String::new(),
+            ability_labels: Vec::new(),
             abilities,
             spell_effect: None,
             aura_attach_filter: None,
@@ -54,6 +67,8 @@ where
     {
         Self {
             card,
+            canonical_text: String::new(),
+            ability_labels: Vec::new(),
             abilities: Vec::new(),
             spell_effect: Some(ResolutionProgram::from_effects(effects)),
             aura_attach_filter: None,
@@ -71,6 +86,8 @@ where
     {
         Self {
             card,
+            canonical_text: String::new(),
+            ability_labels: Vec::new(),
             abilities,
             spell_effect: Some(ResolutionProgram::from_effects(effects)),
             aura_attach_filter: None,
@@ -130,6 +147,8 @@ where
 
         Ok(CardDefinition {
             card: self.card,
+            canonical_text: self.canonical_text,
+            ability_labels: self.ability_labels,
             abilities,
             spell_effect: self
                 .spell_effect

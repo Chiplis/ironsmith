@@ -410,14 +410,7 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             ability_index,
         } => {
             let name = object_name(game, *source);
-            let ability_text = game
-                .current_ability(*source, *ability_index)
-                .and_then(|ability| {
-                    stack_display_lines_from_abilities(std::slice::from_ref(&ability), false)
-                        .into_iter()
-                        .next()
-                })
-                .map(|text| normalize_action_text(&text));
+            let ability_text = current_ability_action_text(game, *source, *ability_index);
             match ability_text {
                 Some(text) => format!("Activate {}: {}", name, text),
                 None => format!("Activate {} ability #{}", name, ability_index + 1),
@@ -428,14 +421,7 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             ability_index,
         } => {
             let name = object_name(game, *source);
-            let ability_text = game
-                .current_ability(*source, *ability_index)
-                .and_then(|ability| {
-                    stack_display_lines_from_abilities(std::slice::from_ref(&ability), false)
-                        .into_iter()
-                        .next()
-                })
-                .map(|text| normalize_action_text(&text));
+            let ability_text = current_ability_action_text(game, *source, *ability_index);
             match ability_text {
                 Some(text) => format!("Activate {}: {}", name, text),
                 None => format!(
@@ -556,6 +542,20 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                 .unwrap_or_else(|| "Perform granted action".to_string()),
         },
     }
+}
+
+fn current_ability_action_text(
+    game: &GameState,
+    source: ObjectId,
+    ability_index: usize,
+) -> Option<String> {
+    let characteristics = game.current_characteristics(source)?;
+    ironsmith::runtime_display::indexed_ability_surface_text(
+        &characteristics.abilities,
+        &characteristics.compiled_card_text,
+        ability_index,
+    )
+    .map(|text| normalize_action_text(&text))
 }
 
 pub(super) fn zone_display_name(zone: Zone) -> &'static str {

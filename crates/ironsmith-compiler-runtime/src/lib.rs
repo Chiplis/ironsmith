@@ -593,10 +593,18 @@ fn runtime_definition_from_core_model(
     Ok(definition)
 }
 
+fn attach_rendered_presentation(
+    mut definition: ironsmith::cards::CardDefinition,
+) -> ironsmith::cards::CardDefinition {
+    definition.canonical_text = ironsmith_text::compiled_text_lines(&definition).join("\n");
+    definition.ability_labels = ironsmith_text::ability_surface_texts(&definition);
+    definition
+}
+
 pub fn into_runtime_definition(
     definition: compiler::CardDefinition,
 ) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
-    runtime_definition_from_core_model(definition)
+    runtime_definition_from_core_model(definition).map(attach_rendered_presentation)
 }
 
 pub fn into_runtime_compiled_card_text(
@@ -650,9 +658,9 @@ pub fn compile_builder_to_artifact(
                 detail: error.to_string(),
             }
         })?;
-    // The heavy canonical renderer is intentionally outside this engine bridge.
-    // Compiler/text packaging may replace this source surface before publishing.
-    let canonical_text = source.trim().to_string();
+    let rendered_definition = into_runtime_definition(compiled.definition.clone())?;
+    let canonical_text = rendered_definition.canonical_text.clone();
+    let ability_labels = rendered_definition.ability_labels.clone();
     let linked_face_layout = match compiled.definition.card.linked_face_layout {
         ironsmith::card::LinkedFaceLayout::None => None,
         layout => Some(format!("{layout:?}")),
@@ -672,12 +680,7 @@ pub fn compile_builder_to_artifact(
         CompiledCardPayload {
             definition: wire_definition,
             canonical_text,
-            ability_labels: source
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .map(str::to_string)
-                .collect(),
+            ability_labels,
         },
         concat!("ironsmith-compiler/", env!("CARGO_PKG_VERSION")),
         source.as_bytes(),
@@ -1073,8 +1076,12 @@ mod tests {
         artifact
             .validate()
             .expect("artifact checksum should validate");
-        assert_eq!(artifact.payload.canonical_text, source);
-        assert_eq!(artifact.payload.ability_labels.len(), 3);
+        assert_eq!(
+            artifact.payload.canonical_text,
+            "Artifact Bolt deals 3 damage to any target."
+        );
+        assert!(artifact.payload.ability_labels.is_empty());
+        assert_eq!(definition.canonical_text, artifact.payload.canonical_text);
         assert_eq!(definition.card.name, "Artifact Bolt");
         assert!(format!("{definition:#?}").contains("DealDamageEffect"));
 
@@ -1083,6 +1090,48 @@ mod tests {
             .register_compiled_artifact(&artifact)
             .expect("lean catalog should materialize and register the artifact");
         assert!(registry.get("Artifact Bolt").is_some());
+    }
+
+    #[test]
+    fn artifact_carries_canonical_yawgmoth_text_into_runtime_display() {
+        let builder = compiler::CardDefinitionBuilder::new(
+            ironsmith::ids::CardId::from_raw(90_002),
+            "Yawgmoth, Thran Physician",
+        );
+        let source = "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Cleric\nPower/Toughness: 2/4\nProtection from Humans\nPay 1 life, Sacrifice another creature: Put a -1/-1 counter on up to one target creature and draw a card.\n{B}{B}, Discard a card: Proliferate. (Choose any number of permanents and/or players, then give each another counter of each kind already there.)";
+        let expected = "Protection from Humans\nPay 1 life, Sacrifice another creature: Put a -1/-1 counter on up to one target creature and draw a card.\n{B}{B}, Discard a card: Proliferate.";
+
+        let (artifact, definition) = compile_builder_to_artifact(builder, source, false)
+            .expect("Yawgmoth should compile and materialize");
+
+        assert_eq!(artifact.payload.canonical_text, expected);
+        assert_eq!(definition.canonical_text, expected);
+        assert_eq!(
+            ironsmith::runtime_display::compiled_text_lines(&definition).join("\n"),
+            expected
+        );
+        assert_eq!(
+            artifact.payload.ability_labels,
+            expected.lines().map(str::to_string).collect::<Vec<_>>()
+        );
+        let runtime_action_labels = (0..definition.abilities.len())
+            .map(|ability_index| {
+                ironsmith::runtime_display::indexed_ability_surface_text(
+                    &definition.abilities,
+                    &definition.canonical_text,
+                    ability_index,
+                )
+                .expect("each compiled ability should have an action label")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(runtime_action_labels, artifact.payload.ability_labels);
+        assert!(!artifact.payload.canonical_text.contains("Ability kind:"));
+        assert!(
+            !artifact
+                .payload
+                .canonical_text
+                .contains("StaticAbilityModelInterpreter")
+        );
     }
 
     #[test]

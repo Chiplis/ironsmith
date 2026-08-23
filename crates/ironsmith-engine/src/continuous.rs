@@ -1608,24 +1608,29 @@ fn apply_reconfigure_attached_type_rule(object: &Object, chars: &mut CalculatedC
     }
 }
 
-fn add_intrinsic_basic_land_mana_abilities(chars: &mut CalculatedCharacteristics) {
-    if !chars.card_types.contains(&CardType::Land) {
-        return;
+pub(crate) fn intrinsic_basic_land_mana_abilities(
+    card_types: &[CardType],
+    subtypes: &[Subtype],
+) -> Vec<Ability> {
+    if !card_types.contains(&CardType::Land) {
+        return Vec::new();
     }
 
-    for subtype in [
+    [
         Subtype::Plains,
         Subtype::Island,
         Subtype::Swamp,
         Subtype::Mountain,
         Subtype::Forest,
-    ] {
-        if !chars.subtypes.contains(&subtype) {
-            continue;
-        }
-        let Some(ability) = Ability::basic_land_mana(subtype) else {
-            continue;
-        };
+    ]
+    .into_iter()
+    .filter(|subtype| subtypes.contains(subtype))
+    .filter_map(Ability::basic_land_mana)
+    .collect()
+}
+
+fn add_intrinsic_basic_land_mana_abilities(chars: &mut CalculatedCharacteristics) {
+    for ability in intrinsic_basic_land_mana_abilities(&chars.card_types, &chars.subtypes) {
         if !chars.abilities.contains(&ability) {
             chars.abilities.push(ability);
         }

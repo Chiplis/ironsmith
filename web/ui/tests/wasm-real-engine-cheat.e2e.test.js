@@ -57,6 +57,284 @@ async function startWasmServer() {
   };
 }
 
+test("real WASM priority actions use canonical compiled ability labels", { timeout: 120000 }, async () => {
+  const { vite, baseUrl } = await startWasmServer();
+  let browser = null;
+
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(String(error?.stack || error)));
+    page.on("console", (message) => {
+      if (message.type() === "error") pageErrors.push(message.text());
+    });
+
+    await page.goto(baseUrl);
+    const labels = await page.evaluate(async ({ wasmModuleUrl }) => {
+      const mod = await import(wasmModuleUrl);
+      await mod.default();
+      const game = new mod.WasmGame();
+      const routes = ["yawgmoth-thran-physician", "grizzly-bears", "ornithopter", "swamp"];
+      const sources = await Promise.all(routes.map(async (route) => {
+        const response = await fetch(`/cards/${route}.json`);
+        if (!response.ok) throw new Error(`failed to load ${route}: HTTP ${response.status}`);
+        return response.json();
+      }));
+      game.registerExternalCardSourcesJson(JSON.stringify(sources));
+      game.resetEmpty(["Alice", "Bob"], 20);
+      const yawgmothId = game.addCardToZone(
+        0,
+        "Yawgmoth, Thran Physician",
+        "battlefield",
+        true
+      );
+      game.addCardToZone(0, "Grizzly Bears", "battlefield", true);
+      game.addCardToZone(0, "Ornithopter", "battlefield", true);
+      game.addCardToZone(0, "Grizzly Bears", "hand", true);
+      game.addCardToZone(0, "Swamp", "battlefield", true);
+      game.addCardToZone(0, "Swamp", "battlefield", true);
+      game.finishPuzzleSetup();
+
+      let state = game.uiState();
+      for (let step = 0; step < 20; step += 1) {
+        const yawgmothAction = (state.decision?.actions || []).find((action) => (
+          action.action_ref?.kind === "activate_ability"
+          && Number(action.action_ref?.source) === Number(yawgmothId)
+        ));
+        if (yawgmothAction) break;
+        const setupAction = (state.decision?.actions || []).find((action) => [
+          "keep_opening_hand",
+          "continue_pregame",
+          "begin_game",
+          "pass_priority",
+        ].includes(action.action_ref?.kind));
+        if (!setupAction) break;
+        state = game.dispatch({ type: "priority_action", action_ref: setupAction.action_ref });
+      }
+      return (state.decision?.actions || [])
+        .filter((action) => (
+          action.action_ref?.kind === "activate_ability"
+          && Number(action.action_ref?.source) === Number(yawgmothId)
+        ))
+        .sort((left, right) => (
+          Number(left.action_ref.ability_index) - Number(right.action_ref.ability_index)
+        ))
+        .map((action) => ({
+          abilityIndex: Number(action.action_ref.ability_index),
+          label: action.label,
+        }));
+    }, { wasmModuleUrl: WASM_MODULE_URL });
+
+    assert.deepEqual(labels, [
+      {
+        abilityIndex: 1,
+        label: "Activate Yawgmoth, Thran Physician: Pay 1 life, Sacrifice another creature: Put a -1/-1 counter on up to one target creature and draw a card.",
+      },
+      {
+        abilityIndex: 2,
+        label: "Activate Yawgmoth, Thran Physician: {B}{B}, Discard a card: Proliferate.",
+      },
+    ]);
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    await browser?.close();
+    await vite.close();
+  }
+});
+
+test("real WASM inspector renders intrinsic basic-land mana abilities", { timeout: 120000 }, async () => {
+  const { vite, baseUrl } = await startWasmServer();
+  let browser = null;
+
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(String(error?.stack || error)));
+    page.on("console", (message) => {
+      if (message.type() === "error") pageErrors.push(message.text());
+    });
+
+    await page.goto(baseUrl);
+    const abilities = await page.evaluate(async ({ wasmModuleUrl }) => {
+      const mod = await import(wasmModuleUrl);
+      await mod.default();
+      const game = new mod.WasmGame();
+      const routes = ["swamp", "stomping-ground"];
+      const sources = await Promise.all(routes.map(async (route) => {
+        const response = await fetch(`/cards/${route}.json`);
+        if (!response.ok) throw new Error(`failed to load ${route}: HTTP ${response.status}`);
+        return response.json();
+      }));
+      game.registerExternalCardSourcesJson(JSON.stringify(sources));
+      game.resetEmpty(["Alice", "Bob"], 20);
+      const swampId = game.addCardToZone(0, "Swamp", "battlefield", true);
+      const stompingGroundId = game.addCardToZone(0, "Stomping Ground", "battlefield", true);
+      game.finishPuzzleSetup();
+      return {
+        swamp: game.objectDetails(swampId).abilities,
+        stompingGround: game.objectDetails(stompingGroundId).abilities,
+      };
+    }, { wasmModuleUrl: WASM_MODULE_URL });
+
+    assert.deepEqual(abilities, {
+      swamp: ["{T}: Add {B}."],
+      stompingGround: [
+        "As this enters, you may pay 2 life. If you don't, it enters tapped.",
+        "{T}: Add {R}.",
+        "{T}: Add {G}.",
+      ],
+    });
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    await browser?.close();
+    await vite.close();
+  }
+});
+
+test("real WASM can cast Lightning Bolt normally from an intrinsic Mountain mana ability", { timeout: 120000 }, async () => {
+  const { vite, baseUrl } = await startWasmServer();
+  let browser = null;
+
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(String(error?.stack || error)));
+    page.on("console", (message) => {
+      if (message.type() === "error") pageErrors.push(message.text());
+    });
+
+    await page.goto(baseUrl);
+    const result = await page.evaluate(async ({ wasmModuleUrl }) => {
+      const mod = await import(wasmModuleUrl);
+      await mod.default();
+      const routes = ["lightning-bolt", "mountain", "omniscience"];
+      const sources = await Promise.all(routes.map(async (route) => {
+        const response = await fetch(`/cards/${route}.json`);
+        if (!response.ok) throw new Error(`failed to load ${route}: HTTP ${response.status}`);
+        return response.json();
+      }));
+
+      const inspectScenario = (withOmniscience) => {
+        const game = new mod.WasmGame();
+        game.registerExternalCardSourcesJson(JSON.stringify(sources));
+        game.resetEmpty(["Alice", "Bob"], 20);
+        const boltId = game.addCardToZone(0, "Lightning Bolt", "hand", true);
+        const mountainId = game.addCardToZone(0, "Mountain", "battlefield", true);
+        if (withOmniscience) {
+          game.addCardToZone(0, "Omniscience", "battlefield", true);
+        }
+        game.finishPuzzleSetup();
+
+        let state = game.uiState();
+        for (let step = 0; step < 20; step += 1) {
+          const actions = state.decision?.actions || [];
+          const setupAction = actions.find((action) => [
+            "keep_opening_hand",
+            "continue_pregame",
+            "begin_game",
+          ].includes(action.action_ref?.kind));
+          if (!setupAction) break;
+          state = game.dispatch({ type: "priority_action", action_ref: setupAction.action_ref });
+        }
+
+        const actions = state.decision?.actions || [];
+        const castActions = actions.filter((action) => (
+          action.action_ref?.kind === "cast_spell"
+          && Number(action.action_ref?.spell_id) === Number(boltId)
+        ));
+        const normalCastAction = castActions.find(
+          (action) => action.action_ref?.casting_method?.kind === "normal"
+        );
+        let paidNormalCast = false;
+        if (normalCastAction) {
+          state = game.dispatch({
+            type: "priority_action",
+            action_ref: normalCastAction.action_ref,
+          });
+          if (state.decision?.kind === "select_options") {
+            const normalOption = (state.decision.options || []).find((option) => (
+              /^Normal:/.test(option.description || "")
+            ));
+            if (!normalOption) {
+              throw new Error(`normal casting method was not selectable: ${JSON.stringify(state.decision)}`);
+            }
+            state = game.dispatch({
+              type: "select_options",
+              option_indices: [normalOption.index],
+            });
+          }
+          if (state.decision?.kind !== "targets") {
+            throw new Error(`normal Bolt cast did not request a target: ${JSON.stringify(state.decision)}`);
+          }
+          state = game.dispatch({
+            type: "select_targets",
+            targets: [{ kind: "player", player: 1 }],
+          });
+          if (state.decision?.kind !== "mana_payment") {
+            throw new Error(`normal Bolt cast did not request mana payment: ${JSON.stringify(state.decision)}`);
+          }
+          state = game.dispatch({
+            type: "mana_payment",
+            response: {
+              action: "confirm",
+              plan_id: state.decision.plan_id,
+              request_hash: state.decision.request_hash,
+            },
+          });
+          paidNormalCast = game.objectDetails(mountainId).tapped
+            && (state.stack_preview || []).some((entry) => /Lightning Bolt/.test(entry));
+        }
+        return {
+          boltId: Number(boltId),
+          mountainId: Number(mountainId),
+          castMethods: castActions.map((action) => action.action_ref.casting_method),
+          mountainManaActions: actions.filter((action) => (
+            action.action_ref?.kind === "activate_mana_ability"
+            && Number(action.action_ref?.source) === Number(mountainId)
+          )).length,
+          paidNormalCast,
+        };
+      };
+
+      return {
+        normalBoard: inspectScenario(false),
+        omniscienceBoard: inspectScenario(true),
+      };
+    }, { wasmModuleUrl: WASM_MODULE_URL });
+
+    assert.equal(
+      result.normalBoard.mountainManaActions,
+      1,
+      `expected Mountain's intrinsic mana ability to be actionable: ${JSON.stringify(result)}`
+    );
+    assert.ok(
+      result.normalBoard.castMethods.some((method) => method?.kind === "normal"),
+      `expected Lightning Bolt to be normally castable with Mountain: ${JSON.stringify(result.normalBoard)}`
+    );
+    assert.ok(
+      result.omniscienceBoard.castMethods.some((method) => method?.kind === "normal"),
+      `expected Omniscience not to hide Bolt's normal paid route: ${JSON.stringify(result.omniscienceBoard)}`
+    );
+    assert.equal(
+      result.normalBoard.paidNormalCast,
+      true,
+      `expected Mountain to pay for a normal Bolt cast: ${JSON.stringify(result.normalBoard)}`
+    );
+    assert.equal(
+      result.omniscienceBoard.paidNormalCast,
+      true,
+      `expected Mountain to pay for the selected normal route with Omniscience in play: ${JSON.stringify(result.omniscienceBoard)}`
+    );
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    await browser?.close();
+    await vite.close();
+  }
+});
+
 test("real WASM engine rejects a forged cast for a card outside the actor's hand", { timeout: 30000 }, async () => {
   const { vite, baseUrl } = await startWasmServer();
   let browser = null;

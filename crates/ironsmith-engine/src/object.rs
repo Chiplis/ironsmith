@@ -944,6 +944,8 @@ impl Object {
                 linked_face_layout: self.linked_face_layout,
                 is_token: matches!(self.kind, ObjectKind::Token),
             },
+            canonical_text: self.compiled_card_text.to_string(),
+            ability_labels: Vec::new(),
             abilities: self.abilities_vec(),
             spell_effect: self.spell_effect_owned(),
             aura_attach_filter: self.aura_attach_filter_owned(),

@@ -4720,6 +4720,8 @@ impl CardDefinitionBuilder {
             .any(|word| word.eq_ignore_ascii_case("ante"));
         let definition = finalize_backup_abilities(CardDefinition {
             card: self.card_builder.build(),
+            canonical_text: String::new(),
+            ability_labels: Vec::new(),
             abilities: self.abilities,
             spell_effect: self.spell_effect,
             aura_attach_filter: self.aura_attach_filter,

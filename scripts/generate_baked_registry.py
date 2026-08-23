@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import sqlite3
 import struct
 import unicodedata
@@ -1328,6 +1327,29 @@ def frontend_payload_key(payload: dict) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def frontend_source_group_matches(existing: object, generated: object) -> bool:
+    if isinstance(existing, dict) and isinstance(generated, dict):
+        if existing.keys() != generated.keys():
+            return False
+        return all(
+            (
+                struct.pack("!f", float(existing[key]))
+                == struct.pack("!f", float(generated[key]))
+                if key == "score"
+                and isinstance(existing[key], (int, float))
+                and isinstance(generated[key], (int, float))
+                else frontend_source_group_matches(existing[key], generated[key])
+            )
+            for key in existing
+        )
+    if isinstance(existing, list) and isinstance(generated, list):
+        return len(existing) == len(generated) and all(
+            frontend_source_group_matches(old, new)
+            for old, new in zip(existing, generated)
+        )
+    return existing == generated
+
+
 def add_frontend_route(
     routes: Dict[str, dict],
     route_name: str,
@@ -1467,15 +1489,38 @@ def write_frontend_card_assets(
             }
         )
 
-    if cards_dir.exists():
-        shutil.rmtree(cards_dir)
     cards_dir.mkdir(parents=True, exist_ok=True)
 
+    retained_artifact_routes = 0
     for route, payload in sorted(routes.items()):
-        (cards_dir / f"{route}.json").write_text(
-            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        route_path = cards_dir / f"{route}.json"
+        payload_to_write = dict(payload)
+        try:
+            existing = json.loads(route_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, json.JSONDecodeError):
+            existing = None
+        if (
+            isinstance(existing, dict)
+            and frontend_source_group_matches(
+                existing.get("group"), payload.get("group")
+            )
+            and isinstance(existing.get("artifacts"), list)
+        ):
+            # The Rust baker validates format, engine schema, payload checksum,
+            # and each source checksum before accepting these. Carrying the
+            # candidate forward makes interrupted and metadata-only rebuilds
+            # resumable without trusting Python to validate compiler output.
+            payload_to_write["artifacts"] = existing["artifacts"]
+            retained_artifact_routes += 1
+        route_path.write_text(
+            json.dumps(payload_to_write, ensure_ascii=False, separators=(",", ":")),
             encoding="utf-8",
         )
+
+    live_route_files = {f"{route}.json" for route in routes}
+    for stale_path in cards_dir.glob("*.json"):
+        if stale_path.name != "index.json" and stale_path.name not in live_route_files:
+            stale_path.unlink()
 
     index_cards.sort(key=lambda entry: entry["name"].casefold())
     scored_scores = [
@@ -1496,6 +1541,11 @@ def write_frontend_card_assets(
         json.dumps(index_payload, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
     )
+    if retained_artifact_routes:
+        print(
+            "[generate_baked_registry] retained compiled artifacts for "
+            f"{retained_artifact_routes} unchanged route(s)"
+        )
 
 
 def parse_args() -> argparse.Namespace:

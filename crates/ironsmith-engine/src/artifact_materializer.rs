@@ -1139,5 +1139,8 @@ pub fn materialize_definition(
 pub fn materialize_artifact(
     artifact: &wire::CompiledCardArtifact,
 ) -> Result<crate::cards::CardDefinition, ArtifactMaterializationError> {
-    runtime_definition_from_core_model(artifact.payload.definition.clone())
+    let mut definition = runtime_definition_from_core_model(artifact.payload.definition.clone())?;
+    definition.canonical_text = artifact.payload.canonical_text.clone();
+    definition.ability_labels = artifact.payload.ability_labels.clone();
+    Ok(definition)
 }

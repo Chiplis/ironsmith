@@ -827,6 +827,10 @@ impl WasmGame {
     }
 
     fn compiled_ability_lines(definition: &CardDefinition) -> Vec<String> {
+        if !definition.ability_labels.is_empty() {
+            return definition.ability_labels.clone();
+        }
+
         definition
             .abilities
             .iter()

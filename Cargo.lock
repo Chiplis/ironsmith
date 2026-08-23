@@ -1257,6 +1257,8 @@ version = "0.1.0"
 dependencies = [
  "ironsmith-compiled-artifact",
  "ironsmith-compiler",
+ "ironsmith-runtime-catalog",
+ "ironsmith-text",
  "serde",
  "serde_json",
 ]
@@ -1359,6 +1361,7 @@ dependencies = [
  "ironsmith-compiler",
  "ironsmith-engine",
  "ironsmith-runtime-catalog",
+ "ironsmith-text",
  "serde_json",
 ]
 
@@ -1397,8 +1400,11 @@ dependencies = [
 name = "ironsmith-compiler-wasm"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.4.2",
  "ironsmith-compiled-artifact",
  "ironsmith-compiler",
+ "ironsmith-runtime-catalog",
+ "ironsmith-text",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
